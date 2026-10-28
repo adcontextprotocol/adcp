@@ -4,6 +4,9 @@
   "title": "Build Creative - Working",
   "description": "Progress payload for active build_creative task. Returned during AI generation, format transformation, or complex library retrieval with macro resolution.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
     "percentage": {
       "type": "number",

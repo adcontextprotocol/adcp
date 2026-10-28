@@ -31,6 +31,7 @@ async function compile(schemaId) {
 }
 
 const completedPreview = {
+  status: 'completed',
   response_type: 'single',
   previews: [{
     preview_id: 'prev_async_001',

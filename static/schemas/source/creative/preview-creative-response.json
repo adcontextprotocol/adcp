@@ -5,9 +5,6 @@
   "description": "Response containing preview links for one or more creatives. Format matches the request: single preview response for single requests, batch results for batch requests, or an async submitted envelope only when the request explicitly set allow_async to true.",
   "allOf": [
     {
-      "$ref": "/schemas/core/version-envelope.json"
-    },
-    {
       "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],

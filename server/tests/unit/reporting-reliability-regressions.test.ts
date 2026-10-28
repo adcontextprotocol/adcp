@@ -39,7 +39,7 @@ import {
   duplicateCoreRevisionContentForTesting,
 } from '../../src/training-agent/reporting-reliability.js';
 import { SYNC_REPORTING_RECEIPTS_SCHEMA } from '../../src/training-agent/tenants/sales.js';
-import { handleGetMediaBuyDelivery } from '../../src/training-agent/task-handlers.js';
+import { createTrainingAgentServer, handleGetMediaBuyDelivery } from '../../src/training-agent/task-handlers.js';
 import { legacyGetReportingStatusHandler } from '../../src/training-agent/v6-sales-platform.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
@@ -194,10 +194,30 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     for (const field of ['reporting_revision', 'reporting_revision_binding', 'reporting_rows', 'pagination']) {
       expect(response, `exact response includes ${field}`).toHaveProperty(field);
     }
-    const schemaValidation = validateSourceSchema('media-buy/get-media-buy-delivery-response.json', { status: 'completed', ...response });
+    // Validate the wire response, with the envelope status the dispatcher
+    // stamps, not the task body: a response without status is invalid.
+    const server = createTrainingAgentServer({ mode: 'training', principal, resolvedAccountId: accountId });
+    const callTool = (server as unknown as { _requestHandlers: Map<string, Function> })._requestHandlers.get('tools/call')!;
+    const wire = await callTool({
+      method: 'tools/call',
+      params: {
+        name: 'get_media_buy_delivery',
+        arguments: {
+          account: { account_id: accountId },
+          reporting_revision_id: published.reporting_revision_id,
+          adcp_version: TRAINING_AGENT_CURRENT_ADCP_VERSION,
+        },
+      },
+    }, {});
+    const wireResponse = wire.structuredContent as Record<string, unknown>;
+    expect(wireResponse.status, JSON.stringify(wireResponse)).toBe('completed');
+    expect(wireResponse).toMatchObject(response);
+    const schemaValidation = validateSourceSchema('media-buy/get-media-buy-delivery-response.json', wireResponse);
     expect(schemaValidation.valid, JSON.stringify(schemaValidation.errors)).toBe(true);
+    const { status: _status, ...withoutStatus } = wireResponse;
+    expect(validateSourceSchema('media-buy/get-media-buy-delivery-response.json', withoutStatus).valid, 'status is required').toBe(false);
     for (const omitted of ['reporting_revision', 'reporting_revision_binding', 'reporting_rows', 'pagination']) {
-      const incomplete = { status: 'completed', ...response } as Record<string, unknown>;
+      const incomplete = { ...wireResponse };
       delete incomplete[omitted];
       expect(validateSourceSchema('media-buy/get-media-buy-delivery-response.json', incomplete).valid, `exact quartet requires ${omitted}`).toBe(false);
     }

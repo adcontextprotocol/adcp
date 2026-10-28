@@ -110,6 +110,7 @@
         "context_id": "ctx_abc123",
         "message": "Campaign budget $150K requires VP approval to proceed",
         "result": {
+          "status": "input-required",
           "reason": "BUDGET_EXCEEDS_LIMIT",
           "errors": [
             {
@@ -134,6 +135,7 @@
         "timestamp": "2025-01-22T10:30:00Z",
         "message": "Media buy created successfully with 2 packages ready for creative assignment",
         "result": {
+          "status": "completed",
           "media_buy_id": "mb_12345",
           "creative_deadline": "2024-01-30T23:59:59Z",
           "packages": [
@@ -175,6 +177,7 @@
         "timestamp": "2025-01-22T10:20:00Z",
         "message": "Validating inventory availability...",
         "result": {
+          "status": "working",
           "percentage": 50,
           "current_step": "inventory_validation",
           "step_number": 2,
@@ -195,6 +198,7 @@
         "timestamp": "2025-01-22T10:46:00Z",
         "message": "Creative sync failed due to invalid asset URLs",
         "result": {
+          "status": "failed",
           "errors": [
             {
               "code": "INVALID_ASSET_URL",

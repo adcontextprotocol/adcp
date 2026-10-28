@@ -1056,6 +1056,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     },
   };
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',
@@ -1065,6 +1066,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     }],
   }), true, JSON.stringify(validateProjectedListProducts.errors));
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',

@@ -4,6 +4,9 @@
   "title": "Control Media Buy Response",
   "description": "Result of applying operational controls without embedding the package or creative object graphs.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "discriminator": {
     "propertyName": "status"
   },

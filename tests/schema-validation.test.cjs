@@ -611,6 +611,7 @@ async function runTests() {
     }
 
     const approved = {
+      status: 'completed',
       check_id: 'check_1',
       check_type: 'intent',
       verdict: 'approved',
@@ -619,6 +620,7 @@ async function runTests() {
       governance_context: 'signed.context.token'
     };
     const conditions = {
+      status: 'completed',
       check_id: 'check_2',
       check_type: 'intent',
       verdict: 'conditions',
@@ -630,6 +632,7 @@ async function runTests() {
       return `valid governance response rejected: ${testAjv.errorsText(validateResponse.errors)}`;
     }
     const legacyConditions = {
+      status: 'completed',
       check_id: 'legacy_check',
       plan_id: 'legacy_plan',
       verdict: 'conditions',
@@ -647,13 +650,14 @@ async function runTests() {
     if (validateResponse({ ...conditions, check_type: 'execution' })) {
       return 'execution checks must not return conditions';
     }
-    if (validateResponse({ check_id: 'check_3', check_type: 'intent', verdict: 'approved', explanation: 'Allowed' })) {
+    if (validateResponse({ status: 'completed', check_id: 'check_3', check_type: 'intent', verdict: 'approved', explanation: 'Allowed' })) {
       return 'approved must carry expires_at and governance_context';
     }
     if (validateResponse({ ...approved, conditions: [{ field: 'payload.total_budget', reason: 'Adjust' }] })) {
       return 'approved must not carry unresolved conditions';
     }
     const denied = {
+      status: 'completed',
       check_id: 'check_4',
       check_type: 'execution',
       verdict: 'denied',
@@ -706,6 +710,7 @@ async function runTests() {
       return 'governance period closure must be boolean';
     }
     if (!validateOutcomeResponse({
+      status: 'completed',
       outcome_id: 'outcome_close_1',
       outcome_state: 'findings',
       delivery_reconciliation_status: 'closed_unresolved',
@@ -714,6 +719,7 @@ async function runTests() {
       return `closed unresolved outcome response rejected: ${testAjv.errorsText(validateOutcomeResponse.errors)}`;
     }
     if (!validateOutcomeResponse({
+      status: 'completed',
       outcome_id: 'outcome_variance_1',
       outcome_state: 'findings',
       delivery_reconciliation_status: 'measurement_variance',
@@ -868,6 +874,7 @@ async function runTests() {
     }
 
     const verifiedResponse = {
+      status: 'completed',
       adjustment_id: 'adj_1',
       adjustment_state: 'verified',
       adjustment_type: 'decommitment',

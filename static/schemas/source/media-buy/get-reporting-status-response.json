@@ -6,7 +6,6 @@
   "description": "Authoritative caller/account-isolated reporting status response. The view echoes the request and discriminates summary, periods, exact revision, and fatal error shapes. Seller obligation/revision state and separately attributed consumer status remain distinct but are compared in the caller-scoped health projection. Every identifier, cursor, ledger snapshot, destination, revision, materialization, consumer status, and resource is scoped to the authenticated caller and account.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/version-envelope.json" },
     { "$ref": "/schemas/core/protocol-envelope.json" },
     {
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
@@ -148,6 +147,7 @@
       "title": "Failed lookup",
       "properties": { "status": { "type": "string", "const": "failed" } },
       "required": ["status"],
+      "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["changes_checkpoint"] }, { "required": ["account_id"] }, { "required": ["scope"] }, { "required": ["health"] }, { "required": ["coverage"] }, { "required": ["data_through"] }, { "required": ["next_expected_at"] }, { "required": ["obligation_counts"] }, { "required": ["issues"] }, { "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["adjustments"] }, { "required": ["consumer_statuses"] }, { "required": ["adjustment_receipts"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }, { "required": ["receipts"] }, { "required": ["ext"] }] },
       "oneOf": [
         {
       "title": "Unavailable lookup",
@@ -188,7 +188,7 @@
         }
       },
       "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Operational failure",
@@ -208,7 +208,7 @@
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }
       },
       "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": false
+      "additionalProperties": true
         }
       ]
     }
