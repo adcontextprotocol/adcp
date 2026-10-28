@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-subscription.json",
+  "title": "Reporting Subscription",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Desired principal-level reporting subscription (experimental, media_buy.reporting_subscriptions): what to deliver, for which of the caller's authorized accounts, and where. Registered through the sync_principal reporting_subscriptions section. The seller resolves the selector per account and product into per-account obligations read through get_reporting_status; within a covered account it covers every media buy, including buys created later. Obligations derived from a subscription carry delivery_config_id equal to subscription_id and delivery_config_version equal to subscription_version, so subscription_id values and the caller's sync_accounts delivery_config_id values share one caller-scoped namespace. Registration grants no account authority.",
+  "type": "object",
+  "properties": {
+    "subscription_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_subscription",
+      "description": "Caller-selected stable key, unique within the authenticated principal and not equal to any delivery_config_id the caller uses on any account with this seller."
+    },
+    "subscription_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Caller-selected immutable semantic generation. Increment only when delivery semantics change: selector, reconciliation_mode, or destination. scope, exclude_account_ids, and active change in place, so accounts and buys coming and going never need a new version. Sellers reject a reused version with different semantic content."
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the subscription creates new obligations. false ends coverage at the end of the period in progress; the subscription stays readable for history."
+    },
+    "scope": {
+      "type": "object",
+      "description": "Accounts covered. all_authorized_accounts is an explicit acknowledgment, never implicit, and follows the caller's account authority as it changes. account_ids names specific accounts; it takes precedence over an all-accounts subscription for those accounts and the same feed_purpose.",
+      "properties": {
+        "all_authorized_accounts": { "type": "boolean", "const": true },
+        "account_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "x-entity": "account" },
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true
+        }
+      },
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false
+    },
+    "exclude_account_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "x-entity": "account" },
+      "minItems": 1,
+      "maxItems": 1000,
+      "uniqueItems": true,
+      "description": "Accounts opted out of an all_authorized_accounts subscription. Not valid with account_ids scope."
+    },
+    "selector": {
+      "type": "object",
+      "description": "Offering attributes that are stable across sellers. The seller resolves the selector separately for each account and its products. An account or buy with no matching offering is excluded with reason offering_unsupported; that never fails the subscription.",
+      "properties": {
+        "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"], "description": "Same values as the offering feed_purpose." },
+        "period_duration": {
+          "type": "string",
+          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
+          "maxLength": 64,
+          "description": "ISO 8601 duration matched exactly against the offering's schedule.period_duration."
+        },
+        "required_finality": { "$ref": "/schemas/enums/reporting-finality.json" },
+        "dimensions": {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/reporting-dimension.json" },
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "description": "Breakdown the offering's report definition MUST include, in the standard vocabulary. Omit to match any breakdown."
+        },
+        "match": {
+          "type": "string",
+          "enum": ["finest", "all"],
+          "default": "finest",
+          "description": "finest selects the single matching offering with the most mapped dimensions, ties broken by the lowest offering_id in byte order. all selects every matching offering."
+        },
+        "period_timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "IANA timezone for period boundaries. Only valid with account_ids scope. When omitted, each account's periods follow that account's timezone."
+        }
+      },
+      "required": ["feed_purpose", "period_duration", "required_finality"],
+      "additionalProperties": false
+    },
+    "reconciliation_mode": {
+      "$ref": "/schemas/core/reporting-reconciliation-mode.json",
+      "description": "Matched against the offering. A billing subscription uses consumer_receipt."
+    },
+    "destination": {
+      "type": "object",
+      "description": "Managed delivery target. Omit to select only API-delivered (Core) offerings. When present, only offerings whose method matches the destination's pattern and transport match.",
+      "properties": {
+        "destination_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "A destination_id in the caller's principal reporting_destinations. The seller binds the current generation and echoes its destination_ref in state."
+        },
+        "path_template": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9_.=/{}-]+$",
+          "description": "Relative path under the destination location. Placeholders: {account_id}, {subscription_id}, {offering_id}, {period_start}. MUST contain {account_id} when the scope can cover more than one account, and is then required for file_transfer destinations."
+        }
+      },
+      "required": ["destination_id"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["subscription_id", "subscription_version", "active", "scope", "selector", "reconciliation_mode"],
+  "allOf": [
+    {
+      "if": { "required": ["exclude_account_ids"] },
+      "then": { "properties": { "scope": { "required": ["all_authorized_accounts"] } } }
+    },
+    {
+      "if": { "properties": { "scope": { "required": ["all_authorized_accounts"] } }, "required": ["scope"] },
+      "then": { "properties": { "selector": { "not": { "required": ["period_timezone"] } } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "anyOf": [
+              { "required": ["all_authorized_accounts"] },
+              { "properties": { "account_ids": { "minItems": 2 } }, "required": ["account_ids"] }
+            ]
+          }
+        },
+        "required": ["scope"]
+      },
+      "then": { "properties": { "destination": { "properties": { "path_template": { "pattern": "\\{account_id\\}" } } } } }
+    },
+    {
+      "if": { "properties": { "selector": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] } }, "required": ["selector"] },
+      "then": {
+        "properties": {
+          "selector": { "properties": { "required_finality": { "const": "official" } } },
+          "reconciliation_mode": { "const": "consumer_receipt" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" } }, "required": ["reconciliation_mode"] },
+      "then": { "required": ["destination"] }
+    }
+  ],
+  "x-adcp-validation": {
+    "coverage": "Each (account, media buy, offering) pair gets an immutable covered_from: the latest of the seller's acceptance of the subscription, the principal becoming authorized for the account, and the buy's creation. A buy is owed every period that ends after covered_from and no later than covered_until, which is the earliest of the buy's final period end, the end of the period in progress at deactivation, and the loss of authorization.",
+    "precedence": "Per account and feed_purpose, the more specific scope wins: an active account_ids subscription naming the account, or during 3.x an active sync_accounts reporting_delivery_configs entry for that account, replaces an all_authorized_accounts subscription. The replaced subscription reports the account excluded with reason overridden. A caller never receives two feeds for the same account and feed_purpose from different scope levels.",
+    "selection": "The seller maps each offering's report definition dimensions onto the standard vocabulary. An offering matches when feed_purpose, period_duration, reconciliation_mode, and required_finality (in supported_finality) match, its mapped dimensions include every selector dimension, a present destination matches its method, and every product in the buy lists it in reporting_delivery_offering_ids.",
+    "timezone": "Without period_timezone, each account's periods use account_timezone alignment in that account's declared timezone. With period_timezone, only offerings that can produce periods in that zone match.",
+    "destination": "destination_id MUST name a destination present in the caller's reporting_destinations after the same request applies; otherwise the whole request fails. Destination proof establishes where data may go, never which account data the caller may receive: every delivery re-checks account authority. Every delivered row carries account_id."
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Daily official analytics for every authorized account, partitioned by account",
+      "data": {
+        "subscription_id": "analytics-daily",
+        "subscription_version": 1,
+        "active": true,
+        "scope": { "all_authorized_accounts": true },
+        "selector": {
+          "feed_purpose": "analytics",
+          "period_duration": "P1D",
+          "required_finality": "official",
+          "dimensions": ["package", "creative"],
+          "match": "finest"
+        },
+        "reconciliation_mode": "delivery_only",
+        "destination": {
+          "destination_id": "reporting-archive",
+          "path_template": "analytics/{account_id}/{period_start}"
+        }
+      }
+    }
+  ]
+}

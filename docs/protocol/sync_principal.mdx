@@ -62,7 +62,7 @@ The principal layer begins **after authentication**. AdCP defines no credential-
 3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers. When the result carries `principal_kind` (`current` or `recognized`), buyers MAY use it as a preflight before account calls: `buyer_agent` matches `account.require_operator_auth: false`, and `operator` matches `true`. A mismatch means the buyer presented the wrong credential for this seller's account model.
 4. **Call `sync_principal`.** Declare consumption facts (`declarations`), register webhook subscribers (including `principal.changed` and, with explicit scope, account-anchored events), and register reusable reporting destinations.
 5. **Authorize advertiser accounts separately** through [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and account-level tasks. Nothing in steps 1–4 grants account authority.
-6. **Bind each account's feeds** to the reusable `destination_ref`s.
+6. **Bind feeds.** Register one [reporting subscription](#reporting-subscriptions) per feed purpose that covers every authorized account, or bind each account's feeds to the reusable `destination_ref`s through `sync_accounts`.
 7. **Observe readiness.** [`get_principal`](/docs/protocol/get_principal) shows destination and declaration state; `principal.changed` keeps it fresh.
 
 That yields four deliberately separate objects: the **credential** (seller's authorization system, out of AdCP scope), the **principal record** (this layer — one party's standing configuration), **account authorization** (which advertiser data the principal may access), and **delivery configuration** (where authorized data goes). A destination can be registered before any account exists, but it cannot receive account data until an account-scoped feed binding succeeds.
@@ -123,6 +123,7 @@ Unsupported sections are rejected, not ignored. `reporting_destination_offerings
 | `notification_configs` | Caller-scoped webhook subscribers for caller-anchored events (`capabilities.changed`, `principal.changed`) and, with [fire-time authorization scoping](#principal-level-webhooks), account-anchored events. |
 | `reporting_destinations` | Reusable, non-secret file, warehouse, or dataset-share destinations. |
 | `declarations` | Buyer-declared [consumption facts](#declarations) — async payload versions, verifiable signing algorithms, experimental opt-ins — with a seller-computed accepted intersection. |
+| `reporting_subscriptions` | Experimental (3.3). [Reporting feeds](#reporting-subscriptions) that cover every authorized account, or named accounts, from one registration. |
 
 For each submitted section:
 
@@ -270,6 +271,71 @@ A consolidated destination can receive reporting from many seller accounts. The 
 
 An agent principal serving many operators may set the optional `operator_id` label on each destination — its own bookkeeping about which operator a destination serves. That enables per-operator isolation ("this operator's data goes only to their bucket"), audit ("list every destination serving this operator"), and one-call per-operator suspension or revocation when an operator offboards. The label confers no identity: matching `operator_id` values or domains across different principals are never linked, and each agent maps its operators its own way.
 
+## Reporting subscriptions
+
+<Note>
+Experimental in 3.3 under `media_buy.reporting_subscriptions` ([RFC #8543](https://github.com/adcontextprotocol/adcp/issues/8543)). Use this section only when `supported_sections` includes `reporting_subscriptions` and `media_buy.reporting_delivery.configuration_tasks` includes `sync_principal`.
+</Note>
+
+Account-level `reporting_delivery_configs` on [`sync_accounts`](/docs/accounts/tasks/sync_accounts) report nothing for a new account until someone configures it. A reporting subscription is registered once on the principal and follows the caller's account authority, the way a caller-level webhook with `all_authorized_accounts: true` does. The seller turns each subscription into per-account obligations, and buyers read them through [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage) as before.
+
+```json
+{
+  "idempotency_key": "0f4c1d2e-7b9a-4c3e-8f61-2d5a9b7e3c40",
+  "configuration": {
+    "reporting_subscriptions": [
+      {
+        "subscription_id": "analytics-daily",
+        "subscription_version": 1,
+        "active": true,
+        "scope": { "all_authorized_accounts": true },
+        "selector": {
+          "feed_purpose": "analytics",
+          "period_duration": "P1D",
+          "required_finality": "official",
+          "dimensions": ["package", "creative"],
+          "match": "finest"
+        },
+        "reconciliation_mode": "delivery_only",
+        "destination": {
+          "destination_id": "reporting-archive",
+          "path_template": "analytics/{account_id}/{period_start}"
+        }
+      }
+    ]
+  }
+}
+```
+
+**Scope.** `scope` is exactly one of `all_authorized_accounts: true`, an explicit acknowledgment that is never implicit, or `account_ids[]`. Within a covered account the subscription covers every media buy, including buys created later. `exclude_account_ids[]` opts accounts out of an all-accounts subscription. Registration requires no account authority and grants none: the seller checks authority per account, and again at every delivery, including retries.
+
+**Selector.** Offering IDs are per seller and per product, and an all-accounts subscription can't name them for accounts that don't exist yet. The subscription selects by attributes that are stable across sellers:
+
+| Field | Meaning |
+|---|---|
+| `feed_purpose` | `pacing`, `analytics`, or `billing`. |
+| `period_duration` | ISO 8601 duration, matched exactly against the offering's `schedule.period_duration`. |
+| `required_finality` | `snapshot` or `official`, which the offering must list in `supported_finality`. |
+| `dimensions` | Optional breakdown in the standard vocabulary: `package`, `creative`, `country`, `region`, `metro`. The offering's report definition must include every listed dimension. The vocabulary is extensible: an unknown value matches no offering. |
+| `match` | `finest` (default) picks the single matching offering with the most mapped dimensions, ties broken by the lowest `offering_id`; `all` picks every matching offering. |
+| `period_timezone` | Optional IANA timezone, only with `account_ids` scope. |
+
+`reconciliation_mode` must also match the offering. Without a `destination` the subscription selects only API-delivered (Core) offerings; with one, only offerings whose `method` matches that destination's pattern and transport. Billing subscriptions require `official` finality and `consumer_receipt`, and `consumer_receipt` requires a destination. The seller resolves the selector separately for each account and each buy's products, and reports the resolved `offering_id` and `report_definition_id` per buy. A buy or account with no matching offering is excluded with reason `offering_unsupported`; that never fails the request or the subscription.
+
+**Timezone.** Each account's periods follow its own declared `timezone`, so a subscription can't impose one timezone across accounts in different zones. A buyer who needs a different timezone for one account adds an account-scoped subscription with `period_timezone`, which overrides the all-accounts one for that account.
+
+**Destinations.** `destination.destination_id` names an entry in this principal's `reporting_destinations`, which must still exist after the same request applies. Every delivered row carries `account_id`. When the scope can cover more than one account, a `path_template` must contain `{account_id}`, and it is required for `file_transfer` destinations. Allowed placeholders are `{account_id}`, `{subscription_id}`, `{offering_id}`, and `{period_start}`. When an agency must keep advertisers apart, an account-scoped subscription points that advertiser's feed at its own destination; sellers that support subscriptions MUST support that.
+
+**Precedence.** Per account and `feed_purpose`, the more specific scope wins. An `account_ids` subscription naming an account replaces the all-accounts subscription for that account and purpose. During 3.x, an account-level `reporting_delivery_configs` entry on `sync_accounts` also counts as account-scoped and replaces the subscription. The replaced subscription shows the account as `excluded` with reason `overridden` and the overriding `subscription_id` or `delivery_config_id`, so a buyer never gets two feeds and two sets of obligations for one account and purpose.
+
+**Versions.** `subscription_version` changes only when delivery semantics change: the selector, `reconciliation_mode`, or the destination. `scope`, `exclude_account_ids`, and `active` change in place, so accounts and buys coming and going never need a new version. Obligations from a subscription carry `delivery_config_id` equal to `subscription_id` and `delivery_config_version` equal to `subscription_version`; subscription IDs and the caller's `sync_accounts` `delivery_config_id` values therefore share one namespace, and the seller rejects a collision.
+
+The section is complete desired state like the others. Omitting a subscription, or setting `active: false`, deactivates it: periods already in progress stay owed and no later ones are created. Deactivated subscriptions stay readable in [`get_principal`](/docs/protocol/get_principal) as `inactive` while their obligations are retained. The seller rejects the whole request with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) when two active subscriptions at the same scope level would both apply to one account and feed purpose.
+
+**Seller limits.** A seller may declare `media_buy.reporting_delivery.subscriptions.max_accounts`. Beyond it, or for an account it won't serve, the seller marks the account `excluded` with reason `capacity`, or `action_required` with a pending action, rather than being forced to serve every account. The served set is deterministic and reported, never silently partial.
+
+How coverage starts and ends, and what happens when authority is revoked, is in [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage).
+
 ## Verification profiles
 
 Destination setup advertises verification profiles the caller can accept:
@@ -297,7 +363,7 @@ Failed responses carry `result.kind: "failed"` with structured errors and delibe
 | Code | When | Recovery |
 |---|---|---|
 | [`AUTH_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-auth-required) | Anonymous or unstable caller identity. | Authenticate as a stable principal, then retry. |
-| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Schema violation, duplicate `destination_id`, credential-shaped `location` or recipient, or oversize section. | Fix the request; do not retry unchanged. |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Schema violation, duplicate `destination_id` or `subscription_id`, credential-shaped `location` or recipient, oversize section, a subscription naming a missing destination or reusing a `delivery_config_id`, or two active subscriptions at one scope level for the same account and feed purpose. | Fix the request; do not retry unchanged. |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Section not in `supported_sections`, destination outside `reporting_destination_offerings`, subscriber event type outside `caller_event_types`, empty signing-algorithm intersection with an active subscriber, or `expected_configuration_version` sent to a seller advertising `optimistic_concurrency: false`. | Re-read capabilities and select from the advertised offering. |
 | [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | `expected_configuration_version` is stale. Nothing was mutated. | Read the current version with [`get_principal`](/docs/protocol/get_principal), reconcile, and resubmit under a new `idempotency_key`. |
 | [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | An `idempotency_key` was reused with a different body. | Use a fresh key for the new logical operation. |

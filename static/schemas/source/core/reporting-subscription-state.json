@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-subscription-state.json",
+  "title": "Reporting Subscription State",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Seller readback for one principal-level reporting subscription (experimental, media_buy.reporting_subscriptions). Per-account coverage, exclusions, and revocations are read through get_reporting_status subscription_coverage, not here.",
+  "type": "object",
+  "properties": {
+    "subscription_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_subscription"
+    },
+    "subscription_version": { "type": "integer", "minimum": 1 },
+    "state": {
+      "type": "string",
+      "enum": ["active", "inactive", "action_required"],
+      "description": "active: accepted and resolving per account. inactive: the caller set active false. action_required: the subscription cannot deliver anywhere until the caller acts, for example because its destination is suspended or not ready; issues names the cause."
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller accepted the current subscription_version. It is the earliest possible covered_from for coverage that version starts."
+    },
+    "deactivated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When active false was applied. Present when and only when state is inactive."
+    },
+    "destination_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "reporting_destination",
+      "description": "Destination generation currently bound. Present when and only when the configuration names a destination."
+    },
+    "configuration": {
+      "$ref": "/schemas/core/reporting-subscription.json",
+      "description": "Desired configuration currently associated with this subscription."
+    },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" },
+      "maxItems": 16,
+      "description": "Structured issues. Messages are untrusted display data."
+    }
+  },
+  "required": ["subscription_id", "subscription_version", "state", "accepted_at", "configuration"],
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "action_required" } }, "required": ["state"] },
+      "then": { "required": ["issues"], "properties": { "issues": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "inactive" } }, "required": ["state"] },
+      "then": { "required": ["deactivated_at"] },
+      "else": { "not": { "required": ["deactivated_at"] } }
+    }
+  ],
+  "additionalProperties": false
+}

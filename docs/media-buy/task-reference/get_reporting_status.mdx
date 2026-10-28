@@ -491,6 +491,11 @@ profile to a lowest common denominator, silently omit unsupported packages, or l
 covered-subset metrics as whole-buy totals. Official or billing completeness requires
 official coverage for every required component.
 
+`configuration_tasks[]` (3.3) lists where feeds can be registered. With
+`sync_principal`, one principal-level [reporting subscription](#subscription-coverage)
+covers every authorized account. `configuration_task` stays `"sync_accounts"` for
+compatibility.
+
 Account durable-delivery desired state is configured through
 `sync_accounts.accounts[].reporting_delivery_configs[]`. Replacement is scoped to the
 authenticated caller and account; one caller cannot remove another caller's entries.
@@ -635,6 +640,125 @@ and digest alone are not an executable agreement. The fetched
 `adcp_jcs_rows_v1` algorithm, and contains cross-language golden vectors. SDKs fetch this contract under the
 same origin, redirect, DNS, byte, time, and content-type controls and verify its bytes
 and golden vectors before computing or accepting a billing digest.
+
+## Subscription coverage
+
+<Note>
+Experimental in 3.3 under `media_buy.reporting_subscriptions` ([RFC #8543](https://github.com/adcontextprotocol/adcp/issues/8543)).
+</Note>
+
+A [reporting subscription](/docs/protocol/sync_principal#reporting-subscriptions)
+registered through `sync_principal` turns into ordinary per-account obligations. They
+carry `delivery_config_id` equal to the `subscription_id` and appear in
+`scope.delivery_config_generations` like any other configuration generation.
+Summary and periods responses add `subscription_coverage[]`: one entry per caller
+subscription whose scope includes the account, including accounts it excludes,
+accounts the caller lost authority for, and inactive subscriptions whose obligations
+are still retained. The revision view never carries it.
+
+```json
+{
+  "subscription_coverage": [
+    {
+      "subscription_id": "analytics-daily",
+      "subscription_version": 1,
+      "status": "active",
+      "covered": [
+        {
+          "media_buy_id": "mb_spring_ctv",
+          "covered_from": "2026-11-02T14:20:00Z",
+          "offering_id": "daily_official_s3",
+          "report_definition_id": "delivery_by_package_creative_v2"
+        }
+      ],
+      "excluded": [
+        { "media_buy_id": "mb_dooh_test", "reason": "offering_unsupported" }
+      ]
+    },
+    {
+      "subscription_id": "pacing-hourly",
+      "subscription_version": 2,
+      "status": "excluded",
+      "covered": [],
+      "excluded": [
+        { "reason": "overridden", "overridden_by": { "delivery_config_id": "acme-pacing" } }
+      ]
+    }
+  ]
+}
+```
+
+### When coverage starts and ends
+
+Each covered buy gets an immutable `covered_from`, the latest of:
+
+- when the seller accepted the subscription version that resolved this offering
+  (`accepted_at` in [`get_principal`](/docs/protocol/get_principal));
+- when the principal became authorized for the account; and
+- when the media buy was created.
+
+A buy is owed every period that ends after `covered_from`. Coverage ends at
+`covered_until`, the earliest of the buy's final period end, the end of the period in
+progress when the subscription is deactivated, and the loss of authorization. Periods
+ending after `covered_until` are not owed. A buy covered again after a re-grant gets a
+new `covered` entry with a new `covered_from`, and a buy with several resolved
+offerings (`match: all`) has one entry per offering.
+
+A buyer derives its expected periods from `covered_from` and `covered_until` and holds
+the seller to them exactly as for an account-level configuration. That tells a
+missing report (covered, period owed, nothing delivered) apart from a buy that was
+never covered. The two views agree: a buy in an obligation's `media_buy_ids` is covered
+for that period, and every owed period's obligation lists every buy covered for it.
+
+### Exclusions
+
+Accounts or buys a subscription does not serve appear in `excluded[]` with a `reason`.
+An entry without `media_buy_id` excludes the whole account and sets `status:
+"excluded"`.
+
+| `reason` | Meaning |
+|---|---|
+| `offering_unsupported` | No offering matches the selector for this account or buy. |
+| `unauthorized` | The principal is not authorized for the account or buy. |
+| `overridden` | A more specific scope replaces this subscription for the account and feed purpose; `overridden_by` names the `subscription_id` or `delivery_config_id`. |
+| `capacity` | Beyond the seller's `subscriptions.max_accounts`, or an account the seller won't serve. |
+| `excluded_by_buyer` | Listed in the subscription's `exclude_account_ids`. |
+
+An account the seller will serve only after someone acts has `status:
+"action_required"` with a `pending_action`.
+
+**Precedence.** Per account and `feed_purpose`, the more specific scope wins: an
+`account_ids` subscription, or during 3.x an account-level
+`sync_accounts` `reporting_delivery_configs` entry, replaces an all-accounts
+subscription. Only the winner creates obligations for that account and purpose; the
+replaced subscription reports `overridden`.
+
+### When authorization ends
+
+An account whose authority the principal loses shows `status: "unauthorized"` with
+`unauthorized_at`. It never just drops out, so a revoked grant looks different from a
+seller that stopped publishing.
+
+- **New data.** None is delivered for periods ending after `unauthorized_at`.
+  Authority is checked at each delivery attempt, including retries.
+- **Periods already owed.** Periods that ended before `unauthorized_at` but were not
+  yet delivered are withheld and listed in `withheld_unauthorized[]`. They are never
+  shown as missing and never count as `delayed` or `action_required` against the
+  seller. If authority returns, they are owed again.
+- **Receipts.** A buyer MAY still submit receipts through
+  [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status) and
+  [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
+  for revisions it already read. Receipts carry no seller data, and billing
+  reconciliation needs them.
+- **Re-grant.** Coverage resumes with a new `covered_from` at the re-grant. The interval
+  in between is backfilled only when the seller declares
+  `subscriptions.backfill_on_regrant: true`; otherwise it appears in `gaps[]` with
+  reason `unauthorized`, and periods ending inside it are not owed.
+
+For `status_retention_days` after `unauthorized_at`, the former principal MAY read the
+summary view for that account and receives this coverage instead of the
+`lookup_unavailable` shape. That read discloses no revision content,
+materialization, or resource; the periods and revision views stay unavailable.
 
 ## Complete reconciliation
 
