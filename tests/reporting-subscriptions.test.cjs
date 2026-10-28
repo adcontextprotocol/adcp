@@ -206,6 +206,7 @@ test('coverage readback lists exceptions only, each with its interval', () => {
     ['overridden_by on another reason', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity', from, overridden_by: { subscription_id: 's' } }] }],
     ['overridden by two things', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', from, overridden_by: { subscription_id: 's', delivery_config_id: 'd' } }] }],
     ['unauthorized is not an exclusion reason', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'unauthorized', from }] }],
+    ['action_required on one buy', { ...coverageBase, status: 'active', excluded: [{ media_buy_id: 'mb_1', reason: 'action_required', from }] }],
   ];
   for (const [name, doc] of bad) assert.equal(v(doc), false, `${name} is rejected`);
 });
@@ -345,8 +346,14 @@ test('replace_account_configs ends only the caller\'s own configs, where the sub
   assert.match(field.description, /where this subscription resolves an offering/);
   assert.match(field.description, /Applied once per subscription_version, or when the flag changes to true/);
   assert.match(field.description, /Never affects another principal's configurations or accounts this subscription excludes/);
-  assert.match(schema['x-adcp-validation'].replace_account_configs, /cutover boundary/);
-  assert.match(schema['x-adcp-validation'].cutover, /first instant at or after T that is a period boundary of every schedule involved/);
+  assert.match(schema['x-adcp-validation'].replace_account_configs, /the configuration outgoing, the subscription incoming/);
+  const cutover = schema['x-adcp-validation'].cutover;
+  assert.match(cutover, /the outgoing schedule owes its periods that start before T, in full/);
+  assert.match(cutover, /the incoming schedule owes its periods that start at or after E/);
+  assert.match(cutover, /Nothing is owed twice/);
+  assert.match(cutover, /owed under neither/);
+  assert.match(schema.properties.replace_account_configs.description, /never advances an account's revision/);
+  assert.match(schema.properties.destination.properties.path_template.description, /percent-encodes/);
   const v = validate('/schemas/core/reporting-subscription.json');
   assert.ok(v({ ...allAccounts, replace_account_configs: true }), JSON.stringify(v.errors));
   assert.match(read('core/reporting-delivery-capabilities.json').properties.configuration_task.description, /pinned below 3\.3/);
@@ -453,10 +460,9 @@ test('get_reporting_status carries subscription_coverage in summary but not revi
   assert.equal(read('core/reporting-obligation.json').properties.offering_id['x-added-in'], '3.3.0');
 });
 
-function capabilities({ subscriptions = true, section = true, feature = true, tasks = ['sync_principal', 'sync_accounts'] } = {}) {
+function capabilities({ subscriptions = true, section = true, feature = true, tasks = ['sync_principal', 'sync_accounts'], legacyTask } = {}) {
   const reportingDelivery = {
     supported: true,
-    configuration_task: 'sync_accounts',
     status_task: 'get_reporting_status',
     offerings: [{
       offering_id: 'analytics-daily',
@@ -482,6 +488,8 @@ function capabilities({ subscriptions = true, section = true, feature = true, ta
     status_retention_days: 30,
   };
   if (tasks) reportingDelivery.configuration_tasks = tasks;
+  const withLegacy = legacyTask === undefined ? !tasks || tasks.includes('sync_accounts') : legacyTask;
+  if (withLegacy) reportingDelivery.configuration_task = 'sync_accounts';
   if (subscriptions) reportingDelivery.subscriptions = { supported: true, max_accounts: 500, backfill_on_regrant: false, dimensions: ['package', 'creative'] };
   const doc = {
     status: 'completed',
@@ -517,13 +525,18 @@ test('advertising subscriptions requires the feature id, the section, and sync_p
   assert.equal(v(capabilities({ tasks: ['sync_accounts'] })), false, 'subscriptions without sync_principal listed');
   assert.equal(v(capabilities({ subscriptions: false, section: false, tasks: ['sync_principal', 'sync_accounts'] })), false, 'sync_principal listed without subscriptions');
   assert.ok(v(capabilities({ tasks: ['sync_principal'] })), `a seller may list sync_principal alone: ${JSON.stringify(v.errors)}`);
+  assert.equal(v(capabilities({ tasks: ['sync_principal'], legacyTask: true })), false, 'configuration_task without sync_accounts in configuration_tasks');
+  assert.equal(v(capabilities({ tasks: ['sync_principal', 'sync_accounts'], legacyTask: false })), false, 'sync_accounts listed without configuration_task');
+  assert.equal(v(capabilities({ subscriptions: false, section: false, feature: false, tasks: null, legacyTask: false })), false, 'pre-3.3 shape still needs configuration_task');
 });
 
 test('configuration_task stays the unchanged sync_accounts constant', () => {
   const caps = read('core/reporting-delivery-capabilities.json');
   assert.equal(caps.properties.configuration_task.const, 'sync_accounts');
   assert.match(caps.properties.configuration_task.description, /Deprecated/);
-  assert.ok(caps.required.includes('configuration_task'));
+  assert.equal(caps.required.includes('configuration_task'), false, 'relaxed: present iff sync_accounts is served');
+  assert.match(caps.properties.configuration_task.description, /MUST serve sync_accounts registration to them/);
+  assert.match(read('core/account.json').properties.revision.description, /do not increment it/);
   assert.deepEqual(caps.properties.configuration_tasks.items.enum, ['sync_principal', 'sync_accounts']);
   assert.equal(caps.properties.subscriptions['x-status'], 'experimental');
 });
@@ -540,6 +553,30 @@ test('new schemas are registered in the index and the entity registry', () => {
     assert.equal(read(id.replace('/schemas/', ''))['x-status'], 'experimental', id);
   }
   assert.ok(read('core/x-entity-types.json').enum.includes('reporting_subscription'));
+});
+
+// Reference cutover between two daily schedules at fixed offsets.
+function cutover(T, outOffsetH, inOffsetH, days = 3) {
+  const t = Date.parse(T);
+  const oOrigin = -outOffsetH * 3_600_000;
+  const iOrigin = -inOffsetH * 3_600_000;
+  const lastOutStart = oOrigin + Math.floor((t - 1 - oOrigin) / DAY) * DAY; // last outgoing start before T
+  const E = lastOutStart + DAY;
+  const firstIn = iOrigin + Math.ceil((E - iOrigin) / DAY) * DAY; // first incoming start at or after E
+  return { E: new Date(E).toISOString(), firstIn: new Date(firstIn).toISOString(), uncovered: firstIn - E, incoming: Array.from({ length: days }, (_, k) => firstIn + k * DAY) };
+}
+
+test('cutovers never double count and leave at most a sub-period stretch when boundaries differ', () => {
+  const sameTz = cutover('2026-11-10T12:00:00Z', -5, -5);
+  assert.equal(sameTz.E, '2026-11-11T05:00:00.000Z');
+  assert.equal(sameTz.uncovered, 0, 'shared boundaries: no stretch');
+  const moved = cutover('2026-11-10T12:00:00Z', -5, -8);
+  assert.equal(moved.E, '2026-11-11T05:00:00.000Z', 'old schedule keeps its last started period in full');
+  assert.equal(moved.firstIn, '2026-11-11T08:00:00.000Z', 'new schedule starts at its first boundary at or after E');
+  assert.ok(moved.uncovered > 0 && moved.uncovered < DAY, 'the unowed stretch is shorter than one incoming period');
+  assert.ok(moved.incoming.every(start => start >= Date.parse(moved.E)), 'no incoming period overlaps the last outgoing one');
+  const onBoundary = cutover('2026-11-10T05:00:00Z', -5, -5);
+  assert.equal(onBoundary.E, '2026-11-10T05:00:00.000Z', 'T on an outgoing boundary is E');
 });
 
 test('readback exception reasons stay in sync with the coverage enum', () => {

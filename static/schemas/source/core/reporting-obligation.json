@@ -39,7 +39,7 @@
       "x-entity": "reporting_offering",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Offering this obligation was resolved to. Present on obligations derived from a reporting subscription (media_buy.reporting_subscriptions), where the seller resolves the selector per account and buy; a resolution change applies from a cutover boundary. Authoritative for this obligation's timing: its schedule alignment, anchor, and delivery_sla, and so expected_at. Buyers compute which periods are owed themselves but read timing from here."
+      "description": "Offering this obligation was resolved to. Present on obligations derived from a reporting subscription (media_buy.reporting_subscriptions), where the seller resolves the selector per account and buy; a resolution change is a cutover, so no period is owed under two offerings. Authoritative for this obligation's timing: its schedule alignment, anchor, and delivery_sla, and so expected_at. Buyers compute which periods are owed themselves but read timing from here."
     },
     "feed_purpose": {
       "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"

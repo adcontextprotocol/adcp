@@ -931,8 +931,11 @@ latency, and magnitude for exact offering IDs.
 lists every accepted registration task — `["sync_principal"]`, `["sync_accounts"]`,
 or both — and choose from it. Sellers that also serve `sync_accounts`
 registration list it; a seller may list `sync_principal` alone.
-`configuration_task` is always `"sync_accounts"` and is deprecated in 3.3; it stays
-unchanged for clients pinned below 3.3. A client that registers feeds through
+`configuration_task` is always `"sync_accounts"` and is deprecated in 3.3. It is
+present when and only when `configuration_tasks` lists `sync_accounts` or is absent.
+Callers pinned below 3.3 know only `configuration_task`, so a seller MUST serve
+`sync_accounts` registration to them; a seller listing only `sync_principal` serves
+reporting registration to 3.3 callers only. A client that registers feeds through
 `sync_principal` can end its own old account-level configurations with a
 subscription's `replace_account_configs`.
 

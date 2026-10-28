@@ -701,22 +701,40 @@ So a buyer derives every expected period from its own visible buys (`confirmed_a
 It then subtracts the exceptions below. A period that remains is owed: a missing
 report there is the seller's to explain.
 
-**Cutovers.** Changes take effect at a cutover boundary: the first instant at or after
-the change that is a period boundary of every schedule involved. Periods starting
-before it belong to the old state and periods starting at or after it to the new, so
-nothing is skipped or owed twice, even across schedules of different lengths.
-- **New version.** A new `subscription_version` gets its own `accepted_at`. Scope
-  changes count, so adding an account starts a new version. For an account in both
-  versions the cutover is seamless: the old version owes periods before the boundary
-  and the new version owes periods from it. Earlier versions' `accepted_at` values stay
-  in the readback as `prior_versions` while their obligations are retained.
-- **Deactivation** ends coverage at the cutover boundary at or after `deactivated_at`.
-- **Resolution change.** If the seller adds an offering that changes the resolution,
-  the new offering applies from a cutover boundary and never to a period already
-  started.
-- **Account timezone change.** For account-timezone periods, a timezone change takes
-  effect at the first old-timezone boundary at or after the change. It is listed in
-  `timezone_cutovers[]`; `list_accounts` shows the new `timezone` and `revision`.
+**Cutovers.** Every change effective at an instant T that hands periods from an
+outgoing schedule to an incoming one follows one rule:
+
+1. The outgoing schedule owes its periods that start before T, in full. Let E be the
+   end of the last of them; E is T when T falls on an outgoing boundary.
+2. The incoming schedule owes its periods that start at or after E.
+
+No period is owed twice. When the incoming schedule has no boundary at E, the stretch
+from E to its first boundary after E is owed under neither schedule. That stretch is
+shorter than one incoming period, and empty when the two schedules share boundaries:
+same alignment and timezone, with one period length dividing the other. For example,
+moving a daily feed from UTC-5 to UTC-8 at 12:00Z ends the old schedule at 05:00Z the
+next day; the first owed new-timezone day starts at 08:00Z, and 05:00Z to 08:00Z is not
+owed.
+
+- **New version.** A new `subscription_version` gets its own `accepted_at`, which is T.
+  Scope changes count, so adding an account starts a new version. For an account in
+  both versions the old version is outgoing and the new one incoming. An account that
+  is new in the new version follows the ordinary start rule. Earlier versions'
+  `accepted_at` values stay in the readback as `prior_versions` while their
+  obligations are retained.
+- **Deactivation** at `deactivated_at` has no incoming schedule: periods that started
+  before it stay owed, and no later ones are created.
+- **Overrides and `replace_account_configs`.** When the principal's own account-level
+  configuration takes over, the subscription is outgoing and the configuration
+  incoming. When `replace_account_configs` ends a configuration, the configuration is
+  outgoing and the subscription incoming. The `overridden` exception's `from` and
+  `until` are the E instants.
+- **Resolution change.** If the seller adds an offering that changes the resolution, the
+  old offering is outgoing and the new one incoming, so the change never touches a
+  period already started.
+- **Account timezone change.** For account-timezone periods, the old timezone's
+  schedule is outgoing. The E instant is listed as `effective_at` in
+  `timezone_cutovers[]`, and `list_accounts` shows the new `timezone` and `revision`.
 
 Each obligation names the `offering_id` and `report_definition_id` it used, and that
 offering is authoritative for the obligation's timing: its alignment, anchor, and
@@ -754,8 +772,8 @@ obligations are still retained. The revision view never carries it.
 ```
 
 Each `excluded[]` entry removes the periods whose start falls in `[from, until)`.
-Both values are cutover boundaries on the subscription's schedule, and an entry without
-`until` is still in effect. An entry without `media_buy_id` applies to the whole account.
+Both values are cutover instants (E above), and an entry without `until` is still in
+effect. `action_required` entries are account-level only. An entry without `media_buy_id` applies to the whole account.
 An `offering_unsupported` entry with `package_ids` means only those packages of the buy
 lack a matching offering: the buy stays covered for its other packages.
 
@@ -783,7 +801,7 @@ entry replaces every one of its subscriptions for that account and purpose, whet
 all-accounts or `account_ids`. Otherwise its `account_ids` subscription replaces its
 all-accounts one. Another principal's registrations never affect it. Only the winner
 creates obligations for that account and purpose; a replaced subscription records an
-`overridden` exception from the cutover boundary.
+`overridden` exception from the cutover.
 
 ### When authorization ends
 

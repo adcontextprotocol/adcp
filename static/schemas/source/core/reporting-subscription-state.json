@@ -33,7 +33,7 @@
         "properties": {
           "subscription_version": { "type": "integer", "minimum": 1 },
           "accepted_at": { "type": "string", "format": "date-time" },
-          "superseded_at": { "type": "string", "format": "date-time", "description": "The next version's accepted_at. This version owes periods starting before the cutover boundary at or after it; the next version owes periods from that boundary." }
+          "superseded_at": { "type": "string", "format": "date-time", "description": "The next version's accepted_at, the cutover instant: this version owes its periods that start before it, in full." }
         },
         "required": ["subscription_version", "accepted_at", "superseded_at"],
         "additionalProperties": false

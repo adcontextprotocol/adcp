@@ -4,7 +4,7 @@
   "title": "Reporting Subscription Coverage",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Exceptions to one principal-level reporting subscription's coverage of one account (experimental, media_buy.reporting_subscriptions), returned in get_reporting_status. Coverage itself is computable by the buyer without asking, by the rule in reporting-subscription.json: each visible confirmed buy and resolved offering is owed the complete periods of that offering's published schedule that start on or after the first boundary at or after the latest of the version's accepted_at, the buy's confirmed_at, and the account's authorized_at, and that overlap the buy's flight. The seller reports only exceptions. Each removes the periods whose start falls in the half-open interval [from, until) of cutover boundaries; none adds one. Readable only while the caller is authorized for the account; loss of authority is reported in the caller's own get_principal subscription state.",
+  "description": "Exceptions to one principal-level reporting subscription's coverage of one account (experimental, media_buy.reporting_subscriptions), returned in get_reporting_status. Coverage itself is computable by the buyer without asking, by the rule in reporting-subscription.json: each visible confirmed buy and resolved offering is owed the complete periods of that offering's published schedule that start on or after the first boundary at or after the latest of the version's accepted_at, the buy's confirmed_at, and the account's authorized_at, and that overlap the buy's flight. The seller reports only exceptions. Each removes the periods whose start falls in the half-open interval [from, until) of cutover instants; none adds one. Readable only while the caller is authorized for the account; loss of authority is reported in the caller's own get_principal subscription state.",
   "type": "object",
   "definitions": {
     "ReportingSubscriptionExclusionReason": {
@@ -12,7 +12,7 @@
       "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["offering_unsupported", "capacity", "overridden", "excluded_by_buyer", "action_required"],
-      "description": "offering_unsupported: no offering matching the selector is available on this account's or buy's products. capacity: refused for a seller limit such as max_accounts. overridden: the caller's own sync_accounts delivery config, or its own account_ids subscription replacing an all-accounts one, takes this account and feed_purpose. excluded_by_buyer: listed in exclude_account_ids. action_required: not served until pending_action completes."
+      "description": "offering_unsupported: no offering matching the selector is available on this account's or buy's products. capacity: refused for a seller limit such as max_accounts. overridden: the caller's own sync_accounts delivery config, or its own account_ids subscription replacing an all-accounts one, takes this account and feed_purpose. excluded_by_buyer: listed in exclude_account_ids. action_required: the account is not served until pending_action completes; account-level only."
     }
   },
   "properties": {
@@ -41,8 +41,8 @@
         "properties": {
           "media_buy_id": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" },
           "reason": { "$ref": "#/definitions/ReportingSubscriptionExclusionReason" },
-          "from": { "type": "string", "format": "date-time", "description": "Cutover boundary: periods starting at or after it are removed." },
-          "until": { "type": "string", "format": "date-time", "description": "Cutover boundary at which the exception ended; periods starting at or after it are owed again. Absent while still in effect." },
+          "from": { "type": "string", "format": "date-time", "description": "Cutover instant: periods starting at or after it are removed." },
+          "until": { "type": "string", "format": "date-time", "description": "Cutover instant at which the exception ended; periods starting at or after it are owed again. Absent while still in effect." },
           "package_ids": {
             "type": "array",
             "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingPackageId" },
@@ -70,6 +70,10 @@
             "else": { "not": { "required": ["overridden_by"] } }
           },
           {
+            "if": { "properties": { "reason": { "const": "action_required" } }, "required": ["reason"] },
+            "then": { "not": { "required": ["media_buy_id"] } }
+          },
+          {
             "if": { "required": ["package_ids"] },
             "then": { "required": ["media_buy_id"], "properties": { "reason": { "const": "offering_unsupported" } } }
           }
@@ -79,11 +83,11 @@
     },
     "timezone_cutovers": {
       "type": "array",
-      "description": "Account timezone changes affecting account_timezone-aligned periods, retained for status_retention_days. Periods under the old timezone are owed while they start before effective_at; periods under the new timezone are owed from its first boundary at or after effective_at.",
+      "description": "Account timezone changes affecting account_timezone-aligned periods, retained for status_retention_days. A cutover: periods under the old timezone are owed when they start before the change, so they end by effective_at; periods under the new timezone are owed when they start at or after effective_at. Any stretch from effective_at to the first new-timezone boundary is owed under neither.",
       "items": {
         "type": "object",
         "properties": {
-          "effective_at": { "type": "string", "format": "date-time", "description": "First period boundary under the old timezone at or after the change." },
+          "effective_at": { "type": "string", "format": "date-time", "description": "End of the last old-timezone period that started before the change." },
           "timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The account's new IANA timezone, as list_accounts shows it." }
         },
         "required": ["effective_at", "timezone"],

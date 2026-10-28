@@ -372,7 +372,7 @@ it. A seller that lists `sync_principal` in `configuration_tasks` and advertises
 An account-level `reporting_delivery_configs` entry still works during 3.x. The
 caller's own entry takes precedence over the caller's subscriptions for that account
 and `feed_purpose`; another principal's entries never affect them. A subscription with
-`replace_account_configs: true` ends the caller's own entries at a cutover boundary.
+`replace_account_configs: true` ends the caller's own entries by cutover, without advancing the account's revision.
 
 ## The ladder above Core
 

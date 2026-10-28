@@ -29,7 +29,7 @@
       "type": "string",
       "const": "sync_accounts",
       "deprecated": true,
-      "description": "Deprecated in 3.3: 3.3 clients use configuration_tasks. Kept unchanged for clients pinned below 3.3, which compare it to sync_accounts."
+      "description": "Deprecated in 3.3: 3.3 clients use configuration_tasks. Present when and only when configuration_tasks lists sync_accounts, or configuration_tasks is absent. Callers pinned below 3.3 know only this field, so a seller MUST serve sync_accounts registration to them; a seller listing only sync_principal serves reporting registration to 3.3 callers only."
     },
     "configuration_tasks": {
       "type": "array",
@@ -159,13 +159,24 @@
   },
   "required": [
     "supported",
-    "configuration_task",
     "status_task",
     "offerings",
     "automated_recovery_window_seconds",
     "status_retention_days"
   ],
   "allOf": [
+    {
+      "if": { "not": { "required": ["configuration_tasks"] } },
+      "then": { "required": ["configuration_task"] }
+    },
+    {
+      "if": { "properties": { "configuration_tasks": { "contains": { "const": "sync_accounts" } } }, "required": ["configuration_tasks"] },
+      "then": { "required": ["configuration_task"] }
+    },
+    {
+      "if": { "properties": { "configuration_tasks": { "not": { "contains": { "const": "sync_accounts" } } } }, "required": ["configuration_tasks"] },
+      "then": { "not": { "required": ["configuration_task"] } }
+    },
     {
       "if": { "required": ["subscriptions"] },
       "then": { "required": ["configuration_tasks"], "properties": { "configuration_tasks": { "contains": { "const": "sync_principal" } } } }
