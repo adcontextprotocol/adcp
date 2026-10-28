@@ -9,7 +9,7 @@ vi.mock('../../src/db/client.js', () => ({
 }));
 import { ComplianceDatabase } from '../../src/db/compliance-db.js';
 
-const testUrl = process.env.COMPLIANCE_BADGE_TEST_DATABASE_URL;
+const testUrl = process.env.COMPLIANCE_BADGE_TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const schema = `badge_mutations_${randomUUID().replaceAll('-', '')}`;
 const agentUrl = 'https://badge-agent.example/mcp';
 const sourceRunId = '00000000-0000-4000-8000-000000000001';
@@ -21,8 +21,9 @@ describe.skipIf(!testUrl)('badge mutations against disposable PostgreSQL', () =>
   const db = new ComplianceDatabase();
   beforeAll(async () => {
     const url = new URL(testUrl!);
-    if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.pathname !== '/compliance_badge_tests') {
-      throw new Error('Tests require the dedicated local compliance_badge_tests database.');
+    if (!['127.0.0.1', 'localhost'].includes(url.hostname)
+      || !['/compliance_badge_tests', '/adcp_test'].includes(url.pathname)) {
+      throw new Error('Tests require a local compliance_badge_tests or adcp_test database.');
     }
     state.pool = new Pool({ connectionString: testUrl, options: `-c search_path=${schema},pg_catalog` });
     await state.pool.query(`CREATE SCHEMA ${schema}`);

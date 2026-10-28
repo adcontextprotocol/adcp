@@ -336,15 +336,7 @@ jobs:
             exit 1
           fi
 
-      - name: Provision isolated PostgreSQL regression databases
-        run: |
-          createdb -h 127.0.0.1 -U ci_runner compliance_badge_tests
-          createdb -h 127.0.0.1 -U ci_runner training_gcs_tests
-
       - name: Run server integration test shard
-        env:
-          COMPLIANCE_BADGE_TEST_DATABASE_URL: postgresql://ci_runner@127.0.0.1:5432/compliance_badge_tests
-          TRAINING_GCS_TEST_DATABASE_URL: postgresql://ci_runner@127.0.0.1:5432/training_gcs_tests
         run: npm run test:server-integration -- --shard=${{ matrix.shard }}/4
 
   # Keep the existing required-check context stable while worker jobs fan out.
