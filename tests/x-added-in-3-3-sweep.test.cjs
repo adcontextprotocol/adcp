@@ -40,6 +40,11 @@ const WHOLE_FILE_3_3 = [
   'core/identity-relying-party.json',
   'enums/webhook-signing-profile.json',
   'extensions/adcp.json',
+  // Reporting subscriptions (media_buy.reporting_subscriptions, RFC #8543 Part B).
+  'core/reporting-subscription.json',
+  'core/reporting-subscription-state.json',
+  'core/reporting-subscription-coverage.json',
+  'enums/reporting-dimension.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -119,6 +124,15 @@ const PROPERTIES_3_3 = [
   ['core/performance-standard.json', ['properties', 'metric_id']],
   ['core/canonical-performance-standard.json', ['properties', 'metric_id']],
   ['core/product-offer-filters.json', ['properties', 'required_performance_standards', 'items', 'properties', 'metric_id']],
+  ['protocol/sync-principal-request.json', ['properties', 'configuration', 'properties', 'reporting_subscriptions']],
+  ['core/principal-state.json', ['properties', 'reporting_subscriptions']],
+  ['media-buy/get-reporting-status-response.json', ['properties', 'subscription_coverage']],
+  ['core/reporting-delivery-capabilities.json', ['properties', 'configuration_tasks']],
+  ['core/reporting-delivery-capabilities.json', ['properties', 'subscriptions']],
+  ['core/reporting-obligation.json', ['properties', 'offering_id']],
+  ['core/media-buy.json', ['properties', 'completed_at']],
+  ['core/account-authorization.json', ['properties', 'authorized_at']],
+  ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

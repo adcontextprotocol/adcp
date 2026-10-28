@@ -885,6 +885,18 @@
           "$ref": "/schemas/core/agent-reporting-destination-state.json",
           "description": "Seller-issued destination reference and setup state for a reusable reporting destination"
         },
+        "reporting-subscription": {
+          "$ref": "/schemas/core/reporting-subscription.json",
+          "description": "Experimental: principal-level reporting subscription registered through sync_principal"
+        },
+        "reporting-subscription-state": {
+          "$ref": "/schemas/core/reporting-subscription-state.json",
+          "description": "Experimental: seller readback for a principal-level reporting subscription"
+        },
+        "reporting-subscription-coverage": {
+          "$ref": "/schemas/core/reporting-subscription-coverage.json",
+          "description": "Experimental: how one reporting subscription covers, excludes, or withholds one account's media buys"
+        },
         "delivery-provider": {
           "$ref": "/schemas/core/delivery-provider.json",
           "description": "Non-secret provider namespace for an external delivery service"
@@ -1317,6 +1329,10 @@
         "pending-action-kind": {
           "$ref": "/schemas/enums/pending-action-kind.json",
           "description": "Experimental: what a pending account request needs next (extensible)"
+        },
+        "reporting-dimension": {
+          "$ref": "/schemas/enums/reporting-dimension.json",
+          "description": "Experimental: standard breakdown vocabulary for reporting subscription selectors (extensible)"
         },
         "pricing-model": {
           "$ref": "/schemas/enums/pricing-model.json",

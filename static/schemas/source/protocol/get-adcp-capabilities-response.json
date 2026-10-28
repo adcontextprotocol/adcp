@@ -229,6 +229,73 @@
       }
     },
     {
+      "description": "Advertising reporting subscriptions (media_buy.reporting_delivery.subscriptions) requires the media_buy.reporting_subscriptions feature id and the sync_principal reporting_subscriptions section.",
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "reporting_delivery": { "required": ["subscriptions"] }
+            },
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.reporting_subscriptions" }
+          },
+          "adcp": {
+            "properties": {
+              "principal": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "reporting_subscriptions" }
+                  }
+                },
+                "required": ["supported_sections"]
+              }
+            },
+            "required": ["principal"]
+          }
+        },
+        "required": ["experimental_features", "adcp"]
+      }
+    },
+    {
+      "description": "The sync_principal reporting_subscriptions section requires media_buy.reporting_delivery.subscriptions.",
+      "if": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "principal": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "reporting_subscriptions" }
+                  }
+                },
+                "required": ["supported_sections"]
+              }
+            },
+            "required": ["principal"]
+          }
+        },
+        "required": ["adcp"]
+      },
+      "then": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "reporting_delivery": { "required": ["subscriptions"] }
+            },
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      }
+    },
+    {
       "if": {
         "properties": {
           "media_buy": {
@@ -936,11 +1003,11 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["notification_configs", "reporting_destinations", "declarations"]
+                "enum": ["notification_configs", "reporting_destinations", "declarations", "reporting_subscriptions"]
               },
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored."
+              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored. reporting_subscriptions (3.3, experimental) requires media_buy.reporting_delivery.subscriptions and the media_buy.reporting_subscriptions feature id."
             },
             "max_reporting_destinations": {
               "type": "integer",
