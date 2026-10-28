@@ -270,6 +270,7 @@
             },
             "proposal_id": {
               "type": "string",
+              "maxLength": 255,
               "minLength": 1,
               "description": "Echo of the draft proposal whose next finalize will fail with hold_unavailable. Present only when arm is 'unable'.",
               "x-entity": "proposal",

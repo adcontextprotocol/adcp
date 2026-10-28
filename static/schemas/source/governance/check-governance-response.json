@@ -112,6 +112,7 @@
   "properties": {
     "check_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Unique identifier for this governance check record. Use in report_plan_outcome to link outcomes to the check that authorized them.",
       "x-entity": "governance_check"
     },
@@ -126,6 +127,7 @@
     },
     "plan_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Plan identifier echoed on an initial plan-addressed check. Optional on continuation checks addressed by governance_context; services do not need this value and MUST treat the token binding as authoritative.",
       "x-entity": "governance_plan"
     },
@@ -140,25 +142,30 @@
     },
     "explanation": {
       "type": "string",
+      "maxLength": 2000,
       "description": "Human-readable explanation of the governance decision."
     },
     "findings": {
       "type": "array",
+      "maxItems": 100,
       "description": "Specific issues found during the governance check. Present when verdict is 'denied' or 'conditions'. MAY also be present on 'approved' for informational findings (e.g., budget approaching limit).",
       "items": {
         "type": "object",
         "properties": {
           "category_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety'). This is an **agent-internal** taxonomy: the string is defined by the governance agent's own policy model and is not constrained to any protocol-level enum. Sellers and buyers MUST NOT pattern-match `category_id` values against a fixed list — treat them as opaque labels with human-readable significance for audit but no machine-level contract. See the Campaign Governance specification for how an agent composes internal specialist review behind one endpoint."
           },
           "policy_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations). When the violation traces to a producer-tagged surface (feature-requirement, creative-feature-result, or validation-result feature) carrying policy_id, governance agents SHOULD echo that policy_id here for end-to-end traceability, and MUST NOT invent a policy_id that wasn't present on the originating surface. See /docs/governance/policy-attribution.",
             "$comment": "x-entity deliberately omitted — a finding's policy_id can reference EITHER a governance_registry_policy or a governance_inline_policy depending on which policy matched. Resolution requires a sibling source discriminator the lint can't see from this leaf. Storyboards that capture from findings must re-annotate at the consume site (see #2685 for the registry/inline split)."
           },
           "source_plan_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance).",
             "x-entity": "governance_plan"
           },
@@ -167,6 +174,7 @@
           },
           "explanation": {
             "type": "string",
+            "maxLength": 2000,
             "description": "Human-readable description of the issue."
           },
           "details": {
@@ -182,6 +190,7 @@
           },
           "uncertainty_reason": {
             "type": "string",
+            "maxLength": 2000,
             "description": "Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions that partially overlap jurisdiction boundaries'). Present when confidence is below a governance-agent-defined threshold."
           },
           "attestation_reference_digest": {
@@ -200,12 +209,14 @@
     },
     "conditions": {
       "type": "array",
+      "maxItems": 100,
       "description": "Intent-phase counterproposal. Present only when verdict is 'conditions'. It does not authorize execution and MUST NOT be returned for execution or lifecycle checks. Each field path is rooted at the complete check_governance request arguments, so both payload.* and proposed_commitment.* can be addressed. After applying conditions, the caller MUST re-call check_governance with the adjusted parameters and receive approved before proceeding.",
       "items": {
         "type": "object",
         "properties": {
           "field": {
             "type": "string",
+            "maxLength": 500,
             "description": "Dot-path rooted at the complete check_governance request arguments (for example payload.total_budget.amount or proposed_commitment.amount). Conditions are not valid for committed execution checks."
           },
           "required_value": {
@@ -213,6 +224,7 @@
           },
           "reason": {
             "type": "string",
+            "maxLength": 2000,
             "description": "Why this condition is required."
           }
         },
@@ -244,11 +256,11 @@
       "type": "object",
       "description": "Canonical seller-attributed delivery statement retained by governance. Present on delivery execution checks. The buyer binds any later observation to this exact statement through report_plan_outcome.",
       "properties": {
-        "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
+        "statement_id": { "type": "string", "maxLength": 255, "x-entity": "governance_delivery_statement" },
         "statement_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
         "sequence": { "type": "integer", "minimum": 1 },
         "issued_at": { "type": "string", "format": "date-time" },
-        "seller_reference": { "type": "string" },
+        "seller_reference": { "type": "string", "maxLength": 255 },
         "reporting_period": {
           "type": "object",
           "properties": {
@@ -264,7 +276,7 @@
           "type": "object",
           "description": "Exact retained digest-bearing payload. To verify statement_digest, apply RFC 8785 JCS after removing delivery_metrics.statement_digest.",
           "properties": {
-            "seller_reference": { "type": "string" },
+            "seller_reference": { "type": "string", "maxLength": 255 },
             "delivery_metrics": { "type": "object", "additionalProperties": true }
           },
           "required": ["seller_reference", "delivery_metrics"],
@@ -276,15 +288,19 @@
     },
     "categories_evaluated": {
       "type": "array",
+      "maxItems": 100,
       "items": {
-        "type": "string"
+        "type": "string",
+        "maxLength": 500
       },
       "description": "Governance categories evaluated during this check. Each value is an **agent-internal** label (e.g., `budget_authority`, `regulatory_compliance`, or any internal-reviewer key the agent's policy model defines) — not a protocol-level enum. Since one governance agent per account composes all specialist review behind its single endpoint, `categories_evaluated` is how that internal decomposition surfaces to auditors. Consumers MUST treat values as opaque labels for display and audit, not as a machine-level contract."
     },
     "policies_evaluated": {
       "type": "array",
+      "maxItems": 100,
       "items": {
-        "type": "string"
+        "type": "string",
+        "maxLength": 2000
       },
       "description": "Policy IDs evaluated during this check. Includes registry policy IDs (resolved via the policy registry) and any inline `policy_id`s declared in the plan's `custom_policies`."
     },

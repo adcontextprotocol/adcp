@@ -35,6 +35,7 @@
       "properties": {
         "kinds": {
           "type": "array",
+          "maxItems": 32,
           "description": "Include only collections of these kinds. Same semantics as kinds in collection/collection-list-filters.json.",
           "items": { "$ref": "/schemas/enums/collection-kind.json" },
           "minItems": 1,
@@ -42,14 +43,16 @@
         },
         "genres_include": {
           "type": "array",
+          "maxItems": 100,
           "description": "Include only collections with any of these genres; collections without genre metadata are excluded. Values are interpreted against genre_taxonomy when present. Same semantics as in collection/collection-list-filters.json.",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "type": "string", "maxLength": 500, "minLength": 1 },
           "minItems": 1
         },
         "genres_exclude": {
           "type": "array",
+          "maxItems": 100,
           "description": "Exclude collections tagged with any of these genres, applied after genres_include. Values are interpreted against genre_taxonomy when present.",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "type": "string", "maxLength": 500, "minLength": 1 },
           "minItems": 1
         },
         "genre_taxonomy": {
@@ -58,6 +61,7 @@
         },
         "statuses": {
           "type": "array",
+          "maxItems": 32,
           "description": "Include only collections with any of these statuses.",
           "items": { "$ref": "/schemas/enums/collection-status.json" },
           "minItems": 1,
@@ -65,6 +69,7 @@
         },
         "languages": {
           "type": "array",
+          "maxItems": 32,
           "description": "Include only collections whose language matches any of these BCP 47 language ranges under RFC 4647 basic filtering, compared case-insensitively: 'en' matches 'en' and 'en-US', but 'en-US' does not match 'en'.",
           "items": { "$ref": "/schemas/core/locale-tag.json" },
           "minItems": 1,
@@ -72,12 +77,14 @@
         },
         "talent": {
           "type": "array",
+          "maxItems": 100,
           "description": "Include only collections with a talent entry whose brand_ref matches any of these brands. Only domain and brand_id are compared, as on talent; brand_id omitted matches any brand_ref at that domain.",
           "items": {
             "type": "object",
             "properties": {
               "domain": {
                 "type": "string",
+                "maxLength": 253,
                 "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
               },
               "brand_id": { "$ref": "/schemas/core/brand-id.json" }
@@ -89,9 +96,11 @@
         },
         "platforms": {
           "type": "array",
+          "maxItems": 32,
           "description": "Include only collections with a distribution entry whose publisher_domain is any of these domains.",
           "items": {
             "type": "string",
+            "maxLength": 255,
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "minItems": 1,
@@ -99,6 +108,7 @@
         },
         "name_contains": {
           "type": "string",
+          "maxLength": 255,
           "minLength": 1,
           "description": "Include only collections whose name contains this string, compared case-insensitively."
         }
@@ -111,6 +121,7 @@
     },
     "if_collections_version": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Opaque collections_version from a prior list_collections response for the same scope: the canonicalized collections selectors and filters (arrays compared as sets, pagination.cursor excluded), plus account identity when that response's cache_scope was account. When it matches, the seller returns outcome unchanged without collections. A token from a different scope is a mismatch and gets a full listed response. Unrelated to feed_version and wholesale_feed_version. A webhook-fed mirror repairing after a gap sends its last applied version, never a newer webhook version."
     },

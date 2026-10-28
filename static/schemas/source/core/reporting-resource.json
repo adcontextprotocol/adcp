@@ -23,7 +23,7 @@
     "manifest_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "SHA-256 over the exact manifest bytes. Consumers verify this before parsing the manifest." },
     "immutability": { "type": "string", "enum": ["immutable_location", "native_version"], "description": "How this descriptor selects the exact immutable materialization." },
     "expires_at": { "type": "string", "format": "date-time", "description": "Mandatory finite lower-bound endpoint through which this exact resource remains resolvable; it cannot be earlier than the advertised retention contract." },
-    "reader_compatibility": { "type": "array", "description": "Reader features or format constraints required to consume this resource. Readiness verification MUST use a representative supported reader.", "items": { "$ref": "#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true }
+    "reader_compatibility": { "type": "array", "maxItems": 100, "description": "Reader features or format constraints required to consume this resource. Readiness verification MUST use a representative supported reader.", "items": { "$ref": "#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true }
   },
   "required": ["resource_ref", "kind", "location", "immutability", "expires_at"],
   "allOf": [

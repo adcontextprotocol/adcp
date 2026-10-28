@@ -23,7 +23,7 @@
     "source": {
       "type": "object",
       "properties": {
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "properties": { "domain": { "type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
         "system": { "type": "string", "minLength": 1, "maxLength": 128 },
         "api_version": { "type": "string", "minLength": 1, "maxLength": 128 },
         "query_semantics": { "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." },
@@ -46,6 +46,7 @@
     },
     "metrics": {
       "type": "array",
+      "maxItems": 32,
       "items": {
         "type": "object",
         "properties": {
@@ -59,11 +60,11 @@
       },
       "minItems": 1
     },
-    "dimensions": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true },
+    "dimensions": { "type": "array", "maxItems": 32, "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true },
     "restatement_policy": {
       "type": "object",
       "properties": {
-        "source_requery_duration": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" },
+        "source_requery_duration": { "type": "string", "maxLength": 255, "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" },
         "emit_only_on_content_change": { "type": "boolean", "const": true },
         "official_correction_mode": { "type": "string", "const": "adjustments_only", "description": "Once an official revision is published it is immutable and cannot be superseded. Later source corrections are separate reporting-adjustment records applied to a later accounting period." }
       },
@@ -72,6 +73,7 @@
     },
     "finality_policies": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "oneOf": [
           {
@@ -89,7 +91,7 @@
             "properties": {
               "finality_policy_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
               "basis": { "type": "string", "const": "contractual_cutoff" },
-              "duration_after_period_end": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
+              "duration_after_period_end": { "type": "string", "maxLength": 255, "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
             },
             "required": ["finality_policy_id", "basis", "duration_after_period_end"],
             "additionalProperties": false
@@ -99,8 +101,8 @@
             "properties": {
               "finality_policy_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
               "basis": { "type": "string", "const": "stabilized" },
-              "minimum_age": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" },
-              "unchanged_for": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
+              "minimum_age": { "type": "string", "maxLength": 255, "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" },
+              "unchanged_for": { "type": "string", "maxLength": 255, "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
             },
             "required": ["finality_policy_id", "basis", "minimum_age", "unchanged_for"],
             "additionalProperties": false

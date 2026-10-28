@@ -73,6 +73,7 @@
           "drifted_pins": {
             "x-added-in": "3.3.0",
             "type": "array",
+            "maxItems": 100,
             "description": "Pins from the source proposal's commercial_terms.definition_pins[] whose published definition no longer resolves to the pinned content_digest, in the pins' canonical order. Required on, and valid only with, reason_code definition_changed.",
             "items": {
               "type": "object",

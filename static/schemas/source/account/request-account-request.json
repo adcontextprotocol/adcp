@@ -20,6 +20,7 @@
     },
     "account_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Request an account the seller already identified: one of the candidates from an ambiguous request, or, on a platform that owns its account namespace, an account the caller's credential does not reach yet. For an account_id the caller cannot reach, the seller MUST answer the same way whether or not the account exists: either always rejected with ACCOUNT_NOT_FOUND, or, for sellers that support access requests, always in_review with waiting_on: buyer and kind: grant. Mutually exclusive with brand and operator.",
       "x-entity": "account"
     },
@@ -29,6 +30,7 @@
     },
     "operator": {
       "type": "string",
+      "maxLength": 255,
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
       "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent."
     },
@@ -43,6 +45,7 @@
     },
     "timezone": {
       "type": "string",
+      "maxLength": 64,
       "minLength": 1,
       "description": "Buyer-selected immutable timezone when the seller declares account_fixed, buyer_selected timezones, as in sync_accounts. An account attribute."
     },

@@ -37,6 +37,7 @@ In raw runner output, a check observed by a validation appears as a `validation_
 | [`legacy_hmac_fallback_removed_in_4_0`](#legacy_hmac_fallback_removed_in_4_0) | [#4205](https://github.com/adcontextprotocol/adcp/issues/4205) | All agents | `capability_discovery` |
 | [`capabilities_structural_bounds_required_in_4_0`](#capabilities_structural_bounds_required_in_4_0) | [#8198](https://github.com/adcontextprotocol/adcp/issues/8198) | All agents | Not observable |
 | [`purchase_target_audiences_required_in_4_0`](#purchase_target_audiences_required_in_4_0) | [#8125](https://github.com/adcontextprotocol/adcp/issues/8125) | Sellers | Not observable in 3.x |
+| [`schema_bounds_required_in_4_0`](#schema_bounds_required_in_4_0) | [#8512](https://github.com/adcontextprotocol/adcp/issues/8512) | All agents | Not observable in 3.x |
 
 ## Checks
 
@@ -135,6 +136,33 @@ No storyboard step inspects every annotated field, so the suite reports this che
 In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `get_products` filters and on `create_media_buy` packages. `buy_products` purchases (`product-purchase-input.json`, `product-purchase.json`) and `list_products` `offer_filters` are closed schemas, and a minor release never changes a closed schema, so they gain the field in 4.0.
 
 **Fix:** accept the sibling on those surfaces and record it in the accepted purchase snapshot. Until 4.0, a buyer that needs an audit record keeps its own copy of the requirements and targets it sent. A 3.x run cannot observe this check, so it reports as not observable.
+
+<a id="schema_bounds_required_in_4_0"></a>
+### Lists and strings carry bounds
+
+**Check id:** `schema_bounds_required_in_4_0` · **Change:** new requirement
+
+**Detects:** a payload carries an array longer, or a string longer, than the 4.0 bound for its field. A 3.x run cannot observe it, because 3.x schemas carry no bound on stable fields.
+
+The working group decided to bound list sizes and string lengths across the protocol. 3.3 bounds the arrays and strings that are new in 3.3 or experimental. 4.0 bounds the stable ones, because tightening a stable field is not a minor-release change. Proposed limits by kind of field:
+
+| Kind of field | Limit |
+|---|---|
+| A set of enum values | the enum size, with a floor of 32 |
+| Attributes of one object (keys, identifiers, closed vocabularies) | 32 items |
+| A list nested in an object | 100 items |
+| A request batch or id list; the response that pages it | 100 items; 1,000 items |
+| Catalog-scale payloads (records, events, inline catalog items) | 10,000 items |
+| Identifiers, names, labels | 255 characters |
+| DNS names | 253 characters |
+| Prose (reasons, messages, descriptions) | 2,000 characters |
+| URLs | 2,048 characters |
+| Cursors, tokens, consent strings | 4,096 characters |
+| Long bodies (asset content, briefs, preview markup) | 100,000 characters |
+
+The limits are proposals until the owning working groups confirm them. The same release moves property and collection lists out of band: they are passed by reference (`agent_url` and `list_id`) and never inline.
+
+**Fix:** keep lists and strings inside these limits, and send property and collection lists by reference. The per-field inventory and the reasoning are in [the proposal](https://github.com/adcontextprotocol/adcp/blob/main/specs/collection-bounds-proposal.md).
 
 ## Changes not checked yet
 

@@ -14,6 +14,7 @@
   "properties": {
     "intent": {
       "type": "string",
+      "maxLength": 255,
       "description": "Natural language description of user intent — the conversation handoff from the host describing what the user needs from the brand agent"
     },
     "context": {
@@ -24,15 +25,18 @@
     },
     "media_buy_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "AdCP media buy ID if session was triggered by advertising",
       "x-entity": "media_buy"
     },
     "placement": {
       "type": "string",
+      "maxLength": 500,
       "description": "Where this session was triggered (e.g., 'chatgpt_search', 'claude_chat')"
     },
     "offering_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Brand-specific offering identifier to apply",
       "x-entity": "offering"
     },
@@ -42,6 +46,7 @@
     },
     "offering_token": {
       "type": "string",
+      "maxLength": 4096,
       "description": "Token from si_get_offering response for session continuity. Brand uses this to recall what products were shown to the user, enabling natural references like 'the second one' or 'that blue shoe'."
     },
     "sponsored_context_receipt": {

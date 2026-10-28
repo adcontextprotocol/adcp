@@ -971,6 +971,7 @@
                               "replaces_spot_id": {
                                 "x-added-in": "3.3.0",
                                 "type": "string",
+                                "maxLength": 255,
                                 "minLength": 1,
                                 "x-status": "experimental",
                                 "description": "The spot_id of the preempted spot that this replacement airing replaces. Required when spot_status is makegood. A planned replacement carries it from the time it is scheduled, so the buyer sees the link before the spot airs; it keeps the value if it is then preempted, which preserves the chain back to the original spot. MUST be absent on aired rows and on rows without spot_status. The replaced spot_id SHOULD appear in the same response as a preempted row when it falls in the reporting period.",
@@ -994,6 +995,7 @@
                                   },
                                   "break_id": {
                                     "type": "string",
+                                    "maxLength": 255,
                                     "minLength": 1,
                                     "description": "Optional seller-scoped identifier for the break. Spots that share a break_id ran in the same break."
                                   }

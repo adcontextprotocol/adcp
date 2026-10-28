@@ -654,6 +654,7 @@
       "properties": {
         "methods": {
           "type": "array",
+          "maxItems": 32,
           "description": "Activation capabilities available on this product, as an unordered set. Entries are usually independent options; a clean_room entry may compose with dataset_query or platform_distribution to declare how a targetable result leaves the room or reaches the buying platform.",
           "items": {
             "$ref": "/schemas/core/audience-activation-method.json"
@@ -666,6 +667,7 @@
         },
         "notes": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Free-text caveats (onboarding lead times, data-format constraints, regional restrictions)."
         }
       },

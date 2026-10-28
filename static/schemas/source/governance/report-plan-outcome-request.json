@@ -37,11 +37,13 @@
   "properties": {
     "plan_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "The plan this outcome is for. The plan is owned by the authenticated buyer that synchronized it; plan_id is an identifier, not an account credential. Completed and failed settlements inherit their commercial binding from the exact approved check tuple.",
       "x-entity": "governance_plan"
     },
     "check_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "The check_id from check_governance. Required for completed and failed outcomes and for buyer delivery observations. A delivery observation names the exact seller delivery check whose canonical statement is being compared.",
       "x-entity": "governance_check"
     },
@@ -77,6 +79,7 @@
         },
         "packages": {
           "type": "array",
+          "maxItems": 100,
           "description": "Confirmed packages with actual budget and targeting.",
           "items": {
             "type": "object",
@@ -126,6 +129,7 @@
         },
         "seller_statement_id": {
           "type": "string",
+          "maxLength": 255,
           "description": "Seller statement identifier as received by the buyer. Required for seller_statement_copy.",
           "x-entity": "governance_delivery_statement"
         },

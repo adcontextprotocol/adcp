@@ -9,6 +9,7 @@
   "properties": {
     "pricing_group": {
       "type": "string",
+      "maxLength": 500,
       "description": "The pricing_group key this rule applies to.",
       "minLength": 1
     },

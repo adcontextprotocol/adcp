@@ -12,6 +12,7 @@
     "row_count": { "type": "integer", "minimum": 0, "description": "Verified row count. Zero explicitly distinguishes an empty committed revision from a missing revision." },
     "control_totals": {
       "type": "array",
+      "maxItems": 100,
       "items": { "$ref": "/schemas/core/reporting-control-total.json" },
       "uniqueItems": true,
       "description": "Profile-defined totals recomputed through verification_path. Names MUST be unique."
@@ -19,6 +20,7 @@
     "canonical_content_digest": { "$ref": "/schemas/core/reporting-canonical-content-digest.json" },
     "physical_checksums": {
       "type": "array",
+      "maxItems": 100,
       "description": "Method-specific byte/object checksums. Different encodings of the same logical revision normally have different values.",
       "items": {
         "oneOf": [

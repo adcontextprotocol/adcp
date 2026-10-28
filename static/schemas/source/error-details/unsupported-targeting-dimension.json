@@ -8,13 +8,15 @@
   "properties": {
     "unsupported_dimension": {
       "type": "string",
+      "maxLength": 500,
       "minLength": 1,
       "description": "The targeting field name that was rejected, for example `geo_countries`. Names the dimension, not an individual value; value-level problems inside a supported dimension follow that dimension's own rules."
     },
     "supported_dimensions": {
       "type": "array",
+      "maxItems": 32,
       "description": "Targeting dimensions the caller could already read from `get_adcp_capabilities` or the product's `overlay_support`. Sellers MAY omit it; absence means consult those surfaces, not that any dimension is supported.",
-      "items": { "type": "string", "minLength": 1 },
+      "items": { "type": "string", "maxLength": 500, "minLength": 1 },
       "uniqueItems": true
     },
     "deprecated": {
@@ -23,11 +25,13 @@
     },
     "replacement_dimension": {
       "type": "string",
+      "maxLength": 500,
       "minLength": 1,
       "description": "Targeting dimension that replaces the rejected one. Typically set with `deprecated: true`."
     },
     "product_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Product the dimension was rejected for, when support is product-scoped.",
       "x-entity": "product"

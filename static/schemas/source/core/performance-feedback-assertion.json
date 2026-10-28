@@ -8,18 +8,21 @@
   "properties": {
     "media_buy_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Receiver-scoped media buy identifier. On the provider-to-orchestrator hop this is the orchestrator's measurement-facing identifier; on the orchestrator-to-seller hop it is the seller-assigned media buy identifier.",
       "x-entity": "media_buy"
     },
     "package_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Receiver-scoped package identifier when the assertion is package-specific. The orchestrator maps its measurement-facing identifier to seller-local identifiers during fan-out.",
       "x-entity": "package"
     },
     "creative_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Receiver-scoped creative identifier when the assertion is creative-specific. The orchestrator maps its measurement-facing identifier to seller-local identifiers during fan-out.",
       "x-entity": "creative"
@@ -129,6 +132,7 @@
     },
     "supersedes_feedback_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "x-status": "experimental",
       "description": "Receiver-issued feedback_id of the earlier assertion this one replaces at the same hop."

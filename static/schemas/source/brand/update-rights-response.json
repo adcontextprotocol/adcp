@@ -19,6 +19,7 @@
       "properties": {
         "rights_id": {
           "type": "string",
+          "maxLength": 255,
           "description": "Rights grant identifier",
           "x-entity": "rights_grant"
         },
@@ -77,6 +78,7 @@
       "properties": {
         "errors": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "$ref": "/schemas/core/error.json"
           },

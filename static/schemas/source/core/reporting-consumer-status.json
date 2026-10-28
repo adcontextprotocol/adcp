@@ -47,7 +47,7 @@
       "properties": {
         "start": { "type": "string", "format": "date-time" },
         "end": { "type": "string", "format": "date-time" },
-        "source_timezone": { "type": "string", "minLength": 1 }
+        "source_timezone": { "type": "string", "maxLength": 64, "minLength": 1 }
       },
       "required": ["start", "end", "source_timezone"],
       "additionalProperties": false

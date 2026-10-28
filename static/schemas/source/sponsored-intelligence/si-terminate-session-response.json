@@ -16,6 +16,7 @@
   "properties": {
     "session_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Terminated session identifier",
       "x-entity": "si_session"
     },
@@ -38,6 +39,7 @@
         },
         "checkout_token": {
           "type": "string",
+          "maxLength": 4096,
           "description": "Opaque token for the checkout flow. The host passes this to the checkout endpoint to correlate the SI session with the transaction."
         },
         "payload": {
@@ -75,6 +77,7 @@
     },
     "errors": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "$ref": "/schemas/core/error.json"
       }

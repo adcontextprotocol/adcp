@@ -143,6 +143,7 @@
       "properties": {
         "execution_modes": {
           "type": "array",
+          "maxItems": 32,
           "items": {
             "type": "string",
             "enum": [
@@ -158,6 +159,7 @@
         },
         "values": {
           "type": "array",
+          "maxItems": 32,
           "items": {
             "type": "string",
             "enum": [

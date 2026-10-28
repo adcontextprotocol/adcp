@@ -392,6 +392,7 @@
                       "properties": {
                         "features": {
                           "type": "array",
+                          "maxItems": 32,
                           "description": "Creative-feature values the evaluator measured for this leaf — `creative-feature-result[]` (e.g., a `creative_quality_score` number, an `on_brief` categorical, a calibrated `predicted_performance` in [0,1] from the exemplars form). The gate (evaluator.feature_requirement[]) and ranking (evaluator.rank_by) are evaluated over these values. Same shape get_creative_features returns.",
                           "items": {
                             "$ref": "/schemas/creative/creative-feature-result.json"

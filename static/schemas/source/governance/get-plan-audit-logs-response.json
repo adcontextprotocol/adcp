@@ -16,12 +16,14 @@
   "properties": {
     "plans": {
       "type": "array",
+      "maxItems": 100,
       "description": "Audit data for each requested plan.",
       "items": {
         "type": "object",
         "properties": {
           "plan_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "Plan identifier.",
             "x-entity": "governance_plan"
           },
@@ -157,21 +159,25 @@
               },
               "escalations": {
                 "type": "array",
+                "maxItems": 100,
                 "description": "All escalations and their resolutions.",
                 "items": {
                   "type": "object",
                   "properties": {
                     "check_id": {
                       "type": "string",
+                      "maxLength": 255,
                       "description": "The escalated governance check.",
                       "x-entity": "governance_check"
                     },
                     "reason": {
                       "type": "string",
+                      "maxLength": 2000,
                       "description": "Why it was escalated."
                     },
                     "resolution": {
                       "type": "string",
+                      "maxLength": 500,
                       "description": "How it was resolved (e.g., 'approved_by_human', 'rejected_by_human')."
                     },
                     "resolved_at": {
@@ -263,12 +269,14 @@
           },
           "entries": {
             "type": "array",
+            "maxItems": 100,
             "description": "Ordered audit trail. Only present when include_entries is true.",
             "items": {
               "type": "object",
               "properties": {
                 "id": {
                   "type": "string",
+                  "maxLength": 255,
                   "description": "Entry identifier."
                 },
                 "type": {
@@ -287,6 +295,7 @@
                 },
                 "plan_id": {
                   "type": "string",
+                  "maxLength": 255,
                   "description": "Plan this entry belongs to. Present when querying multiple plans or a portfolio.",
                   "x-entity": "governance_plan"
                 },
@@ -297,6 +306,7 @@
                 },
                 "tool": {
                   "type": "string",
+                  "maxLength": 500,
                   "description": "The AdCP tool (present for check entries)."
                 },
                 "verdict": {
@@ -317,37 +327,46 @@
                 },
                 "explanation": {
                   "type": "string",
+                  "maxLength": 2000,
                   "description": "Human-readable explanation of the governance decision (present for check entries)."
                 },
                 "policies_evaluated": {
                   "type": "array",
+                  "maxItems": 100,
                   "items": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 2000
                   },
                   "description": "Policy IDs evaluated during this check. Includes registry policy IDs (resolved via the policy registry) and any inline `policy_id`s declared in the plan's `custom_policies`. Present for check entries."
                 },
                 "categories_evaluated": {
                   "type": "array",
+                  "maxItems": 100,
                   "items": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 500
                   },
                   "description": "Governance categories evaluated (e.g., 'budget_authority', 'regulatory_compliance'). Present for check entries."
                 },
                 "findings": {
                   "type": "array",
+                  "maxItems": 100,
                   "description": "Findings from this check or outcome. Same structure as check_governance response findings.",
                   "items": {
                     "type": "object",
                     "properties": {
                       "category_id": {
-                        "type": "string"
+                        "type": "string",
+                        "maxLength": 255
                       },
                       "policy_id": {
                         "type": "string",
+                        "maxLength": 255,
                         "$comment": "x-entity deliberately omitted — audit log findings mirror check_governance findings and can reference either a governance_registry_policy or a governance_inline_policy (see #2685)."
                       },
                       "source_plan_id": {
                         "type": "string",
+                        "maxLength": 255,
                         "description": "Plan whose policy triggered this finding when the audit entry aggregates findings across plans.",
                         "x-entity": "governance_plan"
                       },
@@ -355,7 +374,8 @@
                         "$ref": "/schemas/enums/escalation-severity.json"
                       },
                       "explanation": {
-                        "type": "string"
+                        "type": "string",
+                        "maxLength": 2000
                       },
                       "details": {
                         "type": "object",
@@ -369,6 +389,7 @@
                       },
                       "uncertainty_reason": {
                         "type": "string",
+                        "maxLength": 2000,
                         "description": "Reason the finding carries less than full confidence, retained exactly as emitted by check_governance."
                       },
                       "attestation_reference_digest": {
@@ -389,11 +410,11 @@
                   "type": "object",
                   "description": "Canonical seller statement retained on a delivery check entry.",
                   "properties": {
-                    "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
+                    "statement_id": { "type": "string", "maxLength": 255, "x-entity": "governance_delivery_statement" },
                     "statement_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
                     "sequence": { "type": "integer", "minimum": 1 },
                     "issued_at": { "type": "string", "format": "date-time" },
-                    "seller_reference": { "type": "string" },
+                    "seller_reference": { "type": "string", "maxLength": 255 },
                     "cumulative_spend": { "type": "number", "minimum": 0 },
                     "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
                     "reporting_period": {
@@ -409,7 +430,7 @@
                       "type": "object",
                       "description": "Exact retained payload used to verify statement_digest after removing delivery_metrics.statement_digest.",
                       "properties": {
-                        "seller_reference": { "type": "string" },
+                        "seller_reference": { "type": "string", "maxLength": 255 },
                         "delivery_metrics": { "type": "object", "additionalProperties": true }
                       },
                       "required": ["seller_reference", "delivery_metrics"],
@@ -429,11 +450,13 @@
                 },
                 "outcome_id": {
                   "type": "string",
+                  "maxLength": 255,
                   "description": "Source completed outcome (present for adjustment entries).",
                   "x-entity": "governance_outcome"
                 },
                 "seller_adjustment_id": {
                   "type": "string",
+                  "maxLength": 255,
                   "description": "Seller-issued source adjustment identifier (present for adjustment entries).",
                   "x-entity": "seller_adjustment"
                 },
@@ -473,6 +496,7 @@
                 },
                 "reason": {
                   "type": "string",
+                  "maxLength": 2000,
                   "description": "Seller-supplied adjustment reason."
                 },
                 "effective_at": {
@@ -491,6 +515,7 @@
                 },
                 "seller_reference": {
                   "type": "string",
+                  "maxLength": 255,
                   "description": "Seller resource identifier retained on an outcome entry."
                 },
                 "delivery": {
@@ -518,6 +543,7 @@
                     },
                     "seller_statement_id": {
                       "type": "string",
+                      "maxLength": 255,
                       "description": "Seller statement identifier as received by the buyer. Required for seller_statement_copy.",
                       "x-entity": "governance_delivery_statement"
                     },
@@ -565,6 +591,7 @@
                 },
                 "governance_context": {
                   "type": "string",
+                  "maxLength": 4096,
                   "description": "Governance context for this entry (present for check and outcome entries)."
                 },
                 "plan_hash": {
@@ -602,6 +629,7 @@
                 },
                 "outcome_status": {
                   "type": "string",
+                  "maxLength": 500,
                   "description": "Outcome status (present for outcome entries)."
                 },
                 "delivery_reconciliation_status": {
@@ -621,7 +649,7 @@
                 "evidence": {
                   "type": "object",
                   "properties": {
-                    "evidence_id": { "type": "string", "x-entity": "governance_adjustment_evidence" },
+                    "evidence_id": { "type": "string", "maxLength": 255, "x-entity": "governance_adjustment_evidence" },
                     "evidence_type": { "type": "string", "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"] },
                     "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
                     "issued_at": { "type": "string", "format": "date-time" }
@@ -631,7 +659,7 @@
                 },
                 "reviewed_by": { "type": "string", "format": "uri" },
                 "reviewed_at": { "type": "string", "format": "date-time" },
-                "review_reason": { "type": "string" }
+                "review_reason": { "type": "string", "maxLength": 2000 }
               },
               "required": [
                 "id",
@@ -653,12 +681,14 @@
           },
           "governed_actions": {
             "type": "array",
+            "maxItems": 100,
             "description": "Per-action breakdown joined by the governance agent's stable opaque action binding. governance_context is the original intent context exposed for correlation; lifecycle tokens may differ because each approval is freshly signed.",
             "items": {
               "type": "object",
               "properties": {
                 "governance_context": {
                   "type": "string",
+                  "maxLength": 4096,
                   "description": "Governance context correlating this action's lifecycle."
                 },
                 "purchase_type": {
@@ -730,6 +760,7 @@
                 },
                 "seller_reference": {
                   "type": "string",
+                  "maxLength": 255,
                   "description": "The seller's identifier for the resource (e.g., media_buy_id, rights_grant_id). Present when reported via report_plan_outcome."
                 }
               },

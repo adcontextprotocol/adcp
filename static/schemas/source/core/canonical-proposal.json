@@ -63,6 +63,7 @@
     },
     "holds": {
       "type": "array",
+      "maxItems": 100,
       "minItems": 1,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
@@ -72,6 +73,7 @@
         "properties": {
           "product_id": {
             "type": "string",
+            "maxLength": 255,
             "minLength": 1,
             "x-entity": "product",
             "description": "Allocated product, from commercial_terms.purchases, whose inventory in this installment is held."

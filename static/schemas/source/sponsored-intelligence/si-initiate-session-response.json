@@ -16,6 +16,7 @@
   "properties": {
     "session_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Unique session identifier for subsequent messages",
       "x-entity": "si_session"
     },
@@ -25,10 +26,12 @@
       "properties": {
         "message": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Conversational message from brand agent"
         },
         "ui_elements": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "$ref": "/schemas/sponsored-intelligence/si-ui-element.json"
           },
@@ -56,6 +59,7 @@
     },
     "errors": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "$ref": "/schemas/core/error.json"
       },

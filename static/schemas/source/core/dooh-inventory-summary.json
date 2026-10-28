@@ -17,6 +17,7 @@
         },
         "system": {
           "type": "string",
+          "maxLength": 500,
           "description": "Classification system for metro or postal_area rows. Metro rows use metro-system.json values such as 'nielsen_dma'; native postal rows use country-local postal-system.json values such as 'zip' with country 'US'; deprecated legacy postal rows may use legacy-postal-system.json values such as 'us_zip'. Omit for country and region rows."
         },
         "country": {
@@ -26,10 +27,12 @@
         },
         "geo_code": {
           "type": "string",
+          "maxLength": 64,
           "description": "Geographic code within geo_level and system, matching forecast-dimension-geo.json's conventions: ISO 3166-1 alpha-2 for country ('US'), ISO 3166-2 with country prefix for region ('US-CA'), system-specific code for metro/postal_area ('501', '10001')."
         },
         "venue_type": {
           "type": "string",
+          "maxLength": 500,
           "description": "OpenOOH Venue Taxonomy enumeration ID for this row, prefixed with the taxonomy authority and version for unambiguous interchange (e.g., 'openooh-1.1:20501'), matching the identifier-types.json openooh_venue_type convention. Omit when the row aggregates across venue types."
         },
         "count": {
@@ -114,6 +117,7 @@
   "properties": {
     "venue_counts": {
       "type": "array",
+      "maxItems": 100,
       "description": "Aggregate venue/screen counts broken out by geography and, optionally, venue type.",
       "items": { "$ref": "#/definitions/DoohVenueCount" },
       "minItems": 1

@@ -274,6 +274,7 @@
     },
     "signal_conditions": {
       "type": "array",
+      "maxItems": 100,
       "x-status": "experimental",
       "minItems": 1,
       "items": {
@@ -283,6 +284,7 @@
             "properties": {
               "signal_agent_segment_id": {
                 "type": "string",
+                "maxLength": 255,
                 "x-entity": "signal_activation_id",
                 "description": "Optional opaque resolved-segment handle for this fan-out condition — the RESOLVED condition identity, distinct from signal_ref's DEFINITION identity. When get_signals or a product signal_targeting_options entry exposed a signal_agent_segment_id for the targeted signal, echo it here verbatim so the produced creative's signal_condition carries the resolved-segment identity that the trafficking-compatibility check (SIGNAL_TARGETING_INCOMPATIBLE) matches on exactly. Providers MAY namespace it (e.g. provider_a:weather:rain_realtime vs provider_b:precip:high) so cross-provider conditions stay distinct without a shared taxonomy registry; treat as opaque, do not parse the namespace for business logic. Prefer it over reconstructing condition identity from categorical values — categorical {signal_ref,value} identity is the weaker fallback, appropriate only for inherently-categorical signals with no resolved handle, and never a cross-provider equivalence claim."
               }

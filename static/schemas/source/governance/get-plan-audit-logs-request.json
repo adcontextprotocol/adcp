@@ -13,8 +13,10 @@
   "properties": {
     "plan_ids": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "type": "string",
+        "maxLength": 255,
         "x-entity": "governance_plan"
       },
       "minItems": 1,
@@ -22,8 +24,10 @@
     },
     "portfolio_plan_ids": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "type": "string",
+        "maxLength": 255,
         "x-entity": "governance_plan"
       },
       "minItems": 1,
@@ -31,14 +35,17 @@
     },
     "governance_contexts": {
       "type": "array",
+      "maxItems": 100,
       "items": {
-        "type": "string"
+        "type": "string",
+        "maxLength": 4096
       },
       "minItems": 1,
       "description": "Filter audit entries by governance context. Returns only checks and outcomes that share these governance contexts, enabling lifecycle tracing across purchase types."
     },
     "purchase_types": {
       "type": "array",
+      "maxItems": 32,
       "items": {
         "$ref": "/schemas/enums/purchase-type.json"
       },

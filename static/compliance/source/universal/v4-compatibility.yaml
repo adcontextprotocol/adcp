@@ -232,6 +232,25 @@ checks:
           Buyer-sent field on schemas that are closed in 3.x. A 3.x seller
           run cannot send or observe it.
 
+  - id: schema_bounds_required_in_4_0
+    issue: 8512
+    change: new_requirement
+    applies_to: [all_agents]
+    detection: "A payload carries an array longer, or a string longer, than the 4.0 bound for its field."
+    fix: >-
+      Keep every list and string inside the limits proposed in
+      specs/collection-bounds-proposal.md, and send property and collection
+      lists by reference (agent_url and list_id) instead of inline. 3.3 already
+      bounds the arrays and strings that are new in 3.3 or experimental; 4.0
+      bounds the stable ones.
+    observed_by:
+      none:
+        reason: >-
+          The limits are schema constraints on stable fields, which 3.x schemas
+          do not carry, so a 3.x run validates against no bound and cannot
+          grade an agent on one. Limits are proposals until the owning working
+          groups confirm them.
+
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
 # why a 3.x agent is not graded on it.

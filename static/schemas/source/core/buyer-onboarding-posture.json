@@ -12,6 +12,7 @@
     },
     "requirements": {
       "type": "array",
+      "maxItems": 100,
       "items": { "$ref": "/schemas/core/agent-onboarding-requirement.json" },
       "description": "What a seller must satisfy. Uses the kinds that apply when a buyer gates a seller (aao_verified, storyboard, sandbox, experimental_feature)."
     },
@@ -22,6 +23,7 @@
     },
     "message": {
       "type": "string",
+      "maxLength": 2000,
       "description": "Human-readable summary; the fallback whenever a reader does not understand a requirement."
     },
     "ext": {

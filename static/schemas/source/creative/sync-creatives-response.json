@@ -193,6 +193,7 @@
         },
         "merges": {
           "type": "array",
+          "maxItems": 100,
           "x-added-in": "3.3.0",
           "description": "One entry per merge assignment operation the seller applied, in request order (under dry_run, one per merge that would be applied). Present exactly when the request contained merge operations and succeeded. A merge that fails verification fails the whole request with CREATIVE_MERGE_REJECTED, whose details list every rejected merge and its reason; a merge awaiting a person's confirmation is reported on the submitted task's completion artifact, never as a partial result here.",
           "items": {
@@ -200,17 +201,20 @@
             "properties": {
               "creative_id": {
                 "type": "string",
+                "maxLength": 255,
                 "minLength": 1,
                 "description": "Buyer's creative that now holds the assignment.",
                 "x-entity": "creative"
               },
               "package_id": {
                 "type": "string",
+                "maxLength": 255,
                 "minLength": 1,
                 "x-entity": "package"
               },
               "merged_creative_id": {
                 "type": "string",
+                "maxLength": 255,
                 "minLength": 1,
                 "description": "Seller-assigned creative whose assignment on package_id was merged into creative_id.",
                 "x-entity": "creative"

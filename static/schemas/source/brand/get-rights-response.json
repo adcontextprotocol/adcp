@@ -19,26 +19,31 @@
       "properties": {
         "rights": {
           "type": "array",
+          "maxItems": 100,
           "description": "Matching rights with pricing options, ranked by relevance",
           "items": {
             "type": "object",
             "properties": {
               "rights_id": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Identifier for this rights offering. Referenced in acquire_rights.",
                 "x-entity": "rights_grant"
               },
               "brand_id": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Brand identifier from the agent's roster",
                 "x-entity": "rights_holder_brand"
               },
               "name": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Display name of the rights subject"
               },
               "description": {
                 "type": "string",
+                "maxLength": 2000,
                 "description": "Description of the rights subject"
               },
               "right_type": {
@@ -52,13 +57,16 @@
               },
               "match_reasons": {
                 "type": "array",
+                "maxItems": 100,
                 "description": "Human-readable reasons for the match",
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "maxLength": 2000
                 }
               },
               "available_uses": {
                 "type": "array",
+                "maxItems": 32,
                 "description": "Rights uses available for licensing",
                 "items": {
                   "$ref": "/schemas/enums/right-use.json"
@@ -66,6 +74,7 @@
               },
               "countries": {
                 "type": "array",
+                "maxItems": 32,
                 "description": "Countries where rights are available (ISO 3166-1 alpha-2). When both countries and excluded_countries are present, the effective set is countries minus excluded_countries. If neither is present, all countries are available.",
                 "items": {
                   "type": "string",
@@ -74,6 +83,7 @@
               },
               "excluded_countries": {
                 "type": "array",
+                "maxItems": 32,
                 "description": "Countries excluded from availability",
                 "items": {
                   "type": "string",
@@ -90,9 +100,11 @@
                   },
                   "existing_exclusives": {
                     "type": "array",
+                    "maxItems": 100,
                     "description": "Active exclusivity commitments that may affect availability. Implementers should use vague descriptions ('exclusive commitment in this category') rather than specific deal terms to protect confidential business relationships.",
                     "items": {
-                      "type": "string"
+                      "type": "string",
+                      "maxLength": 500
                     }
                   }
                 },
@@ -100,6 +112,7 @@
               },
               "pricing_options": {
                 "type": "array",
+                "maxItems": 100,
                 "description": "Available pricing options for these rights",
                 "items": {
                   "$ref": "/schemas/brand/rights-pricing-option.json"
@@ -108,13 +121,16 @@
               },
               "content_restrictions": {
                 "type": "array",
+                "maxItems": 100,
                 "description": "Content restrictions or approval requirements",
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "maxLength": 500
                 }
               },
               "preview_assets": {
                 "type": "array",
+                "maxItems": 100,
                 "description": "Preview-only assets for evaluation",
                 "items": {
                   "type": "object",
@@ -124,7 +140,8 @@
                       "format": "uri"
                     },
                     "usage": {
-                      "type": "string"
+                      "type": "string",
+                      "maxLength": 2000
                     }
                   },
                   "required": [
@@ -146,26 +163,32 @@
         },
         "excluded": {
           "type": "array",
+          "maxItems": 100,
           "description": "Results that matched but were filtered out, with reasons",
           "items": {
             "type": "object",
             "properties": {
               "brand_id": {
                 "type": "string",
+                "maxLength": 255,
                 "x-entity": "rights_holder_brand"
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 255
               },
               "reason": {
                 "type": "string",
+                "maxLength": 2000,
                 "description": "Why this result was excluded. May be sanitized to protect confidential brand rules."
               },
               "suggestions": {
                 "type": "array",
+                "maxItems": 100,
                 "description": "Actionable alternatives if the exclusion is fixable (e.g., 'Available in BE and DE markets'). Absent if the exclusion is final.",
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "maxLength": 2000
                 }
               }
             },
@@ -198,6 +221,7 @@
       "properties": {
         "errors": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "$ref": "/schemas/core/error.json"
           },

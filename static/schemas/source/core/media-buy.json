@@ -141,6 +141,7 @@
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "type": "string",
+      "maxLength": 255,
       "x-entity": "media_buy",
       "description": "Media buy this one succeeds, as set at creation. Same seller and account; the predecessor carries no reverse link and may no longer be retrievable. Sellers MUST echo it for buys created with it. Experimental in AdCP 3.3 (`media_buy.lineage`)."
     },

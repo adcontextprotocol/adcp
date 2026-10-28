@@ -521,16 +521,19 @@
             "properties": {
               "publisher_domain": {
                 "type": "string",
+                "maxLength": 253,
                 "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
                 "description": "Publisher namespace that declares the collection in its adagents.json"
               },
               "collection_id": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Collection identifier, scoped to publisher_domain",
                 "x-entity": "collection"
               },
               "name": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Human-readable collection name"
               },
               "role": {

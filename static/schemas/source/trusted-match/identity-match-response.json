@@ -21,13 +21,16 @@
     },
     "request_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Echoed request identifier from the identity match request"
     },
     "eligible_package_ids": {
       "type": "array",
+      "maxItems": 1000,
       "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "maxLength": 255
       }
     },
     "serve_window_sec": {
@@ -38,6 +41,7 @@
     },
     "tmpx": {
       "type": "string",
+      "maxLength": 4096,
       "deprecated": true,
       "x-removed-in": "4.0.0",
       "description": "DEPRECATED in favor of tmpx_providers. Routers MAY continue to populate this field for back-compat with consumers that only know the single-token shape; when both fields are present, tmpx_providers is authoritative. Single HPKE-encrypted exposure token containing the resolved user identity tokens. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data. Removed in 4.0."
