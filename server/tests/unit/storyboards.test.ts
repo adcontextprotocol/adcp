@@ -334,7 +334,7 @@ describe('wrapper contract', () => {
     const aliases: Array<{ alias: string; channel: RegExp; floor: string }> = [
       { alias: '3.0', channel: /^3\.0\.\d+$/, floor: '3.0.28' },
       { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.30' },
-      { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.5' },
+      { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.8' },
       { alias: '3.1-beta', channel: /^3\.1\.0-beta\.\d+$/, floor: '3.1.0-beta.7' },
       { alias: '3.1-rc', channel: /^3\.1\.0-rc\.\d+$/, floor: '3.1.0-rc.14' },
       { alias: '3.2-rc', channel: /^3\.2\.0-rc\.\d+$/, floor: '3.2.0-rc.7' },
