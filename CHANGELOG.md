@@ -486,6 +486,22 @@
   
   Directory scenarios in `scenarios.json` can carry `requests`, which a harness signs with a named key and verifies against that directory. D03 and D11 use them: a request signed with a key that has no valid directory signature gets `403`. D15 adds malformed extra Ed25519 keys, one with no `x` and one with a 31-byte `x`, which a verifier ignores.
 
+## 3.2.8
+
+### Patch Changes
+
+- 6f5caa1: Allow auction-only sellers to run shared media-buy lifecycle and measurement-term rejection checks without fixed-price inventory. Discover selectable pricing options without a fixed-price filter, and opt the semantic rejection probe into request enrichment so it sends valid auction pricing. Run the healthy stale-response probe before forcing an outage, keep the same sandbox account for cache warming and outage forcing, and gate the forced-cache checks on the declared controller scenario.
+- 42285ba: Align the broadcast TV storyboard's seeded account and account references on sandbox mode, so the buyer resolves the account seeded by the controller.
+- 42285ba: Scope the final creative lifecycle webhook assertion to the forced rejection and require transition.to to be rejected, so earlier lifecycle events cannot satisfy it.
+- 039cb99: Reopen the 3.2 proposal-flow schemas that were closed against DR-0019, as a correction recorded in DR-0036 (#8501). DR-0019 keeps request roots, response roots, and container objects open. These schemas now set `additionalProperties: true` at 24 locations:
+  
+  - the request roots of `list_products`, `request_proposals`, `refine_proposals`, `buy_products`, `accept_proposal`, `decline_proposals`, and `control_media_buy`;
+  - the response roots of `list_products`, `request_proposals`, `refine_proposals`, and `decline_proposals`, and the `refine_proposals` result row;
+  - the three branches of `media-buy-commitment-response.json` (`buy_products` and `accept_proposal`) and of `control-media-buy-response.json`;
+  - `core/canonical-proposal.json`, `core/canonical-product.json`, `media-buy/product-discovery-criteria.json`, `media-buy/proposal-refinement.json`, `media-buy/package-control.json`, and `core/opportunity-context.json`.
+  
+  Every payload that was valid stays valid. The rejections that closure provided are now stated by name: `core/canonical-product.json` forbids each field that only the legacy `core/product.json` defines, such as `format_ids`, `is_custom`, and `installments`; the `request_proposals` response forbids a root `feed_version` or `pricing_version`; and the error and submitted branches of `media-buy-commitment-response.json` and `control-media-buy-response.json` forbid `warnings`. This patch adds no fields. `commercial-terms.json` and the purchases inside it stay closed.
+
 ## 3.2.7
 
 ### Patch Changes

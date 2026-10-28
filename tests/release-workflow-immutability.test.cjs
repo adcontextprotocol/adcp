@@ -7,6 +7,8 @@ const crypto = require('crypto');
 const os = require('os');
 const { spawnSync } = require('child_process');
 const YAML = require('yaml');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 
 const repoRoot = path.join(__dirname, '..');
 const changesetsActionSha = 'ae32849d5ba541f9ae29e40e22a623bc13562f51';
