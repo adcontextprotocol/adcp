@@ -5,6 +5,9 @@
   "x-added-in": "3.3.0",
   "description": "Stored issue snapshot or terminal task error, never both. The issue status is a domain lifecycle distinct from completion of the reporting/read task.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "oneOf": [
     {
       "type": "object",
@@ -21,9 +24,6 @@
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
-        },
-        "replayed": {
-          "$ref": "/schemas/core/protocol-envelope.json#/properties/replayed"
         }
       },
       "required": [
@@ -51,9 +51,6 @@
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
-        },
-        "replayed": {
-          "$ref": "/schemas/core/protocol-envelope.json#/properties/replayed"
         }
       },
       "required": [

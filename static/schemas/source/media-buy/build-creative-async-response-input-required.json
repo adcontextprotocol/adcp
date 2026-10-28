@@ -4,6 +4,9 @@
   "title": "Build Creative - Input Required",
   "description": "Payload when build_creative is paused waiting for user input. May occur during generation when the agent needs creative direction, or when brand guidelines require approval.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
     "reason": {
       "type": "string",

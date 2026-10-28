@@ -96,6 +96,7 @@ Filters run on the seller's copy, so a match on an anchored field (`genre`, `sta
 ```json
 {
   "$schema": "/schemas/latest/media-buy/list-collections-response.json",
+  "status": "completed",
   "outcome": "listed",
   "collections": [
     {
@@ -173,6 +174,7 @@ A `list_collections` entry is a response copy, and the rules in [Collections in 
 ```json
 {
   "$schema": "/schemas/latest/media-buy/list-collections-response.json",
+  "status": "completed",
   "outcome": "unchanged",
   "collections_version": "cc_2026_10_16_r88",
   "cache_scope": "account"

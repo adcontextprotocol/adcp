@@ -6,6 +6,9 @@
   "x-added-in": "3.3.0",
   "description": "One page of proposals for the requested account with their seller-tracked dispositions, plus the current state of every opportunity those proposals belong to. Each snapshot is returned byte-for-byte as issued, so terms_digest still verifies; lifecycle state lives beside it, never inside it. Experimental (media_buy.open_opportunities).",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
     "outcome": { "type": "string", "const": "listed" },
     "proposals": {

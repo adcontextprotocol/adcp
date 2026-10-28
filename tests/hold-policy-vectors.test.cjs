@@ -20,6 +20,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const { jcs, termsDigest } = require('./helpers/reference-definition-pin.cjs');
+const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
@@ -35,7 +36,7 @@ function loadSchemas() {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
       else if (entry.name.endsWith('.json')) {
-        const schema = JSON.parse(fs.readFileSync(full, 'utf8'));
+        const schema = readComposedSourceSchema(full, SCHEMAS);
         if (schema.$id && !ajv.getSchema(schema.$id)) ajv.addSchema(schema);
       }
     }

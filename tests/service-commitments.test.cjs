@@ -4,10 +4,11 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const SOURCE = path.join(ROOT, 'static/schemas/source');
-const read = (name) => JSON.parse(fs.readFileSync(path.join(SOURCE, name), 'utf8'));
+const read = (name) => readComposedSourceSchema(path.join(SOURCE, name), SOURCE);
 const cache = new Map();
 async function compile(name) {
   if (!cache.has(name)) {
@@ -227,16 +228,16 @@ test('report and polling responses separate stored snapshots from task errors', 
   for (const name of ['report-media-buy-issue', 'get-media-buy-issue']) {
     const validate = await compile(`media-buy/${name}-response.json`);
     const outcome = name.startsWith('report') ? 'recorded' : 'found';
-    accepts(validate, { outcome, issue });
-    accepts(validate, { outcome: 'failed', errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'The referenced resource is unavailable.' }] });
-    rejects(validate, {});
-    rejects(validate, { outcome, issue, errors: [{ code: 'INVALID_REQUEST', message: 'Invalid' }] });
-    rejects(validate, { outcome: 'failed', errors: [] });
-    rejects(validate, { outcome, issue, acknowledged_at: '2027-01-11T20:10:00Z' });
-    accepts(validate, { outcome, issue, replayed: true });
-    accepts(validate, { outcome, issue, replayed: false });
-    accepts(validate, { outcome: 'failed', errors: [{ code: 'INVALID_REQUEST', message: 'Invalid' }], replayed: true });
-    rejects(validate, { outcome, issue, replayed: 'true' });
+    accepts(validate, { status: 'completed', outcome, issue });
+    accepts(validate, { status: 'failed', outcome: 'failed', errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'The referenced resource is unavailable.' }] });
+    rejects(validate, { status: 'completed' });
+    rejects(validate, { status: 'completed', outcome, issue, errors: [{ code: 'INVALID_REQUEST', message: 'Invalid' }] });
+    rejects(validate, { status: 'failed', outcome: 'failed', errors: [] });
+    rejects(validate, { status: 'completed', outcome, issue, acknowledged_at: '2027-01-11T20:10:00Z' });
+    accepts(validate, { status: 'completed', outcome, issue, replayed: true });
+    accepts(validate, { status: 'completed', outcome, issue, replayed: false });
+    accepts(validate, { status: 'failed', outcome: 'failed', errors: [{ code: 'INVALID_REQUEST', message: 'Invalid' }], replayed: true });
+    rejects(validate, { status: 'completed', outcome, issue, replayed: 'true' });
   }
 });
 

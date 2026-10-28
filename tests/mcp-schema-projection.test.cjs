@@ -1176,6 +1176,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     },
   };
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',
@@ -1185,6 +1186,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     }],
   }), true, JSON.stringify(validateProjectedListProducts.errors));
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',
@@ -1251,8 +1253,12 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // (#7661), bundled into every product- and proposal-bearing tool, brings it
   // to 21_021_886 bytes, so the cap moves to 22 MiB. Experimental
   // list_collections and the collection card webhooks (#8183) take it from
-  // 21_151_775 to 21_294_989 bytes, still under the cap.
-  assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // 21_151_775 to 21_294_989 bytes, still under the cap. Composing the
+  // protocol envelope into every task response (each closed root and branch
+  // declares the envelope fields, and every response bundles the envelope)
+  // takes it from 22_959_518 to 23_428_012 bytes, so the cap moves to
+  // 23 MiB. Size is not a reason to skip that composition.
+  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

@@ -4,7 +4,7 @@
   "title": "Report Plan Adjustment Response",
   "description": "Append-only adjustment lifecycle result and attributed plan accounting state.",
   "type": "object",
-  "allOf": [{ "$ref": "/schemas/core/version-envelope.json" }],
+  "allOf": [{ "$ref": "/schemas/core/protocol-envelope.json" }],
   "x-status": "experimental",
   "properties": {
     "adjustment_id": {

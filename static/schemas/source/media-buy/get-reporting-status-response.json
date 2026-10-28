@@ -6,7 +6,6 @@
   "description": "Authoritative caller/account-isolated reporting status response. The view echoes the request and discriminates summary, periods, exact revision, and fatal error shapes. Seller obligation/revision state and separately attributed consumer status remain distinct but are compared in the caller-scoped health projection. Every identifier, cursor, ledger snapshot, destination, revision, materialization, consumer status, and resource is scoped to the authenticated caller and account.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/version-envelope.json" },
     { "$ref": "/schemas/core/protocol-envelope.json" },
     {
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },

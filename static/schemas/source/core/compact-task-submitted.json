@@ -5,7 +5,6 @@
   "description": "Bounded submitted envelope shared by the compact lifecycle tools.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/version-envelope.json" },
     { "$ref": "/schemas/core/protocol-envelope.json" }
   ],
   "properties": {

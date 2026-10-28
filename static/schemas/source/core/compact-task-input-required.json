@@ -4,6 +4,9 @@
   "title": "Compact Task Input Required",
   "description": "Bounded payload for a compact lifecycle task paused for buyer input or approval.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
     "reason": { "type": "string", "minLength": 1, "maxLength": 200 },
     "message": { "type": "string", "maxLength": 2000 },

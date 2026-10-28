@@ -28,6 +28,7 @@ vi.mock('../../server/src/compliance/storyboard-cache.js', () => ({
 const require = createRequire(import.meta.url);
 const { buildTo } = require('../../scripts/build-compliance.cjs');
 const { canonicalizePublishedSchemaUris } = require('../../scripts/build-schemas.cjs');
+const { readComposedSourceSchema } = require('../../scripts/compose-response-envelope.cjs');
 const { version } = require('../../package.json');
 const sourceDir = path.resolve('static/compliance/source');
 const url = 'https://agent.example/mcp';
@@ -40,12 +41,13 @@ beforeAll(async () => {
   buildTo(bundleDir, version, sourceDir);
   schemaDir = mkdtempSync(path.join(tmpdir(), 'authored-tool-schemas-'));
   cpSync(path.resolve('static/schemas/source'), schemaDir, { recursive: true });
-  // The SDK requires published schema IDs. Use the publication URI transform
-  // on a disposable source snapshot; no checked-in release artifacts change.
+  // The SDK requires published schema IDs. Use the publication transforms
+  // (protocol envelope composition, then URIs) on a disposable source
+  // snapshot; no checked-in release artifacts change.
   for (const file of readdirSync(schemaDir, { recursive: true }) as string[]) {
     if (!file.endsWith('.json')) continue;
     const location = path.join(schemaDir, file);
-    const schema = JSON.parse(readFileSync(location, 'utf8'));
+    const schema = readComposedSourceSchema(location, schemaDir);
     writeFileSync(location, JSON.stringify(canonicalizePublishedSchemaUris(schema, version)));
   }
   loadPublished = (await vi.importActual<typeof import('@adcp/sdk/testing')>('@adcp/sdk/testing'))
@@ -176,7 +178,7 @@ function doohResponder(storyboard: Storyboard, broken?: string): Respond {
       } };
       case 'get_products': return { success: true, data: { products: [], cache_scope: 'account', context } };
       case 'list_products': return { success: true, data: {
-        outcome: 'listed', products: [product], feed_version: 'dooh-feed', cache_scope: 'account', context,
+        status: 'completed', outcome: 'listed', products: [product], feed_version: 'dooh-feed', cache_scope: 'account', context,
       } };
       case 'sync_creatives': return { success: true, data: {
         creatives: [{ creative_id: 'dooh_acme_portrait_1080x1920', action: 'created' }], context,

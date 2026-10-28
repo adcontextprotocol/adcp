@@ -14,13 +14,22 @@ const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
+const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
+
+// Validation vectors run against the published composition: the schema build
+// declares the protocol envelope's fields on closed response roots and
+// branches (scripts/compose-response-envelope.cjs), so a response carrying
+// `status` or `replayed` beside its body fields validates as it does on the
+// wire. Structural lints below read the raw source where they inspect it.
+function loadComposedSchema(schemaPath) {
+  return readComposedSourceSchema(schemaPath, SCHEMA_BASE_DIR);
+}
 
 async function loadExternalSchema(uri) {
   if (uri.startsWith('/schemas/')) {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
-    const content = fs.readFileSync(schemaPath, 'utf8');
-    return JSON.parse(content);
+    return loadComposedSchema(path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', '')));
   }
   throw new Error(`Cannot load external schema: ${uri}`);
 }
@@ -52,7 +61,7 @@ async function testSchemaValidation(schemaId, testData, description) {
     addFormats(ajv);
 
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const schema = loadComposedSchema(schemaPath);
 
     const validate = await ajv.compileAsync(schema);
     const valid = validate(testData);
@@ -90,7 +99,7 @@ async function testSchemaRejection(schemaId, testData, description) {
     addFormats(ajv);
 
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const schema = loadComposedSchema(schemaPath);
 
     const validate = await ajv.compileAsync(schema);
     const valid = validate(testData);
@@ -3125,7 +3134,7 @@ async function runTests() {
 
   await testSchemaValidation(
     '/schemas/governance/report-plan-outcome-response.json',
-    { outcome_id: 'outcome_abc123', outcome_state: 'accepted', replayed: true },
+    { outcome_id: 'outcome_abc123', outcome_state: 'accepted', replayed: true, status: 'completed' },
     'report_plan_outcome accepts replayed on envelope'
   );
 
@@ -3147,7 +3156,8 @@ async function runTests() {
     '/schemas/governance/sync-plans-response.json',
     {
       plans: [{ plan_id: 'plan_abc123', status: 'active', version: 1 }],
-      replayed: 'true'
+      replayed: 'true',
+      status: 'completed'
     },
     'sync_plans rejects replayed as string (type enforced)'
   );
@@ -3155,9 +3165,12 @@ async function runTests() {
   // Structural lint: no task-family response schema may seal the envelope with
   // `additionalProperties: false` anywhere on the root or in a composition
   // branch (oneOf/anyOf/allOf) unless `replayed` is declared on that seal. This
-  // catches the #2839 class of bug at author time. Skips `core/` (field
-  // sub-schemas that ship with `*-response.json` filenames but are not task
-  // response envelopes).
+  // catches the #2839 class of bug. It inspects the published composition: the
+  // schema build declares the envelope fields on closed roots and branches of
+  // every schema that composes core/protocol-envelope.json, so a seal fails
+  // here only when its schema does not compose the envelope. Skips `core/`
+  // (field sub-schemas that ship with `*-response.json` filenames but are not
+  // task response envelopes).
   totalTests++;
   const offenders = [];
   const inspectEnvelope = (schema, where) => {
@@ -3183,7 +3196,7 @@ async function runTests() {
       else if (entry.name.endsWith('-response.json')) {
         const rel = path.relative(SCHEMA_BASE_DIR, p);
         if (rel.startsWith('core/') || rel.startsWith('core' + path.sep)) continue;
-        const schema = JSON.parse(fs.readFileSync(p, 'utf8'));
+        const schema = loadComposedSchema(p);
         const issues = inspectEnvelope(schema, 'root');
         for (const issue of issues) offenders.push(`${rel} (${issue})`);
       }
@@ -4817,6 +4830,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/decline-proposals-response.json',
     {
+      status: 'completed',
       results: [
         { proposal_id: 'proposal-1', outcome: 'declined' },
         { proposal_id: 'proposal-2', outcome: 'unable', reason: 'Proposal not found.' }
@@ -4869,7 +4883,7 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/decline-proposals-response.json',
-    { results: [] },
+    { status: 'completed', results: [] },
     'decline_proposals returns no results for an opportunity-only update'
   );
   await testSchemaValidation(
@@ -4990,6 +5004,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [{ proposal: laterDraft, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'event_package' }],
       opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: laterState }]
@@ -4999,6 +5014,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [{ proposal: laterDraft, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later' }],
       opportunities: []
@@ -5008,6 +5024,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [{ proposal: { ...laterDraft, proposal_status: 'committed' }, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'new_inventory' }],
       opportunities: []
@@ -5040,12 +5057,13 @@ async function runTests() {
   const offerEntry = { proposal: sellerOffer, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'seller_offer' };
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [offerEntry], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [offerEntry], opportunities: [] },
     'list_proposals returns a seller offer with origin seller_offer'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [
         { ...offerEntry, proposal: { ...sellerOffer, proposal_kind: 'media_buy_cancellation', commercial_terms: { ...laterDraft.commercial_terms, cancellation_terms: { effective_at: '2026-11-01T00:00:00Z' } } } },
@@ -5058,32 +5076,33 @@ async function runTests() {
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, later_reason: 'new_inventory' }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, later_reason: 'new_inventory' }], opportunities: [] },
     'list_proposals forbids later_reason on a seller offer'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_initiator: undefined } }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_initiator: undefined } }], opportunities: [] },
     'list_proposals requires proposal_initiator seller on a seller offer'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_kind: 'new_media_buy', opportunity_id: 'opp_nova_za_q4' } }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_kind: 'new_media_buy', opportunity_id: 'opp_nova_za_q4' } }], opportunities: [] },
     'list_proposals rejects a seller offer that is a new_media_buy'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_status: 'draft' } }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_status: 'draft' } }], opportunities: [] },
     'list_proposals rejects a draft seller offer'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, origin: 'request' }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, origin: 'request' }], opportunities: [] },
     'list_proposals lists a seller-initiated snapshot only as seller_offer'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [{ proposal: { ...laterDraft, proposal_initiator: 'seller', proposal_kind: 'media_buy_update' }, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'new_inventory' }],
       opportunities: []
@@ -5093,6 +5112,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [],
       opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, max_count: 5, min_interval: { interval: 1, unit: 'days' }, updated_at: '2026-10-09T15:02:11Z' } }]
@@ -5102,6 +5122,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [],
       opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, window_ends_at: '2026-12-31T23:59:59Z', updated_at: '2026-10-09T15:02:11Z' } }]
@@ -5111,6 +5132,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [],
       opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: false, updated_at: '2026-10-09T15:02:11Z' } }]
@@ -5282,7 +5304,7 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
-    { outcome: 'listed', products: [], feed_version: 'feed-empty-1', cache_scope: 'public' },
+    { status: 'completed', outcome: 'listed', products: [], feed_version: 'feed-empty-1', cache_scope: 'public' },
     'list_products treats no matches as an empty successful product page'
   );
   await testSchemaValidation(
@@ -5357,12 +5379,13 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
-    { outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
+    { status: 'completed', outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
     'list_products explicitly discriminates an unchanged feed response'
   );
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'proposed',
       proposals: [{
         proposal_id: 'proposal-1',
@@ -5391,6 +5414,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'rejected',
       reason: 'No available offer satisfies the campaign constraints.',
       suggestions: ['Broaden the flight dates.']
@@ -5399,12 +5423,13 @@ async function runTests() {
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
-    { products: [] },
+    { status: 'completed', products: [] },
     'request_proposals products-only compatibility requires an explicit outcome and continuation'
   );
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       incomplete: [{
@@ -5426,6 +5451,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       purchase_continuation: {
@@ -5441,6 +5467,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       incomplete: [{
@@ -5460,6 +5487,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       proposals: [{ proposal_id: 'synthetic-proposal' }],
@@ -5477,6 +5505,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       purchase_continuation: {
@@ -5493,6 +5522,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       proposals: [{
         proposal_id: 'proposal-1',
         name: 'Draft premium video plan',
@@ -5530,6 +5560,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
@@ -5545,6 +5576,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'unable',
@@ -5559,6 +5591,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
@@ -5573,6 +5606,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5588,6 +5622,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5601,6 +5636,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5613,6 +5649,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-draft-1',
         outcome: 'finalized',
@@ -5645,6 +5682,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-draft-1',
         outcome: 'finalized',
@@ -6267,6 +6305,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/signals/get-signals-async-response-working.json',
     {
+      status: 'working',
       percentage: 40,
       current_step: 'querying_providers',
       step_number: 2,

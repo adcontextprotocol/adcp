@@ -4,6 +4,9 @@
   "title": "Sync Catalogs - Input Required",
   "description": "Payload when sync_catalogs task is paused waiting for buyer clarification or approval.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
     "reason": {
       "type": "string",

@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIGEST_A = `sha256:${'1'.repeat(64)}`;
@@ -15,7 +16,7 @@ function schemaPathFromId(schemaId) {
 
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-  return JSON.parse(fs.readFileSync(schemaPathFromId(uri), 'utf8'));
+  return readComposedSourceSchema(schemaPathFromId(uri), SCHEMA_BASE_DIR);
 }
 
 async function compile(schemaId) {
@@ -26,7 +27,7 @@ async function compile(schemaId) {
     loadSchema: loadExternalSchema
   });
   addFormats(ajv);
-  return ajv.compileAsync(JSON.parse(fs.readFileSync(schemaPathFromId(schemaId), 'utf8')));
+  return ajv.compileAsync(readComposedSourceSchema(schemaPathFromId(schemaId), SCHEMA_BASE_DIR));
 }
 
 const contract = {
@@ -75,9 +76,9 @@ test('compact lifecycle responses accept every canonical format kind', async () 
   ]);
   function responses(products) {
     return [
-      { outcome: 'listed', products, feed_version: 'creative-format-feed', cache_scope: 'account' },
+      { status: 'completed', outcome: 'listed', products, feed_version: 'creative-format-feed', cache_scope: 'account' },
       {
-        outcome: 'proposed', products,
+        status: 'completed', outcome: 'proposed', products,
         proposals: [{
           proposal_id: 'creative-format-proposal', proposal_kind: 'new_media_buy',
           proposal_status: 'draft', name: 'Creative format plan',
@@ -97,6 +98,7 @@ test('compact lifecycle responses accept every canonical format kind', async () 
         }]
       },
       {
+        status: 'completed',
         products,
         results: [{
           source_proposal_id: 'creative-format-proposal', outcome: 'unable',

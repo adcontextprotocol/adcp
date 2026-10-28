@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
@@ -16,6 +17,8 @@ const VERSION_ENVELOPE_DEFINITION_REF = '#/$defs/core~1version-envelope';
 const parsedSchemas = new Map<string, JsonSchema>();
 const sourceValidators = new Map<string, ValidateFunction>();
 let sourceAjv: Ajv | undefined;
+const publishedResponseValidators = new Map<string, ValidateFunction>();
+let publishedResponseAjv: Ajv | undefined;
 const definitionAnnotationKeys = new Set([
   '$comment',
   'default',
@@ -228,6 +231,38 @@ function schemaFiles(directory: string): string[] {
   });
 }
 
+/**
+ * A validator for a response schema as the schema build publishes it. Response
+ * schemas compose the protocol envelope, and the build declares the envelope's
+ * fields (`status`, `adcp_version`, ...) on closed response roots and branches
+ * (scripts/compose-response-envelope.cjs), so a response body carrying them
+ * validates as it does on the wire. Loaded on first use: only the split-tool
+ * contract check below calls it, and the composition module is repository
+ * tooling.
+ */
+function publishedResponseValidator(relativePath: string): ValidateFunction {
+  const cached = publishedResponseValidators.get(relativePath);
+  if (cached) return cached;
+
+  if (!publishedResponseAjv) {
+    const { readComposedSourceSchema } = createRequire(import.meta.url)(
+      join(process.cwd(), 'scripts/compose-response-envelope.cjs'),
+    ) as { readComposedSourceSchema: (filePath: string, sourceDir: string) => JsonSchema };
+    publishedResponseAjv = new Ajv({ strict: false });
+    addFormats(publishedResponseAjv);
+    for (const path of schemaFiles(schemaRoot)) {
+      const schema = readComposedSourceSchema(path, schemaRoot);
+      if (typeof schema.$id === 'string') publishedResponseAjv.addSchema(schema, schema.$id);
+    }
+  }
+  const schemaId = readSchema(relativePath).$id;
+  if (typeof schemaId !== 'string') throw new Error(`Source schema has no $id: ${relativePath}`);
+  const validator = publishedResponseAjv.getSchema(schemaId);
+  if (!validator) throw new Error(`Published response validator not found: ${relativePath}`);
+  publishedResponseValidators.set(relativePath, validator);
+  return validator;
+}
+
 function sourceValidator(relativePath: string): ValidateFunction {
   const cached = sourceValidators.get(relativePath);
   if (cached) return cached;
@@ -397,8 +432,11 @@ export function validateProductDiscoverySourceResponse(
   response: Record<string, unknown>,
   request?: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
-  const validator = sourceValidator(`media-buy/${fileName}.json`);
-  if (!validator(response)) {
+  const validator = publishedResponseValidator(`media-buy/${fileName}.json`);
+  // `response` is the task body. Response schemas compose the protocol
+  // envelope, whose `status` the framework stamps after this check, so
+  // validate the body as it is published.
+  if (!validator('status' in response ? response : { status: 'completed', ...response })) {
     const error = validator.errors?.[0];
     const field = error && errorField(error);
     return {

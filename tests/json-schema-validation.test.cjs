@@ -14,10 +14,18 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
 
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
 const SCHEMAS_DIR = path.join(__dirname, '../static/schemas/source');
+
+// Doc examples are wire payloads, so they validate against the published
+// composition: the schema build declares the protocol envelope's fields on
+// closed response roots and branches (scripts/compose-response-envelope.cjs).
+function loadComposedSchema(filePath) {
+  return readComposedSourceSchema(filePath, SCHEMAS_DIR);
+}
 
 // Test statistics
 let totalBlocks = 0;
@@ -68,7 +76,7 @@ function createAjvInstance() {
       // Convert URI to local path
       const localPath = uriToLocalPath(uri);
       if (localPath && fs.existsSync(localPath)) {
-        return JSON.parse(fs.readFileSync(localPath, 'utf8'));
+        return loadComposedSchema(localPath);
       }
       throw new Error(`Cannot resolve schema: ${uri}`);
     }
@@ -118,8 +126,7 @@ async function loadAllSchemas(ajv) {
     if (schemasLoaded.has(filePath)) return;
 
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      const schema = JSON.parse(content);
+      const schema = loadComposedSchema(filePath);
 
       // Add schema by its $id if it has one
       if (schema.$id) {

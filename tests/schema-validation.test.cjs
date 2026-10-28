@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -35,8 +36,10 @@ async function loadExternalSchema(uri) {
   if (uri.startsWith('/schemas/')) {
     const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', '').split('#', 1)[0]);
     try {
-      const content = fs.readFileSync(schemaPath, 'utf8');
-      return JSON.parse(content);
+      // Validation runs against the published composition: the schema build
+      // declares the protocol envelope's fields on closed response roots and
+      // branches (scripts/compose-response-envelope.cjs).
+      return readComposedSourceSchema(schemaPath, SCHEMA_BASE_DIR);
     } catch (error) {
       throw new Error(`Failed to load referenced schema ${uri}: ${error.message}`);
     }
@@ -620,6 +623,7 @@ async function runTests() {
     }
 
     const approved = {
+      status: 'completed',
       check_id: 'check_1',
       check_type: 'intent',
       verdict: 'approved',
@@ -628,6 +632,7 @@ async function runTests() {
       governance_context: 'signed.context.token'
     };
     const conditions = {
+      status: 'completed',
       check_id: 'check_2',
       check_type: 'intent',
       verdict: 'conditions',
@@ -639,6 +644,7 @@ async function runTests() {
       return `valid governance response rejected: ${testAjv.errorsText(validateResponse.errors)}`;
     }
     const legacyConditions = {
+      status: 'completed',
       check_id: 'legacy_check',
       plan_id: 'legacy_plan',
       verdict: 'conditions',
@@ -656,13 +662,14 @@ async function runTests() {
     if (validateResponse({ ...conditions, check_type: 'execution' })) {
       return 'execution checks must not return conditions';
     }
-    if (validateResponse({ check_id: 'check_3', check_type: 'intent', verdict: 'approved', explanation: 'Allowed' })) {
+    if (validateResponse({ status: 'completed', check_id: 'check_3', check_type: 'intent', verdict: 'approved', explanation: 'Allowed' })) {
       return 'approved must carry expires_at and governance_context';
     }
     if (validateResponse({ ...approved, conditions: [{ field: 'payload.total_budget', reason: 'Adjust' }] })) {
       return 'approved must not carry unresolved conditions';
     }
     const denied = {
+      status: 'completed',
       check_id: 'check_4',
       check_type: 'execution',
       verdict: 'denied',
@@ -715,6 +722,7 @@ async function runTests() {
       return 'governance period closure must be boolean';
     }
     if (!validateOutcomeResponse({
+      status: 'completed',
       outcome_id: 'outcome_close_1',
       outcome_state: 'findings',
       delivery_reconciliation_status: 'closed_unresolved',
@@ -723,6 +731,7 @@ async function runTests() {
       return `closed unresolved outcome response rejected: ${testAjv.errorsText(validateOutcomeResponse.errors)}`;
     }
     if (!validateOutcomeResponse({
+      status: 'completed',
       outcome_id: 'outcome_variance_1',
       outcome_state: 'findings',
       delivery_reconciliation_status: 'measurement_variance',
@@ -877,6 +886,7 @@ async function runTests() {
     }
 
     const verifiedResponse = {
+      status: 'completed',
       adjustment_id: 'adj_1',
       adjustment_state: 'verified',
       adjustment_type: 'decommitment',
@@ -3135,7 +3145,8 @@ async function runTests() {
 
       let validate;
       try {
-        validate = await testAjv.compileAsync(schema);
+        // Examples are wire payloads: validate them against the published composition.
+        validate = await testAjv.compileAsync(readComposedSourceSchema(schemaPath, SCHEMA_BASE_DIR));
       } catch (error) {
         return `${filename}: Failed to compile schema for example validation: ${error.message}`;
       }

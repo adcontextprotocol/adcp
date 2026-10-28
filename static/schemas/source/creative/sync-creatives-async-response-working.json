@@ -4,6 +4,9 @@
   "title": "Sync Creatives - Working",
   "description": "Progress payload for active sync_creatives task.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
     "percentage": {
       "type": "number",
