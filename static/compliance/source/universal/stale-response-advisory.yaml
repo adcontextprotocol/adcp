@@ -218,6 +218,11 @@ phases:
             upstream_name: "inventory-service"
             cache_age_seconds: 60
           account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-stale_response_advisory-cfb1001d"
             sandbox: true
           context:
             correlation_id: "stale_response_advisory--force_upstream_unavailable"

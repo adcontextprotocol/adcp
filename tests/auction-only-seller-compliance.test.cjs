@@ -5,6 +5,7 @@ const path = require('node:path');
 const YAML = require('yaml');
 const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
 const complianceRoot = process.env.ADCP_COMPLIANCE_TEST_ROOT || path.join(__dirname, '..', 'static', 'compliance', 'source');
+
 function loadMediaBuyStoryboard(name) {
   return YAML.parse(fs.readFileSync(path.join(complianceRoot, 'protocols', 'media-buy', 'scenarios', `${name}.yaml`), 'utf8'));
 }
@@ -104,6 +105,7 @@ for (const supportsForce of [false, true]) {
           assert.equal(task, 'comply_test_controller');
           assert.equal(request.scenario, 'force_upstream_unavailable');
           assert.equal(calls.length, 1, 'healthy cache-warming request precedes forced outage');
+          assert.deepEqual(request.account, calls[0].request.account, 'outage forcing uses the same account as the warmed cache');
           forced = true;
           calls.push({ task, request });
           return { success: true, data: { success: true, context: request.context } };
@@ -114,7 +116,17 @@ for (const supportsForce of [false, true]) {
     assert.equal(result.validations_advisory_failed ?? 0, 0);
     assert.equal(calls.length, supportsForce ? 3 : 1);
     assert.equal(calls[0].forced, false);
+    const forcing = result.phases.find(phase => phase.phase_id === 'stale_response_forcing');
+    assert.ok(forcing, 'forced-cache phase is represented in the report');
+    if (!supportsForce) {
+      for (const step of forcing.steps) {
+        assert.equal(step.passed, true);
+        assert.equal(step.skipped, true);
+        assert.equal(step.skip_reason, 'not_applicable', 'unsupported forcing is a clean capability skip');
+      }
+    }
     if (supportsForce) {
+      assert.equal(result.skipped_count, 0);
       assert.equal(calls[2].forced, true);
       assert.equal(calls[0].request.brief, calls[2].request.brief);
       assert.deepEqual(calls[0].request.account, calls[2].request.account);
