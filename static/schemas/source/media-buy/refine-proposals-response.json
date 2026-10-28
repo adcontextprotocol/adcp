@@ -180,12 +180,9 @@
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
     "status": { "type": "string", "enum": ["completed", "submitted"] },
-    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-    "message": { "type": "string", "maxLength": 2000 },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
-    "ext": { "$ref": "/schemas/core/ext.json" },
-    "replayed": { "type": "boolean", "const": true }
+    "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "not": {
     "anyOf": [

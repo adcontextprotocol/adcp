@@ -47,9 +47,8 @@
       "description": "Client-generated correlation identifier for the operation that produced this webhook. Buyers supply this value at webhook registration time via `push_notification_config.operation_id`; sellers MUST echo it verbatim in every webhook payload. Sellers MUST NOT derive `operation_id` by parsing `push_notification_config.url` — the URL is opaque to the seller. Receivers MAY dispatch endpoints by URL path or query string, but MUST correlate the operation using this payload field, not URL-derived values. See [Webhooks — Operation IDs and URL templates](/docs/building/by-layer/L3/webhooks#operation-ids-and-url-templates) for the full normative wire contract."
     },
     "task_id": {
-      "type": "string",
-      "description": "Unique identifier for this task. Use this to correlate webhook notifications with the original task submission.",
-      "x-entity": "task"
+      "$ref": "/schemas/core/task-id.json",
+      "description": "Unique identifier for this task. Use this to correlate webhook notifications with the original task submission."
     },
     "task_type": {
       "$ref": "/schemas/enums/task-type.json",
@@ -69,8 +68,8 @@
       "description": "ISO 8601 timestamp when this logical webhook delivery was first generated. Every retry under the same idempotency_key MUST repeat this exact body value, along with every other payload member; only transport/signature metadata such as a fresh RFC 9421 nonce or created parameter may change between attempts."
     },
     "message": {
-      "type": "string",
-      "description": "Human-readable summary of the current task state. Provides context about what happened and what action may be needed."
+      "$ref": "/schemas/core/task-message.json",
+      "description": "Human-readable summary of the current task state. Provides context about what happened and what action may be needed. At most 2,000 characters, and untrusted input to the receiver: see core/task-message.json."
     },
     "context_id": {
       "type": "string",
@@ -137,6 +136,9 @@
         "result": {
           "status": "completed",
           "media_buy_id": "mb_12345",
+          "media_buy_status": "pending_creatives",
+          "confirmed_at": "2025-01-22T10:30:00Z",
+          "revision": 1,
           "creative_deadline": "2024-01-30T23:59:59Z",
           "packages": [
             {

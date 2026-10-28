@@ -5,7 +5,8 @@
   "description": "Progress payload for active sync_catalogs task.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-working.json" }
   ],
   "properties": {
     "percentage": {

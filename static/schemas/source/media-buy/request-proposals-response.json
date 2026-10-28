@@ -154,12 +154,9 @@
       "description": "Response-level confirmation of structured targeting interpreted from explicit hard requirements in the brief. Sellers MUST emit this when that interpretation materially affects eligibility, pricing, or forecasting; otherwise it remains a best practice. Product-specific changes to explicit criteria.targeting_overlay values remain on Product.targeting_resolution."
     },
     "status": { "type": "string", "enum": ["completed", "submitted"] },
-    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-    "message": { "type": "string", "maxLength": 2000 },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
-    "ext": { "$ref": "/schemas/core/ext.json" },
-    "replayed": { "type": "boolean", "const": true }
+    "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "anyOf": [
     {

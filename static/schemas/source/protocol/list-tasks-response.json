@@ -93,9 +93,8 @@
         "type": "object",
         "properties": {
           "task_id": {
-            "type": "string",
-            "description": "Unique identifier for this task",
-            "x-entity": "task"
+            "$ref": "/schemas/core/task-id.json",
+            "description": "Unique identifier for this task"
           },
           "task_type": {
             "$ref": "/schemas/enums/task-type.json",

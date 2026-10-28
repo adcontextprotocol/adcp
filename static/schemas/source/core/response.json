@@ -6,8 +6,8 @@
   "type": "object",
   "properties": {
     "message": {
-      "type": "string",
-      "description": "Human-readable summary"
+      "$ref": "/schemas/core/task-message.json",
+      "description": "Human-readable summary. At most 2,000 characters, and untrusted input to the receiver: see core/task-message.json."
     },
     "context_id": {
       "type": "string",

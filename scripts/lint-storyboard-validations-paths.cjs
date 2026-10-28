@@ -298,15 +298,30 @@ function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
   if (!Array.isArray(variants)) return null;
   for (const variant of variants) {
     if (!variant || typeof variant !== 'object') continue;
-    const props = variant.properties || {};
-    for (const propName of Object.keys(props)) {
-      const propSchema = props[propName];
-      if (propSchema && propSchema.const === expectedArm) {
-        return variant;
-      }
-    }
+    if (declaresConstDiscriminator(variant, expectedArm)) return variant;
   }
   return null;
+}
+
+/**
+ * True when the variant, or a schema it composes through `allOf`, declares a
+ * property with `const: "<expectedArm>"`. A submitted branch takes its
+ * `status: "submitted"` from core/task-submitted.json that way.
+ */
+function declaresConstDiscriminator(variant, expectedArm, seen = new Set()) {
+  if (!variant || typeof variant !== 'object') return false;
+  if (variant.$ref) {
+    if (seen.has(variant.$ref)) return false;
+    const next = new Set(seen);
+    next.add(variant.$ref);
+    return declaresConstDiscriminator(loadSchema(variant.$ref), expectedArm, next);
+  }
+  const props = variant.properties || {};
+  for (const propName of Object.keys(props)) {
+    const propSchema = props[propName];
+    if (propSchema && propSchema.const === expectedArm) return true;
+  }
+  return (variant.allOf || []).some((member) => declaresConstDiscriminator(member, expectedArm, seen));
 }
 
 /**

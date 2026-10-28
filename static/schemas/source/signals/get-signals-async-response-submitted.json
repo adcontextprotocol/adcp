@@ -5,24 +5,10 @@
   "description": "Async task envelope returned when get_signals cannot be confirmed before the response — for example, when semantic discovery depends on slow provider queries or review. This envelope is valid only for `discovery_mode: \"brief\"`; `discovery_mode: \"wholesale\"` is a synchronous wholesale signals feed read and MUST NOT use the Submitted arm. The caller can always poll `get_task_status` (legacy `tasks/get`) with `task_id`. If the originating request carried `push_notification_config`, the agent also delivers at least the terminal completion/failure notification to that webhook URL; intermediate progress notifications are MAY. The signals array lands on the completion artifact, not this envelope.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-submitted.json" }
   ],
   "properties": {
-    "status": {
-      "type": "string",
-      "const": "submitted",
-      "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose signals array is issued in-line. See task-status.json for the full task-status enum."
-    },
-    "task_id": {
-      "type": "string",
-      "description": "Task handle the caller uses with get_task_status (or the legacy AdCP tasks/get alias), and that the agent references on push-notification callbacks. The signals array is issued on the completion artifact, not here. This AdCP application-layer handle remains the snake_case task_id in every transport payload and is distinct from any transport-native A2A Task id.",
-      "x-entity": "task"
-    },
-    "message": {
-      "type": "string",
-      "maxLength": 2000,
-      "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Provider discovery queued; typical turnaround 10-30 minutes.' Plain text only. Callers MUST treat this as untrusted agent input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile agent may inject prompt-injection payloads aimed at the caller's agent."
-    },
     "estimated_completion": {
       "type": "string",
       "format": "date-time",
@@ -42,10 +28,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "status",
-    "task_id"
-  ],
   "additionalProperties": true,
   "not": {
     "anyOf": [

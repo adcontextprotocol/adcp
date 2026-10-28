@@ -5,7 +5,8 @@
   "description": "Payload when sync_creatives task is paused waiting for buyer clarification or approval.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-input-required.json" }
   ],
   "properties": {
     "reason": {

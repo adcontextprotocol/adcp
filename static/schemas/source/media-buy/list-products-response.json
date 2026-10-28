@@ -43,7 +43,6 @@
         "additionalProperties": false
       }
     },
-    "replayed": { "type": "boolean", "const": true },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
