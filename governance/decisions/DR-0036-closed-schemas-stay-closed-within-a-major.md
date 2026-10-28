@@ -65,6 +65,12 @@ conforming peer sends. Each such correction names the location, the bound and
 its value, and the check accepts exactly that bound there. Any other
 tightening still fails.
 
+**Likewise, a correction may newly require a name that the published text
+already required** of every conforming instance. The check compares composed
+`required` sets (a node's own names and those of its `allOf` entries), so a
+name required through a new `allOf` entry counts. Each such correction names
+the location and the name, and the check accepts exactly that name there.
+
 Each correction is recorded in this section, with its source text and every
 location it changes. The additive-minor check reads the same locations from
 `scripts/lint-additive-minor-corrections.json`. It accepts exactly the listed
@@ -76,7 +82,7 @@ Three corrections are recorded:
 | Correction | Source text | Ships in | Check entries |
 |---|---|---|---|
 | (a) Reopen the 3.2 proposal flow | DR-0019 | 3.3.0, and a 3.2.x patch | The table under (a) |
-| (b) Compose the protocol envelope on every task response | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | None: no closed schema changes |
+| (b) Compose the protocol envelope on every task response | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | The table under (b): `status` newly required |
 | (c) `task_id` identifies a task | `core/protocol-envelope.json`, `core/tasks-get-request.json`, 3.2.7 `core/compact-task-submitted.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (c) |
 
 #### (a) Reopen the 3.2 proposal flow
@@ -166,8 +172,8 @@ root and status branch is open, so the envelope's fields validate where the
 envelope declares them. No build step adds them: the source and published
 schemas agree. 3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
 
-It changes no closed schema, so it has no check entries. Each response root or
-status branch that was still closed is reopened:
+It changes no closed schema. Each response root or status branch that was
+still closed is reopened:
 
 - The 3.2 proposal-flow response roots and branches are reopened by (a).
 - The `list_collections`, `list_proposals`, `get_media_buy_issue` and
@@ -179,8 +185,52 @@ status branch that was still closed is reopened:
   a schema that was experimental in the release that closed it, so they open
   under DR-0019 too.
 
-This section records the contract reason for the envelope fields. Closed value
-objects and rows inside response bodies stay as they are.
+Closed value objects and rows inside response bodies stay as they are.
+
+Composing the envelope makes `status` required on the responses and async
+status payloads that did not require it in 3.2.7. The envelope already
+required it there ("The `status` field is REQUIRED on every task response
+envelope"), so a conforming response carried it. The check compares composed
+`required` sets, a node's own names plus those of its `allOf` entries, and
+accepts `status` at these locations:
+
+| Schema | Pointer | Required | Reason |
+|---|---|---|---|
+| `core/compact-task-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `core/compact-task-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `creative/sync-creatives-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `creative/sync-creatives-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/accept-proposal-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/accept-proposal-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/accept-proposal-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/build-creative-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/build-creative-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/buy-products-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/buy-products-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/buy-products-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/control-media-buy-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/control-media-buy-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/control-media-buy-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/create-media-buy-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/create-media-buy-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/decline-proposals-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/decline-proposals-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/decline-proposals-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/get-products-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/get-products-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/list-products-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/media-buy-commitment-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/refine-proposals-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/refine-proposals-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/refine-proposals-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/request-proposals-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/request-proposals-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/request-proposals-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/sync-catalogs-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/sync-catalogs-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/update-media-buy-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/update-media-buy-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `signals/get-signals-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
 
 #### (c) `task_id` identifies a task
 

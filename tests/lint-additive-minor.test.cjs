@@ -443,6 +443,12 @@ function fixtureRoot() {
     '|---|---|---|---|',
     '| `core/closed.json` | `/properties/id` | `minLength: 1` | The rule names an identifier. |',
     '',
+    '#### (d) Require one name',
+    '',
+    '| Schema | Pointer | Required | Reason |',
+    '|---|---|---|---|',
+    '| `core/open.json` | root | `required: note` | The rule requires a note. |',
+    '',
     '## Rationale',
     '',
     '| `core/open.json` | root | `*` | Outside the corrections section. |',
@@ -570,6 +576,40 @@ test('fails when a bound correction is missing from its decision record', () => 
     { correctionsValue: corrections(boundCorrection({ bound: 'maxLength', value: 64 })) },
   );
   assert.deepEqual(result.errors, [`correction core/closed.json#/properties/id maxLength: 64 is not in the correction tables of ${FIXTURE_DECISION}-fixture.md`]);
+});
+
+/** Makes core/open.json require `note` through a new allOf entry, core/note-required.json. */
+function requireNoteThroughAllOf(t) {
+  t['core/note-required.json'] = { $id: '/schemas/core/note-required.json', type: 'object', required: ['note'] };
+  t['core/open.json'].allOf = [{ $ref: '/schemas/core/note-required.json' }];
+}
+
+test('a name required through a new allOf entry is newly required', () => {
+  // The composed required set counts: a node's own required list is
+  // unchanged, but an allOf entry it now composes requires a new name.
+  assert.deepEqual(findingsAfter(requireNoteThroughAllOf).map((f) => [f.file, f.pointer, f.kind, f.detail]),
+    [['core/open.json', '', 'required-added', 'property note newly required']]);
+});
+
+/** A required correction entry: core/open.json newly requires note. */
+function requiredCorrection(overrides = {}) {
+  const { property: _property, ...entry } = correction({ file: 'core/open.json', required: 'note' });
+  return { ...entry, ...overrides };
+}
+
+test('a listed required correction accepts exactly that name', () => {
+  const result = analyzePair(requireNoteThroughAllOf, { correctionsValue: corrections(requiredCorrection()) });
+  assert.deepEqual([result.findings, result.errors], [[], []]);
+  const other = analyzePair((t) => {
+    requireNoteThroughAllOf(t);
+    t['core/note-required.json'].required.push('tags');
+  }, { correctionsValue: corrections(requiredCorrection()) });
+  assert.deepEqual(other.findings.map((f) => f.detail), ['property tags newly required']);
+});
+
+test('fails when a required correction is not applied in the candidate', () => {
+  const result = analyzePair(() => {}, { correctionsValue: corrections(requiredCorrection()) });
+  assert.deepEqual(result.errors, ['correction core/open.json# does not require note in source']);
 });
 
 test('an addition to a schema no correction names still fails', () => {
@@ -718,9 +758,11 @@ test('the repository corrections list holds exactly the correction tables of DR-
   const record = fs.readdirSync(decisions).find((name) => name.startsWith(`${value.decision}-`));
   const recorded = recordedCorrections(fs.readFileSync(path.join(decisions, record), 'utf8'));
   assert.ok(recorded.size > 0, `${record} has no correction tables`);
-  // A bound correction is keyed by its bound (`minLength: 1`), as its table row names it.
+  // A bound correction is keyed by its bound (`minLength: 1`) and a required
+  // correction by its name (`required: status`), as their table rows name them.
   const listed = value.corrections.map((entry) => `${entry.file}#${entry.pointer} ${
-    typeof entry.bound === 'string' ? `${entry.bound}: ${entry.value}` : entry.property}`);
+    typeof entry.bound === 'string' ? `${entry.bound}: ${entry.value}`
+      : typeof entry.required === 'string' ? `required: ${entry.required}` : entry.property}`);
   assert.deepEqual(listed.filter((key) => !recorded.has(key)), [], 'listed but not in the tables');
   assert.deepEqual([...recorded].filter((key) => !listed.includes(key)), [], 'in the tables but not listed');
 });

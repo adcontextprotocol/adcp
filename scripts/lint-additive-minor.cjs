@@ -68,6 +68,13 @@
  *   exactly that bound at that location from the listed release on, and the
  *   candidate must carry it there. Any other tightening still fails.
  *
+ *   A correction may also require one name (`required`, such as `status`)
+ *   that the published text already required. Required names are compared
+ *   as composed sets: a node's own `required` plus those of its `allOf`
+ *   entries, through `$ref`s, so a name required through a new `allOf`
+ *   entry counts. The check accepts exactly that name at that location, and
+ *   the candidate's composed set must contain it there.
+ *
  * Modes
  *   (default)                    CI: candidate = source, base = default base;
  *                                fails on any violation not in the baseline.
@@ -680,6 +687,10 @@ function compareTrees(baseTree, candTree, {
   const seen = new Set();
   const reopened = (location) => Boolean(corrections && location && corrections.reopened.has(location));
   const corrected = (location) => (corrections && location && corrections.properties.get(location)) || null;
+  // A recorded required correction: a name a finding location may newly require.
+  const requiredCorrected = (file, pointer, name) => Boolean(
+    corrections && corrections.required && corrections.required.get(`${file}#${pointer}`)?.has(name),
+  );
   // A recorded bound correction: the exact bound value at a finding location.
   const boundCorrected = (file, pointer, keyword, value) => Boolean(
     corrections && corrections.bounds && corrections.bounds.get(`${file}#${pointer}`)?.get(keyword) === value,
@@ -826,11 +837,16 @@ function compareTrees(baseTree, candTree, {
       }
     }
 
-    // A name the base already required, here, through an allOf entry, or on
-    // an enclosing schema of this composition branch, is not newly required.
+    // Compare the composed required sets: the node's own names plus those of
+    // its allOf entries, through $refs into composed documents. A name the
+    // base already required, here, through an allOf entry, or on an
+    // enclosing schema of this composition branch, is not newly required; a
+    // name a new allOf entry requires is.
     const rb = new Set([...declaredNames(b, bDoc, baseTree, 'required'), ...(scope ? scope.required : [])]);
-    for (const name of Array.isArray(c.required) ? c.required : []) {
-      if (!rb.has(name)) report(file, pointer, 'required-added', `property ${name} newly required`);
+    const rc = declaredNames(c, cDoc, candTree, 'required');
+    for (const name of rc) {
+      if (rb.has(name) || requiredCorrected(file, pointer, name)) continue;
+      report(file, pointer, 'required-added', `property ${name} newly required`);
     }
   }
 
@@ -917,7 +933,9 @@ const WHOLE_SCHEMA = '*';
  * bound it adds (`minLength: 1`).
  */
 function correctionKey(entry) {
-  const change = typeof entry.bound === 'string' ? `${entry.bound}: ${entry.value}` : entry.property;
+  const change = typeof entry.bound === 'string'
+    ? `${entry.bound}: ${entry.value}`
+    : typeof entry.required === 'string' ? `required: ${entry.required}` : entry.property;
   return `${entry.file}#${entry.pointer} ${change}`;
 }
 
@@ -930,15 +948,18 @@ const CORRECTABLE_BOUNDS = new Set([...LOWER_BOUNDS, ...UPPER_BOUNDS]);
  *   reopened    the base node locations that a `*` entry reopens;
  *   properties  a Map from a base node location to the names it lets in;
  *   bounds      a Map from a finding location to the bounds (keyword → value)
- *               it may add.
+ *               it may add;
+ *   required    a Map from a finding location to the names it may newly
+ *               require.
  */
 function readCorrections(value, candidateVersion) {
   const errors = [];
   const reopened = new Set();
   const properties = new Map();
   const bounds = new Map();
+  const required = new Map();
   if (!isObject(value) || !Array.isArray(value.corrections)) {
-    return { reopened, properties, bounds, entries: [], errors: ['corrections list must be an object with a corrections array'] };
+    return { reopened, properties, bounds, required, entries: [], errors: ['corrections list must be an object with a corrections array'] };
   }
   const candidate = parseVersion(candidateVersion);
   const current = candidate && { ...candidate, prerelease: [] };
@@ -950,14 +971,18 @@ function readCorrections(value, candidateVersion) {
       return;
     }
     const isBound = entry.bound !== undefined;
-    for (const field of ['file', 'pointer', isBound ? 'bound' : 'property', 'release', 'reason']) {
+    const isRequired = entry.required !== undefined;
+    const changeField = isBound ? 'bound' : isRequired ? 'required' : 'property';
+    for (const field of ['file', 'pointer', changeField, 'release', 'reason']) {
       if (typeof entry[field] !== 'string') errors.push(`${label}.${field} must be a string`);
     }
-    for (const field of [isBound ? 'bound' : 'property', 'reason']) {
+    for (const field of [changeField, 'reason']) {
       if (typeof entry[field] === 'string' && !entry[field].trim()) errors.push(`${label}.${field} must not be empty`);
     }
+    if ([isBound, isRequired, entry.property !== undefined].filter(Boolean).length > 1) {
+      errors.push(`${label} names more than one of property, bound and required`);
+    }
     if (isBound) {
-      if (entry.property !== undefined) errors.push(`${label} names both a property and a bound`);
       if (typeof entry.bound === 'string' && !CORRECTABLE_BOUNDS.has(entry.bound)) errors.push(`${label}.bound must be a JSON Schema bound keyword`);
       if (typeof entry.value !== 'number') errors.push(`${label}.value must be a number`);
     }
@@ -984,6 +1009,12 @@ function readCorrections(value, candidateVersion) {
       bounds.get(location).set(entry.bound, entry.value);
       return;
     }
+    if (isRequired) {
+      if (typeof entry.required !== 'string') return;
+      if (!required.has(location)) required.set(location, new Set());
+      required.get(location).add(entry.required);
+      return;
+    }
     if (typeof entry.property !== 'string') return;
     if (entry.property === WHOLE_SCHEMA) reopened.add(location);
     else {
@@ -991,7 +1022,7 @@ function readCorrections(value, candidateVersion) {
       properties.get(location).add(entry.property);
     }
   });
-  return { reopened, properties, bounds, entries: value.corrections, errors };
+  return { reopened, properties, bounds, required, entries: value.corrections, errors };
 }
 
 /**
@@ -1000,7 +1031,7 @@ function readCorrections(value, candidateVersion) {
  * corrected bound has its value there (through a `$ref` if the location
  * refers to a shared definition).
  */
-function checkCorrectionsApplied({ reopened, properties, bounds = new Map() }, candTree) {
+function checkCorrectionsApplied({ reopened, properties, bounds = new Map(), required = new Map() }, candTree) {
   const errors = [];
   const nodeAt = (location) => {
     const [key, pointer] = location.split('#');
@@ -1037,6 +1068,17 @@ function checkCorrectionsApplied({ reopened, properties, bounds = new Map() }, c
     }
     for (const [keyword, value] of expected) {
       if (node[keyword] !== value) errors.push(`correction ${location} does not carry ${keyword}: ${value} in ${candTree.label}`);
+    }
+  }
+  for (const [location, names] of required) {
+    const node = nodeAt(location);
+    if (!isObject(node)) {
+      errors.push(`correction ${location} does not exist in ${candTree.label}`);
+      continue;
+    }
+    const composed = declaredNames(node, location.split('#')[0], candTree, 'required');
+    for (const name of names) {
+      if (!composed.has(name)) errors.push(`correction ${location} does not require ${name} in ${candTree.label}`);
     }
   }
   return errors;
@@ -1121,8 +1163,9 @@ function checkCorrectionsRecorded(value, root) {
   if (!record) return [`no decision record for ${value.decision} under governance/decisions`];
   const recorded = recordedCorrections(fs.readFileSync(path.join(directory, record), 'utf8'));
   // Malformed entries are reported by readCorrections.
+  const changeField = (entry) => (entry.bound !== undefined ? 'bound' : entry.required !== undefined ? 'required' : 'property');
   const wellFormed = (entry) => isObject(entry)
-    && ['file', 'pointer', entry.bound !== undefined ? 'bound' : 'property'].every((field) => typeof entry[field] === 'string');
+    && ['file', 'pointer', changeField(entry)].every((field) => typeof entry[field] === 'string');
   return value.corrections
     .filter(wellFormed)
     .map(correctionKey)
