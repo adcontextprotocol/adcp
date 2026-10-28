@@ -20,14 +20,13 @@
     },
     "publisher_properties": {
       "type": "array",
-      "description": "SDK implementers MUST enforce singular-only at runtime: each entry uses the singular `publisher_domain` form; the compact `publisher_domains[]` form is rejected on products. Codegen toolchains (json-schema-to-typescript, quicktype, datamodel-code-generator, openapi-typescript-codegen) often flatten the `allOf + $ref + not.required` restriction below poorly and may drop the rejection constraint silently, emitting an unrestricted type — runtime enforcement is the safety net. Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency. The compact `publisher_domains[]` form is reserved for adagents.json `authorized_agents[].publisher_properties[]` so that buy-side traffic-and-pricing flatteners can always treat each entry as exactly one publisher.",
+      "description": "SDK implementers MUST enforce singular-only at runtime: each entry uses the singular `publisher_domain` form; the compact `publisher_domains[]` form is rejected on products. Codegen toolchains (json-schema-to-typescript, quicktype, datamodel-code-generator, openapi-typescript-codegen) often flatten the `allOf + $ref + not.required` restriction below poorly and may drop the rejection constraint silently, emitting an unrestricted type — runtime enforcement is the safety net. Publisher properties covered by this product. A non-empty array is the complete roster. `[]` means the seller does not disclose it (undisclosed), not that the product has no properties; it bounds nothing. MUST NOT be `[]` on a response served below 3.3. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency. The compact `publisher_domains[]` form is reserved for adagents.json `authorized_agents[].publisher_properties[]` so that buy-side traffic-and-pricing flatteners can always treat each entry as exactly one publisher.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/publisher-property-selector.json" },
           { "not": { "required": ["publisher_domains"] } }
         ]
-      },
-      "minItems": 1
+      }
     },
     "channels": {
       "type": "array",
@@ -525,14 +524,13 @@
     },
     "collections": {
       "type": "array",
-      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
+      "description": "Collections available in this product. A non-empty array is the complete roster. `[]` means the seller does not disclose it (undisclosed); absent makes no collection declaration. It bounds nothing. MUST NOT be `[]` on a response served below 3.3. Each entry references collections declared in an adagents.json by domain and collection ID. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/collection-selector.json" },
           { "required": ["collection_ids"] }
         ]
-      },
-      "minItems": 1
+      }
     },
     "collection_targeting_allowed": {
       "type": "boolean",

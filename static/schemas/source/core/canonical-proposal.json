@@ -204,5 +204,5 @@
       "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"], "not": { "required": ["definition_pins"] } } } }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

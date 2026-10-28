@@ -282,11 +282,10 @@ phases:
       path: account.timezone.account_selection
       equals: buyer_selected
     narrative: |
-      Buyer-selected account-fixed sellers require one advertised timezone in
-      the provisioning natural key. The buyer discovers that allowlist before
-      establishing the account, resolves the new account through its complete
-      natural key, and carries that complete natural key through the rest of
-      this lifecycle.
+      Buyer-selected account-fixed sellers require one advertised timezone,
+      set when the account opens. The buyer discovers that allowlist before
+      opening the account, and the timezone stays an attribute of that
+      account for the rest of this lifecycle.
     steps:
       - id: discover_buyer_selected_timezone
         title: "Choose an advertised account timezone"
@@ -335,7 +334,7 @@ phases:
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "account_timezone"
-            description: "Seller echoes the chosen immutable timezone"
+            description: "Seller echoes the chosen account timezone"
 
   - id: product_discovery
     title: "Product discovery"

@@ -1,5 +1,270 @@
 {
   "$comment": "Corrections that DR-0036 records. A minor or patch release may change a closed schema only to make it accept what the published spec text already required before that release. Each entry names a schema location by document and JSON pointer, the property the correction lets in (* reopens the whole schema), the stable release it lands in, the source text that required it (a repository path and a quote from it), and the reason. The additive-minor check accepts exactly these additions. Each entry must also appear in the correction tables of DR-0036.",
   "decision": "DR-0036",
-  "corrections": []
+  "corrections": [
+    {
+      "file": "media-buy/list-products-request.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Schemas that do not fit either class must be opened."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+    },
+    {
+      "file": "media-buy/request-proposals-request.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Schemas that do not fit either class must be opened."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+    },
+    {
+      "file": "media-buy/refine-proposals-request.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Schemas that do not fit either class must be opened."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+    },
+    {
+      "file": "media-buy/buy-products-request.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Schemas that do not fit either class must be opened."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+    },
+    {
+      "file": "media-buy/accept-proposal-request.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Schemas that do not fit either class must be opened."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+    },
+    {
+      "file": "media-buy/decline-proposals-request.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Schemas that do not fit either class must be opened."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+    },
+    {
+      "file": "media-buy/control-media-buy-request.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Schemas that do not fit either class must be opened."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+    },
+    {
+      "file": "media-buy/list-products-response.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
+    },
+    {
+      "file": "media-buy/request-proposals-response.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "/properties/results/items",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "A Class B schema without an escape hatch is a defect."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Result row, one outcome per source proposal. It is not a join-key object, and it has no ext."
+    },
+    {
+      "file": "media-buy/decline-proposals-response.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "/oneOf/0",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "/oneOf/1",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "/oneOf/2",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+    },
+    {
+      "file": "media-buy/control-media-buy-response.json",
+      "pointer": "/oneOf/0",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+    },
+    {
+      "file": "media-buy/control-media-buy-response.json",
+      "pointer": "/oneOf/1",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+    },
+    {
+      "file": "media-buy/control-media-buy-response.json",
+      "pointer": "/oneOf/2",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+    },
+    {
+      "file": "core/canonical-proposal.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for a proposal's commercial terms, lineage, status, and narrative. It has no ext."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Schemas that do not fit either class must be opened."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Resource: the product, not a row. The product schema it parallels is open."
+    },
+    {
+      "file": "media-buy/product-discovery-criteria.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for the discovery filters of list_products, request_proposals and refine_proposals."
+    },
+    {
+      "file": "media-buy/proposal-refinement.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "A Class B schema without an escape hatch is a defect."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Request row for one refinement instruction. It is not a join-key object, and it has no ext."
+    },
+    {
+      "file": "media-buy/package-control.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "A Class B schema without an escape hatch is a defect."
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Request row for one package's controls. It is not a join-key object, and it has no ext."
+    },
+    {
+      "file": "core/opportunity-context.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for buyer context in a planning cycle. Its opportunity_id is opaque, not a join key. It has no ext."
+    }
+  ]
 }

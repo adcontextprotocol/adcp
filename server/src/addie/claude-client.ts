@@ -67,6 +67,7 @@ import type {
   PreparedModelInvocation,
 } from './model-providers/model-provider.js';
 import { attemptSiblingModelFallback } from './model-providers/model-fallback.js';
+import { modelProviderAdapterFailure } from './model-providers/model-provider.js';
 import type { DirectToolSession } from './gemini-direct-tools.js';
 import { GOOGLE_ROUTER_MODEL } from './model-providers/google-generate-content-provider.js';
 import type { CostEvent } from './claude-cost-tracker.js';
@@ -3378,7 +3379,14 @@ export class AddieClaudeClient {
           'Addie Stream: Isolated execution terminated',
         );
       } else {
-        logger.error({ error }, 'Addie Stream: Error during streaming');
+        // The adapter deliberately hides provider payloads. Include its safe
+        // receipt so operational alerts still distinguish HTTP failures from
+        // response normalization failures.
+        logger.error(
+          { error, provider: this.modelProvider.id, model: requestedModel,
+            ...modelProviderAdapterFailure(error instanceof RetriesExhaustedError ? error.cause : error) },
+          'Addie Stream: Error during streaming',
+        );
       }
       if (!streamErrorEmitted) {
         yield {

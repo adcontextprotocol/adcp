@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/list-accounts-request.json",
   "title": "List Accounts Request",
-  "description": "Request parameters for listing accounts accessible to the authenticated agent. For upstream-managed namespaces, this discovers seller/storefront account_id values. For buyer-declared accounts, responses return the natural-key fields needed to reconstruct an AccountRef after a cold start.",
+  "description": "Request parameters for listing accounts accessible to the authenticated agent. For upstream-managed namespaces, this discovers seller/storefront account_id values. For buyer-declared accounts, responses return each account_id with its brand, operator, and attributes, so a buyer recovers its account IDs after a cold start.",
   "x-tool-summary": "List accounts accessible to the caller and recover their canonical account references.",
   "type": "object",
   "allOf": [
@@ -13,7 +13,7 @@
   "properties": {
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Optional exact account filter. Use `account_id` to retrieve one known seller/storefront account, or the complete natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, buyer-selected account `timezone`, and `sandbox`) for buyer-declared accounts. When present, the seller returns only matching accounts visible to the authenticated caller."
+      "description": "Optional account filter. Use `account_id` to retrieve one known seller/storefront account, or the natural key (`brand` + `operator`, narrowed by any of `brand.countries`, `operator_unit`, `currency`, `timezone`, and `sandbox`, matched as in account-ref.json) to find buyer-declared accounts and their account_id values. When present, the seller returns every matching account visible to the authenticated caller; unlike an account reference on other tasks, several matches are not an error."
     },
     "status": {
       "type": "string",
