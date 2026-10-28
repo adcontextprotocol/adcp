@@ -63,7 +63,8 @@ const ENVELOPE_VALUES = {
   replayed: true,
   adcp_error: { code: 'INVALID_REQUEST', message: 'The request is invalid.' },
   push_notification_config: { url: 'https://buyer.example.com/webhooks/adcp' },
-  governance_context: 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJwbGFuIn0.c2lnbmF0dXJl',
+  // Opaque printable ASCII; the schema does not parse the compact JWS.
+  governance_context: 'governance-header.governance-payload.governance-signature',
   adcp_version: '3.3',
   adcp_major_version: 3,
 };
