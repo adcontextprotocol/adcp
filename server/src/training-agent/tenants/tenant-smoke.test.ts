@@ -4266,6 +4266,30 @@ describe('tenant routing smoke', () => {
 
       const threeZero = await check(5, '3.0');
       expect(threeZero, JSON.stringify(threeZero)).toMatchObject({ status: 'approved' });
+      expect(threeZero).not.toHaveProperty('verdict');
+
+      // report_plan_outcome at a 3.0 pin carries the outcome state in status,
+      // on the first call and on its idempotent replay.
+      const reportThreeZero = async (id: number) => structured(await callTenantTool(governanceUrl, id, 'report_plan_outcome', {
+        idempotency_key: 'tenant-envelope-status-outcome-3-0',
+        adcp_version: '3.0',
+        brand,
+        plan_id: planId,
+        check_id: threeZero!.check_id,
+        governance_context: threeZero!.governance_context,
+        outcome: 'completed',
+        seller_response: { seller_reference: 'mb_envelope_status_3_0', committed_budget: 1_000 },
+      }));
+      const reportedThreeZero = await reportThreeZero(8);
+      expect(reportedThreeZero, JSON.stringify(reportedThreeZero)).toMatchObject({ status: 'accepted' });
+      expect(reportedThreeZero).not.toHaveProperty('outcome_state');
+      const replayedThreeZero = await reportThreeZero(9);
+      expect(replayedThreeZero, JSON.stringify(replayedThreeZero)).toMatchObject({
+        status: 'accepted',
+        outcome_id: reportedThreeZero!.outcome_id,
+        replayed: true,
+      });
+      expect(replayedThreeZero).not.toHaveProperty('outcome_state');
 
       const approval = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'creative_approval', {
         ...(version && { adcp_version: version }),
@@ -4280,6 +4304,21 @@ describe('tenant routing smoke', () => {
       const threeZeroApproval = await approval(7, '3.0');
       expect(threeZeroApproval, JSON.stringify(threeZeroApproval)).toMatchObject({ status: 'approved' });
       expect(threeZeroApproval).not.toHaveProperty('approval_status');
+
+      const acquire = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'acquire_rights', {
+        idempotency_key: `tenant-envelope-status-rights-${id}`,
+        ...(version && { adcp_version: version }),
+        account: { brand: { domain: 'tenant-envelope-rights.example' }, operator: 'tenant-envelope-rights.example' },
+        rights_id: 'janssen_likeness_voice',
+        pricing_option_id: 'monthly_exclusive',
+        buyer: { domain: 'tenant-envelope-rights.example' },
+        campaign: { description: 'Envelope status campaign', uses: ['likeness'] },
+      }));
+      const acquired = await acquire(10);
+      expect(acquired, JSON.stringify(acquired)).toMatchObject({ status: 'completed', rights_status: 'acquired' });
+      const acquiredThreeZero = await acquire(11, '3.0');
+      expect(acquiredThreeZero, JSON.stringify(acquiredThreeZero)).toMatchObject({ status: 'acquired' });
+      expect(acquiredThreeZero).not.toHaveProperty('rights_status');
     } finally {
       await close();
     }

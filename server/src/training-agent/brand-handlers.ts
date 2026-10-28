@@ -7,7 +7,6 @@
  */
 
 import type { TrainingContext, ToolArgs } from './types.js';
-import { servesOutcomeInEnvelopeStatus } from './types.js';
 import { createHash } from 'node:crypto';
 import { canonicalize, enforceMapCap } from '@adcp/sdk';
 import { getSandboxBrands } from '@adcp/sdk/testing';
@@ -1624,7 +1623,7 @@ export async function handleUpdateRights(
 
 export function handleCreativeApproval(
   args: ToolArgs,
-  ctx: TrainingContext,
+  _ctx: TrainingContext,
 ) {
   const req = args as {
     rights_id?: string;
@@ -1657,11 +1656,10 @@ export function handleCreativeApproval(
   const creativeFormat = req.creative_format || req.creative?.format;
 
   return {
-    // 3.0 carried the decision in `status`; from 3.1 it is `approval_status`
-    // and `status` is the task status.
-    ...(servesOutcomeInEnvelopeStatus(ctx.servedAdcpVersion)
-      ? { status: 'approved' }
-      : { status: 'completed', approval_status: 'approved' }),
+    // The task status; the decision is `approval_status`
+    // (served-outcome-status.ts projects it onto a served 3.0).
+    status: 'completed',
+    approval_status: 'approved',
     rights_id: rightsId,
     creative_id: creativeId,
     creative_url: creativeUrl,

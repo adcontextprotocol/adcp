@@ -15,6 +15,7 @@ import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
+import { projectTaskOutcomeForRelease } from '../served-outcome-status.js';
 import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from '../governance-agent-credentials.js';
 import { AccountRefValidationError, accountScopeFromRef } from '../account-scope.js';
 import {
@@ -46,12 +47,6 @@ interface CustomToolOptions {
   payloadErrorsAsSuccess?: boolean;
   responseSummary?: (result: Record<string, unknown>) => string | undefined;
   trainingContext?: Partial<TrainingContext>;
-  /**
-   * Pass the release the SDK negotiated for the request to the handler as
-   * `ctx.servedAdcpVersion`, for handlers whose response shape changed
-   * between releases.
-   */
-  forwardServedAdcpVersion?: boolean;
   resolveAuthenticatedAgentUrl?: (
     authInfo: { clientId?: string; extra?: Record<string, unknown> } | undefined,
     params: Record<string, unknown>,
@@ -169,6 +164,22 @@ async function releaseClaim(claim: IdempotencyClaim | null): Promise<void> {
 }
 
 /**
+ * Declares the version envelope on a custom tool's input shape. The MCP layer
+ * drops undeclared arguments before the SDK selects the served release, so
+ * without these a caller's `adcp_version` pin never reaches release selection.
+ */
+function withVersionEnvelope(
+  inputSchema: Record<string, z.ZodTypeAny> | z.ZodTypeAny,
+): Record<string, z.ZodTypeAny> | z.ZodTypeAny {
+  if (inputSchema instanceof z.ZodType) return inputSchema;
+  return {
+    adcp_version: z.string().optional(),
+    adcp_major_version: z.number().int().optional(),
+    ...inputSchema,
+  };
+}
+
+/**
  * Wrap a v5-style handler into an `AdcpCustomToolConfig` for
  * `opts.customTools` registration. Handles the `(args, ctx)` →
  * `(args, extra)` adaptation, session-context wrapping, and envelope
@@ -183,7 +194,7 @@ export function customToolFor(
 ): AdcpCustomToolConfig<any, undefined> {
   return {
     description,
-    inputSchema,
+    inputSchema: withVersionEnvelope(inputSchema),
     ...(options.annotations ? { annotations: options.annotations } : {}),
     handler: async (args: unknown, extra: unknown) => {
       const params = (args as Record<string, unknown>) ?? {};
@@ -195,9 +206,8 @@ export function customToolFor(
         : undefined;
       const governanceAgentCredential = governanceAgentCredentialFromExtra(authInfo?.extra);
       const hostedGraderCredential = hostedGraderCredentialFromExtra(authInfo?.extra);
-      const servedAdcpVersion = options.forwardServedAdcpVersion
-        ? (extra as { servedAdcpVersion?: unknown } | undefined)?.servedAdcpVersion
-        : undefined;
+      // The release the SDK negotiated for this request.
+      const servedAdcpVersion = (extra as { servedAdcpVersion?: unknown } | undefined)?.servedAdcpVersion;
       const trainingCtx: TrainingContext = {
         mode: 'open',
         principal: authInfo?.clientId ?? 'anonymous',
@@ -272,7 +282,12 @@ export function customToolFor(
           if (outcome.kind === 'replay') {
             const replayed: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
             if (replayed.status === undefined) replayed.status = 'completed';
-            return toAdaptedResponse(name, replayed, callerContext, options);
+            return toAdaptedResponse(
+              name,
+              projectTaskOutcomeForRelease(name, replayed, trainingCtx.servedAdcpVersion),
+              callerContext,
+              options,
+            );
           }
           claim = {
             principal,
@@ -296,7 +311,14 @@ export function customToolFor(
           logger.error({ err, tool: name }, 'custom-tool flushDirtySessions threw');
           return serviceUnavailable(err, callerContext);
         }
-        const response = toAdaptedResponse(name, result, callerContext, options);
+        // The cache keeps the release-neutral result; the response is shaped
+        // for this caller's served release.
+        const response = toAdaptedResponse(
+          name,
+          projectTaskOutcomeForRelease(name, result, trainingCtx.servedAdcpVersion),
+          callerContext,
+          options,
+        );
         if (claim) {
           const hasPayloadErrors = Array.isArray((result as { errors?: unknown[] } | null | undefined)?.errors)
             && ((result as { errors?: unknown[] }).errors ?? []).length > 0;

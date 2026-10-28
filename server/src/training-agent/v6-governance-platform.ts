@@ -53,6 +53,7 @@ import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from './governance-agent-credentials.js';
 import type { ToolArgs, TrainingContext } from './types.js';
+import { projectTaskOutcomeForRelease } from './served-outcome-status.js';
 
 interface TrainingGovernanceMeta {
   brand_domain?: string;
@@ -189,11 +190,11 @@ export class TrainingGovernancePlatform
     },
     checkGovernance: async (req, ctx) => {
       const result = await handleCheckGovernance(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
-      return translateV5Result(result);
+      return translateV5Result(projectTaskOutcomeForRelease('check_governance', result, ctx?.servedAdcpVersion));
     },
     reportPlanOutcome: async (req, ctx) => {
       const result = await handleReportPlanOutcome(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
-      return translateV5Result(result);
+      return translateV5Result(projectTaskOutcomeForRelease('report_plan_outcome', result, ctx?.servedAdcpVersion));
     },
     getPlanAuditLogs: async (req, ctx) => {
       const result = await handleGetPlanAuditLogs(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
