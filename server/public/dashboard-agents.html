@@ -2539,6 +2539,12 @@
         const profiles = comparison.profiles && typeof comparison.profiles === 'object'
           ? comparison.profiles
           : {};
+        const legacySelectionDeadline = typeof comparison.legacy_selection_allowed_until === 'string'
+          ? new Date(comparison.legacy_selection_allowed_until)
+          : null;
+        const legacySelectionDeadlineLabel = legacySelectionDeadline && !Number.isNaN(legacySelectionDeadline.getTime())
+          ? legacySelectionDeadline.toLocaleString()
+          : '';
         const cards = profileNames.map(name => {
           const profile = profiles[name] || {};
           // Freshness applies to the complete comparison, not an individual
@@ -2567,11 +2573,12 @@
           };
           const graceDeadline = typeof profile.grace_deadline === 'string' ? profile.grace_deadline : '';
           const parsedDeadline = graceDeadline ? new Date(graceDeadline) : null;
+          const selectionPreview = selected !== name && name !== 'sandbox';
           const deadlineLabel = parsedDeadline && !Number.isNaN(parsedDeadline.getTime())
-            ? ` Grace deadline: ${parsedDeadline.toLocaleString()}.`
+            ? ` ${selectionPreview ? 'Estimated grace deadline if selected now' : 'Grace deadline'}: ${parsedDeadline.toLocaleString()}.`
             : '';
           const publicEffectCopy = publicEffect
-            ? `${effectLabels[publicEffect]}${deadlineLabel}`
+            ? `${selectionPreview ? `If you select ${profileLabels[name]} now: ` : ''}${effectLabels[publicEffect]}${deadlineLabel}`
             : '';
           const canSelect = comparison.scope === 'badge'
             && comparison.selection_enabled === true
@@ -2614,6 +2621,7 @@
               : `Agent-wide grading preview · ${escapeHtml(version)}`}</strong>
             <span>${escapeHtml(freshness)}</span>
           </div>
+          ${legacySelectionDeadlineLabel ? `<div class="grading-profile-note"><strong>Legacy grading selection deadline:</strong> ${escapeHtml(legacySelectionDeadlineLabel)}</div>` : ''}
           <div class="grading-profile-grid">${cards}</div>
           <details class="grading-profile-provenance">
             <summary>Evidence and provenance</summary>
