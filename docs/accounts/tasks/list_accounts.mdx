@@ -15,8 +15,10 @@ limited to relationships first provisioned through [`sync_accounts`](/docs/accou
 `list_accounts` returns accounts, and every account has an `account_id`. A
 seller that keeps pending provisioning as [account requests](/docs/accounts/tasks/request_account)
 (experimental in 3.3) lists the account only once its request resolves; until
-then, read the request through [`get_account_requests`](/docs/accounts/tasks/get_account_requests),
-or replay `sync_accounts` with the same natural key.
+then, read the request in `account_requests[]` by setting `include_requests: true`
+(or `request_ids`). Requests page separately from accounts: `account_requests_pagination`
+in the response, `requests_pagination` in the request. The top-level `pagination` pages
+accounts only.
 
 For upstream-managed account namespaces, `list_accounts` is not optional discovery polish; it is the namespace discovery contract. The upstream platform owns the accessible account set, so buyers MUST resolve an explicit `account_id` before the first account-scoped request. If the authenticated credential can access more than one account, the seller MUST expose `list_accounts`; if it can access exactly one account, the seller SHOULD expose `list_accounts` returning that singleton so SDKs can auto-select it and still send `{ "account_id": "..." }` on required-account calls. [`sync_accounts`](/docs/accounts/tasks/sync_accounts) provisioning does not create account-id accounts in 3.0.x unless a future explicit capability declares that mode; if `sync_accounts` is exposed on these sellers today, use it only for settings updates against an account already identified by `account_id`.
 
@@ -85,7 +87,10 @@ seller-assigned `account_id`, or to find buyer-declared accounts by natural key.
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform. |
 | `include_webhook_activity` | boolean | No | When true, request recent webhook delivery attempts for each returned account in `webhook_activity[]`. |
 | `webhook_activity_limit` | integer | No | Maximum number of `webhook_activity[]` records to return per account when `include_webhook_activity` is true. Default 50, max 200. |
-| `pagination` | object | No | Pagination cursor for large account sets. |
+| `pagination` | object | No | Pagination cursor for large account sets. Pages `accounts` only. |
+| `include_requests` | boolean | No | Experimental (`account.requests`). Also return the caller's [account requests](/docs/accounts/tasks/request_account) in `account_requests[]`: every open request plus requests that changed state in the last 30 days. |
+| `request_ids` | array | No | Experimental. Return only these requests; implies `include_requests`. Unknown IDs and other callers' IDs are omitted silently. |
+| `requests_pagination` | object | No | Experimental. Pages `account_requests[]` independently of accounts; implies `include_requests`. |
 
 ## Response
 
@@ -93,7 +98,9 @@ seller-assigned `account_id`, or to find buyer-declared accounts by natural key.
 |-------|-------------|
 | `accounts` | Array of account objects (see below) |
 | `errors` | Array of errors, if the request failed |
-| `pagination` | Pagination cursor for the next page, if more results exist |
+| `pagination` | Pagination cursor for the next page of `accounts`, if more exist |
+| `account_requests` | Experimental. The caller's account requests, when `include_requests`, `request_ids`, or `requests_pagination` was sent. Requests are not accounts: an open request has no `account_id` until it resolves. |
+| `account_requests_pagination` | Experimental. Paging for `account_requests[]`. |
 
 **Each account includes:**
 
@@ -104,11 +111,11 @@ seller-assigned `account_id`, or to find buyer-declared accounts by natural key.
 | `brand` | Brand reference: `domain`, optional `brand_id`, and the optional `countries[]` account attribute. Countries are not delivery targeting. |
 | `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
 | `operator_unit` | Optional operator-owned unit, an account attribute. `name` is display metadata. |
-| `revision` | Current account optimistic-concurrency revision. Pass it in the next [`sync_accounts`](/docs/accounts/tasks/sync_accounts) settings update. |
+| `revision` | Current account optimistic-concurrency revision. Pass it in the next [`request_account`](/docs/accounts/tasks/request_account) change or [`sync_accounts`](/docs/accounts/tasks/sync_accounts) settings update. |
 | `identity_change` | **Deprecated in 3.3.** Pending or rejected desired operator identity. While present, `operator` and `operator_unit` remain the current canonical identity. Poll until the change applies or is rejected. |
 | `currency` | Optional account currency. When present, media buys on the account must use it. |
 | `timezone` | Operational timezone for the account. It is the default for account-scoped calendar behavior unless a feature explicitly declares another timezone basis. |
-| `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
+| `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. With a seller that keeps pending accounts as [requests](/docs/accounts/tasks/request_account), `pending_approval` and `rejected` appear on the request, not on an account. |
 | `billing` | Billing model in effect: `operator` or `agent` |
 | `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/by-layer/L2/accounts-and-agents#account-scope). |
 | `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. Binding for all invoices when the account is active. |
@@ -144,7 +151,7 @@ Runners SHOULD grade pagination-walk phases as `not_applicable` in either case. 
 
 ### Poll until account becomes active
 
-After [`sync_accounts`](/docs/accounts/tasks/sync_accounts) returns `pending_approval`, poll until the account is ready:
+After [`sync_accounts`](/docs/accounts/tasks/sync_accounts) returns `pending_approval`, poll until the account is ready. With [`request_account`](/docs/accounts/tasks/request_account), poll the request instead, with `request_ids`:
 
 <CodeGroup>
 
@@ -279,10 +286,11 @@ asyncio.run(main())
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) | No accounts found for this agent | Run [`sync_accounts`](/docs/accounts/tasks/sync_accounts) first to establish a buying relationship |
+| [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) | No accounts found for this agent | Open an account first with [`request_account`](/docs/accounts/tasks/request_account) (when the seller supports `account.requests`) or [`sync_accounts`](/docs/accounts/tasks/sync_accounts) |
 
 ## Next Steps
 
+- [request_account](/docs/accounts/tasks/request_account) — Open or change an account (experimental, `account.requests`)
 - [sync_accounts](/docs/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller
 - [sync_governance](/docs/accounts/tasks/sync_governance) — Sync governance agents to accounts
 - [Accounts and agents](/docs/building/by-layer/L2/accounts-and-agents) — Billing models, trust models, and authorized operators

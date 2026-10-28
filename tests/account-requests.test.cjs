@@ -2,7 +2,7 @@
 
 /**
  * Schema contract for experimental account requests (account.requests, #8280):
- * request_account, get_account_requests, the account_request.changed webhook,
+ * request_account (open or change), list_accounts requests, the account_request.changed webhook,
  * and the sync_accounts projection fields.
  */
 
@@ -145,7 +145,7 @@ test('account.requests capability requires the experimental feature id', () => {
       requests: {
         supported: true,
         request_task: 'request_account',
-        read_task: 'get_account_requests',
+        read_task: 'list_accounts',
         event_type: 'account_request.changed',
       },
     },
@@ -178,8 +178,6 @@ test('new schemas are registered in the index', () => {
   for (const id of [
     '/schemas/account/request-account-request.json',
     '/schemas/account/request-account-response.json',
-    '/schemas/account/get-account-requests-request.json',
-    '/schemas/account/get-account-requests-response.json',
     '/schemas/core/account-request-record.json',
     '/schemas/core/pending-action.json',
     '/schemas/core/account-request-changed-webhook.json',
@@ -189,7 +187,7 @@ test('new schemas are registered in the index', () => {
 });
 
 test('task request schemas are experimental and added in 3.3.0', () => {
-  for (const file of ['account/request-account-request.json', 'account/get-account-requests-request.json']) {
+  for (const file of ['account/request-account-request.json']) {
     const schema = read(file);
     assert.equal(schema['x-status'], 'experimental', file);
     assert.equal(schema['x-added-in'], '3.3.0', file);
@@ -211,4 +209,51 @@ test('list_accounts guidance keeps the account_scope SHOULD and no preference or
   const description = read('account/list-accounts-response.json').properties.accounts.description;
   assert.match(description, /SHOULD return account_scope/);
   assert.match(description, /no preference order/);
+});
+
+test('request_account changes an account by account_id and resolves as updated', () => {
+  const req = read('account/request-account-request.json');
+  assert.ok(req.properties.revision, 'revision guards a change');
+  assert.match(req.properties.revision.description, /Required when the change touches billing, billing_entity, or payment_terms/);
+  assert.match(req.properties.account_id.description, /changes those attributes/);
+  assert.ok(read('enums/account-request-resolution.json').enum.includes('updated'));
+  const v = validate('/schemas/core/account-request-record.json');
+  const account = { account_id: 'acc_1', name: 'Nova NL', status: 'active', revision: 8 };
+  const change = {
+    request_id: 'areq_change_1',
+    requested: { account_id: 'acc_1', revision: 7, brand: { domain: 'nova.example', countries: ['BE', 'NL'] } },
+    created_at: '2026-10-28T09:00:00Z',
+    updated_at: '2026-10-28T09:00:00Z',
+  };
+  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_1', resolution: 'updated', account }), JSON.stringify(v.errors));
+  assert.ok(v({ ...change, state: 'in_review', pending_action: { waiting_on: 'seller', kind: 'review', message: 'Market review.' } }), JSON.stringify(v.errors));
+  assert.equal(v({ ...change, state: 'in_review', account, pending_action: { waiting_on: 'seller', kind: 'review', message: 'x' } }), false, 'no account snapshot while pending');
+});
+
+test('list_accounts returns the caller\'s requests; get_account_requests is gone', () => {
+  const req = read('account/list-accounts-request.json');
+  assert.ok(req.properties.include_requests && req.properties.request_ids && req.properties.requests_pagination);
+  assert.ok(read('account/list-accounts-response.json').properties.account_requests_pagination, 'requests page independently of accounts');
+  const v = validate('/schemas/account/list-accounts-response.json');
+  const request = { request_id: 'areq_1', state: 'in_review', requested: { brand: { domain: 'nova.example' }, operator: 'pinnacle.example' }, pending_action: { waiting_on: 'seller', kind: 'review', message: 'Reviewing.' }, created_at: '2026-10-28T09:00:00Z', updated_at: '2026-10-28T09:00:00Z' };
+  assert.ok(v({ status: 'completed', accounts: [], account_requests: [request] }), JSON.stringify(v.errors));
+  assert.equal(fs.existsSync(path.join(SCHEMAS, 'account/get-account-requests-request.json')), false);
+  assert.equal(JSON.stringify(read('index.json')).includes('get-account-requests'), false);
+});
+
+test('sync_accounts stays stable, and subscription-only entries never provision', () => {
+  const sync = read('account/sync-accounts-request.json');
+  assert.equal(sync['x-deprecated-in'], undefined, 'not machine-deprecated while account.requests is experimental');
+  assert.match(sync.description, /stays stable and available in 3\.3/);
+  assert.match(sync.description, /subscription write: it MUST name an account the caller already holds/);
+});
+
+test('request_account change mode is authorized, reachability-first, and continues open requests', () => {
+  const req = read('account/request-account-request.json');
+  assert.ok(req.properties.request_id, 'request_id continues an open request');
+  assert.match(req.description, /answers an unreachable account exactly as an unknown one, before any other validation/);
+  assert.match(req.description, /SCOPE_INSUFFICIENT, READ_ONLY_SCOPE, or FIELD_NOT_PERMITTED/);
+  assert.match(req.description, /re-checks revision when it resolves/);
+  const caps = read('protocol/get-adcp-capabilities-response.json').properties.account.properties.requests.oneOf[0].properties;
+  assert.ok(caps.changeable_attributes, 'sellers declare which attributes they change');
 });

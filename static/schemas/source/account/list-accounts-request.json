@@ -34,6 +34,29 @@
       "type": "boolean",
       "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform."
     },
+    "include_requests": {
+      "type": "boolean",
+      "default": false,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). When true, also return the caller's account requests in account_requests[]: every open request (in_review or ambiguous) plus requests that changed state in the last 30 days. Sellers retain resolved and rejected requests for at least 30 days after their last state change. Only the caller's own requests are returned."
+    },
+    "request_ids": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). Return only these requests in account_requests[]; implies include_requests. Unknown IDs, and IDs belonging to other callers, are omitted silently.",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true
+    },
+    "requests_pagination": {
+      "$ref": "/schemas/core/pagination-request.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). Pages account_requests[] independently of accounts; implies include_requests. Pass the cursor from account_requests_pagination to read the next page. The top-level pagination field pages accounts only."
+    },
     "include_webhook_activity": {
       "type": "boolean",
       "default": false,

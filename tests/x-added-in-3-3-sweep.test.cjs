@@ -24,7 +24,6 @@ const WHOLE_FILE_3_3 = [
   'enums/pending-action-party.json',
   'error-details/account-ambiguous.json',
   'account/request-account-response.json',
-  'account/get-account-requests-response.json',
   'core/audience-size.json',
   'enums/audience-size-precision.json',
   'enums/audience-match-rate-basis.json',
@@ -44,6 +43,11 @@ const WHOLE_FILE_3_3 = [
 ];
 
 const PROPERTIES_3_3 = [
+  ['account/list-accounts-request.json', ['properties', 'include_requests']],
+  ['account/list-accounts-request.json', ['properties', 'request_ids']],
+  ['account/list-accounts-response.json', ['properties', 'account_requests']],
+  ['account/list-accounts-response.json', ['properties', 'account_requests_pagination']],
+  ['account/list-accounts-request.json', ['properties', 'requests_pagination']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'request_id']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'resolution']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'setup', 'properties', 'waiting_on']],

@@ -1889,16 +1889,6 @@
     "account": {
       "description": "Account management task request/response schemas",
       "tasks": {
-        "get-account-requests": {
-          "request": {
-            "$ref": "/schemas/account/get-account-requests-request.json",
-            "description": "Experimental: request parameters for reading the caller's account requests"
-          },
-          "response": {
-            "$ref": "/schemas/account/get-account-requests-response.json",
-            "description": "Experimental: the caller's account requests and their current state"
-          }
-        },
         "list-account-changes": {
           "request": {
             "$ref": "/schemas/account/list-account-changes-request.json",
