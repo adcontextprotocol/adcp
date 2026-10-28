@@ -5,7 +5,7 @@ class: normative
 status: proposed
 date: 2026-10-27
 decided_by: pending WG ratification
-refs: ["#8501", "PR #8502", "#8518", "PR #8523", "PR #8524", "DR-0009", "DR-0019", "DR-0024", "DR-0034"]
+refs: ["#8501", "PR #8502", "#8518", "PR #8531", "PR #8547", "DR-0009", "DR-0019", "DR-0024", "DR-0034"]
 supersedes: DR-0019  # in part: "adding an optional field to a closed schema is a minor change"
 dissent: none recorded
 ---
@@ -69,7 +69,7 @@ Two corrections are recorded:
 | Correction | Source text | Ships in | Check entries |
 |---|---|---|---|
 | (a) Reopen the 3.2 proposal flow | DR-0019 | 3.3.0, and a 3.2.x patch | The table under (a) |
-| (b) Declare the `adcp_version` echo on closed task responses | `docs/reference/versioning.mdx` | 3.3.0 (#8523), and a 3.2.x patch (#8524) | Added by #8523/#8524 |
+| (b) Compose the protocol envelope on closed task responses | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | None: (a) covers every location |
 
 #### (a) Reopen the 3.2 proposal flow
 
@@ -135,18 +135,33 @@ only when its served release is 3.3 or later (DR-0024). A request carries them
 only when the negotiated release is 3.3 or later. A request that names only the
 major is served the oldest supported release (DR-0034), so it never gets them.
 
-#### (b) Declare the `adcp_version` echo on closed task responses
+#### (b) Compose the protocol envelope on closed task responses
 
-`docs/reference/versioning.mdx` requires the echo on every response:
-"`adcp_version` on every response tells the buyer which release the seller
-actually served." The same page requires each response to validate against the
-served release's schema. Several closed task responses rejected the key, so a
-conforming seller could not meet both rules (#8518).
+On MCP and REST, the protocol envelope's fields sit next to the body fields at
+the response root. The published spec text requires a response to carry them:
 
-This correction declares `adcp_version` on those responses. #8523 implements it
-for 3.3, and #8524 for a 3.2.x patch. This record doesn't implement it. Its
-check entries, with property `adcp_version`, and their rows in this section are
-added by #8523/#8524.
+- `core/protocol-envelope.json`, as published in 3.2.7: "The `status` field is
+  REQUIRED on every task response envelope". Its notes add: "Task response
+  schemas (e.g., get-products-response.json) define ONLY the body fields;
+  protocol-layer fields live on this envelope."
+- `docs/reference/versioning.mdx`: "`adcp_version` on every response tells the
+  buyer which release the seller actually served."
+
+Several task responses were published closed without composing the envelope,
+so they rejected `status`, `adcp_version`, and the other envelope fields. A
+conforming seller could not meet both the envelope and the response schema
+(#8518).
+
+This correction composes `core/protocol-envelope.json` into every task response
+and async status payload. The schema build declares each envelope field on
+every closed root and `oneOf`/`anyOf` branch. 3.3.0 ships it (#8547), and a
+3.2.x patch ships it too.
+
+It needs no check entries of its own. Every closed location that gains an
+envelope field is a proposal-flow response root or branch that (a) reopens
+with `*`. So the additive-minor check is satisfied by (a), and this section
+records the contract reason for the envelope fields. A later envelope field on
+a schema that stays closed needs an entry here.
 
 ## Rationale
 
