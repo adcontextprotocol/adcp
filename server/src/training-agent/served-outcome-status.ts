@@ -21,8 +21,10 @@ export const OUTCOME_FIELD_RENAMED_FROM_STATUS: Readonly<Record<string, string>>
 
 /**
  * Shapes a handler result for the served release: on a served 3.0 the
- * outcome moves back into `status`. Results for other tools and releases, and
- * results without the outcome field (errors), are returned unchanged.
+ * outcome is also carried in `status`, as the 3.0 schemas define it. The 3.1
+ * field stays: the 3.0 response schemas are open, and in-process readers use
+ * it. Results for other tools and releases, and results without the outcome
+ * field (errors), are returned unchanged.
  */
 export function projectTaskOutcomeForRelease<T>(toolName: string, result: T, servedVersion: string | undefined): T {
   const field = OUTCOME_FIELD_RENAMED_FROM_STATUS[toolName];
@@ -30,6 +32,5 @@ export function projectTaskOutcomeForRelease<T>(toolName: string, result: T, ser
   if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
   const record = result as Record<string, unknown>;
   if (typeof record[field] !== 'string') return result;
-  const { [field]: outcome, ...rest } = record;
-  return { ...rest, status: outcome } as T;
+  return { ...record, status: record[field] } as T;
 }

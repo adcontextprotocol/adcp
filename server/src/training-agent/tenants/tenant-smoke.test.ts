@@ -4266,7 +4266,6 @@ describe('tenant routing smoke', () => {
 
       const threeZero = await check(5, '3.0');
       expect(threeZero, JSON.stringify(threeZero)).toMatchObject({ status: 'approved' });
-      expect(threeZero).not.toHaveProperty('verdict');
 
       // report_plan_outcome at a 3.0 pin carries the outcome state in status,
       // on the first call and on its idempotent replay.
@@ -4282,14 +4281,12 @@ describe('tenant routing smoke', () => {
       }));
       const reportedThreeZero = await reportThreeZero(8);
       expect(reportedThreeZero, JSON.stringify(reportedThreeZero)).toMatchObject({ status: 'accepted' });
-      expect(reportedThreeZero).not.toHaveProperty('outcome_state');
       const replayedThreeZero = await reportThreeZero(9);
       expect(replayedThreeZero, JSON.stringify(replayedThreeZero)).toMatchObject({
         status: 'accepted',
         outcome_id: reportedThreeZero!.outcome_id,
         replayed: true,
       });
-      expect(replayedThreeZero).not.toHaveProperty('outcome_state');
 
       const approval = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'creative_approval', {
         ...(version && { adcp_version: version }),
@@ -4303,7 +4300,6 @@ describe('tenant routing smoke', () => {
       expect(approvedValidation.valid, JSON.stringify(approvedValidation.errors)).toBe(true);
       const threeZeroApproval = await approval(7, '3.0');
       expect(threeZeroApproval, JSON.stringify(threeZeroApproval)).toMatchObject({ status: 'approved' });
-      expect(threeZeroApproval).not.toHaveProperty('approval_status');
 
       const acquire = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'acquire_rights', {
         idempotency_key: `tenant-envelope-status-rights-${id}`,
@@ -4318,7 +4314,6 @@ describe('tenant routing smoke', () => {
       expect(acquired, JSON.stringify(acquired)).toMatchObject({ status: 'completed', rights_status: 'acquired' });
       const acquiredThreeZero = await acquire(11, '3.0');
       expect(acquiredThreeZero, JSON.stringify(acquiredThreeZero)).toMatchObject({ status: 'acquired' });
-      expect(acquiredThreeZero).not.toHaveProperty('rights_status');
     } finally {
       await close();
     }

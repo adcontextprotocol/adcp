@@ -25018,12 +25018,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // before the envelope-fold landed, or handlers that emitted bodies
         // without status). Per #4878, every per-task response schema now
         // requires envelope `status`.
-        const replayBody = projectProductDiscoveryResult(
+        const replayBody = projectTaskOutcomeForRelease(name, projectProductDiscoveryResult(
           name,
           outcome.response as Record<string, unknown>,
           initialHandlerArgs,
           servedAdcpVersion,
-        );
+        ), servedAdcpVersion);
         const body: Record<string, unknown> = { ...replayBody, replayed: true };
         if (!isTaskRequest && body.status === undefined) body.status = 'completed';
         body.adcp_version = servedAdcpVersion;
@@ -25223,7 +25223,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `completed` on synchronous success — handlers that emit a different
         // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
         // `inner` and we honor that value.
-        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs, servedAdcpVersion);
+        const outwardInner = projectTaskOutcomeForRelease(
+          name,
+          projectProductDiscoveryResult(name, inner, initialHandlerArgs, servedAdcpVersion),
+          servedAdcpVersion,
+        );
         const response: Record<string, unknown> = { ...outwardInner };
         if (response.status === undefined) response.status = 'completed';
         response.adcp_version = servedAdcpVersion;

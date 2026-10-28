@@ -17116,7 +17116,9 @@ describe('activate_signal handler', () => {
       buyer: { domain: 'signal-test.example' },
       campaign: { description: 'Athletic campaign', uses: ['likeness'] },
     });
-    expect(acquired.result.status).toBe('completed');
+    // An unpinned call is served 3.0, which carries the rights status in
+    // `status` (served-outcome-status.ts).
+    expect(acquired.result.status).toBe('rejected');
     expect(acquired.result.rights_status).toBe('rejected');
     expect(acquired.result.reason).toContain('governance approval');
 
