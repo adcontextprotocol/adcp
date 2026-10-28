@@ -1381,6 +1381,12 @@
                 "supported": { "type": "boolean", "const": true },
                 "request_task": { "type": "string", "const": "request_account" },
                 "read_task": { "type": "string", "const": "list_accounts" },
+                "changeable_attributes": {
+                  "type": "array",
+                  "description": "Account attributes this seller accepts in request_account change requests (account_id plus fields). Absent or empty means the seller supports opening accounts only. Advisory: sellers still validate each change.",
+                  "items": { "type": "string", "enum": ["countries", "operator_unit", "billing", "billing_entity", "payment_terms", "currency", "timezone"] },
+                  "uniqueItems": true
+                },
                 "event_type": {
                   "type": "string",
                   "const": "account_request.changed",
@@ -1408,7 +1414,8 @@
                   { "required": ["request_task"] },
                   { "required": ["read_task"] },
                   { "required": ["event_type"] },
-                  { "required": ["pending_action_kinds"] }
+                  { "required": ["pending_action_kinds"] },
+                  { "required": ["changeable_attributes"] }
                 ]
               },
               "additionalProperties": true

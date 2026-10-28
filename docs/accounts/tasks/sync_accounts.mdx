@@ -5,9 +5,11 @@ description: "sync_accounts provisions buyer-declared accounts or updates settin
 testable: false
 ---
 
-<Warning>
-**Deprecated in 3.3; removed in 4.0** ([#8543](https://github.com/adcontextprotocol/adcp/issues/8543)). Open and change accounts with [`request_account`](/docs/accounts/tasks/request_account), read accounts and their requests with [`list_accounts`](/docs/accounts/tasks/list_accounts), and register webhooks and reporting on the principal with [`sync_principal`](/docs/protocol/sync_principal). Sellers keep serving `sync_accounts` throughout 3.x for buyers that haven't moved. Until then, an entry that carries only `notification_configs` and/or `reporting_delivery_configs` is a **subscription write**: the seller MUST NOT provision, verify brand or operator authorization, run account review, or change account attributes for it.
-</Warning>
+<Note>
+**Superseded where the seller supports `account.requests`** ([#8543](https://github.com/adcontextprotocol/adcp/issues/8543)). There, open and change accounts with [`request_account`](/docs/accounts/tasks/request_account), read accounts and their requests with [`list_accounts`](/docs/accounts/tasks/list_accounts), and register webhooks and reporting on the principal with [`sync_principal`](/docs/protocol/sync_principal). `sync_accounts` stays stable and available in 3.3, and it is the path with sellers that don't support `account.requests`. Its formal deprecation follows `account.requests` leaving experimental status.
+
+An entry that carries only `notification_configs` and/or `reporting_delivery_configs` is a **subscription write**. It MUST name an account the caller already holds (otherwise [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found)), and the seller MUST NOT provision, run account review, or change account attributes for it.
+</Note>
 
 Sync advertiser accounts with a seller for one or more advertiser/operator relationships, or update settings on existing accounts when the seller exposes that mode. A provisioning entry names the account's parties, a brand and an operator. It also sets the account's attributes, such as the countries it serves, an operator-owned unit, a fixed currency, a timezone, and sandbox status. The seller returns the `account_id` that identifies the account from then on.
 

@@ -241,9 +241,19 @@ test('list_accounts returns the caller\'s requests; get_account_requests is gone
   assert.equal(JSON.stringify(read('index.json')).includes('get-account-requests'), false);
 });
 
-test('sync_accounts is superseded in 3.3 and subscription-only entries never provision', () => {
+test('sync_accounts stays stable, and subscription-only entries never provision', () => {
   const sync = read('account/sync-accounts-request.json');
-  assert.equal(sync['x-deprecated-in'], '3.3.0');
-  assert.deepEqual(sync['x-superseded-by'], ['request_account', 'list_accounts', 'sync_principal']);
-  assert.match(sync.description, /subscription write: the seller MUST NOT provision/);
+  assert.equal(sync['x-deprecated-in'], undefined, 'not machine-deprecated while account.requests is experimental');
+  assert.match(sync.description, /stays stable and available in 3\.3/);
+  assert.match(sync.description, /subscription write: it MUST name an account the caller already holds/);
+});
+
+test('request_account change mode is authorized, reachability-first, and continues open requests', () => {
+  const req = read('account/request-account-request.json');
+  assert.ok(req.properties.request_id, 'request_id continues an open request');
+  assert.match(req.description, /answers an unreachable account exactly as an unknown one, before any other validation/);
+  assert.match(req.description, /SCOPE_INSUFFICIENT, READ_ONLY_SCOPE, or FIELD_NOT_PERMITTED/);
+  assert.match(req.description, /re-checks revision when it resolves/);
+  const caps = read('protocol/get-adcp-capabilities-response.json').properties.account.properties.requests.oneOf[0].properties;
+  assert.ok(caps.changeable_attributes, 'sellers declare which attributes they change');
 });

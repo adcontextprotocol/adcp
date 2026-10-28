@@ -22,7 +22,7 @@ Getting an account usually involves a person. When a storefront receives "WPP Me
 
 ## When to call
 
-Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) advertises `account.requests.supported: true` and lists `account.requests` in `experimental_features`. Otherwise, fall back to [`sync_accounts`](/docs/accounts/tasks/sync_accounts), which is deprecated in 3.3 and kept for compatibility through 3.x.
+Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) advertises `account.requests.supported: true` and lists `account.requests` in `experimental_features`. Otherwise, use [`sync_accounts`](/docs/accounts/tasks/sync_accounts), which stays stable and available in 3.3. `account.requests.changeable_attributes` lists the attributes a seller accepts in change requests; absent or empty means it supports opening accounts only.
 
 - **Agent-declared sellers** (storefronts, inventory sources, house seats): `request_account` is the way to get an account.
 - **Sellers that own their account namespace** (platforms where the credential's access decides which accounts exist): `request_account` is optional. When offered, it matches among accounts the credential already reaches, or returns a buyer action such as creating an ad account or asking the brand to grant access. Sellers that don't offer it rely on [`list_accounts`](/docs/accounts/tasks/list_accounts), and the brand-to-account mapping stays on the buyer side.
@@ -33,7 +33,7 @@ Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities
 | --- | --- | --- |
 | `in_review` | `pending_action` | `waiting_on: seller`: wait for `account_request.changed` or poll [`list_accounts`](/docs/accounts/tasks/list_accounts) with `request_ids`. `waiting_on: buyer`: show `pending_action.url` to a human, then keep waiting. |
 | `resolved` | `account_id`, `resolution` (`matched`, `created`, or `updated`), and for a change the updated `account` | Store `account_id` and send it on every account-scoped task. |
-| `ambiguous` | `candidates[]` | A human picks one; call `request_account` again with that `account_id`. |
+| `ambiguous` | `candidates[]` | A human picks one; call `request_account` with that `account_id` and the open `request_id`, and the request resolves as `matched`. |
 | `rejected` | `errors[]` | Tell a human. A new request for the same key opens a new request. |
 
 `in_review` and `ambiguous` are open; `resolved` and `rejected` are terminal for that request. A seller that approves automatically resolves in the same response. A seller that reviews starts `in_review` with `waiting_on: seller`.
@@ -54,6 +54,7 @@ Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities
 | `billing` | No | Requested invoiced party: `operator`, `agent`, or `advertiser`. Accepted exactly or rejected. |
 | `billing_entity` | No | Requested business entity for the invoiced party. Bank details are write-only. |
 | `payment_terms` | No | Requested terms. Accepted or rejected, never silently remapped. |
+| `request_id` | No | Continue one of your own open requests: with `account_id`, pick a candidate from an `ambiguous` request or name the account a human created after a `sign_up` action (the request resolves as `matched`); with change fields, replace that change request. |
 | `account_id` | To change or select | Change this account: every other field present is a requested change. With no other fields, select it: a candidate from an `ambiguous` result, or an account the credential doesn't reach yet. |
 | `revision` | For money changes | With `account_id`: the account revision a change is based on. **Required** when the change touches `billing`, `billing_entity`, or `payment_terms`, since a lost update there costs money; optional otherwise. A stale revision fails with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) and changes nothing. |
 
@@ -91,7 +92,13 @@ The seller validates a changed attribute as it does when the account opens, incl
 - **It reviews the change first:** `state: in_review` with a pending action. The account keeps its current attributes until the request resolves.
 - **It refuses the change:** `state: rejected` with the reason. The account is unchanged.
 
-The account keeps its `account_id`, media buys, and reporting history either way. A new change request for the same account replaces an open one. Changes never alter the account's identity, so there is nothing to retire.
+The account keeps its `account_id`, media buys, and reporting history either way. Changes never alter the account's identity, so there is nothing to retire.
+
+**Who may change an account.** The seller first resolves `account_id` against the caller's own access and answers an unreachable account exactly as an unknown one, before validating anything else in the body, so a probe learns nothing. A change then requires the caller's [grant](/docs/accounts/overview#caller-authorization) on that account to permit `request_account` (or [`sync_accounts`](/docs/accounts/tasks/sync_accounts) settings updates) with `read_only: false`. Changes to `billing`, `billing_entity`, or `payment_terms` also need those fields under `field_scopes`. Otherwise the request fails with [`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient), [`READ_ONLY_SCOPE`](/docs/building/verification/compliance-catalog#error-code-read-only-scope), or [`FIELD_NOT_PERMITTED`](/docs/building/verification/compliance-catalog#error-code-field-not-permitted).
+
+**Concurrent changes.** A change that waits `in_review` re-checks `revision` when it resolves. If the account changed in the meantime, the request is rejected with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) instead of being applied on top. A new change request for the same account from the same caller replaces that caller's open change request, so the new request must carry every change still wanted. The replaced request moves to `rejected` with `CONFLICT` and `details.superseded_by`. Another caller's requests are never affected.
+
+**One account per call.** `request_account` has no batch form. A buyer opening many accounts makes one call per account, which keeps each request's lifecycle separate.
 
 ## Response
 
@@ -170,6 +177,8 @@ A seller that does deduplicate typically answers a repeat as follows:
 
 - **No provisional account IDs.** Never issue an `account_id` that might later change; while a request might match an existing account, issue none until it resolves. Open requests are visible through [`list_accounts`](/docs/accounts/tasks/list_accounts) with `include_requests`, in `account_requests[]`, never as accounts.
 - **No existence oracle.** `matched` and `candidates[]` disclose only accounts the calling agent is, or is now, granted. When the only match is an account another operator or agent holds, every state, pending-action kind, and error the caller sees MUST be one the seller could also return when nothing matches: for example, `review` followed by `sign_up`, a new account, or a rejection with a generic reason.
+- **Check reachability first.** Resolve `account_id` against the caller's access before any other validation, so [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request), [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict), or [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) never reveal that an unreachable account exists.
+- **Never echo write-only fields.** `requested` never includes `billing_entity` bank details or other write-only fields.
 - **Unreachable `account_id`s look like unknown ones.** For an `account_id` the caller can't reach, answer the same way whether or not the account exists: always `rejected` with [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found), or, for sellers that support access requests, always `in_review` with `waiting_on: buyer` and `kind: grant`.
 - **Action URLs aren't bearer links.** Possession of `pending_action.url`, or of a `request_id` in it, MUST NOT by itself be enough to complete the action; the human authenticates with the seller first.
 - **Grant the caller on resolution.** A resolved account appears in the caller's `list_accounts` with its [caller authorization](/docs/accounts/overview#caller-authorization).
@@ -178,9 +187,9 @@ A seller that does deduplicate typically answers a repeat as follows:
 - **Fire `account_request.changed` on every seller-driven transition,** after the new state is readable through `list_accounts`, when the capability declares `event_type`. Sellers that don't fire it leave buyers to poll.
 - **Fold in the agent application.** If the calling agent's own relationship with the seller is not yet active, the seller MAY review it together with its first account request, so the buyer makes one call and the seller one review.
 
-## Relation to `sync_accounts` (deprecated)
+## Relation to `sync_accounts`
 
-[`sync_accounts`](/docs/accounts/tasks/sync_accounts) is deprecated in 3.3 and removed in 4.0. Sellers keep serving it through 3.x for buyers that predate `request_account`, with one internal request record behind both: `sync_accounts` provisioning rows are a projection of it.
+[`sync_accounts`](/docs/accounts/tasks/sync_accounts) stays stable and available in 3.3; its formal deprecation follows `account.requests` leaving experimental status. A seller offering both keeps one internal request record behind them: `sync_accounts` provisioning rows are a projection of it. A `sync_accounts` settings update that lands while a `request_account` change is `in_review` advances the account's revision, so that change fails its revision re-check and is rejected with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict).
 
 | Request state | `sync_accounts` row |
 | --- | --- |
@@ -196,7 +205,7 @@ A seller that does deduplicate typically answers a repeat as follows:
 
 ## Buyer handling
 
-1. If the seller advertises `account.requests`, call `request_account` to open or change accounts. Otherwise use the deprecated [`sync_accounts`](/docs/accounts/tasks/sync_accounts).
+1. If the seller advertises `account.requests`, call `request_account` to open or change accounts. Otherwise use [`sync_accounts`](/docs/accounts/tasks/sync_accounts).
 2. Store `request_id` against (seller, key).
 3. While the request is open, if the seller declares `account.requests.event_type`, register for `account_request.changed` through [`sync_principal`](/docs/protocol/sync_principal) or [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs), or poll [`list_accounts`](/docs/accounts/tasks/list_accounts) with `request_ids` and backoff.
 4. Until it resolves, call discovery tasks without `account`, which returns the seller's public view.
@@ -207,7 +216,8 @@ A seller that does deduplicate typically answers a repeat as follows:
 | Code | When |
 | --- | --- |
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | `account_id` with `operator`, or neither `account_id` nor `brand` + `operator`; a change that names a different brand `domain` or `brand_id`. |
-| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | A change's `revision` is stale. |
+| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | A change's `revision` is stale, at the call or when an `in_review` change resolves; or the request was superseded by a newer change request from the same caller (`details.superseded_by`). |
+| [`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient) / [`READ_ONLY_SCOPE`](/docs/building/verification/compliance-catalog#error-code-read-only-scope) / [`FIELD_NOT_PERMITTED`](/docs/building/verification/compliance-catalog#error-code-field-not-permitted) | The caller's grant on the account doesn't permit the change, or doesn't cover a money field. |
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) (money change) | A change to `billing`, `billing_entity`, or `payment_terms` without `revision`. |
 | [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported) | The requested `billing` isn't in the seller's `supported_billing`. Sellers MAY instead record the request and reject it. |
 | [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | The `idempotency_key` was replayed with a different body. |
