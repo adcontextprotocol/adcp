@@ -28,10 +28,11 @@
  *      how the node treats envelope fields, not body-field contents.
  *   5. `task_id` has one definition, core/task-id.json, which is never empty:
  *      `task_id: ""` adds exactly its minLength error on every response node
- *      and every request that carries a task_id. The envelope requires
- *      `task_id` when `status` is `submitted`, and no submitted node restates
- *      that requirement: without `task_id` a submitted response fails on the
- *      envelope rule alone.
+ *      and every request that carries a task_id.
+ *   6. Every submitted body and branch composes core/task-submitted.json,
+ *      the one place a submitted response requires `task_id`; no schema keys
+ *      task_id on status through `if`/`then`. Without `task_id` a submitted
+ *      response fails on core/task-submitted.json's `required` alone.
  *
  * Requires the built tree (the npm script builds it) and Node 24, as
  * package.json does.
@@ -62,7 +63,10 @@ const BUILT_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const BUILT_ORIGIN = 'https://adcontextprotocol.org/schemas/latest/';
 const PROTOCOL_ENVELOPE_REF = '/schemas/core/protocol-envelope.json';
 const COMPOSITION_KEYWORDS = ['allOf', 'anyOf', 'oneOf'];
-const ENVELOPE_DOCUMENTS = new Set(['core/protocol-envelope.json', 'core/version-envelope.json']);
+// The envelope and the schemas that state envelope rules: core/task-submitted.json
+// is the one place a submitted response requires task_id. They are not
+// response nodes; the rules below grade the responses that compose them.
+const ENVELOPE_DOCUMENTS = new Set(['core/protocol-envelope.json', 'core/version-envelope.json', 'core/task-submitted.json']);
 // The envelope's `payload` groups the body fields in documentation only; it
 // is never serialized on the wire.
 const DOCUMENTARY_ENVELOPE_PROPERTIES = new Set(['payload']);
@@ -482,23 +486,86 @@ test('an empty task_id is rejected on every response node, single fault', async 
   assert.ok(ran > 100, `expected the rule to run on every response node, ran ${ran}`);
 });
 
-test('a submitted response without task_id fails only on the envelope rule', async () => {
-  // Submitted nodes no longer list task_id in their own required lists; the
-  // envelope requires it when status is submitted. The verdict is the same:
-  // the response is rejected, now by the envelope's if/then.
-  const submitted = RESPONSE_NODES.filter(({ node }) => node.properties?.status?.const === 'submitted');
-  assert.ok(submitted.length >= 19, `expected the submitted nodes, found ${submitted.length}`);
-  for (const { rel, pointer, node } of submitted) {
-    assert.ok(!(node.required || []).includes('task_id'), `${rel}#${pointer} restates the envelope's task_id requirement`);
-    const validate = await nodeWithEnvelopeValidator(rel, pointer);
+const TASK_SUBMITTED_REF = '/schemas/core/task-submitted.json';
+
+/** Whether a node composes core/task-submitted.json: through its allOf, or through a document it names that does. */
+function composesTaskSubmitted(node, seen = new Set()) {
+  if (!node || typeof node !== 'object') return false;
+  const members = [...(node.allOf || []), ...(typeof node.$ref === 'string' ? [{ $ref: node.$ref }] : [])];
+  for (const member of members) {
+    if (!member || typeof member.$ref !== 'string') continue;
+    if (member.$ref === TASK_SUBMITTED_REF) return true;
+    const target = documentOf(member.$ref);
+    if (target && !seen.has(target)) {
+      seen.add(target);
+      if (composesTaskSubmitted(readSource(target), seen)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A submitted response body or branch: a `*-async-response-submitted.json`
+ * document, core/compact-task-submitted.json, or a branch titled as the
+ * submitted acknowledgement.
+ */
+function isSubmittedNode({ rel, pointer, node }) {
+  if (pointer === '' && (/-async-response-submitted\.json$/.test(rel) || rel === 'core/compact-task-submitted.json')) return true;
+  return typeof node.title === 'string' && /submitted$/i.test(node.title.replace(/\s+/g, ''));
+}
+
+const SUBMITTED_NODES = RESPONSE_NODES.filter(isSubmittedNode);
+
+test('every submitted body and branch composes core/task-submitted.json', () => {
+  assert.ok(SUBMITTED_NODES.length >= 19, `expected the submitted bodies and branches, found ${SUBMITTED_NODES.length}`);
+  assert.deepEqual(SUBMITTED_NODES.filter((entry) => !composesTaskSubmitted(entry.node)).map(({ rel, pointer }) => `${rel}#${pointer}`), [],
+    'a submitted body or branch must compose core/task-submitted.json');
+  // The rule lives in one place: no node restates it with a required task_id,
+  // and a status const only stays where an OpenAPI discriminator needs it.
+  const restated = SUBMITTED_NODES.filter(({ node }) => (node.required || []).includes('task_id'))
+    .map(({ rel, pointer }) => `${rel}#${pointer}`);
+  assert.deepEqual(restated, [], 'a submitted node restates core/task-submitted.json');
+  const pinned = RESPONSE_NODES
+    .filter(({ node }) => node.properties?.status?.const === 'submitted' && !composesTaskSubmitted(node))
+    .map(({ rel, pointer }) => `${rel}#${pointer}`);
+  assert.deepEqual(pinned, [], 'a status: submitted branch must compose core/task-submitted.json');
+});
+
+test('no schema keys task_id on status through if/then', () => {
+  const conditional = [];
+  (function walkFiles(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walkFiles(full);
+      else if (entry.name.endsWith('.json')) {
+        const rel = path.relative(SOURCE_DIR, full).split(path.sep).join('/');
+        (function visit(node, pointer) {
+          if (!node || typeof node !== 'object') return;
+          const condition = node.if;
+          const statusKeyed = condition && typeof condition === 'object' && condition.properties?.status;
+          const submitted = statusKeyed && (condition.properties.status.const === 'submitted'
+            || (condition.properties.status.enum || []).includes('submitted'));
+          const requiresTaskId = [node.then, node.else].some((branch) => (branch?.required || []).includes('task_id'));
+          if (submitted || (statusKeyed && requiresTaskId)) conditional.push(`${rel}#${pointer}`);
+          for (const [key, value] of Object.entries(node)) visit(value, `${pointer}/${key}`);
+        })(readJson(full), '');
+      }
+    }
+  })(SOURCE_DIR);
+  assert.deepEqual(conditional, [], 'core/task-submitted.json is the one place a submitted response requires task_id');
+});
+
+test('a submitted response without task_id fails through core/task-submitted.json', async () => {
+  for (const { rel, pointer, node } of SUBMITTED_NODES) {
+    const validate = await validatorFor(`${BUILT_ORIGIN}${rel}#${pointer}`);
     const control = nodeControl(node, validate);
-    assert.equal(control.task_id, ENVELOPE_VALUES.task_id, `${rel}#${pointer}: the envelope rule must add task_id to the control`);
+    assert.equal(control.status, 'submitted', `${rel}#${pointer}: the control must take status submitted`);
+    assert.equal(control.task_id, ENVELOPE_VALUES.task_id, `${rel}#${pointer}: core/task-submitted.json must add task_id to the control`);
     assert.equal(validate(control), true, `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)}`);
     const { task_id: _removed, ...vector } = control;
-    assert.deepEqual(addedErrors(validate, control, vector), [
-      { instancePath: '', keyword: 'required', params: { missingProperty: 'task_id' } },
-      { instancePath: '', keyword: 'if', params: { failingKeyword: 'then' } },
-    ], `${rel}#${pointer}: a submitted response without task_id must fail on the envelope rule only`);
+    assert.deepEqual(addedErrors(validate, control, vector),
+      [{ instancePath: '', keyword: 'required', params: { missingProperty: 'task_id' } }],
+      `${rel}#${pointer}: a submitted response without task_id must fail on core/task-submitted.json's required only`);
   }
 });
 

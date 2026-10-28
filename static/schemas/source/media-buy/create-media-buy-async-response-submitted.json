@@ -5,14 +5,10 @@
   "description": "Async task envelope returned when create_media_buy cannot be confirmed before the response is emitted. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the media_buy_id and packages land in the terminal result, not this envelope.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-submitted.json" }
   ],
   "properties": {
-    "status": {
-      "type": "string",
-      "const": "submitted",
-      "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, which carries media-buy lifecycle state in `media_buy_status`. See task-status.json for the full task-status enum."
-    },
     "expected_confirmation_at": {
       "type": "string",
       "format": "date-time",
@@ -33,6 +29,5 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["status"],
   "additionalProperties": true
 }

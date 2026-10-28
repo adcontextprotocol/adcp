@@ -103,10 +103,11 @@ describe('get_creative_features retry and reconciliation contract', () => {
     assert.equal(validate({ ...submitted, results: [] }), false);
     assert.equal(validate({ ...submitted, vendor_cost: 0.025 }), false);
 
-    // The envelope requires task_id when status is submitted; the variant
-    // requires only its discriminator.
+    // core/task-submitted.json carries status: submitted and the required
+    // task_id; the variant composes it instead of restating it.
     const submittedVariant = readSchema('creative/get-creative-features-async-response-submitted.json');
-    assert.deepEqual(submittedVariant.required, ['status']);
+    assert.equal(submittedVariant.required, undefined);
+    assert.ok(submittedVariant.allOf.some((member) => member.$ref === '/schemas/core/task-submitted.json'));
   });
 
   it('keeps success, error, and submitted arms mutually exclusive', () => {

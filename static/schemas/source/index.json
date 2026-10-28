@@ -801,6 +801,10 @@
           "$ref": "/schemas/core/pricing-option.json",
           "description": "A pricing model option offered by a publisher for a product"
         },
+        "task-submitted": {
+          "$ref": "/schemas/core/task-submitted.json",
+          "description": "Submitted task acknowledgement: status submitted with a task_id. Every submitted response body and branch composes it"
+        },
         "task-id": {
           "$ref": "/schemas/core/task-id.json",
           "description": "Unique, non-empty identifier of an asynchronous AdCP task: the one definition of task_id"

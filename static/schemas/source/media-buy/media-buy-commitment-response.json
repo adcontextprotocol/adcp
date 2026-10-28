@@ -144,6 +144,7 @@
       }
     },
     {
+      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
       "title": "Commitment Submitted",
       "type": "object",
       "properties": {

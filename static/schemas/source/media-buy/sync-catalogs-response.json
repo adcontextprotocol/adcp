@@ -312,15 +312,11 @@
       }
     },
     {
+      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
       "title": "SyncCatalogsSubmitted",
       "description": "Async task envelope returned when a catalog-only sync cannot be confirmed before the response — for example, when catalog ingestion and deduplication are queued for batch processing. A request containing item_availability_updates or item_availability_queries MUST NOT return this branch because availability operations are synchronous; mixed requests whose catalog work cannot finish synchronously and atomically fail before mutation and are retried as separate calls. For catalog-only requests, the buyer invokes get_task_status with task_id or receives a webhook when the task completes; the per-catalog results land in the terminal result, not this envelope.",
       "type": "object",
       "properties": {
-        "status": {
-          "type": "string",
-          "const": "submitted",
-          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose catalogs array is issued in-line. See task-status.json for the full task-status enum."
-        },
         "errors": {
           "type": "array",
           "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
@@ -335,9 +331,6 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": [
-        "status"
-      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [

@@ -349,6 +349,7 @@
       }
     },
     {
+      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
       "title": "PreviewCreativeSubmitted",
       "type": "object",
       "description": "Async task envelope returned only when the preview_creative request set allow_async to true and rendering cannot complete inline. The buyer polls get_task_status with task_id; the completed preview response is the task result.",
@@ -358,11 +359,6 @@
           "const": "submitted",
           "description": "Preview-response discriminator for the asynchronous arm."
         },
-        "status": {
-          "type": "string",
-          "const": "submitted",
-          "description": "Discriminates this opt-in async envelope from synchronous preview responses."
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -370,10 +366,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": [
-        "response_type",
-        "status"
-      ],
+      "required": ["response_type"],
       "additionalProperties": true
     }
   ],

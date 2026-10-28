@@ -198,8 +198,10 @@ published text says so:
 An empty string identifies no task and cannot be polled, yet most `task_id`
 declarations accepted it. This correction gives `task_id` one definition,
 `core/task-id.json` (`type: string`, `minLength: 1`), that every declaration
-refers to, and requires `task_id` once, in the envelope, when `status` is
-`submitted`. 3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
+refers to, so a `task_id` is never empty. A submitted response requires it
+through one schema, `core/task-submitted.json` (`status: submitted` and a
+required `task_id`), which every submitted response body and branch composes
+through `allOf`. 3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
 
 The check accepts `minLength: 1` at these locations:
 

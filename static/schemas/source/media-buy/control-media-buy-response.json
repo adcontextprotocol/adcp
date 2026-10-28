@@ -71,6 +71,7 @@
       }
     },
     {
+      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
       "title": "Control Submitted",
       "type": "object",
       "properties": {

@@ -5,14 +5,10 @@
   "description": "Async acknowledgement returned after get_creative_features accepts a provider evaluation but cannot complete it within the response window. Exact keyed request replays return this original acknowledgement with replayed: true and the same task_id. In AdCP 3.x providers SHOULD also return evaluation_id; it becomes required in AdCP 4.0. When present, exact replays and terminal results preserve it. The caller polls get_task_status using task_id.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-submitted.json" }
   ],
   "properties": {
-    "status": {
-      "type": "string",
-      "const": "submitted",
-      "description": "Task-level status literal that discriminates this acknowledgement from terminal success and error responses."
-    },
     "evaluation_id": {
       "type": "string",
       "minLength": 1,
@@ -26,9 +22,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "status"
-  ],
   "additionalProperties": true,
   "not": {
     "anyOf": [
