@@ -70,6 +70,7 @@ jobs:
 
       - name: Create docs snapshot
         run: |
+          set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
 
           # Determine source ref
@@ -84,14 +85,11 @@ jobs:
 
           # Remove existing version if present (allows re-running)
           rm -rf "dist/docs/$VERSION"
+          mkdir -p "dist/docs/$VERSION"
 
-          # Extract docs from the release tag
-          git archive "$SOURCE_REF" -- docs | tar -x -C "dist/docs/$VERSION" --strip-components=1 || {
-            mkdir -p "dist/docs/$VERSION"
-            git archive "$SOURCE_REF" -- docs | tar -x
-            mv docs/* "dist/docs/$VERSION/"
-            rmdir docs 2>/dev/null || true
-          }
+          # Extract into the snapshot directly. Overlaying the archive onto the
+          # live docs tree would retain pages added after the release tag.
+          git archive "$SOURCE_REF" -- docs | tar -x -C "dist/docs/$VERSION" --strip-components=1
 
           echo "Created docs snapshot at dist/docs/$VERSION"
           ls -la "dist/docs/$VERSION" | head -10
@@ -125,9 +123,6 @@ jobs:
           add-paths: |
             dist/docs/${{ steps.version.outputs.version }}/
             docs.json
-
-      - name: Enable auto-merge
-        if: steps.create-pr.outputs.pull-request-number
-        run: gh pr merge --auto --squash "${{ steps.create-pr.outputs.pull-request-number }}"
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+            llms-current.md
+            .dockerignore
+            server/src/addie/mcp/schema-tools.ts
