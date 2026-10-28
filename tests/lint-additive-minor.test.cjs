@@ -656,12 +656,16 @@ test('the repository corrections list is valid', () => {
   assert.deepEqual(result.errors, []);
 });
 
-test('DR-0036 has correction tables the check can read', () => {
-  const decisions = path.join(__dirname, '..', 'governance', 'decisions');
-  const record = fs.readdirSync(decisions).find((name) => name.startsWith('DR-0036-'));
+test('the repository corrections list holds exactly the correction tables of DR-0036', () => {
+  const root = path.join(__dirname, '..');
+  const value = JSON.parse(fs.readFileSync(path.join(root, 'scripts', 'lint-additive-minor-corrections.json'), 'utf8'));
+  const decisions = path.join(root, 'governance', 'decisions');
+  const record = fs.readdirSync(decisions).find((name) => name.startsWith(`${value.decision}-`));
   const recorded = recordedCorrections(fs.readFileSync(path.join(decisions, record), 'utf8'));
   assert.ok(recorded.size > 0, `${record} has no correction tables`);
-  assert.ok(recorded.has('media-buy/list-products-request.json# *'));
+  const listed = value.corrections.map((entry) => `${entry.file}#${entry.pointer} ${entry.property}`);
+  assert.deepEqual(listed.filter((key) => !recorded.has(key)), [], 'listed but not in the tables');
+  assert.deepEqual([...recorded].filter((key) => !listed.includes(key)), [], 'in the tables but not listed');
 });
 
 // ---------------------------------------------------------------------------

@@ -209,6 +209,10 @@ test('2.5, 3.0, and 3.1 preserve products-only brief discovery through an explic
     const fabricatedFence = structuredClone(vector.compact_projection);
     fabricatedFence.feed_version = `synthetic-${vector.source_version}`;
     assert.equal(validateCompact(fabricatedFence), false, `${vector.source_version} must not fabricate a feed fence`);
+
+    const fabricatedPricingFence = structuredClone(vector.compact_projection);
+    fabricatedPricingFence.pricing_version = `synthetic-${vector.source_version}`;
+    assert.equal(validateCompact(fabricatedPricingFence), false, `${vector.source_version} must not fabricate a pricing fence`);
   }
 });
 

@@ -51,6 +51,10 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
+// The canonical Product's `not`, as the projection serializes it.
+const CANONICAL_PRODUCT_PROHIBITION = JSON.stringify({
+  not: JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, 'core', 'canonical-product.json'), 'utf8')).not,
+}).slice(1, -1);
 // The generated profiles describe the active surface of the package's release
 // line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
 // manifest declares via added_in; once the line has a stable release it is the
@@ -1110,7 +1114,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
-      assert.doesNotMatch(output, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
+      // The canonical Product forbids the legacy Product's keys by name;
+      // forbidding them does not expose them.
+      const exposed = output.replaceAll(CANONICAL_PRODUCT_PROHIBITION, '');
+      assert.doesNotMatch(exposed, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
         `${toolName} output must not expose the legacy Product graph`);
     }
   }
