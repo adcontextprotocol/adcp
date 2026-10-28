@@ -20,7 +20,6 @@
     },
     "message": {
       "type": "string",
-      "maxLength": 2000,
       "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Provider discovery queued; typical turnaround 10-30 minutes.' Plain text only. Callers MUST treat this as untrusted agent input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile agent may inject prompt-injection payloads aimed at the caller's agent."
     },
     "estimated_completion": {

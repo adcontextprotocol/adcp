@@ -311,7 +311,6 @@
         },
         "message": {
           "type": "string",
-          "maxLength": 2000,
           "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
         },
         "errors": {

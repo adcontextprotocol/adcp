@@ -73,8 +73,8 @@ const ENVELOPE_VALUES = {
 // not narrow away. The envelope's `replayed` is a boolean that defaults to
 // false, so a seller that always sends `replayed: false` conforms. The
 // envelope's `message` has no bound in 3.x (`x-max-length-4.0` is 1024 from
-// 4.0), so a 2,500-character message conforms; the compact branches used to
-// cap it at 2,000.
+// 4.0), so a 2,500-character message conforms; response nodes used to cap
+// it at 2,000.
 const BOUNDARY_VALUES = {
   replayed: false,
   message: 'm'.repeat(2500),
@@ -242,6 +242,34 @@ const ENVELOPE_PROPERTIES = envelopeWireProperties(SOURCE_DIR);
 const RESPONSES = responseSchemas();
 const CLOSED_NODES = closedNodes(RESPONSES.map(({ rel }) => rel));
 
+/**
+ * Every object node of the response documents where envelope fields sit:
+ * roots, inline `allOf`/`anyOf`/`oneOf` members at any depth, and the
+ * documents those members name by whole-document `$ref`, open or closed.
+ * Nested body objects are not envelope positions and are not visited.
+ */
+function responseNodes(rels) {
+  const nodes = [];
+  const visitedDocuments = new Set();
+  function visitDocument(rel) {
+    if (visitedDocuments.has(rel) || ENVELOPE_DOCUMENTS.has(rel)) return;
+    visitedDocuments.add(rel);
+    visit(rel, readSource(rel), '');
+  }
+  function visit(rel, node, pointer) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    const target = documentOf(node.$ref);
+    if (target) visitDocument(target);
+    if (node.properties && typeof node.properties === 'object') nodes.push({ rel, pointer, node });
+    for (const keyword of COMPOSITION_KEYWORDS) {
+      (node[keyword] || []).forEach((member, index) => visit(rel, member, `${pointer}/${keyword}/${index}`));
+    }
+  }
+  rels.forEach(visitDocument);
+  return nodes;
+}
+const RESPONSE_NODES = responseNodes(RESPONSES.map(({ rel }) => rel));
+
 test('every tool response and async status schema composes protocol-envelope through its root allOf', () => {
   assert.ok(RESPONSES.length > 0, 'discoverTools found no response schemas');
   const missing = RESPONSES
@@ -287,32 +315,24 @@ test('source closed schemas declare only body fields and narrowing constraints',
   assert.deepEqual(copied, [], 'the schema build adds envelope $refs; remove the hand-copied declarations');
 });
 
-test('no response node pins replayed', () => {
-  // replayed reports how this response was produced, so a schema cannot fix
-  // its value; the envelope's boolean, default false, governs.
-  const pinned = [];
-  const seen = new Set();
-  function visit(rel, node, pointer) {
-    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
-    const target = documentOf(node.$ref);
-    if (target && !seen.has(target) && !ENVELOPE_DOCUMENTS.has(target)) {
-      seen.add(target);
-      visit(target, readSource(target), '');
+test('no response node narrows message length or pins replayed', () => {
+  // The envelope defines message once, with no bound in 3.x, and replayed as
+  // a boolean that reports how the response was produced. A response node
+  // may pin message to fixed text with const (the unavailable reporting
+  // lookup does), but no bound or replayed value of its own.
+  const LENGTH_KEYWORDS = ['maxLength', 'minLength', 'pattern'];
+  const narrowed = [];
+  for (const { rel, pointer, node } of RESPONSE_NODES) {
+    const { message, replayed } = node.properties;
+    if (message && !Object.prototype.hasOwnProperty.call(message, 'const')
+      && LENGTH_KEYWORDS.some((keyword) => Object.prototype.hasOwnProperty.call(message, keyword))) {
+      narrowed.push(`${rel}#${pointer}/properties/message`);
     }
-    const replayed = node.properties?.replayed;
     if (replayed && (Object.prototype.hasOwnProperty.call(replayed, 'const') || Array.isArray(replayed.enum))) {
-      pinned.push(`${rel}#${pointer}/properties/replayed`);
-    }
-    for (const keyword of COMPOSITION_KEYWORDS) {
-      (node[keyword] || []).forEach((member, index) => visit(rel, member, `${pointer}/${keyword}/${index}`));
+      narrowed.push(`${rel}#${pointer}/properties/replayed`);
     }
   }
-  for (const { rel } of RESPONSES) {
-    if (seen.has(rel)) continue;
-    seen.add(rel);
-    visit(rel, readSource(rel), '');
-  }
-  assert.deepEqual(pinned, []);
+  assert.deepEqual(narrowed, []);
 });
 
 test('the build keeps every local declaration that narrows an envelope field', () => {
@@ -371,15 +391,21 @@ test('built closed roots and branches accept every envelope property, single-fau
   }
 });
 
-test('compact task payloads accept the envelope edge values, single-fault vectors', async () => {
-  assert.ok(COMPACT_TASK_DOCUMENTS.length > 0, 'found no core/compact-task-*.json; the test would be vacuous');
-  for (const rel of COMPACT_TASK_DOCUMENTS) {
-    const builtValidate = await ownValidatorFor(builtAjv, readBuilt(rel), '', `${BUILT_ORIGIN}${rel}`);
+test('every response node accepts the envelope edge values, single-fault vectors', async () => {
+  const visited = new Set(RESPONSE_NODES.map(({ rel }) => rel));
+  assert.deepEqual(COMPACT_TASK_DOCUMENTS.filter((rel) => !visited.has(rel)), [],
+    'the response-node walk must reach the compact task payloads');
+  for (const { rel, pointer, node } of RESPONSE_NODES) {
+    const builtValidate = await ownValidatorFor(builtAjv, readBuilt(rel), pointer, `${BUILT_ORIGIN}${rel}`);
     for (const { name, ref } of ENVELOPE_PROPERTIES.filter(({ name }) => name in BOUNDARY_VALUES)) {
+      const localDeclaration = node.properties[name];
+      // A const pin is a deliberate fixed value, so the vector takes it.
+      const pinned = localDeclaration && Object.prototype.hasOwnProperty.call(localDeclaration, 'const');
+      const value = pinned ? localDeclaration.const : BOUNDARY_VALUES[name];
       const envelopeValidate = await validatorFor(sourceAjv, ref);
-      assert.equal(envelopeValidate(BOUNDARY_VALUES[name]), true, `${name}: edge value is not valid against ${ref}`);
-      assert.deepEqual(addedErrors(builtValidate, {}, { [name]: BOUNDARY_VALUES[name] }), [],
-        `${rel} rejects envelope ${name} ${JSON.stringify(BOUNDARY_VALUES[name]).slice(0, 40)}`);
+      assert.equal(envelopeValidate(value), true, `${name}: edge value is not valid against ${ref}`);
+      assert.deepEqual(addedErrors(builtValidate, {}, { [name]: value }), [],
+        `${rel}#${pointer} rejects envelope ${name} ${JSON.stringify(value).slice(0, 40)}`);
     }
   }
 });

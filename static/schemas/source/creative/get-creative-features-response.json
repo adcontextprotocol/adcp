@@ -75,7 +75,6 @@
         },
         "message": {
           "type": "string",
-          "maxLength": 2000,
           "description": "Optional human-readable explanation of why the evaluation is submitted. Plain text only; callers treat it as untrusted provider input."
         },
         "context": {
