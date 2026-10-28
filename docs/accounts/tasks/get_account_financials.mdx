@@ -76,7 +76,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | object | Yes | [Account reference](/docs/building/by-layer/L2/accounts-and-agents#account-references) — by `account_id` or natural key (`brand` + `operator` + optional `sandbox`). Must be an operator-billed account. |
+| `account` | object | Yes | [Account reference](/docs/building/by-layer/L2/accounts-and-agents#account-references) — by the `account_id` from [`sync_accounts`](/docs/accounts/tasks/sync_accounts) or [`list_accounts`](/docs/accounts/tasks/list_accounts). During 3.x, a natural key (`brand` + `operator` + optional `sandbox`) that matches exactly one account also works. Must be an operator-billed account. |
 | `period` | object | No | Date range for spend summary: `start` and `end` as ISO 8601 dates. Defaults to the current billing cycle if omitted. |
 
 ## Response

@@ -99,7 +99,7 @@
         },
         "canonical-account-ref": {
           "$ref": "/schemas/core/canonical-account-ref.json",
-          "description": "Compact account identity without inline brand documents"
+          "description": "Compact account reference without inline brand documents"
         },
         "canonical-budget-allocation": {
           "$ref": "/schemas/core/canonical-budget-allocation.json",
@@ -183,15 +183,18 @@
         },
         "operator-identity": {
           "$ref": "/schemas/core/operator-identity.json",
-          "description": "Complete buyer-desired operator domain and optional operator-owned unit for an advertiser account"
+          "deprecated": true,
+          "description": "Deprecated in 3.3. Complete buyer-desired operator domain and optional operator-owned unit for an advertiser account"
         },
         "account-identity-change": {
           "$ref": "/schemas/core/account-identity-change.json",
-          "description": "Pending or rejected operator-identity transition on an existing account"
+          "deprecated": true,
+          "description": "Deprecated in 3.3. Pending or rejected operator-identity transition on an existing account"
         },
         "account-identity-change-preview": {
           "$ref": "/schemas/core/account-identity-change-preview.json",
-          "description": "Non-persisted impact and disposition preview for a dry-run account identity transition"
+          "deprecated": true,
+          "description": "Deprecated in 3.3. Non-persisted impact and disposition preview for a dry-run account identity transition"
         },
         "account-with-authorization": {
           "$ref": "/schemas/core/account-with-authorization.json",
@@ -1197,7 +1200,7 @@
         },
         "account-ref": {
           "$ref": "/schemas/core/account-ref.json",
-          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator, optional sandbox)"
+          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator, optional attribute filters)"
         },
         "provenance": {
           "$ref": "/schemas/core/provenance.json",

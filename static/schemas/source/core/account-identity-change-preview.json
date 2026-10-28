@@ -2,7 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-identity-change-preview.json",
   "title": "Account Identity Change Preview",
-  "description": "Non-persisted dry-run result for a requested operator-identity change. Canonical account fields and revision remain unchanged.",
+  "deprecated": true,
+  "x-deprecated-in": "3.3.0",
+  "description": "Deprecated in 3.3, planned for removal in 4.0. Non-persisted dry-run result for a requested operator-identity change. Canonical account fields and revision remain unchanged.",
   "definitions": {
     "impact": {
       "type": "object",

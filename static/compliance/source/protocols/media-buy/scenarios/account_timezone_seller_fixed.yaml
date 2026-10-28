@@ -104,7 +104,7 @@ phases:
             description: "Provisioning echoes the reusable operator natural key"
 
   - id: readback
-    title: "Read back the immutable account timezone"
+    title: "Read back the account timezone"
     depends_on: [discover_and_provision]
     steps:
       - id: list_seller_fixed_account
