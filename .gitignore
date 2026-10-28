@@ -82,3 +82,6 @@ server/tests/fixtures/c2pa/*.pem
 # tree. Always-ignore so they don't pollute `git status`.
 .prepush-*/
 dist/docs/.prepush-*/
+
+# Private compliance test SDK dependencies
+tests/sdk-runner/node_modules

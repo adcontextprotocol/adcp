@@ -120,3 +120,6 @@ coverage
 
 # Fly.io
 fly.toml
+
+# Keep local test-runner dependencies out of the build context.
+tests/sdk-runner/node_modules

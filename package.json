@@ -145,7 +145,7 @@
     "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs tests/lint-conformance-doc-freshness.test.cjs && npm run test:release-instrumentation",
     "test:release-instrumentation": "node --test --test-force-exit --test-timeout=30000 tests/release-instrumentation.test.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs && node --test --test-force-exit --test-timeout=30000 tests/universal-macro-translation-vectors.test.cjs",
-    "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ --pool=threads",
+    "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ --pool=threads && npm run test:auction-only-compliance",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
     "test:server-unit": "vitest run --config server/vitest.config.ts tests/unit/ src/",
     "test:server-integration": "vitest run server/tests/integration --config server/vitest.config.ts",
@@ -198,7 +198,8 @@
     "eval:addie-gemini-direct-ablation": "tsx --import dotenv/config server/tests/manual/gemini-direct-ablation-eval.ts",
     "eval:addie-matched-v4-plan": "tsx server/tests/manual/matched-v4-evaluation-plan.ts",
     "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts",
-    "postinstall": "node scripts/install-sdk-creative-build-probe.cjs"
+    "postinstall": "node scripts/install-sdk-creative-build-probe.cjs",
+    "test:auction-only-compliance": "node --test --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs"
   },
   "dependencies": {
     "@adcp/sdk": "14.0.0-rc.53",
@@ -293,7 +294,8 @@
     "typescript": "npm:@typescript/typescript6@~6.0.2",
     "unified": "^11.0.5",
     "unist-util-visit-parents": "^6.0.2",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "@adcp-protocol/fixture-test-sdk": "file:tests/sdk-runner"
   },
   "engines": {
     "node": ">=24 <25"
