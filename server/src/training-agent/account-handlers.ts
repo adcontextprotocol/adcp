@@ -9,6 +9,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
 import { AdcpError, type WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
+import { atLeastAdcpVersion, TRAINING_AGENT_CURRENT_ADCP_VERSION } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import {
   getSession,
@@ -1902,11 +1903,14 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       }
       if (input.reporting_delivery_configs !== undefined) changedPaths.push('/reporting_delivery_configs');
 
+      // From 3.2 a settings-update row is identified by the echoed `account`
+      // alone and MUST NOT also carry brand/operator; 3.0 and 3.1 have no
+      // `account` echo and identify the row by its natural key.
+      const naturalKeyIdentity = !atLeastAdcpVersion(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, '3.2');
       const result: Record<string, unknown> = {
         account_id: existing.accountId,
         account: input.account,
-        brand: existing.brand,
-        operator: existing.operator,
+        ...(naturalKeyIdentity && { brand: existing.brand, operator: existing.operator }),
         ...(existing.operatorUnit && { operator_unit: existing.operatorUnit }),
         ...(existing.currency && { currency: existing.currency }),
         ...(existing.timezone && { timezone: existing.timezone }),

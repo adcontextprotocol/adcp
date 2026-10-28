@@ -70,7 +70,7 @@
 
   function renderPermissions(data) {
     const coverage = data.exclusive_grants
-      ? `Exclusive for: ${data.exclusive_scopes.length ? data.exclusive_scopes.join(', ') : 'no activities named'}. Sellers that check turn away agencies not on the list for those activities.`
+      ? 'Exclusive. Sellers that check turn away agencies not on this list.'
       : 'Not exclusive. Sellers may also have their own verified approvals.';
     result.append(node('p', coverage, 'trust-result-coverage'));
     result.append(node('h3', data.brand_id ? 'Who can act for this brand' : 'Who can act for this company'));

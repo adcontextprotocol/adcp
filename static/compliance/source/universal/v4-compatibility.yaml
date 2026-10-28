@@ -214,6 +214,23 @@ checks:
           unprompted, and no storyboard step makes the call that would inspect
           every annotated field. A 3.x agent measures itself with
           scripts/capabilities-structural-bounds.cjs.
+  - id: purchase_target_audiences_required_in_4_0
+    issue: 8125
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A seller that lists media_buy.audience_evidence_targets in experimental_features does not accept target_audiences on buy_products purchases and list_products offer_filters."
+    fix: >-
+      Accept the experimental target_audiences sibling of
+      audience_evidence_requirements on buy_products purchases and
+      list_products offer_filters, and record it in the accepted purchase
+      snapshot. 3.3 carries it only on get_products filters and
+      create_media_buy packages, because the purchase and offer-filter
+      schemas are closed and a minor release does not change a closed schema.
+    observed_by:
+      none:
+        reason: >-
+          Buyer-sent field on schemas that are closed in 3.x. A 3.x seller
+          run cannot send or observe it.
 
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
