@@ -555,8 +555,13 @@ describe('training account change feed', () => {
         }],
       }],
     }, context) as Record<string, any>;
-    const { brand, operator } = synced.accounts[0];
-    expect(brand).toEqual({ domain: 'luma-outdoor.example' });
+    // From 3.2 a settings-update row is identified by `account` alone; the
+    // runner already knows the shared account's natural key from discovery.
+    expect(synced.accounts[0].account).toEqual(account);
+    expect(synced.accounts[0]).not.toHaveProperty('brand');
+    expect(synced.accounts[0]).not.toHaveProperty('operator');
+    const brand = { domain: 'luma-outdoor.example' };
+    const operator = 'pinnacle-agency.example';
     const seedCreative = (creativeId: string, accountRef: Record<string, unknown>) => handleComplyTestController({
       account: { ...accountRef, sandbox: true },
       scenario: 'seed_creative',

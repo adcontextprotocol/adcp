@@ -939,8 +939,9 @@ function canonicalMediaBuyPlatformResult<T>(result: T): T {
  * Mirror the SDK's AdCP 3.0 create-media-buy response projection for the
  * compatibility completion webhook. The platform consumes a canonical result,
  * then the framework restores the selected legacy format tuple on the wire and
- * adds the synchronous terminal status. Webhook `result` must be identical to
- * that buyer-visible response, not either intermediate representation.
+ * carries the media buy status as `status`, the 3.0 field (`media_buy_status`
+ * arrived in 3.1). Webhook `result` must be identical to that buyer-visible
+ * response, not either intermediate representation.
  */
 function projectCreateMediaBuyCompatibilityWebhookResult(
   legacyResult: Record<string, unknown>,
@@ -969,9 +970,10 @@ function projectCreateMediaBuyCompatibilityWebhookResult(
       ...(selected !== undefined && { format_ids: selected }),
     };
   });
+  const { media_buy_status: mediaBuyStatus, ...wireResult } = canonicalResult;
   return {
-    ...canonicalResult,
-    status: 'completed',
+    ...wireResult,
+    ...(typeof mediaBuyStatus === 'string' && { status: mediaBuyStatus }),
     ...(canonicalPackages.length > 0 && { packages }),
   };
 }

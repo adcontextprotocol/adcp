@@ -1,5 +1,5 @@
 {
-  "$comment": "Non-additive schema changes recorded by scripts/lint-additive-minor.cjs, relative to the release named in base. This list only shrinks: CI rejects an entry that the target branch does not have. Remove an entry when its change is reverted or released; record a WG decision in reason.",
+  "$comment": "Non-additive schema changes recorded by scripts/lint-additive-minor.cjs, relative to the release named in base. This list only shrinks: CI rejects an entry that the target branch does not have, unless its change already shipped in a stable release. Remove an entry when its change is reverted or released; record a WG decision in reason. An entry whose detail ends in \"(closed in <release>)\" records an addition to a schema that an earlier release of the major published closed (DR-0036). It shipped before the base and stays until the next major.",
   "base": "3.2.7",
   "entries": [
     {
@@ -127,6 +127,83 @@
       "kind": "property-added-to-closed",
       "detail": "property later_proposals added",
       "reason": "pending WG decision"
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property AT added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property AU added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property BR added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property CA added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property CH added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property DE added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property FR added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property GB added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property IN added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property US added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
+    },
+    {
+      "file": "core/postal-area-support.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property ZA added (closed in 3.0.28)",
+      "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
     },
     {
       "file": "core/sla-window.json",
@@ -407,6 +484,13 @@
       "kind": "property-added-to-closed",
       "detail": "property later_proposals added",
       "reason": "pending WG decision"
+    },
+    {
+      "file": "protocol/get-adcp-capabilities-response.json",
+      "pointer": "/properties/identity",
+      "kind": "property-added-to-closed",
+      "detail": "property brand_json_url added (closed in 3.0.4)",
+      "reason": "Released in 3.1.0, before DR-0036. identity was closed in 3.0.0 to 3.0.4 and opened in 3.0.5, and 3.1.0 added brand_json_url, so a strict 3.0.0 to 3.0.4 validator rejects it. The field stays until 4.0, because removing it would break 3.1 and later peers."
     }
   ]
 }
