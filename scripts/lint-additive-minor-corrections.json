@@ -1,0 +1,5 @@
+{
+  "$comment": "Corrections that DR-0036 records. A minor or patch release may change a closed schema only to make it accept what the published spec text already required before that release. Each entry names a schema location by document and JSON pointer, the property the correction lets in (* reopens the whole schema), the stable release it lands in, the source text that required it (a repository path and a quote from it), and the reason. The additive-minor check accepts exactly these additions. Each entry must also appear in the correction tables of DR-0036.",
+  "decision": "DR-0036",
+  "corrections": []
+}

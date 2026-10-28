@@ -88,7 +88,7 @@
     "test:governance-conditions-storyboard": "node --test --test-force-exit --test-timeout=30000 tests/governance-conditions-storyboard.test.cjs",
     "test:signal-governance-storyboard": "node --test --test-force-exit --test-timeout=30000 tests/signal-governance-storyboard.test.cjs",
     "test:governance-task-slices": "node --test --test-force-exit --test-timeout=30000 tests/governance-task-slices.test.cjs tests/governance-storyboard-routing.test.cjs tests/provenance-tool-gates.test.cjs tests/cli-scenario-fixtures.test.cjs",
-    "test:audience-evidence": "node --test --test-force-exit --test-timeout=30000 tests/audience-evidence.test.cjs",
+    "test:audience-evidence": "node --test --test-force-exit --test-timeout=30000 tests/audience-evidence.test.cjs tests/audience-evidence-targets.test.cjs",
     "test:status-as-of-vectors": "node --test --test-force-exit --test-timeout=30000 tests/media-buy-status-as-of-vectors.test.cjs",
     "test:delegation-chain-vectors": "node --test --test-force-exit --test-timeout=30000 tests/delegation-chain-vectors.test.cjs",
     "test:storyboard-scoping": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-scoping.test.cjs",
@@ -211,8 +211,8 @@
     "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts"
   },
   "dependencies": {
-    "@adcp/reporting-storage": "0.2.1-beta.0",
-    "@adcp/sdk": "17.0.0-beta.0",
+    "@adcp/reporting-storage": "0.3.0-beta.1",
+    "@adcp/sdk": "17.0.0-beta.2",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.7",
@@ -330,6 +330,7 @@
   },
   "overrides": {
     "@hono/node-server": "2.0.12",
+    "@modelcontextprotocol/node": "2.1.1",
     "tar": "^7.5.22",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

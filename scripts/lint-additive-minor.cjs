@@ -33,6 +33,35 @@
  *   type-narrowed, enum-value-removed, const-changed, bound-tightened,
  *   additional-properties-closed, file-removed.
  *
+ * Closed schemas (DR-0036)
+ *   A schema that any stable release of the major published closed
+ *   (`additionalProperties: false` or `unevaluatedProperties: false`) stays
+ *   closed until the next major, even after a later release opens it. CI
+ *   compares every earlier stable release of the base's major with the base,
+ *   using the same node and branch matching, and records each node that an
+ *   earlier release closed and the base leaves open. A property that such a
+ *   node lacked in the last release that closed it is reported as
+ *   property-added-to-closed, with that release named in the detail. A
+ *   finding whose property the base already has is marked released: it
+ *   shipped in a stable release and may enter the baseline at any time.
+ *
+ * Notices (never fail)
+ *   additional-properties-opened: a closed schema is opened. Opening breaks no
+ *   validator, but it permits no additions within the major.
+ *
+ * Corrections (DR-0036)
+ *   A minor or patch release may change a closed schema only to make it
+ *   accept what the published spec text already required.
+ *   scripts/lint-additive-minor-corrections.json lists each recorded
+ *   correction: the schema location, the property it lets in, the release it
+ *   lands in, and the source text that required it. The check accepts
+ *   exactly the listed additions from the listed release on. Property `*`
+ *   reopens the whole schema: the schema must be open in the candidate, and
+ *   any addition to it passes. A named property must be declared at its
+ *   location in the candidate. Each source file must exist and contain its
+ *   quote, and each entry must appear in the correction tables of the
+ *   decision record that the file names.
+ *
  * Modes
  *   (default)                    CI: candidate = source, base = default base;
  *                                fails on any violation not in the baseline.
@@ -40,6 +69,8 @@
  *                                prints a report; exits 0.
  *   --history                    runs the check across consecutive 3.x
  *                                releases and prints tables and findings.
+ *                                Each pair is compared on its own, without
+ *                                the earlier-release closures.
  *   --prune-baseline             removes stale baseline entries only.
  *   --baseline-ref <git-ref>     also fails when the baseline has an entry
  *                                that the baseline at <git-ref> lacks, so the
@@ -63,6 +94,7 @@ const DEFAULT_SOURCE_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
 const DIST_SCHEMAS = 'dist/schemas';
 const DEFAULT_BASELINE_PATH = path.join(REPO_ROOT, 'scripts', 'lint-additive-minor-baseline.json');
 const BASELINE_REPO_PATH = 'scripts/lint-additive-minor-baseline.json';
+const DEFAULT_CORRECTIONS_PATH = path.join(REPO_ROOT, 'scripts', 'lint-additive-minor-corrections.json');
 const BASELINE_REF_ENV = 'ADCP_ADDITIVE_MINOR_BASELINE_REF';
 
 // Derived artifacts in a released tree that have no source counterpart: the
@@ -82,6 +114,7 @@ const VIOLATION_KINDS = [
   'file-removed',
 ];
 const VIOLATIONS = new Set(VIOLATION_KINDS);
+const NOTICE_KINDS = ['additional-properties-opened'];
 
 // Lower bounds tighten upward; upper bounds tighten downward.
 const LOWER_BOUNDS = ['minimum', 'exclusiveMinimum', 'minLength', 'minItems', 'minProperties'];
@@ -222,8 +255,10 @@ function walkJsonFiles(directory, root = directory) {
   const files = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...walkJsonFiles(full, root));
-    else if (entry.isFile() && entry.name.endsWith('.json')) files.push(toPosix(path.relative(root, full)));
+    const relative = toPosix(path.relative(root, full));
+    if (entry.isDirectory()) {
+      if (!isDerived(`${relative}/`)) files.push(...walkJsonFiles(full, root));
+    } else if (entry.isFile() && entry.name.endsWith('.json') && !isDerived(relative)) files.push(relative);
   }
   return files.sort();
 }
@@ -281,6 +316,7 @@ function readGitFiles(repoRoot, ref, prefix) {
 
 const ADCP_HOSTS = new Set(['adcontextprotocol.org', 'www.adcontextprotocol.org']);
 const VERSION_SEGMENT = /^\/schemas\/(?:latest|v?\d+(?:\.\d+)*(?:-[\w.]+)?)\//;
+const RELEASE_SEGMENT = /\/schemas\/(?:latest|v?\d+(?:\.\d+)*(?:-[\w.]+)?)\//g;
 
 /**
  * Maps a `$id` or the file part of a `$ref` to a tree-relative path. Returns
@@ -307,6 +343,11 @@ function normalizeSchemaPath(value, fromKey = null) {
   return path.posix.normalize(path.posix.join(dir, normalized));
 }
 
+// Parsed schemas by their text without release segments. Released trees
+// share most files, and every comparison normalizes release segments, so
+// trees may share one parsed copy. Parsed schemas are never mutated.
+const parsedByText = new Map();
+
 /**
  * Builds a tree from `{ relativePath: text }`. Each document is keyed by its
  * normalized `$id` when it has one inside the AdCP tree, else by its path.
@@ -316,19 +357,48 @@ function buildTree(label, rawFiles) {
   const errors = [];
   for (const [relativePath, text] of rawFiles) {
     if (isDerived(relativePath)) continue;
-    let schema;
-    try {
-      schema = typeof text === 'string' ? JSON.parse(text) : text;
-    } catch (error) {
-      errors.push(`${label}/${relativePath}: ${error.message}`);
-      continue;
+    // The text without release segments, so identical files in two releases compare equal.
+    const unversioned = typeof text === 'string' ? text.replace(RELEASE_SEGMENT, '/schemas/') : null;
+    let schema = unversioned === null ? text : parsedByText.get(unversioned);
+    if (schema === undefined) {
+      try {
+        schema = JSON.parse(text);
+      } catch (error) {
+        errors.push(`${label}/${relativePath}: ${error.message}`);
+        continue;
+      }
+      parsedByText.set(unversioned, schema);
     }
     const idKey = schema && typeof schema.$id === 'string' ? normalizeSchemaPath(schema.$id) : null;
     const key = idKey || relativePath;
     if (documents.has(key)) errors.push(`${label}: ${relativePath} and ${documents.get(key).path} share ${key}`);
-    else documents.set(key, { key, path: relativePath, schema });
+    else documents.set(key, { key, path: relativePath, schema, unversioned });
   }
-  return { label, documents, errors };
+  const locations = new WeakMap();
+  for (const { key, schema } of documents.values()) recordLocations(schema, key, '', locations);
+  return { label, documents, errors, locations };
+}
+
+/**
+ * Records each object node's own location, `<document key>#<pointer>`, so a
+ * node keeps its identity however the comparison reached it.
+ */
+function recordLocations(node, docKey, pointer, locations) {
+  if (node === null || typeof node !== 'object') return;
+  if (!Array.isArray(node)) locations.set(node, `${docKey}#${pointer}`);
+  for (const [key, value] of Object.entries(node)) recordLocations(value, docKey, child(pointer, key), locations);
+}
+
+/** The own location of a node of `tree`, or null. */
+function locate(tree, node) {
+  return tree && tree.locations && isObject(node) ? tree.locations.get(node) || null : null;
+}
+
+/** Gives `copy`, derived from `node`, the location of `node`. */
+function inheritLocation(tree, copy, node) {
+  const location = locate(tree, node);
+  if (location && isObject(copy)) tree.locations.set(copy, location);
+  return copy;
 }
 
 function loadDirectoryTree(directory, label = toPosix(path.relative(REPO_ROOT, directory)) || directory) {
@@ -433,7 +503,7 @@ function resolveNode(node, docKey, tree) {
     const resolved = document ? readPointer(document.schema, fragment) : undefined;
     if (resolved === undefined) return null;
     const { $ref, ...siblings } = current;
-    current = isObject(resolved) ? { ...resolved, ...siblings } : resolved;
+    current = isObject(resolved) ? inheritLocation(tree, { ...resolved, ...siblings }, resolved) : resolved;
     currentDoc = key;
   }
   return { node: current, docKey: currentDoc };
@@ -569,18 +639,38 @@ function describeTypes(set) {
 }
 
 /**
- * Compares two schema trees. Returns findings, each
- * `{ file, pointer, kind, detail }`.
+ * Compares two schema trees. Returns violations as `findings` and
+ * `notices`, each `{ file, pointer, kind, detail }`; a finding on a property
+ * the base already has also carries `released: true`.
+ *
+ * Options:
+ *   closedEarlier  Map from a base node's location to `{ release, names }`:
+ *                  the last earlier stable release that published the node
+ *                  closed, and the properties it had there.
+ *   corrections    `{ reopened, properties }` from readCorrections: the base
+ *                  node locations whose additions are all allowed, and a Map
+ *                  from a base node location to the property names allowed
+ *                  there.
+ *   onObject       Called as (baseNode, baseLocation, candNode, candLocation)
+ *                  for every pair of matched object schemas.
  */
-function compareTrees(baseTree, candTree) {
+function compareTrees(baseTree, candTree, {
+  closedEarlier = null,
+  corrections = null,
+  onObject = null,
+  skipIdentical = false,
+} = {}) {
   const findings = [];
+  const notices = [];
   const seen = new Set();
+  const reopened = (location) => Boolean(corrections && location && corrections.reopened.has(location));
+  const corrected = (location) => (corrections && location && corrections.properties.get(location)) || null;
 
-  function report(file, pointer, kind, detail) {
+  function report(file, pointer, kind, detail, extra = null) {
     const key = `${file}\u0000${pointer}\u0000${kind}\u0000${detail}`;
     if (seen.has(key)) return;
     seen.add(key);
-    findings.push({ file, pointer, kind, detail });
+    (VIOLATIONS.has(kind) ? findings : notices).push({ file, pointer, kind, detail, ...extra });
   }
 
   const experimentalFile = (docKey) => {
@@ -606,6 +696,8 @@ function compareTrees(baseTree, candTree) {
       if (bRef && cRef && bRef === cRef) {
         const { $ref: _b, ...bRest } = b;
         const { $ref: _c, ...cRest } = c;
+        inheritLocation(baseTree, bRest, b);
+        inheritLocation(candTree, cRest, c);
         compareNode(file, pointer, bRest, bDoc, cRest, cDoc, stack, scope);
         return;
       }
@@ -668,11 +760,17 @@ function compareTrees(baseTree, candTree) {
   }
 
   function compareObject(file, pointer, b, bDoc, c, cDoc, stack, scope) {
+    const bLocation = locate(baseTree, b);
+    if (onObject) onObject(b, bLocation, c, locate(candTree, c));
+    const describe = (value, doc) => (value === undefined ? 'absent' : stableStringify(canonicalSchema(value, doc)));
     for (const keyword of ['additionalProperties', 'unevaluatedProperties']) {
       const ab = b[keyword];
       const ac = c[keyword];
       if (ac === false && ab !== false) {
-        report(file, pointer, 'additional-properties-closed', `${keyword} ${ab === undefined ? 'absent' : stableStringify(canonicalSchema(ab, bDoc))} → false`);
+        report(file, pointer, 'additional-properties-closed', `${keyword} ${describe(ab, bDoc)} → false`);
+      } else if (ab === false && ac !== false) {
+        report(file, pointer, 'additional-properties-opened', `${keyword} false → ${describe(ac, cDoc)}`,
+          reopened(bLocation) ? { corrected: true } : null);
       } else if (isObject(ab) && isObject(ac)) {
         compareNode(file, child(pointer, keyword), ab, bDoc, ac, cDoc, stack);
       }
@@ -689,9 +787,22 @@ function compareTrees(baseTree, candTree) {
         report(file, pointer, 'property-removed', `property ${name} removed`);
       }
     }
-    if (isClosed(b)) {
+    // The closed form: the base's, or, for a node the base leaves open, the
+    // last earlier release that published it closed.
+    const earlier = !isClosed(b) && closedEarlier && bLocation ? closedEarlier.get(bLocation) : undefined;
+    const allowed = isClosed(b) ? new Set(Object.keys(pb)) : earlier && earlier.names;
+    if (allowed && !reopened(bLocation)) {
+      // A recorded correction lets in exactly the properties it names.
+      const correctedNames = corrected(bLocation);
       for (const name of Object.keys(pc)) {
-        if (!Object.prototype.hasOwnProperty.call(pb, name)) report(file, pointer, 'property-added-to-closed', `property ${name} added`);
+        if (allowed.has(name) || (correctedNames && correctedNames.has(name))) continue;
+        if (!earlier) {
+          report(file, pointer, 'property-added-to-closed', `property ${name} added`);
+          continue;
+        }
+        const released = Object.prototype.hasOwnProperty.call(pb, name);
+        report(file, pointer, 'property-added-to-closed', `property ${name} added (closed in ${earlier.release})`,
+          released ? { released: true } : null);
       }
     }
 
@@ -726,14 +837,238 @@ function compareTrees(baseTree, candTree) {
       if (!isExperimental(base.schema)) report(key, '', 'file-removed', `schema ${key} removed`);
       continue;
     }
+    if (skipIdentical && base.unversioned !== null && base.unversioned === candidate.unversioned) continue;
     compareNode(key, '', base.schema, key, candidate.schema, key, new Set());
   }
 
-  findings.sort((x, y) => (x.file < y.file ? -1 : x.file > y.file ? 1 : 0)
+  const order = (x, y) => (x.file < y.file ? -1 : x.file > y.file ? 1 : 0)
     || (x.pointer < y.pointer ? -1 : x.pointer > y.pointer ? 1 : 0)
     || (x.kind < y.kind ? -1 : x.kind > y.kind ? 1 : 0)
-    || (x.detail < y.detail ? -1 : x.detail > y.detail ? 1 : 0));
-  return { findings, filesCompared: files.length };
+    || (x.detail < y.detail ? -1 : x.detail > y.detail ? 1 : 0);
+  findings.sort(order);
+  notices.sort(order);
+  return { findings, notices, filesCompared: files.length };
+}
+
+/**
+ * For each node of `baseTree` that is open, the last of `earlierTrees` that
+ * published it closed, and the properties it had there. `earlierTrees` is
+ * `[{ version, tree }]`, oldest first: the stable releases of the base's
+ * major that precede the base.
+ */
+function closedInEarlierReleases(baseTree, earlierTrees) {
+  const closed = new Map();
+  for (const { version, tree } of earlierTrees) {
+    // A file identical in both releases has the same closures in both; a $ref
+    // that leaves it is followed from the file that differs.
+    compareTrees(tree, baseTree, {
+      skipIdentical: true,
+      onObject: (earlier, _earlierLocation, base, baseLocation) => {
+        if (!baseLocation || !isClosed(earlier) || isClosed(base)) return;
+        closed.set(baseLocation, {
+          release: version,
+          names: new Set(isObject(earlier.properties) ? Object.keys(earlier.properties) : []),
+        });
+      },
+    });
+  }
+  return closed;
+}
+
+/** The stable releases of `base`'s major that precede it, oldest first. */
+function earlierStableVersions(base, releasedVersions) {
+  const parsed = parseVersion(base);
+  return releasedVersions
+    .map(parseVersion)
+    .filter((v) => v && v.major === parsed.major && v.prerelease.length === 0 && compareVersions(v, parsed) < 0)
+    .sort(compareVersions)
+    .map((v) => v.raw);
+}
+
+// ---------------------------------------------------------------------------
+// Corrections
+// ---------------------------------------------------------------------------
+
+/** The property of a correction entry that reopens the whole schema. */
+const WHOLE_SCHEMA = '*';
+
+/** A correction's identity: its location and the property it lets in. */
+function correctionKey(entry) {
+  return `${entry.file}#${entry.pointer} ${entry.property}`;
+}
+
+/**
+ * Validates the corrections list and returns what `candidateVersion` may
+ * carry: the corrections whose release is at or below it. A prerelease counts
+ * as its release (3.3.0-beta.1 as 3.3.0). Returns
+ *   reopened    the base node locations that a `*` entry reopens;
+ *   properties  a Map from a base node location to the names it lets in.
+ */
+function readCorrections(value, candidateVersion) {
+  const errors = [];
+  const reopened = new Set();
+  const properties = new Map();
+  if (!isObject(value) || !Array.isArray(value.corrections)) {
+    return { reopened, properties, entries: [], errors: ['corrections list must be an object with a corrections array'] };
+  }
+  const candidate = parseVersion(candidateVersion);
+  const current = candidate && { ...candidate, prerelease: [] };
+  const seen = new Set();
+  value.corrections.forEach((entry, index) => {
+    const label = `corrections[${index}]`;
+    if (!isObject(entry)) {
+      errors.push(`${label} must be an object`);
+      return;
+    }
+    for (const field of ['file', 'pointer', 'property', 'release', 'reason']) {
+      if (typeof entry[field] !== 'string') errors.push(`${label}.${field} must be a string`);
+    }
+    for (const field of ['property', 'reason']) {
+      if (typeof entry[field] === 'string' && !entry[field].trim()) errors.push(`${label}.${field} must not be empty`);
+    }
+    if (typeof entry.pointer === 'string' && entry.pointer !== '' && !entry.pointer.startsWith('/')) {
+      errors.push(`${label}.pointer must be a JSON pointer`);
+    }
+    const release = typeof entry.release === 'string' ? parseVersion(entry.release) : null;
+    if (typeof entry.release === 'string' && (!release || release.prerelease.length)) {
+      errors.push(`${label}.release must be a stable release`);
+    }
+    const source = entry.source;
+    if (!isObject(source) || typeof source.path !== 'string' || !source.path.trim()
+      || typeof source.quote !== 'string' || !source.quote.trim()) {
+      errors.push(`${label}.source must name a path and a quote`);
+    }
+    const key = correctionKey(entry);
+    if (seen.has(key)) errors.push(`${label} duplicates ${key}`);
+    seen.add(key);
+    if (!release || !current || compareVersions(current, release) < 0 || typeof entry.property !== 'string') return;
+    const location = `${entry.file}#${entry.pointer}`;
+    if (entry.property === WHOLE_SCHEMA) reopened.add(location);
+    else {
+      if (!properties.has(location)) properties.set(location, new Set());
+      properties.get(location).add(entry.property);
+    }
+  });
+  return { reopened, properties, entries: value.corrections, errors };
+}
+
+/**
+ * Each correction in effect must be applied in the candidate tree: a
+ * reopened schema is open, and a corrected property is declared there.
+ */
+function checkCorrectionsApplied({ reopened, properties }, candTree) {
+  const errors = [];
+  const nodeAt = (location) => {
+    const [key, pointer] = location.split('#');
+    const document = candTree.documents.get(key);
+    return document ? readPointer(document.schema, pointer) : undefined;
+  };
+  for (const location of reopened) {
+    const node = nodeAt(location);
+    if (!isObject(node)) errors.push(`correction ${location} does not exist in ${candTree.label}`);
+    else if (isClosed(node)) errors.push(`correction ${location} reopens a schema that is still closed in ${candTree.label}`);
+  }
+  for (const [location, names] of properties) {
+    const node = nodeAt(location);
+    if (!isObject(node)) {
+      errors.push(`correction ${location} does not exist in ${candTree.label}`);
+      continue;
+    }
+    const declared = isObject(node.properties) ? node.properties : {};
+    for (const name of names) {
+      if (!Object.prototype.hasOwnProperty.call(declared, name)) {
+        errors.push(`correction ${location} does not declare ${name} in ${candTree.label}`);
+      }
+    }
+  }
+  return errors;
+}
+
+/** Collapses whitespace, so a quote matches text that wraps across lines. */
+function collapseWhitespace(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Reads a source file in one step, so nothing can change it between a check
+ * and the read. Returns null when the path is missing or is not a file.
+ */
+function readSourceText(full) {
+  try {
+    return collapseWhitespace(fs.readFileSync(full, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Each correction names the spec text that required it: a file under `root`
+ * that must exist and contain the quote.
+ */
+function checkCorrectionSources(entries, root) {
+  const errors = [];
+  const texts = new Map();
+  const base = path.resolve(root);
+  entries.forEach((entry, index) => {
+    if (!isObject(entry) || !isObject(entry.source)) return;
+    const { path: file, quote } = entry.source;
+    if (typeof file !== 'string' || typeof quote !== 'string' || !file.trim() || !quote.trim()) return;
+    const label = `corrections[${index}].source`;
+    if (!texts.has(file)) {
+      const full = path.resolve(base, file);
+      texts.set(file, full.startsWith(`${base}${path.sep}`) ? readSourceText(full) : null);
+    }
+    const text = texts.get(file);
+    if (text === null) errors.push(`${label}.path ${file} does not exist`);
+    else if (!text.includes(collapseWhitespace(quote))) errors.push(`${label}.quote is not in ${file}`);
+  });
+  return errors;
+}
+
+/**
+ * The corrections a decision record lists, as correction keys. The tables sit
+ * under its `### Corrections` heading. In a table row, the first cell names
+ * the schema file in code, the second reads `root` or lists pointers in code,
+ * and the third names the property in code.
+ */
+function recordedCorrections(recordText) {
+  const keys = new Set();
+  const heading = /^### Corrections[^\n]*$/m.exec(recordText);
+  if (!heading) return keys;
+  const section = recordText.slice(heading.index + heading[0].length).split(/^#{1,3} /m)[0];
+  for (const line of section.split('\n')) {
+    const cells = line.split('|').map((cell) => cell.trim());
+    const file = /^`([^`]+\.json)`$/.exec(cells[1] || '');
+    const property = /^`([^`]+)`$/.exec(cells[3] || '');
+    if (!file || !property) continue;
+    const pointers = cells[2] === 'root' ? [''] : [...cells[2].matchAll(/`([^`]*)`/g)].map((m) => m[1]);
+    for (const pointer of pointers) keys.add(correctionKey({ file: file[1], pointer, property: property[1] }));
+  }
+  return keys;
+}
+
+/**
+ * Each correction must appear in the correction tables of the decision record
+ * that the list names, so a new correction needs a governance change.
+ */
+function checkCorrectionsRecorded(value, root) {
+  if (!isObject(value) || !Array.isArray(value.corrections) || value.corrections.length === 0) return [];
+  if (typeof value.decision !== 'string' || !/^DR-\d+$/.test(value.decision)) {
+    return ['corrections list must name its decision record, such as DR-0036'];
+  }
+  const directory = path.join(root, 'governance', 'decisions');
+  const record = fs.existsSync(directory)
+    ? fs.readdirSync(directory).find((name) => name.startsWith(`${value.decision}-`) && name.endsWith('.md'))
+    : undefined;
+  if (!record) return [`no decision record for ${value.decision} under governance/decisions`];
+  const recorded = recordedCorrections(fs.readFileSync(path.join(directory, record), 'utf8'));
+  // Malformed entries are reported by readCorrections.
+  const wellFormed = (entry) => isObject(entry) && ['file', 'pointer', 'property'].every((field) => typeof entry[field] === 'string');
+  return value.corrections
+    .filter(wellFormed)
+    .map(correctionKey)
+    .filter((key) => !recorded.has(key))
+    .map((key) => `correction ${key} is not in the correction tables of ${record}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -802,10 +1137,14 @@ function checkAgainstBaseline({ base, findings, baselineValue, previousBaseline 
   }
 
   if (previousBaseline) {
+    // A released finding shipped in a stable release, so no change can undo
+    // it within the major. Recording it hides no unreleased change.
+    const released = new Set(findings.filter((f) => f.released).map(findingKey));
     const previous = new Set(validateBaseline(previousBaseline).entries.map(findingKey));
     for (const entry of baseline.entries) {
-      if (!previous.has(findingKey(entry))) {
-        errors.push(`baseline grew: ${findingKey(entry)} is not in the target branch baseline`);
+      const key = findingKey(entry);
+      if (!previous.has(key) && !released.has(key)) {
+        errors.push(`baseline grew: ${key} is not in the target branch baseline`);
       }
     }
   }
@@ -833,8 +1172,8 @@ function formatHistory(results) {
     '## Additive-minor history',
     '',
     markdownTable(
-      ['Release pair', 'Files compared', 'Non-additive changes', 'Files affected'],
-      results.map((r) => [label(r), r.filesCompared, r.findings.length, new Set(r.findings.map((f) => f.file)).size]),
+      ['Release pair', 'Files compared', 'Non-additive changes', 'Files affected', 'Closed schemas opened'],
+      results.map((r) => [label(r), r.filesCompared, r.findings.length, new Set(r.findings.map((f) => f.file)).size, r.notices.length]),
     ),
     '',
     '### By kind',
@@ -845,7 +1184,9 @@ function formatHistory(results) {
     '### Findings',
   ];
   for (const r of results) {
-    if (r.findings.length) out.push('', `${label(r)}:`, '', '```', ...formatFindings(r.findings), '```');
+    if (r.findings.length || r.notices.length) {
+      out.push('', `${label(r)}:`, '', '```', ...formatFindings(r.findings), ...formatFindings(r.notices), '```');
+    }
   }
   return out.join('\n');
 }
@@ -853,6 +1194,42 @@ function formatHistory(results) {
 // ---------------------------------------------------------------------------
 // Entry points
 // ---------------------------------------------------------------------------
+
+/**
+ * Compares a candidate tree with a base, applying the closures of the earlier
+ * stable releases in the base's major and the recorded corrections.
+ * `earlierTrees` defaults to the released trees on disk or in git.
+ * Correction sources and the decision record resolve against `repoRoot`.
+ */
+function analyze({
+  base,
+  baseTree,
+  candTree,
+  candidateVersion,
+  earlierTrees,
+  correctionsValue,
+  repoRoot = REPO_ROOT,
+}) {
+  const trees = earlierTrees || (base
+    ? earlierStableVersions(base, listReleasedVersions(repoRoot)).map((version) => ({ version, tree: loadReleasedTree(version, repoRoot) }))
+    : []);
+  const value = correctionsValue === undefined ? { corrections: [] } : correctionsValue;
+  const corrections = readCorrections(value, candidateVersion);
+  const errors = [
+    ...trees.flatMap(({ tree }) => tree.errors),
+    ...corrections.errors,
+    ...checkCorrectionSources(corrections.entries, repoRoot),
+    ...checkCorrectionsRecorded(value, repoRoot),
+    ...checkCorrectionsApplied(corrections, candTree),
+  ];
+  const closedEarlier = closedInEarlierReleases(baseTree, trees);
+  const result = compareTrees(baseTree, candTree, { closedEarlier, corrections });
+  return { ...result, errors };
+}
+
+function readJsonFile(file, fallback) {
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : fallback;
+}
 
 /**
  * CI check: source against the default base, filtered through the baseline.
@@ -863,23 +1240,33 @@ function lintAdditiveMinor({
   sourceDir = DEFAULT_SOURCE_DIR,
   baselinePath = DEFAULT_BASELINE_PATH,
   baselineValue,
+  correctionsPath = DEFAULT_CORRECTIONS_PATH,
+  correctionsValue,
   baseTree,
   baseVersion,
+  candidateVersion,
+  earlierTrees,
   previousBaseline = null,
 } = {}) {
   let base = baseVersion;
+  const version = candidateVersion || readSourceVersion(repoRoot);
   if (!baseTree && !base) {
-    base = defaultBaseVersion(readSourceVersion(repoRoot), listReleasedVersions(repoRoot));
-    if (!base) return { ok: true, skipped: true, base: null, errors: [], warnings: [], findings: [] };
+    base = defaultBaseVersion(version, listReleasedVersions(repoRoot));
+    if (!base) return { ok: true, skipped: true, base: null, errors: [], warnings: [], findings: [], notices: [] };
   }
   const baseSchemas = baseTree || loadReleasedTree(base, repoRoot);
   const candTree = loadDirectoryTree(sourceDir, 'source');
-  const parseErrors = [...baseSchemas.errors, ...candTree.errors];
-  const { findings, filesCompared } = compareTrees(baseSchemas, candTree);
-  let value = baselineValue;
-  if (value === undefined) {
-    value = fs.existsSync(baselinePath) ? JSON.parse(fs.readFileSync(baselinePath, 'utf8')) : { base, entries: [] };
-  }
+  const { findings, notices, filesCompared, errors: analysisErrors } = analyze({
+    base,
+    baseTree: baseSchemas,
+    candTree,
+    candidateVersion: version,
+    earlierTrees: earlierTrees || (baseTree ? [] : undefined),
+    correctionsValue: correctionsValue === undefined ? readJsonFile(correctionsPath, { corrections: [] }) : correctionsValue,
+    repoRoot,
+  });
+  const parseErrors = [...baseSchemas.errors, ...candTree.errors, ...analysisErrors];
+  const value = baselineValue === undefined ? readJsonFile(baselinePath, { base, entries: [] }) : baselineValue;
   const check = checkAgainstBaseline({ base, findings, baselineValue: value, previousBaseline });
   return {
     ...check,
@@ -887,6 +1274,7 @@ function lintAdditiveMinor({
     errors: [...parseErrors, ...check.errors],
     base,
     findings,
+    notices,
     filesCompared,
   };
 }
@@ -900,6 +1288,7 @@ function main() {
   const args = process.argv.slice(2);
   const sourceDir = path.resolve(readArg(args, '--source', DEFAULT_SOURCE_DIR));
   const baselinePath = path.resolve(readArg(args, '--baseline', DEFAULT_BASELINE_PATH));
+  const correctionsPath = path.resolve(readArg(args, '--corrections', DEFAULT_CORRECTIONS_PATH));
   const options = { repoRoot: REPO_ROOT, sourceDir };
 
   if (args.includes('--history')) {
@@ -923,15 +1312,29 @@ function main() {
       console.log(`No stable release precedes ${candidateVersion} in its major line; nothing to compare.`);
       return;
     }
-    const { findings, filesCompared } = compareTrees(loadTreeSpec(base, options), loadTreeSpec(candidate, options));
-    if (args.includes('--json')) console.log(JSON.stringify(findings, null, 2));
-    else console.log([`${base} → ${candidate}: ${filesCompared} files compared, ${findings.length} violations`, ...formatFindings(findings)].join('\n'));
+    const baseIsRelease = Boolean(parseVersion(base));
+    const { findings, notices, filesCompared, errors } = analyze({
+      base: baseIsRelease ? base : null,
+      baseTree: loadTreeSpec(base, options),
+      candTree: loadTreeSpec(candidate, options),
+      candidateVersion,
+      correctionsValue: readJsonFile(correctionsPath, { corrections: [] }),
+    });
+    errors.forEach((error) => console.error(`error: ${error}`));
+    if (args.includes('--json')) console.log(JSON.stringify([...findings, ...notices], null, 2));
+    else {
+      console.log([
+        `${base} → ${candidate}: ${filesCompared} files compared, ${findings.length} violations, ${notices.length} notices`,
+        ...formatFindings(findings),
+        ...formatFindings(notices),
+      ].join('\n'));
+    }
     return;
   }
 
   if (args.includes('--prune-baseline')) {
     const current = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
-    const result = lintAdditiveMinor({ ...options, baselinePath, baselineValue: { base: null, entries: [] } });
+    const result = lintAdditiveMinor({ ...options, baselinePath, correctionsPath, baselineValue: { base: null, entries: [] } });
     if (result.skipped) {
       console.log('No base release; baseline unchanged.');
       return;
@@ -949,10 +1352,15 @@ function main() {
     previousBaseline = readBaselineAtRef(baselineRef, REPO_ROOT);
     if (!previousBaseline) console.log(`No baseline at ${baselineRef}; skipping the shrink-only check.`);
   }
-  const result = lintAdditiveMinor({ ...options, baselinePath, previousBaseline });
+  const result = lintAdditiveMinor({ ...options, baselinePath, correctionsPath, previousBaseline });
   if (result.skipped) {
     console.log('✓ additive-minor lint: the source major line has no stable release yet; nothing to compare.');
     return;
+  }
+  for (const notice of result.notices) {
+    console.log(notice.corrected
+      ? `notice: ${findingKey(notice)}. Reopened as a correction recorded in DR-0036 (scripts/lint-additive-minor-corrections.json).`
+      : `notice: ${findingKey(notice)}. Opening breaks no validator, but it permits no additions until the next major (DR-0036).`);
   }
   result.warnings.forEach((warning) => console.warn(`warning: ${warning}`));
   if (result.warnings.length) console.warn('Run `node scripts/lint-additive-minor.cjs --prune-baseline` to drop stale entries.');
@@ -969,14 +1377,19 @@ function main() {
     console.error(
       '\nA minor release only adds. Make the change additive instead: add the property to an open' +
       ' object, keep removed values and properties, and keep new properties optional. If the change' +
-      ' has to ship anyway, it needs a WG decision and a major release.',
+      ' has to ship anyway, it needs a WG decision and a major release. If the published spec text' +
+      ' already required it, record it as a correction in DR-0036 and' +
+      ' scripts/lint-additive-minor-corrections.json.',
     );
   }
   process.exitCode = 1;
 }
 
 module.exports = {
+  NOTICE_KINDS,
   VIOLATION_KINDS,
+  WHOLE_SCHEMA,
+  analyze,
   buildTree,
   checkAgainstBaseline,
   compareTrees,
@@ -984,6 +1397,7 @@ module.exports = {
   findingKey,
   historyPairs,
   lintAdditiveMinor,
+  recordedCorrections,
 };
 
 if (require.main === module) main();
