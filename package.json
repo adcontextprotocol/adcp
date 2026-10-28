@@ -156,7 +156,7 @@
     "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs tests/lint-conformance-doc-freshness.test.cjs && npm run test:release-instrumentation",
     "test:release-instrumentation": "node --test --test-force-exit --test-timeout=30000 tests/release-instrumentation.test.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs && node --test --test-force-exit --test-timeout=30000 tests/universal-macro-translation-vectors.test.cjs",
-    "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ --pool=threads",
+    "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ --pool=threads && npm run test:auction-only-compliance",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
     "test:server-unit": "vitest run --config server/vitest.config.ts tests/unit/ src/",
     "test:server-integration": "vitest run server/tests/integration --config server/vitest.config.ts",
@@ -208,11 +208,12 @@
     "eval:addie-fixed-traces-direct-full-suite": "tsx --import dotenv/config server/tests/manual/fixed-trace-direct-full-suite-eval.ts",
     "eval:addie-gemini-direct-ablation": "tsx --import dotenv/config server/tests/manual/gemini-direct-ablation-eval.ts",
     "eval:addie-matched-v4-plan": "tsx server/tests/manual/matched-v4-evaluation-plan.ts",
-    "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts"
+    "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts",
+    "test:auction-only-compliance": "node --test --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs"
   },
   "dependencies": {
     "@adcp/reporting-storage": "0.3.0-beta.1",
-    "@adcp/sdk": "17.0.0-beta.2",
+    "@adcp/sdk": "17.0.0-beta.3",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.7",
