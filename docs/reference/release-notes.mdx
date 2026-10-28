@@ -355,6 +355,28 @@ The `v3.1.3` tag, schemas, compliance bundles, protocol tarball, signatures, and
 
 ---
 
+## 3.1 erratum: HTML-markup legacy formats project to `display_tag`
+
+**Status:** Erratum for the next 3.1.x patch, approved by the AdCP lead ([#8339](https://github.com/adcontextprotocol/adcp/issues/8339)). The stable wire negotiation value remains `"3.1"`.
+
+The AAO reference catalog tagged the HTML-markup legacy formats (`display_html` and `display_WxH_html`) with `canonical: { kind: "html5" }`. That contradicted normative rule 5 of [`canonical-projection-ref.json`](https://adcontextprotocol.org/schemas/v3/core/canonical-projection-ref.json): the projected `slots[]` must be consistent with the v1 format's `assets[*]`. These formats require one `html` asset (`html_creative`, markup rendered verbatim). The `html5` canonical's slot is an `html5_bundle` zip that the seller unpacks and hosts.
+
+The catalog now tags these formats as follows:
+
+```json
+"canonical": {
+  "kind": "display_tag",
+  "asset_source": "buyer_uploaded",
+  "slots_override": [{ "asset_group_id": "html_creative", "asset_type": "html", "required": true }]
+}
+```
+
+This is the same canonical kind `display_js` already used. The catalog also publishes `display_320x50_html` and `display_300x50_html` with this annotation.
+
+**Compatibility.** No schema changes. A 3.1 SDK that reads the corrected catalog projects these formats to `display_tag`, not `html5`. A buyer that sends an `html5` zip creative to an `_html`-only product no longer matches. Those sellers render markup and never accepted bundles. Markup creatives continue to project back to the seller's exact `display_WxH_html` ref with the markup in `html_creative`. The full inline-markup representation (`supported_delivery_types: ["inline_markup"]`) needs 3.2 `display_tag` fields and ships in the next minor.
+
+---
+
 ## Version 3.1.22
 
 **Status:** Published September 13, 2026 at 12:56 UTC — emergency privacy/security correction for the experimental Trusted Match Protocol (`trusted_match.core`). The stable wire negotiation value remains `"3.1"`.
