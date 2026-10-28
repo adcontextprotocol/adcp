@@ -4,8 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const YAML = require('yaml');
 const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
+const complianceRoot = process.env.ADCP_COMPLIANCE_TEST_ROOT || path.join(__dirname, '..', 'static', 'compliance', 'source');
 function loadMediaBuyStoryboard(name) {
-  return YAML.parse(fs.readFileSync(path.join(__dirname, '..', 'static', 'compliance', 'source', 'protocols', 'media-buy', 'scenarios', `${name}.yaml`), 'utf8'));
+  return YAML.parse(fs.readFileSync(path.join(complianceRoot, 'protocols', 'media-buy', 'scenarios', `${name}.yaml`), 'utf8'));
 }
 
 for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creative_fate_after_cancellation', 'dependency_impairment', 'dependency_impairment_cardinality']) {
@@ -15,10 +16,11 @@ for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creati
       // Exercise the source discovery and every create request, including reuse
       // and two-package setup. Lifecycle effects have their own coverage.
       const steps = storyboard.phases.flatMap(phase => phase.steps)
-        .filter(step => ['get_products', 'create_media_buy'].includes(step.task))
+        .filter(step => ['get_products', 'list_creative_formats', 'create_media_buy'].includes(step.task))
         .map(step => ({ ...step, validations: step.validations.filter(v => v.check !== 'response_schema') }));
-      const tools = ['get_products', 'create_media_buy', 'comply_test_controller'];
+      const tools = ['get_products', 'list_creative_formats', 'create_media_buy', 'comply_test_controller'];
       const requests = [];
+      const formatRequests = [];
       const result = await runStoryboard('https://seller.example/mcp', {
         ...storyboard, prerequisites: undefined, fixtures: undefined, requires: undefined,
         phases: [{ id: 'pricing_setup', title: 'Pricing setup', steps }],
@@ -37,6 +39,12 @@ for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creati
               format_ids: [{ agent_url: 'https://creative.example', id: 'display_300x250' }],
               format_options: [{ format_option_id: 'seller-image', format_kind: 'image', params: { width: 300, height: 250 } }],
             }], context: request.context } };
+          },
+          async listCreativeFormats(request) {
+            formatRequests.push(request);
+            const formatId = { agent_url: 'https://creative.example', id: 'display_300x250' };
+            assert.deepEqual(request.format_ids, [formatId], 'legacy format lookup uses the discovered product reference');
+            return { success: true, data: { formats: [{ format_id: formatId }], context: request.context } };
           },
           async createMediaBuy(request) {
             requests.push(request);
@@ -62,6 +70,7 @@ for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creati
       assert.equal(result.failed_count, 0);
       assert.equal(result.skipped_count, 0);
       assert.equal(requests.length, name === 'creative_fate_after_cancellation' ? 2 : 1);
+      assert.equal(formatRequests.length, steps.filter(step => step.task === 'list_creative_formats').length);
       if (name === 'dependency_impairment_cardinality') assert.equal(requests[0].packages.length, 2);
     });
   }
@@ -69,7 +78,7 @@ for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creati
 
 for (const supportsForce of [false, true]) {
   test(`stale-cache probe warms auction inventory before forcing and gates unsupported forcing (${supportsForce})`, async () => {
-    const storyboard = parseStoryboard(fs.readFileSync(path.join(__dirname, '..', 'static', 'compliance', 'source', 'universal', 'stale-response-advisory.yaml'), 'utf8'));
+    const storyboard = parseStoryboard(fs.readFileSync(path.join(complianceRoot, 'universal', 'stale-response-advisory.yaml'), 'utf8'));
     const phases = storyboard.phases.filter(p => p.id !== 'capability_discovery').map(p => ({
       ...p, steps: p.steps.map(s => ({ ...s, validations: s.validations.filter(v => v.check !== 'response_schema') })),
     }));
