@@ -1261,10 +1261,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // to 21_021_886 bytes, so the cap moves to 22 MiB. Experimental
   // list_collections and the collection card webhooks (#8183) take it from
   // 21_151_775 to 21_294_989 bytes, still under the cap. Composing the
-  // protocol envelope into every task response (each closed root and branch
-  // declares the envelope fields, and every response bundles the envelope)
-  // takes it from 22_959_518 to 23_428_012 bytes, so the cap moves to
-  // 23 MiB. Size is not a reason to skip that composition.
+  // protocol envelope into every task response (every response bundles the
+  // envelope) takes it from 22_959_518 to 23_426_967 bytes, so the cap moves
+  // to 23 MiB. Size is not a reason to skip that composition.
   assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
