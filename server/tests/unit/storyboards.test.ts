@@ -299,10 +299,11 @@ describe('wrapper contract', () => {
     // that prerelease instead of being upgraded to the GA bundle.
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).requested).toBe('3.2');
     const latestRegistered32 = highestRegisteredComplianceVersion(/^3\.2\.\d+$/);
+    const latestRegistered31 = highestRegisteredComplianceVersion(/^3\.1\.\d+$/);
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe(latestRegistered32);
     expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).version).toBe('3.2.0-rc.7');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe(latestRegistered32);
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.29');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe(latestRegistered31);
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
@@ -332,7 +333,7 @@ describe('wrapper contract', () => {
     // release.
     const aliases: Array<{ alias: string; channel: RegExp; floor: string }> = [
       { alias: '3.0', channel: /^3\.0\.\d+$/, floor: '3.0.28' },
-      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.29' },
+      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.30' },
       { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.5' },
       { alias: '3.1-beta', channel: /^3\.1\.0-beta\.\d+$/, floor: '3.1.0-beta.7' },
       { alias: '3.1-rc', channel: /^3\.1\.0-rc\.\d+$/, floor: '3.1.0-rc.14' },
@@ -394,18 +395,19 @@ describe('wrapper contract', () => {
     }
   });
 
-  it('loads the released 3.1.29 bundle with the pinned hosted SDK', () => {
+  it('loads the current released 3.1 bundle with the pinned hosted SDK', () => {
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1']);
     const options = hostedComplianceOptions(target);
 
     expect(target.requested).toBe('3.1');
-    expect(target.version).toBe('3.1.29');
-    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.29$/);
-    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.29$/);
-    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.29');
+    expect(target.version).toBe(highestRegisteredComplianceVersion(/^3\.1\.\d+$/));
+    expect(options.complianceDir).toBe(resolve('dist/compliance', target.version));
+    expect(options.schemaRoot).toBe(resolve('dist/schemas', target.version));
+    expect(loadComplianceIndex(options).adcp_version).toBe(target.version);
   });
 
   it.each([
+    ['3.1.29', /\/dist\/compliance\/3\.1\.29$/, /\/dist\/schemas\/3\.1\.29$/],
     ['3.2.1', /\/dist\/compliance\/3\.2\.1$/, /\/dist\/schemas\/3\.2\.1$/],
     ['3.2.2', /\/dist\/compliance\/3\.2\.2$/, /\/dist\/schemas\/3\.2\.2$/],
     ['3.2.3', /\/dist\/compliance\/3\.2\.3$/, /\/dist\/schemas\/3\.2\.3$/],
