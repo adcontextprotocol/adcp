@@ -286,11 +286,10 @@ delivery path. The envelope also tells receivers to treat `message` as
 untrusted input.
 
 This correction gives `message` one definition, `core/task-message.json`
-(`type: string`, `maxLength: 2000`, `x-max-length-4.0: 1024`), that every
+(`type: string`, `maxLength: 2000`), that every
 task-level `message` refers to: the envelope, the MCP webhook payload and the
 response wrapper. No task schema restates the bound. A seller whose text is
-longer MUST truncate it rather than fail the task. AdCP 4.0 tightens the bound
-to 1,024 characters.
+longer MUST truncate it rather than fail the task.
 
 Unlike (c), this is not a value the published text already excluded on every
 path: the envelope, webhook and wrapper accepted a longer `message`. It

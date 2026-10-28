@@ -106,7 +106,7 @@ const ENVELOPE_VALUES = {
 // not narrow away. The envelope's `replayed` is a boolean that defaults to
 // false, so a seller that always sends `replayed: false` conforms. The
 // envelope's `message` is core/task-message.json, at most 2,000 characters
-// in 3.x (`x-max-length-4.0` is 1024 from 4.0), so a 2,000-character message
+// in 3.x, so a 2,000-character message
 // conforms on every response node.
 const MESSAGE_MAX_LENGTH = 2000;
 const TASK_MESSAGE_REF = '/schemas/core/task-message.json';
@@ -507,7 +507,6 @@ test('every task-level message refers to core/task-message.json', () => {
   assert.deepEqual(own, [], 'a task-level message refers to the one definition, so its bound does not depend on the delivery path');
   const definition = readSource('core/task-message.json');
   assert.equal(definition.maxLength, MESSAGE_MAX_LENGTH);
-  assert.equal(definition['x-max-length-4.0'], 1024);
 });
 
 const OVERLONG_MESSAGE = 'm'.repeat(MESSAGE_MAX_LENGTH + 1);
