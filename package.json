@@ -92,7 +92,7 @@
     "test:error-codes": "node scripts/lint-error-codes.cjs",
     "test:error-code-drift": "node scripts/lint-error-code-drift.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs",
-    "test:unit": "vitest run --dir tests/ --pool=threads",
+    "test:unit": "vitest run --dir tests/ --pool=threads && npm run test:auction-only-compliance",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
     "test:server-unit": "vitest run --config server/vitest.config.ts tests/unit/",
     "test:server-integration": "vitest run server/tests/integration --config server/vitest.config.ts",
@@ -133,7 +133,8 @@
     "test:schema-links": "node scripts/remark-schema-links/test.mjs",
     "dev:docs": "node scripts/dev-docs.mjs",
     "docs:example-coverage": "node scripts/docs-example-coverage.cjs",
-    "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
+    "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs",
+    "test:auction-only-compliance": "node --test --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs"
   },
   "dependencies": {
     "@adcp/sdk": "9.6.2",

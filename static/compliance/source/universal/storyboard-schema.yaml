@@ -922,6 +922,13 @@
 #   Omitting `negative_path` when `expect_error: true` behaves as `schema_invalid`
 #   (backwards-compatible default).
 #
+# enrich_request: true (optional — only with expect_error: true and
+#   negative_path: payload_well_formed). Opt this semantic rejection probe into
+#   the normal per-task request enricher, including discovered auction bids.
+#   The default for negative probes preserves the authored request exactly;
+#   intentionally malformed requests MUST NOT set this flag. Explicit fixture
+#   values still win, and governance-authorized payloads remain unmodified.
+#
 # sample_request_skip_schema: boolean (optional — explicit opt-out of schema
 #   validation for a step regardless of `expect_error` / `negative_path`. Use
 #   sparingly; prefer `negative_path: schema_invalid` for intentionally malformed

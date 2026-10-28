@@ -2,12 +2,12 @@
   "name": "@adcp-protocol/fixture-test-sdk",
   "version": "0.0.0",
   "private": true,
-  "description": "Test-only harness. Pins a modern @adcp/sdk purely so the compliance storyboard regression tests can run a runner that evaluates context-aware skip_if. Nothing here ships, and the root project keeps its production @adcp/sdk 9.6.2 and its A2A 0.3 peer untouched \u2014 npm nests this package's conflicting peers under tests/sdk-runner/node_modules.",
+  "description": "Private test-only modern compliance runner. The production SDK and its peer dependencies remain on the maintenance line.",
   "exports": {
     "./testing": "./testing.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "15.9.2",
+    "@adcp/sdk": "17.0.0-beta.3",
     "@a2a-js/sdk": "1.0.1",
     "@modelcontextprotocol/sdk": "^1.31.0"
   }
