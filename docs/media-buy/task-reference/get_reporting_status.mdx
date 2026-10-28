@@ -492,7 +492,7 @@ covered-subset metrics as whole-buy totals. Official or billing completeness req
 official coverage for every required component.
 
 `configuration_tasks[]` (3.3) lists where feeds can be registered. With
-`sync_principal`, one principal-level [reporting subscription](#subscription-coverage)
+[`sync_principal`](/docs/protocol/sync_principal), one principal-level [reporting subscription](#subscription-coverage)
 covers every authorized account. `configuration_task` stays `"sync_accounts"` for
 compatibility.
 
@@ -648,7 +648,7 @@ Experimental in 3.3 under `media_buy.reporting_subscriptions` ([RFC #8543](https
 </Note>
 
 A [reporting subscription](/docs/protocol/sync_principal#reporting-subscriptions)
-registered through `sync_principal` turns into ordinary per-account obligations. They
+registered through [`sync_principal`](/docs/protocol/sync_principal) turns into ordinary per-account obligations. They
 carry `delivery_config_id` equal to the `subscription_id` and appear in
 `scope.delivery_config_generations` like any other configuration generation.
 Summary and periods responses add `subscription_coverage[]`: one entry per caller
@@ -729,7 +729,7 @@ An account the seller will serve only after someone acts has `status:
 
 **Precedence.** Per account and `feed_purpose`, the more specific scope wins: an
 `account_ids` subscription, or during 3.x an account-level
-`sync_accounts` `reporting_delivery_configs` entry, replaces an all-accounts
+[`sync_accounts`](/docs/accounts/tasks/sync_accounts) `reporting_delivery_configs` entry, replaces an all-accounts
 subscription. Only the winner creates obligations for that account and purpose; the
 replaced subscription reports `overridden`.
 
