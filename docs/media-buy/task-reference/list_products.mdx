@@ -32,7 +32,7 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
 }
 ```
 
-`include_collections` (experimental, `media_buy.collection_cards`, default `false`) asks for the response-level `collections` array described below. This request rejects unknown fields, so send it only to a seller that lists `media_buy.collection_cards` in `experimental_features`. The flag is part of the selection that `feed_version` is scoped to; see [availability forecasts](#availability-forecasts-are-a-per-read-overlay) below.
+`include_collections` (experimental, `media_buy.collection_cards`, default `false`) asks for the response-level `collections` array described below. The 3.2 schema of this request rejects unknown fields, so send it only to a seller that lists `media_buy.collection_cards` in `experimental_features`. The flag is part of the selection that `feed_version` is scoped to; see [availability forecasts](#availability-forecasts-are-a-per-read-overlay) below.
 
 `brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
 
