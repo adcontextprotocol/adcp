@@ -115,11 +115,7 @@
         "context": {
           "$ref": "/schemas/core/context.json"
         },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": {
-          "type": "boolean",
-          "const": true
-        }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status", "media_buy_id", "revision", "accepted_proposal", "purchase_bindings", "available_actions"],
       "additionalProperties": false,
@@ -136,8 +132,7 @@
           "minItems": 1
         },
         "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": { "type": "boolean", "const": true }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status", "errors"],
       "additionalProperties": false,
@@ -149,7 +144,6 @@
       "properties": {
         "status": { "type": "string", "const": "submitted" },
         "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-        "message": { "type": "string", "maxLength": 2000 },
         "expected_confirmation_at": {
           "type": "string",
           "format": "date-time",
@@ -158,8 +152,7 @@
         },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
         "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": { "type": "boolean", "const": true }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status", "task_id"],
       "additionalProperties": false,

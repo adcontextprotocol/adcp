@@ -10,7 +10,6 @@
   "properties": {
     "status": { "type": "string", "const": "submitted" },
     "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-    "message": { "type": "string", "maxLength": 2000 },
     "errors": {
       "type": "array",
       "items": { "$ref": "/schemas/core/error.json" }

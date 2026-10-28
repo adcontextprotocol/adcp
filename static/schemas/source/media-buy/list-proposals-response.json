@@ -120,7 +120,6 @@
       }
     },
     "next_cursor": { "type": "string", "minLength": 1 },
-    "replayed": { "type": "boolean", "const": true },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

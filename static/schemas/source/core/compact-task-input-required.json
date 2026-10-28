@@ -9,7 +9,6 @@
   ],
   "properties": {
     "reason": { "type": "string", "minLength": 1, "maxLength": 200 },
-    "message": { "type": "string", "maxLength": 2000 },
     "errors": {
       "type": "array",
       "items": { "$ref": "/schemas/core/error.json" }

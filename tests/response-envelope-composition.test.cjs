@@ -69,6 +69,21 @@ const ENVELOPE_VALUES = {
   adcp_major_version: 3,
 };
 
+// Values at the edge of an envelope declaration that a response node must
+// not narrow away. The envelope's `replayed` is a boolean that defaults to
+// false, so a seller that always sends `replayed: false` conforms. The
+// envelope's `message` has no bound in 3.x (`x-max-length-4.0` is 1024 from
+// 4.0), so a 2,500-character message conforms; the compact branches used to
+// cap it at 2,000.
+const BOUNDARY_VALUES = {
+  replayed: false,
+  message: 'm'.repeat(2500),
+};
+const COMPACT_TASK_DOCUMENTS = fs.readdirSync(path.join(SOURCE_DIR, 'core'))
+  .filter((file) => /^compact-task-.*\.json$/.test(file))
+  .map((file) => `core/${file}`)
+  .sort();
+
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
@@ -272,6 +287,34 @@ test('source closed schemas declare only body fields and narrowing constraints',
   assert.deepEqual(copied, [], 'the schema build adds envelope $refs; remove the hand-copied declarations');
 });
 
+test('no response node pins replayed', () => {
+  // replayed reports how this response was produced, so a schema cannot fix
+  // its value; the envelope's boolean, default false, governs.
+  const pinned = [];
+  const seen = new Set();
+  function visit(rel, node, pointer) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    const target = documentOf(node.$ref);
+    if (target && !seen.has(target) && !ENVELOPE_DOCUMENTS.has(target)) {
+      seen.add(target);
+      visit(target, readSource(target), '');
+    }
+    const replayed = node.properties?.replayed;
+    if (replayed && (Object.prototype.hasOwnProperty.call(replayed, 'const') || Array.isArray(replayed.enum))) {
+      pinned.push(`${rel}#${pointer}/properties/replayed`);
+    }
+    for (const keyword of COMPOSITION_KEYWORDS) {
+      (node[keyword] || []).forEach((member, index) => visit(rel, member, `${pointer}/${keyword}/${index}`));
+    }
+  }
+  for (const { rel } of RESPONSES) {
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    visit(rel, readSource(rel), '');
+  }
+  assert.deepEqual(pinned, []);
+});
+
 test('the build keeps every local declaration that narrows an envelope field', () => {
   assert.ok(CLOSED_NODES.length > 0, 'found no closed response nodes; the test would be vacuous');
   for (const { rel, pointer } of CLOSED_NODES) {
@@ -293,9 +336,19 @@ test('built closed roots and branches accept every envelope property, single-fau
       const builtValidate = await ownValidatorFor(builtAjv, readBuilt(rel), pointer, `${BUILT_ORIGIN}${rel}`);
       const sourceValidate = await ownValidatorFor(sourceAjv, sourceDocument, pointer, `/schemas/${rel}`);
       const control = {};
-      for (const { name, ref } of ENVELOPE_PROPERTIES) {
+      const cases = [
+        ...ENVELOPE_PROPERTIES.map(({ name, ref }) => ({ name, ref, value: ENVELOPE_VALUES[name], fit: true })),
+        // Edge values honour only a local const, the deliberate pin of a
+        // branch (the fixed message of an unavailable reporting lookup). A
+        // bound below the envelope's is the defect these vectors catch.
+        ...ENVELOPE_PROPERTIES
+          .filter(({ name }) => name in BOUNDARY_VALUES)
+          .map(({ name, ref }) => ({ name, ref, value: BOUNDARY_VALUES[name], fit: false })),
+      ];
+      for (const { name, ref, value: envelopeValue, fit } of cases) {
         const localDeclaration = sourceNode.properties?.[name];
-        const value = fitValue(ENVELOPE_VALUES[name], localDeclaration);
+        const pinned = localDeclaration && Object.prototype.hasOwnProperty.call(localDeclaration, 'const');
+        const value = fit || pinned ? fitValue(envelopeValue, localDeclaration) : envelopeValue;
         const envelopeValidate = await validatorFor(sourceAjv, ref);
         assert.equal(envelopeValidate(value), true, `${name}: vector value is not valid against ${ref}`);
         const vector = { ...control, [name]: value };
@@ -315,5 +368,18 @@ test('built closed roots and branches accept every envelope property, single-fau
         }
       }
     });
+  }
+});
+
+test('compact task payloads accept the envelope edge values, single-fault vectors', async () => {
+  assert.ok(COMPACT_TASK_DOCUMENTS.length > 0, 'found no core/compact-task-*.json; the test would be vacuous');
+  for (const rel of COMPACT_TASK_DOCUMENTS) {
+    const builtValidate = await ownValidatorFor(builtAjv, readBuilt(rel), '', `${BUILT_ORIGIN}${rel}`);
+    for (const { name, ref } of ENVELOPE_PROPERTIES.filter(({ name }) => name in BOUNDARY_VALUES)) {
+      const envelopeValidate = await validatorFor(sourceAjv, ref);
+      assert.equal(envelopeValidate(BOUNDARY_VALUES[name]), true, `${name}: edge value is not valid against ${ref}`);
+      assert.deepEqual(addedErrors(builtValidate, {}, { [name]: BOUNDARY_VALUES[name] }), [],
+        `${rel} rejects envelope ${name} ${JSON.stringify(BOUNDARY_VALUES[name]).slice(0, 40)}`);
+    }
   }
 });
