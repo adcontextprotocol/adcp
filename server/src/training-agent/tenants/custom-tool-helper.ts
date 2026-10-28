@@ -46,6 +46,12 @@ interface CustomToolOptions {
   payloadErrorsAsSuccess?: boolean;
   responseSummary?: (result: Record<string, unknown>) => string | undefined;
   trainingContext?: Partial<TrainingContext>;
+  /**
+   * Pass the release the SDK negotiated for the request to the handler as
+   * `ctx.servedAdcpVersion`, for handlers whose response shape changed
+   * between releases.
+   */
+  forwardServedAdcpVersion?: boolean;
   resolveAuthenticatedAgentUrl?: (
     authInfo: { clientId?: string; extra?: Record<string, unknown> } | undefined,
     params: Record<string, unknown>,
@@ -189,9 +195,13 @@ export function customToolFor(
         : undefined;
       const governanceAgentCredential = governanceAgentCredentialFromExtra(authInfo?.extra);
       const hostedGraderCredential = hostedGraderCredentialFromExtra(authInfo?.extra);
+      const servedAdcpVersion = options.forwardServedAdcpVersion
+        ? (extra as { servedAdcpVersion?: unknown } | undefined)?.servedAdcpVersion
+        : undefined;
       const trainingCtx: TrainingContext = {
         mode: 'open',
         principal: authInfo?.clientId ?? 'anonymous',
+        ...(typeof servedAdcpVersion === 'string' && { servedAdcpVersion }),
         ...(authenticatedAgentUrl && { authenticatedAgentUrl }),
         ...(governanceAgentCredential && { governanceAgentCredential }),
         ...(hostedGraderCredential && { hostedGraderCredential }),

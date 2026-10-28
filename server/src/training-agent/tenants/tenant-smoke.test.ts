@@ -4205,6 +4205,86 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('carries task outcomes outside the envelope status from 3.1 and in it at 3.0', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const governanceUrl = `${baseUrl}/governance/mcp`;
+      const brandUrl = `${baseUrl}/brand/mcp`;
+      await initializeTenant(governanceUrl);
+      await initializeTenant(brandUrl);
+      const structured = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+      const brand = { domain: 'tenant-envelope-status.example' };
+      const planId = 'plan-tenant-envelope-status';
+      const caller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
+        .update('test-token')
+        .digest('hex')
+        .slice(0, 32)}`;
+      const synced = structured(await callTenantTool(governanceUrl, 2, 'sync_plans', {
+        idempotency_key: 'tenant-envelope-status-plan-sync',
+        brand,
+        plans: [{
+          plan_id: planId,
+          brand,
+          objectives: 'Grade the envelope status of governance responses.',
+          budget: { total: 100_000, currency: 'USD', reallocation_threshold: 100_000 },
+          flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+        }],
+      }));
+      expect(synced?.adcp_error, JSON.stringify(synced)).toBeUndefined();
+
+      const check = async (id: number, version?: string) => structured(await callTenantTool(governanceUrl, id, 'check_governance', {
+        idempotency_key: `tenant-envelope-status-check-${id}`,
+        ...(version && { adcp_version: version }),
+        brand,
+        plan_id: planId,
+        caller,
+        target_agent: `${getCanonicalBase()}/sales`,
+        tool: 'create_media_buy',
+        payload: { total_budget: { amount: 1_000, currency: 'USD' } },
+        proposed_commitment: { amount: 1_000, currency: 'USD' },
+      }));
+
+      const current = await check(3);
+      expect(current, JSON.stringify(current)).toMatchObject({ status: 'completed', verdict: 'approved' });
+      const currentValidation = validateSourceSchema('governance/check-governance-response.json', current);
+      expect(currentValidation.valid, JSON.stringify(currentValidation.errors)).toBe(true);
+
+      const reported = structured(await callTenantTool(governanceUrl, 4, 'report_plan_outcome', {
+        idempotency_key: 'tenant-envelope-status-outcome',
+        brand,
+        plan_id: planId,
+        check_id: current!.check_id,
+        governance_context: current!.governance_context,
+        outcome: 'completed',
+        seller_response: { seller_reference: 'mb_envelope_status', committed_budget: 1_000 },
+      }));
+      expect(reported, JSON.stringify(reported)).toMatchObject({ status: 'completed', outcome_state: 'accepted' });
+      const reportedValidation = validateSourceSchema('governance/report-plan-outcome-response.json', reported);
+      expect(reportedValidation.valid, JSON.stringify(reportedValidation.errors)).toBe(true);
+
+      const threeZero = await check(5, '3.0');
+      expect(threeZero, JSON.stringify(threeZero)).toMatchObject({ status: 'approved' });
+
+      const approval = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'creative_approval', {
+        ...(version && { adcp_version: version }),
+        rights_id: 'janssen_likeness_voice',
+        creative_id: 'cr_envelope_status',
+        creative_url: 'https://cdn.tenant-envelope-status.example/creative.png',
+      }));
+      const approved = await approval(6);
+      expect(approved, JSON.stringify(approved)).toMatchObject({ status: 'completed', approval_status: 'approved' });
+      const approvedValidation = validateSourceSchema('brand/creative-approval-response.json', approved);
+      expect(approvedValidation.valid, JSON.stringify(approvedValidation.errors)).toBe(true);
+      const threeZeroApproval = await approval(7, '3.0');
+      expect(threeZeroApproval, JSON.stringify(threeZeroApproval)).toMatchObject({ status: 'approved' });
+      expect(threeZeroApproval).not.toHaveProperty('approval_status');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('projects post-3.0 creative format parameters out of 3.0 tenant responses', async () => {
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
     try {

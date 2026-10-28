@@ -223,6 +223,19 @@ export function supportsAccountChangeFeed(servedVersion: string | undefined): bo
   return major > 3 || (major === 3 && minor >= 2);
 }
 
+/**
+ * Whether the served release carries a task outcome in the top-level
+ * `status` key. AdCP 3.0 did so for the check_governance verdict, the
+ * report_plan_outcome state and the creative_approval decision. 3.1 moved
+ * them to `verdict`, `outcome_state` and `approval_status`, and `status` is
+ * the envelope task status (`enums/task-status.json`) from 3.1 on. A caller
+ * with no served release speaks the current line.
+ */
+export function servesOutcomeInEnvelopeStatus(servedVersion: string | undefined): boolean {
+  const match = servedVersion?.match(/^(\d+)\.(\d+)(?:[.-]|$)/);
+  return match != null && match[1] === '3' && match[2] === '0';
+}
+
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
 

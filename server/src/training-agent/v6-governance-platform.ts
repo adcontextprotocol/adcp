@@ -74,11 +74,15 @@ function buildGovernanceTrainingCtx(ctx: {
   account?: { authInfo?: { principal?: string } };
   agent?: { agent_url: string };
   authInfo?: { extra?: Record<string, unknown> };
+  servedAdcpVersion?: string;
 } | undefined): TrainingContext {
   const governanceAgentCredential = governanceAgentCredentialFromExtra(ctx?.authInfo?.extra);
   const hostedGraderCredential = hostedGraderCredentialFromExtra(ctx?.authInfo?.extra);
   return {
     ...buildTrainingCtx(ctx?.account),
+    // The release the SDK negotiated for this request. Response shapes that
+    // changed between releases follow it.
+    ...(ctx?.servedAdcpVersion && { servedAdcpVersion: ctx.servedAdcpVersion }),
     // Resolved by BuyerAgentRegistry from the authenticated credential.
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
     // Seller-scoped sandbox credential; the handlers restrict what it may

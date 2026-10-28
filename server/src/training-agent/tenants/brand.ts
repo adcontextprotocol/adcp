@@ -86,6 +86,10 @@ const VERIFY_BRAND_CLAIMS_SCHEMA = {
 };
 
 const CREATIVE_APPROVAL_SCHEMA = {
+  // Declared so the SDK selects the pinned release; the response shape
+  // follows it.
+  adcp_version: z.string().optional(),
+  adcp_major_version: z.number().int().optional(),
   rights_id: z.string().optional(),
   rights_grant_id: z.string().optional(),
   creative_url: z.string().optional(),
@@ -153,6 +157,7 @@ export function buildBrandTenantConfig(host: string, options: { storyboardCompat
             'Submit a generated creative for brand approval against rights grant terms.',
             CREATIVE_APPROVAL_SCHEMA,
             handleCreativeApproval,
+            { forwardServedAdcpVersion: true },
           ),
         },
       },

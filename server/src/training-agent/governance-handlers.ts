@@ -22,6 +22,7 @@ import type {
   GovernanceActionFlight,
   SessionState,
 } from './types.js';
+import { servesOutcomeInEnvelopeStatus } from './types.js';
 import { canonicalize, type BrandReference } from '@adcp/sdk';
 import {
   getSession,
@@ -1821,7 +1822,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       ) {
         return { errors: [{ code: 'CONFLICT', message: 'The seller reused statement_id for a different governed action or delivery statement.' }] };
       }
-      return buildCheckResponse(priorStatement);
+      return buildCheckResponse(priorStatement, ctx);
     }
     const periodAlreadyClosed = [...session.governanceOutcomes.values()].some(outcome => {
       const outcomePeriod = (outcome.delivery as {
@@ -1888,7 +1889,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       timestamp: new Date().toISOString(),
     };
     session.governanceChecks.set(checkId, check);
-    return buildCheckResponse(check);
+    return buildCheckResponse(check, ctx);
   }
 
   const ownerOrDelegated = authenticatedCaller === plan.ownerAgentUrl
@@ -2727,7 +2728,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   };
 
   session.governanceChecks.set(checkId, check);
-  return buildCheckResponse(check);
+  return buildCheckResponse(check, ctx);
 }
 
 export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
@@ -2888,7 +2889,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
           }],
         };
       }
-      return { ...(replay.response ?? { outcome_id: replay.outcomeId }), replayed: true };
+      return withOutcomeEnvelopeStatus({ ...(replay.response ?? { outcome_id: replay.outcomeId }), replayed: true }, ctx);
     }
   }
 
@@ -3024,7 +3025,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
       if (priorObservation.requestPayloadHash !== requestPayloadHash) {
         return { errors: [{ code: 'CONFLICT', message: 'The buyer reused observation_id with different delivery evidence.' }] };
       }
-      return { ...(priorObservation.response ?? { outcome_id: priorObservation.outcomeId }), replayed: true };
+      return withOutcomeEnvelopeStatus({ ...(priorObservation.response ?? { outcome_id: priorObservation.outcomeId }), replayed: true }, ctx);
     }
     const observationPeriod = (delivery as {
       reporting_period?: { start?: unknown; end?: unknown };
@@ -3340,9 +3341,6 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   const response: Record<string, unknown> = {
     outcome_id: outcomeId,
     outcome_state: outcomeStateValue,
-    // Legacy training callers consumed `status`; retain it during 3.x while
-    // the modern schema uses outcome_state to avoid envelope collisions.
-    status: outcomeStateValue,
     ...(committedBudget > 0 && { committed_budget: committedBudget }),
     ...(findings.length > 0 && {
       findings: findings.map(f => ({
@@ -3393,7 +3391,23 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
 
   session.governanceOutcomes.set(outcomeId, outcomeState);
 
-  return response;
+  return withOutcomeEnvelopeStatus(response, ctx);
+}
+
+/**
+ * Sets the top-level `status` of a report_plan_outcome response for the
+ * served release. 3.0 carried the outcome state in `status`; from 3.1 the
+ * state is `outcome_state` and `status` is the task status. Stored
+ * responses are release-neutral, so a replay is projected the same way.
+ */
+function withOutcomeEnvelopeStatus(
+  response: Record<string, unknown>,
+  ctx: TrainingContext,
+): Record<string, unknown> {
+  const { status: _storedStatus, ...body } = response;
+  const outcomeInStatus = servesOutcomeInEnvelopeStatus(ctx.servedAdcpVersion)
+    && typeof body.outcome_state === 'string';
+  return { ...body, status: outcomeInStatus ? body.outcome_state : 'completed' };
 }
 
 function buildAdjustmentPlanSummary(
@@ -4300,11 +4314,12 @@ function buildExplanation(
   return `Governance check completed with status: ${status}.`;
 }
 
-function buildCheckResponse(check: GovernanceCheckState) {
+function buildCheckResponse(check: GovernanceCheckState, ctx: TrainingContext) {
   return {
     check_id: check.checkId,
     check_type: check.binding === 'proposed' ? 'intent' : 'execution',
-    status: check.status,
+    // 3.0 carried the verdict in `status`; from 3.1 it is the task status.
+    status: servesOutcomeInEnvelopeStatus(ctx.servedAdcpVersion) ? check.status : 'completed',
     verdict: check.status,
     ...(check.binding === 'proposed' && { plan_id: check.planId }),
     ...(check.budgetPeriodId && { budget_period_id: check.budgetPeriodId }),
