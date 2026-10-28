@@ -3,6 +3,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { describe, it } = require('node:test');
+const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const {
   evaluateBodyIntegrity,
   usesUniversalBodyIntegrity,
@@ -23,6 +25,42 @@ const capabilitiesSchemaPath = path.join(
   '../static/schemas/source/protocol/get-adcp-capabilities-response.json'
 );
 const capabilitiesSchema = JSON.parse(fs.readFileSync(capabilitiesSchemaPath, 'utf8'));
+const schemaRoot = path.join(__dirname, '../static/schemas/source');
+const legacySchemaRoot = path.join(__dirname, '../dist/schemas/3.1.1');
+
+function readSchema(uri) {
+  assert.match(uri, /^\/schemas\//);
+  const [schemaUri] = uri.split('#');
+  return JSON.parse(fs.readFileSync(path.join(schemaRoot, schemaUri.slice('/schemas/'.length)), 'utf8'));
+}
+
+async function compileRequestSchema(uri) {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    discriminator: true,
+    loadSchema: async ref => readSchema(ref),
+  });
+  addFormats(ajv);
+  return ajv.compileAsync(readSchema(uri));
+}
+
+function readLegacySchema(uri) {
+  assert.match(uri, /^\/schemas\/3\.1\.1\//);
+  const [schemaUri] = uri.split('#');
+  return JSON.parse(fs.readFileSync(path.join(legacySchemaRoot, schemaUri.slice('/schemas/3.1.1/'.length)), 'utf8'));
+}
+
+async function compileLegacyRequestSchema(uri) {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    discriminator: true,
+    loadSchema: async ref => readLegacySchema(ref),
+  });
+  addFormats(ajv);
+  return ajv.compileAsync(readLegacySchema(uri));
+}
 
 describe('AdCP 3.2 request-signing body-integrity policy', () => {
   it('pins the fixture to the 3.2 signing profile', () => {
@@ -91,6 +129,57 @@ describe('AdCP 3.2 request-signing body-integrity policy', () => {
     for (const file of fs.readdirSync(negativeDir).filter(name => name.endsWith('.json'))) {
       const vector = JSON.parse(fs.readFileSync(path.join(negativeDir, file), 'utf8'));
       assert.equal(vector.signing_profile_version, '3.1', file);
+    }
+  });
+
+  // Restored from #7580, which #7581 removed, and extended to profile-3.2/: the three
+  // vectors hand-authored there predate the generator and never received a schema-valid
+  // body. A body that is not a valid request makes grading depend on whether a verifier
+  // validates the request before or after the signature (adcp#7567).
+  it('uses operation-valid bodies in every routed signing vector', async () => {
+    const baseDir = path.dirname(fixturePath);
+    const schemas = {
+      create_media_buy: {
+        current: await compileRequestSchema('/schemas/media-buy/create-media-buy-request.json'),
+        legacy: await compileLegacyRequestSchema('/schemas/3.1.1/media-buy/create-media-buy-request.json'),
+      },
+      sync_creatives: {
+        current: await compileRequestSchema('/schemas/creative/sync-creatives-request.json'),
+        legacy: await compileLegacyRequestSchema('/schemas/3.1.1/creative/sync-creatives-request.json'),
+      },
+      update_media_buy: {
+        current: await compileRequestSchema('/schemas/media-buy/update-media-buy-request.json'),
+        legacy: await compileLegacyRequestSchema('/schemas/3.1.1/media-buy/update-media-buy-request.json'),
+      },
+    };
+    // 028 addresses the MCP endpoint with a JSON-RPC envelope; positive/007 and 008 address
+    // paths that are not AdCP operations. None of them carries an operation body.
+    const unrouted = name => name.startsWith('028-');
+    const unroutedPositive = name => name.startsWith('007-') || name.startsWith('008-');
+    const suites = [
+      { dir: 'negative', skip: unrouted, profiles: ['current', 'legacy'] },
+      { dir: 'positive', skip: unroutedPositive, profiles: ['current', 'legacy'] },
+      { dir: 'profile-3.2/negative', skip: unrouted, profiles: ['current'] },
+      { dir: 'profile-3.2/positive', skip: unroutedPositive, profiles: ['current'] },
+    ];
+
+    for (const { dir, skip, profiles } of suites) {
+      const files = fs.readdirSync(path.join(baseDir, dir)).filter(name => name.endsWith('.json') && !skip(name));
+      assert.ok(files.length > 0, `${dir} has no routed vectors`);
+      for (const file of files) {
+        const vector = JSON.parse(fs.readFileSync(path.join(baseDir, dir, file), 'utf8'));
+        const operation = Object.keys(schemas).find(name => new URL(vector.request.url).pathname.endsWith(`/${name}`));
+        assert.ok(operation, `no request schema selected for ${dir}/${file}`);
+        const body = JSON.parse(vector.request.body);
+        for (const profile of profiles) {
+          const validate = schemas[operation][profile];
+          assert.equal(
+            validate(body),
+            true,
+            `${dir}/${file} has a schema-invalid ${operation} body for ${profile}: ${JSON.stringify(validate.errors)}`,
+          );
+        }
+      }
     }
   });
 
