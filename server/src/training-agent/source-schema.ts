@@ -13,10 +13,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const schemaRoot = join(process.cwd(), 'static/schemas/source');
 /**
- * The published schema tree. The schema build composes the protocol envelope
- * into closed response roots and branches, so responses validate against the
- * built tree, never against raw source. The runtime image ships it, and the
- * server unit setup builds it (scripts/built-schemas.cjs).
+ * The published schema tree, the one path every validator here reads. The
+ * runtime image ships it, and the server unit setup builds it
+ * (scripts/built-schemas.cjs).
  */
 const builtSchemaRoot = join(process.cwd(), 'dist/schemas/latest');
 const BUILT_SCHEMA_ORIGIN = 'https://adcontextprotocol.org/schemas/latest/';

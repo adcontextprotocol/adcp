@@ -69,7 +69,7 @@ Two corrections are recorded:
 | Correction | Source text | Ships in | Check entries |
 |---|---|---|---|
 | (a) Reopen the 3.2 proposal flow | DR-0019 | 3.3.0, and a 3.2.x patch | The table under (a) |
-| (b) Compose the protocol envelope on closed task responses | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | None: (a) covers every location |
+| (b) Compose the protocol envelope on every task response | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | None: no closed schema changes |
 
 #### (a) Reopen the 3.2 proposal flow
 
@@ -135,7 +135,7 @@ only when its served release is 3.3 or later (DR-0024). A request carries them
 only when the negotiated release is 3.3 or later. A request that names only the
 major is served the oldest supported release (DR-0034), so it never gets them.
 
-#### (b) Compose the protocol envelope on closed task responses
+#### (b) Compose the protocol envelope on every task response
 
 On MCP and REST, the protocol envelope's fields sit next to the body fields at
 the response root. The published spec text requires a response to carry them:
@@ -147,21 +147,32 @@ the response root. The published spec text requires a response to carry them:
 - `docs/reference/versioning.mdx`: "`adcp_version` on every response tells the
   buyer which release the seller actually served."
 
-Several task responses were published closed without composing the envelope,
-so they rejected `status`, `adcp_version`, and the other envelope fields. A
-conforming seller could not meet both the envelope and the response schema
-(#8518).
+Several task responses did not compose the envelope, and some response roots
+and status branches were published closed, so they rejected `status`,
+`adcp_version`, and the other envelope fields. A conforming seller could not
+meet both the envelope and the response schema (#8518).
 
-This correction composes `core/protocol-envelope.json` into every task response
-and async status payload. The schema build declares each envelope field on
-every closed root and `oneOf`/`anyOf` branch. 3.3.0 ships it (#8547), and a
-3.2.x patch ships it too.
+This correction composes `core/protocol-envelope.json` through the root
+`allOf` of every task response and async status payload, and every response
+root and status branch is open, so the envelope's fields validate where the
+envelope declares them. No build step adds them: the source and published
+schemas agree. 3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
 
-It needs no check entries of its own. Every closed location that gains an
-envelope field is a proposal-flow response root or branch that (a) reopens
-with `*`. So the additive-minor check is satisfied by (a), and this section
-records the contract reason for the envelope fields. A later envelope field on
-a schema that stays closed needs an entry here.
+It changes no closed schema, so it has no check entries. Each response root or
+status branch that was still closed is reopened:
+
+- The 3.2 proposal-flow response roots and branches are reopened by (a).
+- The `list_collections`, `list_proposals`, `get_media_buy_issue` and
+  `report_media_buy_issue` responses are first published in 3.3, so no earlier
+  release closed them. They open under DR-0019, which keeps response roots
+  open.
+- The `get_reporting_status` failure branches were closed in 3.2.7, but the
+  schema was `x-status: experimental` there. This record's scope rule exempts
+  a schema that was experimental in the release that closed it, so they open
+  under DR-0019 too.
+
+This section records the contract reason for the envelope fields. Closed value
+objects and rows inside response bodies stay as they are.
 
 ## Rationale
 

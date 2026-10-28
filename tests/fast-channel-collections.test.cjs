@@ -14,9 +14,8 @@ function schemaPathFromId(schemaId) {
   return path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
 }
 
-// Validation runs against the published schemas (dist/schemas/latest), where
-// the build has composed the protocol envelope into closed response roots and
-// branches.
+// Validation runs against the published schemas (dist/schemas/latest), the
+// one tree every response validator reads.
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
   return readBuiltSchema(uri);

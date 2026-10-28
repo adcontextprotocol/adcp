@@ -23,8 +23,7 @@ const DOCS_BASE_DIR = path.join(__dirname, '../docs');
 const SCHEMAS_DIR = path.join(__dirname, '../static/schemas/source');
 
 // Doc examples are wire payloads, so they validate against the published
-// schemas (dist/schemas/latest), where the build has composed the protocol
-// envelope into closed response roots and branches.
+// schemas (dist/schemas/latest), the one tree every response validator reads.
 function loadComposedSchema(filePath) {
   return readBuiltSchema(filePath);
 }

@@ -235,7 +235,8 @@ test('report and polling responses separate stored snapshots from task errors', 
     rejects(validate, { status: 'completed' });
     rejects(validate, { status: 'completed', outcome, issue, errors: [{ code: 'INVALID_REQUEST', message: 'Invalid' }] });
     rejects(validate, { status: 'failed', outcome: 'failed', errors: [] });
-    rejects(validate, { status: 'completed', outcome, issue, acknowledged_at: '2027-01-11T20:10:00Z' });
+    // The response root is open (DR-0019); acknowledged_at belongs on the issue.
+    accepts(validate, { status: 'completed', outcome, issue, acknowledged_at: '2027-01-11T20:10:00Z' });
     accepts(validate, { status: 'completed', outcome, issue, replayed: true });
     accepts(validate, { status: 'completed', outcome, issue, replayed: false });
     accepts(validate, { status: 'failed', outcome: 'failed', errors: [{ code: 'INVALID_REQUEST', message: 'Invalid' }], replayed: true });

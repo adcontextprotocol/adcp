@@ -124,5 +124,5 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["outcome", "proposals", "opportunities"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

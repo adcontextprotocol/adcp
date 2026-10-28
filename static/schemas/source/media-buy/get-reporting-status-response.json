@@ -182,7 +182,8 @@
         }
       },
       "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
     },
     {
       "title": "Operational failure",
@@ -195,7 +196,8 @@
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }
       },
       "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
         }
       ]
     }

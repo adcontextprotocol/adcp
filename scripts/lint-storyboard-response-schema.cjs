@@ -41,10 +41,8 @@ const ALLOWLIST_PATH = path.resolve(__dirname, '..', 'tests', 'storyboard-respon
 const schemaCache = new Map();
 
 /**
- * A response schema as the build publishes it (dist/schemas/latest). The
- * build composes the protocol envelope into closed response roots and
- * branches, so the raw source schema is not the contract a sample_response
- * must meet.
+ * A response schema as the build publishes it (dist/schemas/latest), the one
+ * tree every response validator reads.
  */
 function loadSchema(ref) {
   if (!ref) return null;

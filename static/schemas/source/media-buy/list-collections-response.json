@@ -56,7 +56,8 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
+  "not": { "required": ["products"] },
   "examples": [
     {
       "description": "A listed page with one creator card",

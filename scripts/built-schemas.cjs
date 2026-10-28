@@ -4,11 +4,11 @@
  * The published schema tree, dist/schemas/latest, for repository tooling and
  * tests.
  *
- * The schema build composes the protocol envelope into closed response roots
- * and branches (scripts/compose-response-envelope.cjs), so a raw source
- * response schema is not the published contract. Every validator of a
- * response reads the built tree, through this module or, in the server, from
- * the dist/schemas/latest the runtime image ships.
+ * Every validator of a response reads one tree, the one the build publishes:
+ * through this module or, in the server, from the dist/schemas/latest the
+ * runtime image ships. Responses compose the protocol envelope through their
+ * root `allOf` and their roots are open, so the built tree and source agree;
+ * reading the published output keeps one path for every validator.
  *
  * `ensureBuiltSchemas()` rebuilds the tree when the build inputs changed since
  * the last build. It holds a lock directory while it builds, so concurrent
@@ -30,7 +30,6 @@ const LOCK_STALE_MS = 10 * 60 * 1000;
 const BUILD_INPUT_FILES = [
   'package.json',
   'scripts/build-schemas.cjs',
-  'scripts/compose-response-envelope.cjs',
   'scripts/mcp-schema-projection.cjs',
 ];
 

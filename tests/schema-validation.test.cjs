@@ -39,8 +39,7 @@ async function loadExternalSchema(uri) {
     const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', '').split('#', 1)[0]);
     try {
       // Validation runs against the published schemas (dist/schemas/latest),
-      // where the build has composed the protocol envelope into closed
-      // response roots and branches.
+      // the one tree every response validator reads.
       return readBuiltSchema(schemaPath);
     } catch (error) {
       throw new Error(`Failed to load referenced schema ${uri}: ${error.message}`);

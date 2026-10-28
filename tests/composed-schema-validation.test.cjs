@@ -20,11 +20,9 @@ ensureBuiltSchemas();
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
-// Validation vectors run against the published schemas (dist/schemas/latest):
-// the build declares the protocol envelope's fields on closed response roots
-// and branches, so a response carrying
-// `status` or `replayed` beside its body fields validates as it does on the
-// wire. Structural lints below read the raw source where they inspect it.
+// Validation vectors run against the published schemas (dist/schemas/latest),
+// the one tree every response validator reads. Structural lints below read
+// the raw source where they inspect it.
 function loadComposedSchema(schemaPath) {
   return readBuiltSchema(schemaPath);
 }

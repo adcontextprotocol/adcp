@@ -30,7 +30,8 @@
         "outcome",
         "issue"
       ],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
     },
     {
       "type": "object",
@@ -57,7 +58,8 @@
         "outcome",
         "errors"
       ],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "required": ["issue"] }
     }
   ],
   "discriminator": {
