@@ -290,13 +290,13 @@ phases:
             description: "Response matches get-products-response.json schema even under stale cache"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted — remove permanent_advisory and severity fields. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted — remove permanent_advisory and severity fields. See issue #4934."
           - check: field_present
             path: "errors"
             description: "errors[] is present on a stale-cache response"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
           - check: field_contains
             path: "errors[*]"
             value:
@@ -307,23 +307,23 @@ phases:
             description: "One STALE_RESPONSE entry carries the correlated deterministic stale-cache details"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
           - check: field_present
             path: "context"
             description: "Response echoes back the context object on stale-cache advisory"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
           - check: field_value
             path: "context.correlation_id"
             value: "stale_response_advisory--stale_response_wire_placement"
             description: "Context correlation_id returned unchanged"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
           - check: field_present
             path: "products[0]"
             description: "Response payload is non-empty (products[] has at least one entry from stale cache)"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
