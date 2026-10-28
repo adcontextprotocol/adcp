@@ -201,7 +201,7 @@
             }
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "allOf": [
         {
@@ -257,5 +257,5 @@
       { "required": ["pagination"] }
     ]
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }
