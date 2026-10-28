@@ -5,7 +5,8 @@
   "description": "Progress payload for an active get_signals task after a submitted semantic discovery request has started processing. Valid only for `discovery_mode: \"brief\"`; wholesale signals feed reads report partial completion via `incomplete[]`, not async task progress.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-working.json" }
   ],
   "properties": {
     "percentage": {

@@ -29,10 +29,13 @@
  *   5. `task_id` has one definition, core/task-id.json, which is never empty:
  *      `task_id: ""` adds exactly its minLength error on every response node
  *      and every request that carries a task_id.
- *   6. Every submitted body and branch composes core/task-submitted.json,
- *      the one place a submitted response requires `task_id`; no schema keys
- *      task_id on status through `if`/`then`. Without `task_id` a submitted
- *      response fails on core/task-submitted.json's `required` alone.
+ *   6. Every status body composes its core/task-<status>.json: submitted
+ *      bodies and branches core/task-submitted.json, the one place a
+ *      submitted response requires `task_id`, and the working and
+ *      input-required payloads core/task-working.json and
+ *      core/task-input-required.json. No schema keys task_id on status
+ *      through `if`/`then`. Without `task_id` a submitted response fails on
+ *      core/task-submitted.json's `required` alone.
  *
  * Requires the built tree (the npm script builds it) and Node 24, as
  * package.json does.
@@ -66,7 +69,12 @@ const COMPOSITION_KEYWORDS = ['allOf', 'anyOf', 'oneOf'];
 // The envelope and the schemas that state envelope rules: core/task-submitted.json
 // is the one place a submitted response requires task_id. They are not
 // response nodes; the rules below grade the responses that compose them.
-const ENVELOPE_DOCUMENTS = new Set(['core/protocol-envelope.json', 'core/version-envelope.json', 'core/task-submitted.json']);
+const STATUS_BODY_STATUSES = ['submitted', 'working', 'input-required'];
+const ENVELOPE_DOCUMENTS = new Set([
+  'core/protocol-envelope.json',
+  'core/version-envelope.json',
+  ...STATUS_BODY_STATUSES.map((status) => `core/task-${status}.json`),
+]);
 // The envelope's `payload` groups the body fields in documentation only; it
 // is never serialized on the wire.
 const DOCUMENTARY_ENVELOPE_PROPERTIES = new Set(['payload']);
@@ -488,33 +496,61 @@ test('an empty task_id is rejected on every response node, single fault', async 
 
 const TASK_SUBMITTED_REF = '/schemas/core/task-submitted.json';
 
-/** Whether a node composes core/task-submitted.json: through its allOf, or through a document it names that does. */
-function composesTaskSubmitted(node, seen = new Set()) {
+/** Whether a node composes `ref`: through its allOf, or through a document it names that does. */
+function composesStatusSchema(node, ref, seen = new Set()) {
   if (!node || typeof node !== 'object') return false;
   const members = [...(node.allOf || []), ...(typeof node.$ref === 'string' ? [{ $ref: node.$ref }] : [])];
   for (const member of members) {
     if (!member || typeof member.$ref !== 'string') continue;
-    if (member.$ref === TASK_SUBMITTED_REF) return true;
+    if (member.$ref === ref) return true;
     const target = documentOf(member.$ref);
     if (target && !seen.has(target)) {
       seen.add(target);
-      if (composesTaskSubmitted(readSource(target), seen)) return true;
+      if (composesStatusSchema(readSource(target), ref, seen)) return true;
     }
   }
   return false;
 }
 
+function composesTaskSubmitted(node) {
+  return composesStatusSchema(node, TASK_SUBMITTED_REF);
+}
+
 /**
- * A submitted response body or branch: a `*-async-response-submitted.json`
- * document, core/compact-task-submitted.json, or a branch titled as the
- * submitted acknowledgement.
+ * The body for one task status: a `*-async-response-<status>.json`
+ * document, core/compact-task-<status>.json, or a branch titled for that
+ * status (`...Submitted`).
  */
-function isSubmittedNode({ rel, pointer, node }) {
-  if (pointer === '' && (/-async-response-submitted\.json$/.test(rel) || rel === 'core/compact-task-submitted.json')) return true;
-  return typeof node.title === 'string' && /submitted$/i.test(node.title.replace(/\s+/g, ''));
+function statusOfBody({ rel, pointer, node }) {
+  for (const status of STATUS_BODY_STATUSES) {
+    if (pointer === '' && (rel.endsWith(`-async-response-${status}.json`) || rel === `core/compact-task-${status}.json`)) return status;
+    const word = status.replace(/-/g, '');
+    if (typeof node.title === 'string' && node.title.replace(/[\s-]+/g, '').toLowerCase().endsWith(word)) return status;
+  }
+  return undefined;
+}
+
+function isSubmittedNode(entry) {
+  return statusOfBody(entry) === 'submitted';
 }
 
 const SUBMITTED_NODES = RESPONSE_NODES.filter(isSubmittedNode);
+
+test('every status body composes its core/task-<status>.json', () => {
+  const bodies = RESPONSE_NODES.map((entry) => ({ ...entry, status: statusOfBody(entry) })).filter(({ status }) => status);
+  for (const status of STATUS_BODY_STATUSES) {
+    assert.ok(bodies.some((body) => body.status === status), `found no ${status} bodies; the rule would be vacuous`);
+  }
+  assert.deepEqual(
+    bodies.filter(({ node, status }) => !composesStatusSchema(node, `/schemas/core/task-${status}.json`))
+      .map(({ rel, pointer, status }) => `${rel}#${pointer} (${status})`),
+    [], 'a status body must compose its core/task-<status>.json');
+  // A node that pins one of these statuses composes that status's schema.
+  const pinned = RESPONSE_NODES.filter(({ node }) => STATUS_BODY_STATUSES.includes(node.properties?.status?.const)
+    && !composesStatusSchema(node, `/schemas/core/task-${node.properties.status.const}.json`))
+    .map(({ rel, pointer }) => `${rel}#${pointer}`);
+  assert.deepEqual(pinned, [], 'a status-pinned node must compose its core/task-<status>.json');
+});
 
 test('every submitted body and branch composes core/task-submitted.json', () => {
   assert.ok(SUBMITTED_NODES.length >= 19, `expected the submitted bodies and branches, found ${SUBMITTED_NODES.length}`);
