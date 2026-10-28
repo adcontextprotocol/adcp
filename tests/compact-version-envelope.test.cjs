@@ -6,7 +6,9 @@ const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { ProtocolClient } = require('@adcp/sdk');
-const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 const ADCP_VERSION = '3.2.0-beta.0';
@@ -22,7 +24,7 @@ function readSchema(uri) {
   }
   // The published composition: on a response, adcp_version is a protocol
   // envelope field that the schema build declares on closed roots.
-  return readComposedSourceSchema(path.join(SOURCE_DIR, uri.slice('/schemas/'.length)), SOURCE_DIR);
+  return readBuiltSchema(uri);
 }
 
 async function compileCompactSchema(tool, direction = 'request') {

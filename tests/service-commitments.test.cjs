@@ -4,11 +4,13 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const ROOT = path.join(__dirname, '..');
 const SOURCE = path.join(ROOT, 'static/schemas/source');
-const read = (name) => readComposedSourceSchema(path.join(SOURCE, name), SOURCE);
+const read = (name) => readBuiltSchema(`/schemas/${name}`);
 const cache = new Map();
 async function compile(name) {
   if (!cache.has(name)) {

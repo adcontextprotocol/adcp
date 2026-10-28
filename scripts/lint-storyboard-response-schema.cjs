@@ -33,29 +33,30 @@ const yaml = require('js-yaml');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
+const { ensureBuiltSchemas, readBuiltSchema } = require('./built-schemas.cjs');
+
 const STORYBOARD_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
-const SCHEMA_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 const ALLOWLIST_PATH = path.resolve(__dirname, '..', 'tests', 'storyboard-response-schema-allowlist.json');
 
 const schemaCache = new Map();
 
-function schemaRefToPath(ref) {
-  if (!ref) return null;
-  const trimmed = ref.startsWith('/schemas/') ? ref.slice('/schemas/'.length) : ref;
-  return path.join(SCHEMA_DIR, trimmed);
-}
-
+/**
+ * A response schema as the build publishes it (dist/schemas/latest). The
+ * build composes the protocol envelope into closed response roots and
+ * branches, so the raw source schema is not the contract a sample_response
+ * must meet.
+ */
 function loadSchema(ref) {
-  const full = schemaRefToPath(ref);
-  if (!full) return null;
-  if (schemaCache.has(full)) return schemaCache.get(full);
+  if (!ref) return null;
+  if (schemaCache.has(ref)) return schemaCache.get(ref);
+  ensureBuiltSchemas();
   let doc = null;
   try {
-    doc = JSON.parse(fs.readFileSync(full, 'utf8'));
+    doc = readBuiltSchema(ref.startsWith('/schemas/') ? ref : `/schemas/${ref}`);
   } catch {
     doc = null;
   }
-  schemaCache.set(full, doc);
+  schemaCache.set(ref, doc);
   return doc;
 }
 

@@ -4,7 +4,9 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -12,12 +14,12 @@ function schemaPathFromId(schemaId) {
   return path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
 }
 
-// Validation runs against the published composition: the schema build
-// declares the protocol envelope's fields on closed response roots and
-// branches (scripts/compose-response-envelope.cjs).
+// Validation runs against the published schemas (dist/schemas/latest), where
+// the build has composed the protocol envelope into closed response roots and
+// branches.
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-  return readComposedSourceSchema(schemaPathFromId(uri), SCHEMA_BASE_DIR);
+  return readBuiltSchema(uri);
 }
 
 async function compile(schemaId) {
@@ -28,7 +30,7 @@ async function compile(schemaId) {
     loadSchema: loadExternalSchema,
   });
   addFormats(ajv);
-  return ajv.compileAsync(readComposedSourceSchema(schemaPathFromId(schemaId), SCHEMA_BASE_DIR));
+  return ajv.compileAsync(readBuiltSchema(schemaId));
 }
 
 test('channel collections can map carriage to a host property without a host-specific identifier', async () => {

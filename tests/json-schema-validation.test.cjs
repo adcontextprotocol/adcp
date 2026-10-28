@@ -14,17 +14,19 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+const { ensureBuiltSchemas, readBuiltSchema, builtSchemaFiles, builtSchemaPath } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
 const SCHEMAS_DIR = path.join(__dirname, '../static/schemas/source');
 
 // Doc examples are wire payloads, so they validate against the published
-// composition: the schema build declares the protocol envelope's fields on
-// closed response roots and branches (scripts/compose-response-envelope.cjs).
+// schemas (dist/schemas/latest), where the build has composed the protocol
+// envelope into closed response roots and branches.
 function loadComposedSchema(filePath) {
-  return readComposedSourceSchema(filePath, SCHEMAS_DIR);
+  return readBuiltSchema(filePath);
 }
 
 // Test statistics
@@ -75,7 +77,7 @@ function createAjvInstance() {
       }
       // Convert URI to local path
       const localPath = uriToLocalPath(uri);
-      if (localPath && fs.existsSync(localPath)) {
+      if (localPath && fs.existsSync(builtSchemaPath(localPath))) {
         return loadComposedSchema(localPath);
       }
       throw new Error(`Cannot resolve schema: ${uri}`);
@@ -149,20 +151,8 @@ async function loadAllSchemas(ajv) {
     }
   }
 
-  // Recursively load all .json files
-  function walkDir(dir) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walkDir(fullPath);
-      } else if (entry.name.endsWith('.json')) {
-        loadSchemaFile(fullPath);
-      }
-    }
-  }
-
-  walkDir(SCHEMAS_DIR);
+  // Every published schema (dist/schemas/latest).
+  for (const file of builtSchemaFiles()) loadSchemaFile(file);
   return schemasLoaded.size;
 }
 

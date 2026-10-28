@@ -4,7 +4,9 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIGEST_A = `sha256:${'1'.repeat(64)}`;
@@ -16,7 +18,7 @@ function schemaPathFromId(schemaId) {
 
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-  return readComposedSourceSchema(schemaPathFromId(uri), SCHEMA_BASE_DIR);
+  return readBuiltSchema(uri);
 }
 
 async function compile(schemaId) {
@@ -27,7 +29,7 @@ async function compile(schemaId) {
     loadSchema: loadExternalSchema
   });
   addFormats(ajv);
-  return ajv.compileAsync(readComposedSourceSchema(schemaPathFromId(schemaId), SCHEMA_BASE_DIR));
+  return ajv.compileAsync(readBuiltSchema(schemaId));
 }
 
 const contract = {

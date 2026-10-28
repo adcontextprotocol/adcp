@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
@@ -13,12 +12,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const schemaRoot = join(process.cwd(), 'static/schemas/source');
+/**
+ * The published schema tree. The schema build composes the protocol envelope
+ * into closed response roots and branches, so responses validate against the
+ * built tree, never against raw source. The runtime image ships it, and the
+ * server unit setup builds it (scripts/built-schemas.cjs).
+ */
+const builtSchemaRoot = join(process.cwd(), 'dist/schemas/latest');
+const BUILT_SCHEMA_ORIGIN = 'https://adcontextprotocol.org/schemas/latest/';
+const BUILT_COPY_DIRECTORIES = new Set(
+  ['bundled', 'mcp', 'core/async-response-refs'].map(directory => join(builtSchemaRoot, directory)),
+);
 const VERSION_ENVELOPE_DEFINITION_REF = '#/$defs/core~1version-envelope';
 const parsedSchemas = new Map<string, JsonSchema>();
 const sourceValidators = new Map<string, ValidateFunction>();
 let sourceAjv: Ajv | undefined;
-const publishedResponseValidators = new Map<string, ValidateFunction>();
-let publishedResponseAjv: Ajv | undefined;
 const definitionAnnotationKeys = new Set([
   '$comment',
   'default',
@@ -223,63 +231,42 @@ export function sourceSchemaDocument(relativePath: string): Readonly<JsonSchema>
   return readSchema(relativePath);
 }
 
-function schemaFiles(directory: string): string[] {
+function builtSchemaFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) return schemaFiles(path);
+    if (entry.isDirectory()) {
+      // The bundled and MCP projections and the async-response-refs copies
+      // reuse the $ids of the schemas they project.
+      return BUILT_COPY_DIRECTORIES.has(path) ? [] : builtSchemaFiles(path);
+    }
     return entry.name.endsWith('.json') ? [path] : [];
   });
 }
 
-/**
- * A validator for a response schema as the schema build publishes it. Response
- * schemas compose the protocol envelope, and the build declares the envelope's
- * fields (`status`, `adcp_version`, ...) on closed response roots and branches
- * (scripts/compose-response-envelope.cjs), so a response body carrying them
- * validates as it does on the wire. Loaded on first use: only the split-tool
- * contract check below calls it, and the composition module is repository
- * tooling.
- */
-function publishedResponseValidator(relativePath: string): ValidateFunction {
-  const cached = publishedResponseValidators.get(relativePath);
-  if (cached) return cached;
-
-  if (!publishedResponseAjv) {
-    const { readComposedSourceSchema } = createRequire(import.meta.url)(
-      join(process.cwd(), 'scripts/compose-response-envelope.cjs'),
-    ) as { readComposedSourceSchema: (filePath: string, sourceDir: string) => JsonSchema };
-    publishedResponseAjv = new Ajv({ strict: false });
-    addFormats(publishedResponseAjv);
-    for (const path of schemaFiles(schemaRoot)) {
-      const schema = readComposedSourceSchema(path, schemaRoot);
-      if (typeof schema.$id === 'string') publishedResponseAjv.addSchema(schema, schema.$id);
-    }
-  }
-  const schemaId = readSchema(relativePath).$id;
-  if (typeof schemaId !== 'string') throw new Error(`Source schema has no $id: ${relativePath}`);
-  const validator = publishedResponseAjv.getSchema(schemaId);
-  if (!validator) throw new Error(`Published response validator not found: ${relativePath}`);
-  publishedResponseValidators.set(relativePath, validator);
-  return validator;
-}
-
+/** A validator for a schema as the build publishes it (dist/schemas/latest). */
 function sourceValidator(relativePath: string): ValidateFunction {
   const cached = sourceValidators.get(relativePath);
   if (cached) return cached;
 
   if (!sourceAjv) {
+    let files: string[];
+    try {
+      files = builtSchemaFiles(builtSchemaRoot);
+    } catch (error) {
+      throw new Error(
+        `Built schemas not found at ${builtSchemaRoot}; run npm run build:schemas (${(error as Error).message})`,
+      );
+    }
     sourceAjv = new Ajv({ strict: false });
     addFormats(sourceAjv);
-    for (const path of schemaFiles(schemaRoot)) {
+    for (const path of files) {
       const schema = JSON.parse(readFileSync(path, 'utf8')) as JsonSchema;
       if (typeof schema.$id === 'string') sourceAjv.addSchema(schema, schema.$id);
     }
   }
-  const schema = readSchema(relativePath);
-  const schemaId = schema.$id;
-  if (typeof schemaId !== 'string') throw new Error(`Source schema has no $id: ${relativePath}`);
+  const schemaId = `${BUILT_SCHEMA_ORIGIN}${relativePath}`;
   const validator = sourceAjv.getSchema(schemaId);
-  if (!validator) throw new Error(`Source schema validator not found: ${relativePath}`);
+  if (!validator) throw new Error(`Built schema validator not found: ${relativePath}`);
   sourceValidators.set(relativePath, validator);
   return validator;
 }
@@ -390,7 +377,7 @@ function expectedTermsDigest(proposal: Record<string, unknown>): string | undefi
   return `sha256:${createHash('sha256').update(canonicalize(proposal.commercial_terms), 'utf8').digest('base64url')}`;
 }
 
-/** Validate the actual split-tool call against the normative source schema.
+/** Validate the actual split-tool call against its published schema.
  * MCP tools/list intentionally projects large linked objects to compact type
  * hints, so dispatch must still enforce the complete canonical contract. */
 export function validateProductDiscoverySourceInput(
@@ -424,19 +411,17 @@ export function validateProductDiscoverySourceInput(
   return undefined;
 }
 
-/** Validate a split-tool response against its normative source schema. This
- * is primarily used by the training-agent contract tests so a compatibility
- * handler cannot accidentally leak legacy shapes onto the compact wire. */
+/** Validate a split-tool response, as the framework emits it, against its
+ * published schema. This is primarily used by the training-agent contract
+ * tests so a compatibility handler cannot accidentally leak legacy shapes onto
+ * the compact wire. The response must carry its envelope `status`. */
 export function validateProductDiscoverySourceResponse(
   fileName: string,
   response: Record<string, unknown>,
   request?: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
-  const validator = publishedResponseValidator(`media-buy/${fileName}.json`);
-  // `response` is the task body. Response schemas compose the protocol
-  // envelope, whose `status` the framework stamps after this check, so
-  // validate the body as it is published.
-  if (!validator('status' in response ? response : { status: 'completed', ...response })) {
+  const validator = sourceValidator(`media-buy/${fileName}.json`);
+  if (!validator(response)) {
     const error = validator.errors?.[0];
     const field = error && errorField(error);
     return {

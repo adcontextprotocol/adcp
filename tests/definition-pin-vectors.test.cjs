@@ -9,6 +9,9 @@ const pins = require('./helpers/reference-definition-pin.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
+const { builtSchemaFiles, ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 const vectors = JSON.parse(
   fs.readFileSync(path.join(ROOT, 'static/compliance/source/test-vectors/definition-pins/vectors.json'), 'utf8'),
 );
@@ -17,17 +20,11 @@ const rules = vectors.projection_rules;
 function loadSchemas() {
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);
-  const walk = dir => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith('.json')) {
-        const schema = JSON.parse(fs.readFileSync(full, 'utf8'));
-        if (schema.$id && !ajv.getSchema(schema.$id)) ajv.addSchema(schema);
-      }
-    }
-  };
-  walk(SCHEMAS);
+  // The published schemas (dist/schemas/latest), with `/schemas/...` ids.
+  for (const file of builtSchemaFiles()) {
+    const schema = readBuiltSchema(file);
+    if (schema.$id && !ajv.getSchema(schema.$id)) ajv.addSchema(schema);
+  }
   return ajv;
 }
 

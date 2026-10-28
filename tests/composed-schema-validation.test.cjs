@@ -14,17 +14,19 @@ const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
-const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
-// Validation vectors run against the published composition: the schema build
-// declares the protocol envelope's fields on closed response roots and
-// branches (scripts/compose-response-envelope.cjs), so a response carrying
+// Validation vectors run against the published schemas (dist/schemas/latest):
+// the build declares the protocol envelope's fields on closed response roots
+// and branches, so a response carrying
 // `status` or `replayed` beside its body fields validates as it does on the
 // wire. Structural lints below read the raw source where they inspect it.
 function loadComposedSchema(schemaPath) {
-  return readComposedSourceSchema(schemaPath, SCHEMA_BASE_DIR);
+  return readBuiltSchema(schemaPath);
 }
 
 async function loadExternalSchema(uri) {

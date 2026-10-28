@@ -4,13 +4,15 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA_BASE_DIR = path.join(ROOT, 'static/schemas/source');
 
 function readSchema(relativePath) {
-  return readComposedSourceSchema(path.join(SCHEMA_BASE_DIR, relativePath), SCHEMA_BASE_DIR);
+  return readBuiltSchema(`/schemas/${relativePath}`);
 }
 
 async function loadExternalSchema(uri) {

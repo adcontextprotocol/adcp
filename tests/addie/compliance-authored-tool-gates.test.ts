@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -28,7 +28,7 @@ vi.mock('../../server/src/compliance/storyboard-cache.js', () => ({
 const require = createRequire(import.meta.url);
 const { buildTo } = require('../../scripts/build-compliance.cjs');
 const { canonicalizePublishedSchemaUris } = require('../../scripts/build-schemas.cjs');
-const { readComposedSourceSchema } = require('../../scripts/compose-response-envelope.cjs');
+const { BUILT_DIR, builtSchemaFiles, ensureBuiltSchemas, readBuiltSchema } = require('../../scripts/built-schemas.cjs');
 const { version } = require('../../package.json');
 const sourceDir = path.resolve('static/compliance/source');
 const url = 'https://agent.example/mcp';
@@ -40,19 +40,19 @@ beforeAll(async () => {
   bundleDir = mkdtempSync(path.join(tmpdir(), 'authored-tool-gates-'));
   buildTo(bundleDir, version, sourceDir);
   schemaDir = mkdtempSync(path.join(tmpdir(), 'authored-tool-schemas-'));
-  cpSync(path.resolve('static/schemas/source'), schemaDir, { recursive: true });
-  // The SDK requires published schema IDs. Use the publication transforms
-  // (protocol envelope composition, then URIs) on a disposable source
-  // snapshot; no checked-in release artifacts change.
-  for (const file of readdirSync(schemaDir, { recursive: true }) as string[]) {
-    if (!file.endsWith('.json')) continue;
-    const location = path.join(schemaDir, file);
-    const schema = readComposedSourceSchema(location, schemaDir);
-    writeFileSync(location, JSON.stringify(canonicalizePublishedSchemaUris(schema, version)));
+  // The SDK requires published schema IDs. Copy the published schemas
+  // (dist/schemas/latest) into a disposable tree with this version's URIs;
+  // no checked-in release artifacts change.
+  ensureBuiltSchemas();
+  for (const file of builtSchemaFiles() as string[]) {
+    const location = path.join(schemaDir, path.relative(BUILT_DIR, file));
+    mkdirSync(path.dirname(location), { recursive: true });
+    writeFileSync(location, JSON.stringify(canonicalizePublishedSchemaUris(readBuiltSchema(file), version)));
   }
   loadPublished = (await vi.importActual<typeof import('@adcp/sdk/testing')>('@adcp/sdk/testing'))
     .getComplianceStoryboardById;
-});
+  // Builds dist/schemas/latest first when its sources changed.
+}, 180_000);
 afterAll(() => {
   rmSync(bundleDir, { recursive: true, force: true });
   rmSync(schemaDir, { recursive: true, force: true });

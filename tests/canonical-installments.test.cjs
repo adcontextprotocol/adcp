@@ -31,6 +31,9 @@ const { termsDigest } = require('./helpers/reference-definition-pin.cjs');
 const ROOT = path.join(__dirname, '..');
 const SCHEMA_BASE_DIR = path.join(ROOT, 'static/schemas/source');
 const DOCS = path.join(ROOT, 'docs');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 function readSchema(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, relativePath), 'utf8'));
@@ -40,9 +43,10 @@ function readDoc(relativePath) {
   return fs.readFileSync(path.join(DOCS, relativePath), 'utf8');
 }
 
+// Validation runs against the published schemas (dist/schemas/latest).
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-  return readSchema(uri.replace('/schemas/', ''));
+  return readBuiltSchema(uri);
 }
 
 const compiled = new Map();
@@ -50,7 +54,7 @@ function compile(schemaId) {
   if (!compiled.has(schemaId)) {
     const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
     addFormats(ajv);
-    compiled.set(schemaId, ajv.compileAsync(readSchema(schemaId.replace('/schemas/', ''))));
+    compiled.set(schemaId, ajv.compileAsync(readBuiltSchema(schemaId)));
   }
   return compiled.get(schemaId);
 }

@@ -8,7 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const { readComposedSourceSchema } = require('../scripts/compose-response-envelope.cjs');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -36,10 +38,10 @@ async function loadExternalSchema(uri) {
   if (uri.startsWith('/schemas/')) {
     const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', '').split('#', 1)[0]);
     try {
-      // Validation runs against the published composition: the schema build
-      // declares the protocol envelope's fields on closed response roots and
-      // branches (scripts/compose-response-envelope.cjs).
-      return readComposedSourceSchema(schemaPath, SCHEMA_BASE_DIR);
+      // Validation runs against the published schemas (dist/schemas/latest),
+      // where the build has composed the protocol envelope into closed
+      // response roots and branches.
+      return readBuiltSchema(schemaPath);
     } catch (error) {
       throw new Error(`Failed to load referenced schema ${uri}: ${error.message}`);
     }
@@ -3146,7 +3148,7 @@ async function runTests() {
       let validate;
       try {
         // Examples are wire payloads: validate them against the published composition.
-        validate = await testAjv.compileAsync(readComposedSourceSchema(schemaPath, SCHEMA_BASE_DIR));
+        validate = await testAjv.compileAsync(readBuiltSchema(schemaPath));
       } catch (error) {
         return `${filename}: Failed to compile schema for example validation: ${error.message}`;
       }

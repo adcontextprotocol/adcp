@@ -2876,6 +2876,10 @@ async function main() {
     }
   }
 
+  // Record the inputs latest/ was built from, so tests and tooling that read
+  // the built tree (scripts/built-schemas.cjs) rebuild only when they change.
+  require('./built-schemas.cjs').writeBuildStamp();
+
   console.log('');
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
@@ -2916,7 +2920,8 @@ module.exports = {
 };
 
 if (require.main === module) {
-  main().catch(err => {
+  // One build of dist/schemas/latest at a time (scripts/built-schemas.cjs).
+  require('./built-schemas.cjs').withBuildLock(main).catch(err => {
     console.error('❌ Build failed:', err.message);
     process.exit(1);
   });
