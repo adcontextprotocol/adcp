@@ -60,6 +60,8 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 30 | Sellers that hold buys for review | Keep a provisional buy (`confirmed_at: null`) in `pending_start` at flight start until you confirm or reject it ([details](#flight-start-activates-committed-buys-only)). |
 | 31 | Sellers reporting qualified metrics | Omit a metric's flat carrier from buy and window `totals` when packages report it under more than one qualifier set ([details](#multi-qualifier-metrics-omit-flat-totals)). |
 | 32 | Buyers and in-house clients | Send `adcp_version` on every request, with the deprecated `adcp_major_version` mirror through 3.x. 4.0 removes `adcp_major_version` and `adcp.major_versions` ([details](#deprecations)). |
+| 33 | Network and run-of-network sellers | Return `publisher_properties: []` or `collections: []` only to callers served 3.3 or later; apply any exclusion list you accept against your full internal roster, and reject one you cannot apply with `UNSUPPORTED_FEATURE` ([details](#product-rosters-can-be-undisclosed)). |
+| 34 | Buyers and SDK maintainers | Treat an empty roster as undisclosed and opaque, never as an empty set; do not index `publisher_properties[0]` or `collections[0]` ([details](#product-rosters-can-be-undisclosed)). |
 
 ## Required to claim 3.3 behavior
 
@@ -140,6 +142,17 @@ The schema loosens, and the rules around it narrow:
 - **Version gate.** A response served below 3.3 follows the 3.2 schema, which requires `impressions` ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)). In it, a seller with no impression count omits the row and never substitutes `impressions: 0`.
 
 See [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions).
+
+### Product rosters can be undisclosed
+
+A product's `publisher_properties` and `collections` no longer require at least one entry. A non-empty list is the complete roster, as before. An empty list (`[]`) now means the seller does not disclose the roster: it is not an empty set and it bounds nothing. There is no new field and no partial state. An absent `collections` still makes no collection declaration, and `publisher_properties` stays required on a `Product`.
+
+- **Emission gate.** A seller serving a release below 3.3 MUST NOT return a product with an empty roster; the 3.2 schema requires one entry, so it omits the product and returns the others ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)). Wholesale feeds and webhooks are not defined by this release.
+- **Allow lists** (`property_list`, `collection_list`, `collection_lists`) MAY be accepted against an undisclosed roster. The package runs only on the items the seller matches, with no promise to cover every listed item.
+- **Exclusion lists** (`property_list_exclude`, `collection_list_exclude`, `collection_lists_exclude`) are the buyer's choice, because the buyer sees the undisclosed roster at discovery. A seller MAY accept one, and if it does it MUST apply the exclusion against its full internal roster. A seller that cannot, for example because it does not itself know every publisher it may serve, rejects it with `UNSUPPORTED_FEATURE` (correctable).
+- **Buyers** SHOULD treat an undisclosed roster as opaque in brand-safety and governance logic, decide whether it is acceptable for their exclusions, and MAY refuse such products. **Sellers** SHOULD offer complete rosters where they can.
+
+See [Roster coverage](/docs/media-buy/product-discovery/media-products#roster-coverage).
 
 ### Property domain identifiers have an enforceable format
 
@@ -362,6 +375,7 @@ Many 3.3 additions sit inside objects that 3.2 closes, so a strict 3.2 validator
 | Buyer | `budget.periods[]` on `sync_plans` | 3.2 closes the plan `budget`. |
 | Seller | `commercial_terms.definition_pins[]` and the `definition_changed` refinement reason | 3.2 `commercial_terms` is closed. |
 | Seller | `expected_confirmation_at` on `accept_proposal`, `buy_products`, and `refine_proposals` submitted responses | 3.2 closes the commitment `submitted` arm and the `refine_proposals` response. It is safe on `create_media_buy`. |
+| Seller | A product with `publisher_properties: []` or `collections: []` (undisclosed roster) | 3.2 requires at least one entry in each. |
 | Seller | Delivery rows without `impressions` | 3.2 requires `impressions` on every row. |
 | Seller | `by_spot[]` rows with `spot_status: "scheduled"` or `"preempted"`, and `available_statuses` / `supports_break_position` on `supports_spot_breakdown` | 3.2 requires `aired_at` on every row and closes the spot capability. |
 | Seller | `hold_policy` on products and proposals, `committed` proposals under `terms_only` finalize | The fields are not in 3.2, and a 3.2 buyer reads `committed` as an inventory hold. |
@@ -394,6 +408,7 @@ These change generated types or bundle shape without changing what a conformant 
 - **Envelope composition (#7946, 3.2.4).** Nine compact and experimental request schemas and `core/compact-task-submitted.json` now compose `core/version-envelope.json` through root `allOf`, so generated types share envelope ancestry. Request validation is unchanged; `compact-task-submitted.json` response validation is tightened as listed above.
 - **`media_buy.features` is no longer boolean-only (#7927).** `catalog_ingestion` is an object, so generators that emit a map of booleans for `media_buy.features` break.
 - **Daypart requirements (#8025).** `required_overlay_support.daypart_targets.timezone_modes` is no longer required; a requirement carries `timezone_modes`, `time_granularity`, or both.
+- **Product rosters (#6135).** `publisher_properties` and `collections` lose `minItems: 1` on `product.json` and `canonical-product.json`. Generated types change for every product (a TypeScript non-empty tuple becomes `T[]`; a Pydantic `min_length` is dropped). Do not index `[0]` without a guard, and treat `[]` as undisclosed, not empty.
 - **Delivery rows (#8108).** `impressions` is optional on `daily_breakdown` and dimensional breakdown rows; `aggregated_totals` still requires it.
 - **Reporting issue codes (#8099, 3.2.4).** The closed reporting status issue-code enum gains `REVISION_UNREADABLE`, with a `reporting_revision_id` field. Strict readers must accept it.
 - **Spot rows (#8017).** `by_spot[].aired_at` is required only on `aired` and `makegood` rows and on rows without `spot_status`.

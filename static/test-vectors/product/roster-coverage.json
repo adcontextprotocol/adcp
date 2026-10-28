@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "title": "AdCP 3.3 product roster coverage vectors",
+  "description": "Cross-SDK vectors for undisclosed rosters: an empty publisher_properties or collections means the seller does not disclose the roster, a non-empty list is complete, and there is no partial state. Each case applies `overrides` to `base_product` with JSON Merge Patch semantics (null deletes a key) and states whether the result is schema-valid as a legacy Product (/schemas/core/product.json) and as a compact canonical Product (/schemas/core/canonical-product.json). Runtime rules the schemas cannot express: a seller serving a release below 3.3 MUST NOT return an empty roster; a seller that accepts property_list_exclude, collection_list_exclude, or collection_lists_exclude against an undisclosed roster MUST apply it against its full internal roster, and one that cannot rejects it with UNSUPPORTED_FEATURE.",
+  "product_schemas": [
+    "/schemas/core/product.json",
+    "/schemas/core/canonical-product.json"
+  ],
+  "base_product": {
+    "product_id": "prod_network_run_of_network",
+    "name": "Run of Network Mobile",
+    "description": "Run-of-network mobile app inventory",
+    "publisher_properties": [
+      {
+        "publisher_domain": "news.example.com",
+        "selection_type": "all"
+      }
+    ],
+    "format_options": [
+      {
+        "format_option_id": "image_300x250",
+        "format_kind": "image",
+        "params": {
+          "width": 300,
+          "height": 250
+        }
+      }
+    ],
+    "delivery_type": "non_guaranteed",
+    "pricing_options": [
+      {
+        "pricing_option_id": "cpm_floor",
+        "pricing_model": "cpm",
+        "currency": "USD",
+        "floor_price": 1
+      }
+    ],
+    "reporting_capabilities": {
+      "available_reporting_frequencies": [
+        "daily"
+      ],
+      "expected_delay_minutes": 60,
+      "timezone": "UTC",
+      "supports_webhooks": false,
+      "available_metrics": [
+        "impressions"
+      ],
+      "date_range_support": "date_range"
+    }
+  },
+  "vectors": [
+    {
+      "id": "complete-properties",
+      "description": "A non-empty publisher_properties is the complete roster, as before.",
+      "overrides": {},
+      "valid": true
+    },
+    {
+      "id": "undisclosed-properties",
+      "description": "An empty publisher_properties is an undisclosed roster, not an empty set.",
+      "overrides": {
+        "publisher_properties": []
+      },
+      "valid": true
+    },
+    {
+      "id": "absent-properties-product-invalid",
+      "description": "publisher_properties stays required on a full Product: absence is still invalid, and never means undisclosed.",
+      "overrides": {
+        "publisher_properties": null
+      },
+      "valid": false,
+      "schemas": [
+        "/schemas/core/product.json"
+      ]
+    },
+    {
+      "id": "absent-properties-canonical-projection",
+      "description": "A compact projection that omits the field says nothing about the roster.",
+      "overrides": {
+        "publisher_properties": null
+      },
+      "valid": true,
+      "schemas": [
+        "/schemas/core/canonical-product.json"
+      ]
+    },
+    {
+      "id": "undisclosed-properties-allow-list",
+      "description": "An undisclosed roster MAY accept an allow list; the package runs on the items the seller matches.",
+      "overrides": {
+        "publisher_properties": [],
+        "overlay_support": {
+          "property_list": true
+        }
+      },
+      "valid": true,
+      "schemas": [
+        "/schemas/core/canonical-product.json"
+      ]
+    },
+    {
+      "id": "undisclosed-properties-allow-list-product",
+      "description": "The legacy Product pairs overlay_support.property_list with property_targeting_allowed: true; both are valid beside an empty roster, because the seller matches the buyer's list against its own inventory.",
+      "overrides": {
+        "publisher_properties": [],
+        "property_targeting_allowed": true,
+        "overlay_support": {
+          "property_list": true
+        }
+      },
+      "valid": true,
+      "schemas": [
+        "/schemas/core/product.json"
+      ]
+    },
+    {
+      "id": "undisclosed-properties-exclusion-declared",
+      "description": "A seller that can apply an exclusion against its full internal roster MAY declare property_list_exclude on an undisclosed roster.",
+      "overrides": {
+        "publisher_properties": [],
+        "overlay_support": {
+          "property_list_exclude": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "complete-properties-exclusion-declared",
+      "description": "A complete roster can honor an exclusion.",
+      "overrides": {
+        "overlay_support": {
+          "property_list_exclude": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "undisclosed-properties-collection-exclusion-ok",
+      "description": "Rosters are independent: an undisclosed property roster does not stop a collection exclusion over a complete collection roster.",
+      "overrides": {
+        "publisher_properties": [],
+        "collections": [
+          {
+            "publisher_domain": "podcasts.example.com",
+            "collection_ids": [
+              "morning_show"
+            ]
+          }
+        ],
+        "collection_targeting_allowed": true,
+        "overlay_support": {
+          "collection_list_exclude": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "complete-collections",
+      "overrides": {
+        "collections": [
+          {
+            "publisher_domain": "podcasts.example.com",
+            "collection_ids": [
+              "morning_show"
+            ]
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "id": "absent-collections",
+      "description": "Absent collections makes no collection declaration; it never means undisclosed.",
+      "overrides": {},
+      "valid": true
+    },
+    {
+      "id": "undisclosed-collections",
+      "description": "An empty collections is an undisclosed collection roster.",
+      "overrides": {
+        "collections": []
+      },
+      "valid": true
+    },
+    {
+      "id": "undisclosed-collections-allow-list",
+      "overrides": {
+        "collections": [],
+        "collection_targeting_allowed": true,
+        "overlay_support": {
+          "collection_list": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "undisclosed-collections-allow-lists",
+      "description": "collection_lists (experimental) is an allow list and may be declared.",
+      "overrides": {
+        "collections": [],
+        "collection_targeting_allowed": true,
+        "overlay_support": {
+          "collection_lists": {
+            "max_references": 2
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "undisclosed-collections-exclusion-declared",
+      "overrides": {
+        "collections": [],
+        "overlay_support": {
+          "collection_list_exclude": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "undisclosed-collections-exclusions-declared",
+      "overrides": {
+        "collections": [],
+        "overlay_support": {
+          "collection_lists_exclude": {
+            "max_references": 2
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "complete-collections-exclusion-declared",
+      "overrides": {
+        "collections": [
+          {
+            "publisher_domain": "podcasts.example.com",
+            "collection_ids": [
+              "morning_show"
+            ]
+          }
+        ],
+        "collection_targeting_allowed": true,
+        "overlay_support": {
+          "collection_list_exclude": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "id": "undisclosed-collections-property-exclusion-ok",
+      "description": "An undisclosed collection roster does not stop a property exclusion over a complete property roster.",
+      "overrides": {
+        "collections": [],
+        "overlay_support": {
+          "property_list_exclude": true
+        }
+      },
+      "valid": true
+    }
+  ]
+}
