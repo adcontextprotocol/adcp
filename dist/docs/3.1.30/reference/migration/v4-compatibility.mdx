@@ -1,0 +1,162 @@
+---
+title: AdCP 4.0 compatibility checks
+sidebarTitle: 4.0 compatibility
+description: "Advisory compliance checks that tell a 3.x agent which AdCP 4.0 removals and new requirements it still depends on, with the fix for each."
+"og:title": "AdCP — 4.0 compatibility checks"
+---
+
+# AdCP 4.0 compatibility checks
+
+AdCP 4.0 removes fields and tightens requirements that 3.x agents depend on today. The compliance suite checks a 3.x agent against each of these changes, so the agent learns what to fix before a 4.0 buyer stops working with it.
+
+<Info>
+**These checks are advisory throughout 3.x.** A failing check never fails a 3.x conformance run. Each one is graded inside a storyboard step that already runs, so it adds no new calls and no new ways to fail.
+
+The checks ship in compliance bundles from 3.3 onward. Released bundles never change, so an agent graded against an earlier bundle shows every check as not observable until it is graded against a bundle that carries them.
+</Info>
+
+## Reading the results
+
+Each check has a stable id. The registry at [`universal/v4-compatibility.yaml`](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/universal/v4-compatibility.yaml) in the compliance bundle names the storyboard step and validation, or the runner notice, that observes it. A report joins a run's output against that registry and shows one of three results for each check:
+
+| Result | Meaning |
+|---|---|
+| Passed | The check ran and the agent does not depend on what 4.0 changes. |
+| Failing | The agent depends on something 4.0 removes or tightens. The fix below says what to change. |
+| Not observable | The run could not show it: the storyboard did not apply to the agent, the step was skipped, there was nothing to inspect (for example, no products returned), or the runner predates the check. |
+
+In raw runner output, a check observed by a validation appears as a `validation_result` whose `id` is the check id. Checks added only for 4.0 carry `severity: "advisory"`. A check observed by a notice appears as a notice whose `code` is the check id; a notice is only evidence of a pass from a runner known to emit that code.
+
+| Check id | Issue | Applies to | Observed in |
+|---|---|---|---|
+| [`format_ids_removed_in_4_0`](#format_ids_removed_in_4_0) | [#7629](https://github.com/adcontextprotocol/adcp/issues/7629) | Sellers | `media_buy_seller` product discovery |
+| [`major_versions_removed_in_4_0`](#major_versions_removed_in_4_0) | [#3572](https://github.com/adcontextprotocol/adcp/issues/3572) | All agents | `version_negotiation` |
+| [`adcp_version_echo_required_in_4_0`](#adcp_version_echo_required_in_4_0) | [#3572](https://github.com/adcontextprotocol/adcp/issues/3572) | All agents | `version_negotiation` |
+| [`signed_requests_specialism_deprecated`](#signed_requests_specialism_deprecated) | [#3078](https://github.com/adcontextprotocol/adcp/issues/3078) | All agents | Notice on `signed_requests` |
+| [`request_signing_required_in_4_0`](#request_signing_required_in_4_0) | [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) | Sellers | `media_buy_seller` capability discovery |
+| [`legacy_hmac_fallback_removed_in_4_0`](#legacy_hmac_fallback_removed_in_4_0) | [#4205](https://github.com/adcontextprotocol/adcp/issues/4205) | All agents | `capability_discovery` |
+| [`capabilities_structural_bounds_required_in_4_0`](#capabilities_structural_bounds_required_in_4_0) | [#8198](https://github.com/adcontextprotocol/adcp/issues/8198) | All agents | Not observable |
+| [`purchase_target_audiences_required_in_4_0`](#purchase_target_audiences_required_in_4_0) | [#8125](https://github.com/adcontextprotocol/adcp/issues/8125) | Sellers | Not observable in 3.x |
+
+## Checks
+
+<a id="format_ids_removed_in_4_0"></a>
+### Products declare canonical format options
+
+**Check id:** `format_ids_removed_in_4_0` · **Change:** removal
+
+**Detects:** a product returned by `get_products` declares `format_ids` without `format_options`.
+
+4.0 removes the exact plural `format_ids` fields. `format_options[]` becomes the only way a product declares the creative formats it accepts, so a 4.0 buyer sees no formats on a product that carries `format_ids` alone.
+
+**Fix:** author canonical `format_options[]` on every product. You can keep projecting `format_ids` for older 3.x buyers until 4.0. See [Canonical formats migration](/dist/docs/3.1.30/creative/canonical-formats-migration).
+
+The check inspects every product in the `media_buy_seller` brief response, which returns up to five products. It uses the `all_fields_present` check kind; a runner that does not implement it reports the check as not observable.
+
+<a id="major_versions_removed_in_4_0"></a>
+### Capabilities declare release-precision versions
+
+**Check id:** `major_versions_removed_in_4_0` · **Change:** removal
+
+**Detects:** `get_adcp_capabilities` declares `adcp.major_versions` without `adcp.supported_versions`.
+
+4.0 removes `adcp.major_versions` and the request field `adcp_major_version`. A 4.0 buyer reads `adcp.supported_versions` only.
+
+**Fix:** list every release you speak in `adcp.supported_versions`, as release-precision strings such as `"3.2"`. Keep emitting `adcp.major_versions` through 3.x. See [Versioning](/dist/docs/3.1.30/reference/versioning).
+
+3.2 certification already requires `supported_versions`, so this check adds no new failure: it labels an existing requirement as one 4.0 depends on.
+
+<a id="adcp_version_echo_required_in_4_0"></a>
+### Responses echo the served release
+
+**Check id:** `adcp_version_echo_required_in_4_0` · **Change:** new requirement
+
+**Detects:** the response envelope does not echo the served release in `adcp_version`.
+
+The echo is SHOULD-level in 3.x. 4.0 makes it a MUST, and buyers lose the major-version fallback.
+
+**Fix:** echo the release you served in `adcp_version` on every response envelope. 3.2 certification already requires the echo.
+
+<a id="signed_requests_specialism_deprecated"></a>
+### Capabilities do not claim the signed-requests specialism
+
+**Check id:** `signed_requests_specialism_deprecated` · **Change:** removal
+
+**Detects:** `get_adcp_capabilities` lists `signed-requests` in `specialisms`.
+
+4.0 removes the `signed-requests` specialism enum value. Request signing is a capability, not a specialism.
+
+**Fix:** drop `signed-requests` from `specialisms` and advertise `request_signing.supported: true`. See [Signed requests](/dist/docs/3.1.30/building/by-layer/L1/security#request-signing).
+
+<a id="request_signing_required_in_4_0"></a>
+### Sellers verify signed requests
+
+**Check id:** `request_signing_required_in_4_0` · **Change:** new requirement
+
+**Detects:** `get_adcp_capabilities` does not advertise `request_signing.supported: true`.
+
+Request signing is optional in 3.x. 4.0 requires it on spend-committing operations.
+
+**Fix:** verify RFC 9421 request signatures, advertise `request_signing.supported: true`, and register the compliance runner's test key before the 4.0 cut. See [Signed requests](/dist/docs/3.1.30/building/by-layer/L1/security#request-signing).
+
+<a id="legacy_hmac_fallback_removed_in_4_0"></a>
+### Webhooks do not fall back to HMAC
+
+**Check id:** `legacy_hmac_fallback_removed_in_4_0` · **Change:** removal
+
+**Detects:** `get_adcp_capabilities` advertises `webhook_signing.legacy_hmac_fallback: true`.
+
+4.0 removes the HMAC-SHA256 webhook fallback.
+
+**Fix:** sign webhooks with RFC 9421 only and stop advertising `legacy_hmac_fallback`. See [Webhooks](/dist/docs/3.1.30/building/by-layer/L3/webhooks).
+
+<a id="capabilities_structural_bounds_required_in_4_0"></a>
+### Capabilities stay within their structural bounds
+
+**Check id:** `capabilities_structural_bounds_required_in_4_0` · **Change:** new requirement
+
+**Detects:** `get_adcp_capabilities` carries an array, string, or keyed map above the limit that a field annotates with `x-max-items-4.0`, `x-max-length-4.0`, or `x-max-properties-4.0`.
+
+From 3.3 every array, string, and keyed map in the capabilities response has a limit. Fields new in 3.3 and experimental fields enforce it as `maxItems`, `maxLength`, or `maxProperties`. A field that was stable before 3.3 carries the limit as an annotation, because a minor release may not tighten it. 4.0 makes each annotation the keyword, so a document above a limit becomes schema-invalid.
+
+**Fix:** keep each annotated field within its limit now. The limits and their worst case are in [Response Size Bounds](/dist/docs/3.1.30/building/by-layer/L1/security#response-size-bounds). Run `node scripts/capabilities-structural-bounds.cjs` against the schemas to list them.
+
+No storyboard step inspects every annotated field, so the suite reports this check as not observable.
+
+**4.0 follow-up:** 3.3 accepts an 87 MiB structural ceiling for the whole document because `MAX_CAPABILITIES_BYTES` (64 KiB) is the operative cap. The nested object lists that multiply it are worth tightening before the annotations become keywords: the brand reference (`brand_kit_override`, `provenance`), the creative format declaration (`macro_resolution_capabilities`), the attestation issuer entry, the audience activation method, and the geographic place system.
+
+<a id="purchase_target_audiences_required_in_4_0"></a>
+### Purchases carry target audiences
+
+**Check id:** `purchase_target_audiences_required_in_4_0` · **Change:** new requirement
+
+**Detects:** a seller that lists `media_buy.audience_evidence_targets` in `experimental_features` does not accept `target_audiences` on `buy_products` purchases and `list_products` `offer_filters`.
+
+In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `get_products` filters and on `create_media_buy` packages. `buy_products` purchases (`product-purchase-input.json`, `product-purchase.json`) and `list_products` `offer_filters` are closed schemas, and a minor release never changes a closed schema, so they gain the field in 4.0.
+
+**Fix:** accept the sibling on those surfaces and record it in the accepted purchase snapshot. Until 4.0, a buyer that needs an audit record keeps its own copy of the requirements and targets it sent. A 3.x run cannot observe this check, so it reports as not observable.
+
+## Changes not checked yet
+
+A check is added once its 4.0 change is decided. These changes are still proposals or under working group review, so the suite does not grade them yet:
+
+- `channels` required on every product ([#7869](https://github.com/adcontextprotocol/adcp/issues/7869))
+- `duration_ms` required on hosted video assets ([#5668](https://github.com/adcontextprotocol/adcp/issues/5668))
+- the `account_id` from `sync_accounts` as the only account reference after provisioning ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850))
+- nested `status` renamed to `media_buy_status` ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905))
+
+The schemas also mark 46 deprecated fields with `x-removed-in: "4.0.0"`. The registry lists each one, either under the check that covers it or in `schema_removals_not_checked` with the reason no check covers it yet. Most uncovered fields are sent by buyers, so a seller run can't observe them. A few are seller-emitted and checkable but not graded yet: flat `valid_actions`, response-wide delivery `currency` and `aggregated_totals`, `inline_creative_management`, and the format-level build and pricing surface that `list_transformers` replaces.
+
+The full list of planned 4.0 work is the [4.0 milestone](https://github.com/adcontextprotocol/adcp/milestone/5).
+
+## Adding a check
+
+Every 4.0 issue that removes or tightens something an agent relies on declares a stable check id and a one-line detection rule. When the change is accepted, the same PR:
+
+1. Adds the observation. Prefer an advisory validation on a step that already makes the needed call, with `id` set to the check id, `severity: advisory`, and `permanent_advisory`. Don't use `expires_after_version`, which promotes the check on runner version rather than on the spec version the agent is graded against. A check the runner already reports as a canonical notice with `effective_version: "4.0"` uses the notice code as its id.
+2. Adds the entry to `universal/v4-compatibility.yaml`, with the removed schema nodes in `schema_sites`.
+3. Adds a section here with an `<a id>` anchor that matches the check id.
+
+A schema node that 4.0 removes is marked `"deprecated": true` and `"x-removed-in": "4.0.0"`, and the registry lists it once: in a check's `schema_sites`, or in `schema_removals_not_checked` with its 4.0 tracking issue and a reason. Marking a node therefore forces the decision of whether a 3.x agent can be checked for it, and gives every removal a tracking issue.
+
+`scripts/lint-v4-compatibility-registry.cjs` fails the compliance build when the registry, the storyboards, the notice codes, the schema markers, and this page disagree.

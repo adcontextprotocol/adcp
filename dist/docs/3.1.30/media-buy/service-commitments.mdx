@@ -1,0 +1,168 @@
+---
+title: Service commitments
+"og:title": "AdCP product service commitments"
+description: "Compare creative review times and critical-report response commitments before buying."
+testable: true
+---
+
+<Note>
+These additive contracts are new in AdCP 3.3. They are development schemas;
+3.2 peers retain elapsed-time SLA semantics.
+</Note>
+
+A product can declare how quickly the seller reviews creatives and acknowledges
+critical reports. Buyers compare these commitments before booking; the buy's
+`available_actions[]` resolves the applicable commitment and package scope.
+An absent SLA means **no commitment**, never an immediate response.
+Commercial penalties and remedies remain in contracts.
+
+Each resolved commitment covers the packages in `applicable_package_ids`
+(all relevant packages when omitted). For mixed products, sellers MUST declare
+a conservative bound valid across that set; one package without a commitment
+prevents claiming a bound for the set. Never select the fastest package or
+combine business durations from different calendars without computing a common bound.
+
+## Creative review
+
+`creative_policy.review_sla` uses the existing SLA window with a required
+`completion_max`. Completion means an **approved or rejected decision** for a
+creative in an accepted format. Ingestion, `processing`, `pending_review`, and
+`suspended` do not complete review. Every applicable approval scope must reach
+an approved or rejected decision; a partially approved assignment with pending
+scopes is incomplete.
+
+For example, this `creative_policy.review_sla` promises a decision within one
+working day on the calendar below:
+
+{/* Using latest because this SLA schema is unreleased. Update after release. */}
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.30/core/creative-review-sla.json",
+  "clock": "business",
+  "business_calendar_id": "review_team_2027_q1",
+  "completion_max": "P1D"
+}
+```
+
+The product value covers all accepted formats. The seller MUST carry it onto the
+applicable creative entry in the buy's
+`available_actions[]`: `replace_creative` or `update_creative_assignments`
+routed to `sync_creatives`, or the legacy coarse `sync_creatives` action.
+The action's separate `sla` continues to cover applying the mutation or ingestion.
+
+The clock starts at seller receipt of a review submission in the product's
+context, including an assignment through `sync_creatives`. A library-only upload
+does not identify a product or promise package approval. Before booking, buyers
+use product timing for planning; library and assignment approval remain separate.
+
+Each review has its own clock. Changed execution or destinations requiring
+review start a new clock; replay, polling, unrelated metadata, and internal
+requeues MUST NOT restart one. Sellers preserve the received time, SLA, and
+calendar for pending reviews. Buyers read authoritative decisions through
+`list_creatives` or authenticated review notifications; `sync_creatives` status
+alone cannot authorize spend.
+
+## Business-time calendars
+
+`SLAWindow.clock` defaults to `elapsed`, including weekends and non-working time.
+An explicit `business` clock counts only working time and MUST reference exactly
+one `get_adcp_capabilities.business_calendars[]` entry by `business_calendar_id`.
+Missing or unresolved calendars invalidate the commitment; never fall back to elapsed time.
+
+A calendar declares an IANA time zone, weekly working periods, complete
+non-working dates, a coverage interval, and working minutes per business day:
+
+{/* Using latest because this calendar schema is unreleased. Update after release. */}
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.30/core/business-calendar.json",
+  "calendar_id": "review_team_2027_q1",
+  "timezone": "UTC",
+  "valid_from": "2027-01-01",
+  "valid_through": "2027-03-31",
+  "business_day_minutes": 540,
+  "working_periods": [
+    {
+      "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+      "start_time": "09:00",
+      "end_time": "18:00"
+    }
+  ],
+  "non_working_dates": ["2027-01-01"]
+}
+```
+
+Calendar IDs are immutable within the seller. Schedule, time-zone, closure, or
+coverage changes require a new ID, declared before requests use it. Sellers
+retain calendars for pending work, which keeps its original calendar and deadline.
+
+To calculate a business deadline:
+
+1. Verify receipt and the computed deadline fall within inclusive local-date
+   coverage. Invalid time zones, overlapping or reversed periods, and closures
+   outside coverage invalidate the calendar.
+2. Convert `P<n>D` to `n * business_day_minutes`, then add any hours, minutes,
+   and seconds as working time; years, months, and weeks are invalid. Here,
+   `P1D` equals `PT9H`, while `PT24H` means 24 working hours.
+3. Starting at seller receipt, consume duration only inside the union of
+   half-open `[start, end)` working periods. Advance receipt outside working
+   time to the next period. Non-working dates override the weekly schedule.
+   Split overnight shifts at midnight;
+   `24:00` is permitted only as an end time.
+4. Map local boundaries through the calendar's IANA time zone. A nonexistent
+   boundary advances to the first existing local instant. For an ambiguous
+   boundary, use the earlier instant for a start and the later instant for
+   an end. Count actual elapsed seconds inside these intervals.
+5. Both maxima run from the same receipt, independently; `completion_max` is
+   not additional time after `response_max`. A zero duration has the receipt
+   instant as its deadline. The maxima are independent upper bounds; acknowledgement
+   must still precede actual completion.
+
+With the example schedule, a `P1D` review received on Friday,
+`2027-01-08T19:00:00Z`, is due Monday at `2027-01-11T18:00:00Z`.
+A `PT4H` review received Friday at 17:00 is due Monday at 12:00.
+An elapsed `PT24H` received Friday at 19:00 is due Saturday at 19:00.
+
+Duration filters MUST require presence and account for `clock`: compare UTC
+deadlines for the same receipt time across business and elapsed commitments.
+Without calendar support, treat business SLAs as unknown for duration matching.
+
+For a peer pinned below 3.3, sellers MUST omit the entire business-clock SLA or
+translate it to a conservative elapsed bound that holds for every request to
+which that declaration applies. Dropping only `clock` and
+`business_calendar_id` silently changes the promise and is forbidden. Business
+calendars and the new report tasks are not declared as supported to those peers.
+
+## Critical reports
+
+Sellers advertise `media_buy.issue_reporting: true` when they implement both
+[`report_media_buy_issue`](/dist/docs/3.1.30/media-buy/task-reference/report_media_buy_issue)
+and [`get_media_buy_issue`](/dist/docs/3.1.30/media-buy/task-reference/get_media_buy_issue).
+Products advertise `report_media_buy_issue` in `allowed_actions[]`; buys resolve
+it in `available_actions[]`, with `mode: "seller_managed"`. Reporting is operational
+and independent of accepted commercial change rights. It does not require a
+`change_terms[]` entry and carries no `change_term_id`, `constraints`, or `terms_ref`.
+
+Issue-reporting support requires `adcp.idempotency.supported: true` with a
+declared `replay_ttl_seconds`, so a lost receipt can be recovered by replaying
+the original request during the replay window.
+
+The mixed-package rule above applies to report SLAs too. A report without
+`package_id` concerns the entire buy and requires an action covering all packages.
+A package-scoped report cannot inherit another package's promise.
+
+For a **critical** report, `sla.response_max` is the maximum elapsed time from
+seller receipt until a **person acknowledges responsibility**. An automated
+receipt does not stop this clock. For example, `response_max: "PT15M"` promises
+human acknowledgement within fifteen minutes, including nights and holidays.
+The [escalation SLA schema](https://adcontextprotocol.org/schemas/3.1.30/core/escalation-sla.json)
+uses the existing SLA window with elapsed time only;
+`completion_max` is not part of the escalation commitment. Support without an
+SLA makes no timing promise. Warnings use the same lifecycle without the critical
+response promise. The seller preserves the applicable promise internally at
+receipt; later policy changes and retries cannot restart or extend the clock.
+
+A report supplements buyer controls. A buyer SHOULD pause the buy or remove
+the creative where authorized and raise a report for the seller-side problem.
+Reporting and acknowledgement do not pause delivery, change MediaBuy revision
+or commercial terms, grant access, or settle a financial dispute.
