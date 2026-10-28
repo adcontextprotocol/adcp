@@ -46,6 +46,8 @@ const PROPERTIES_3_3 = [
   ['account/list-accounts-request.json', ['properties', 'include_requests']],
   ['account/list-accounts-request.json', ['properties', 'request_ids']],
   ['account/list-accounts-response.json', ['properties', 'account_requests']],
+  ['account/list-accounts-response.json', ['properties', 'account_requests_pagination']],
+  ['account/list-accounts-request.json', ['properties', 'requests_pagination']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'request_id']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'resolution']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'setup', 'properties', 'waiting_on']],

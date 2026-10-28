@@ -231,7 +231,8 @@ test('request_account changes an account by account_id and resolves as updated',
 
 test('list_accounts returns the caller\'s requests; get_account_requests is gone', () => {
   const req = read('account/list-accounts-request.json');
-  assert.ok(req.properties.include_requests && req.properties.request_ids);
+  assert.ok(req.properties.include_requests && req.properties.request_ids && req.properties.requests_pagination);
+  assert.ok(read('account/list-accounts-response.json').properties.account_requests_pagination, 'requests page independently of accounts');
   const v = validate('/schemas/account/list-accounts-response.json');
   const request = { request_id: 'areq_1', state: 'in_review', requested: { brand: { domain: 'nova.example' }, operator: 'pinnacle.example' }, pending_action: { waiting_on: 'seller', kind: 'review', message: 'Reviewing.' }, created_at: '2026-10-28T09:00:00Z', updated_at: '2026-10-28T09:00:00Z' };
   assert.ok(v({ status: 'completed', accounts: [], account_requests: [request] }), JSON.stringify(v.errors));

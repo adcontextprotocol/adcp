@@ -200,7 +200,7 @@ A seller that does deduplicate typically answers a repeat as follows:
 2. Store `request_id` against (seller, key).
 3. While the request is open, if the seller declares `account.requests.event_type`, register for `account_request.changed` through [`sync_principal`](/docs/protocol/sync_principal) or [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs), or poll [`list_accounts`](/docs/accounts/tasks/list_accounts) with `request_ids` and backoff.
 4. Until it resolves, call discovery tasks without `account`, which returns the seller's public view.
-5. After a cold start, one [`list_accounts`](/docs/accounts/tasks/list_accounts) call with `include_requests: true` recovers accounts and open requests.
+5. After a cold start, [`list_accounts`](/docs/accounts/tasks/list_accounts) with `include_requests: true` recovers accounts and open requests. Requests page separately from accounts: follow `account_requests_pagination` with `requests_pagination` until `has_more` is false.
 
 ## Errors
 

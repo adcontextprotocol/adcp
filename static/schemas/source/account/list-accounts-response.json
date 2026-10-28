@@ -31,9 +31,15 @@
       "type": "array",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (account.requests). The caller's account requests, present when the request set include_requests or request_ids. Newest updated_at first. Requests are not accounts: an open request has no account_id until it resolves.",
+      "description": "Experimental (account.requests). The caller's account requests, present when the request set include_requests, request_ids, or requests_pagination. Newest updated_at first, paged by account_requests_pagination. Requests are not accounts: an open request has no account_id until it resolves.",
       "items": { "$ref": "/schemas/core/account-request-record.json" },
       "maxItems": 100
+    },
+    "account_requests_pagination": {
+      "$ref": "/schemas/core/pagination-response.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). Paging for account_requests[], present whenever account_requests[] is. has_more true means more requests remain; pass the cursor in requests_pagination. The top-level pagination field pages accounts only."
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"

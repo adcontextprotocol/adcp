@@ -51,6 +51,12 @@
       "maxItems": 100,
       "uniqueItems": true
     },
+    "requests_pagination": {
+      "$ref": "/schemas/core/pagination-request.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). Pages account_requests[] independently of accounts; implies include_requests. Pass the cursor from account_requests_pagination to read the next page. The top-level pagination field pages accounts only."
+    },
     "include_webhook_activity": {
       "type": "boolean",
       "default": false,
