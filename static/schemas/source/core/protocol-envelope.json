@@ -5,7 +5,12 @@
   "description": "Canonical envelope field-set for AdCP task responses, normalized across transports. Defines the protocol-layer fields (status, context_id, context, task_id, message, timestamp, replayed, adcp_error, push_notification_config, governance_context) and the conceptual `payload` grouping for task-specific response data, and composes `core/version-envelope.json` so the served `adcp_version` and the deprecated `adcp_major_version` are envelope fields on every response. The server framework stamps these fields; they are not task data. The serialization rules — whether envelope fields appear as siblings of payload fields, as a nested `payload` object, or via transport-native containers — are transport-specific and normative per transport (see Transport serialization below). The `status` field is REQUIRED on every task response envelope, including synchronous metadata responses (e.g., `get_adcp_capabilities`) where the value is `completed`. Agents shipping responses without a top-level `status` are non-conformant regardless of whether the task body schema would otherwise validate.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/version-envelope.json" }
+    { "$ref": "/schemas/core/version-envelope.json" },
+    {
+      "description": "A submitted task is identified by its task_id: a response whose status is submitted carries task_id, the handle the caller polls and that webhooks reference.",
+      "if": { "properties": { "status": { "const": "submitted" } }, "required": ["status"] },
+      "then": { "required": ["task_id"] }
+    }
   ],
   "properties": {
     "context_id": {
@@ -18,10 +23,8 @@
       "description": "Per-request opaque caller-supplied correlation object echoed unchanged in the response. Used for buyer-side tracking (UI session IDs, trace IDs, custom metadata) that the agent MUST preserve byte-for-byte without parsing. Distinct from `context_id` (transport-managed A2A conversation correlation or MCP compatibility metadata) — `context` is caller-owned echo and never selects transport state. Both MAY appear on the same response.\n\n**Relationship to per-task body-level `context` declarations.** Many task request/response schemas (147 as of 3.1) already declare a body-level `context` field that `$ref`s `/schemas/core/context.json` at the body root. Under the flat-on-the-wire MCP serialization (see `notes` below), envelope-level `context` and body-level `context` occupy the same key on the response root — they are NOT separate fields, they MUST share the same value, and they MUST both `$ref` `core/context.json`. The envelope declaration is **authoritative** for the schema definition; per-task body declarations are mirrors retained for tooling reasons (SDK codegen completeness, per-task validation against the response schema in isolation). Future versions MAY drop body-level `context` declarations from per-task schemas; conformance does not require either declaration to be present, only that the wire value `$ref`s `core/context.json`."
     },
     "task_id": {
-      "type": "string",
-      "description": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete.",
-      "x-entity": "task",
-      "x-max-length-4.0": 128
+      "$ref": "/schemas/core/task-id.json",
+      "description": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
     },
     "status": {
       "$ref": "/schemas/enums/task-status.json",

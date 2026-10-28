@@ -27,8 +27,7 @@
     }
   },
   "required": [
-    "status",
-    "task_id"
+    "status"
   ],
   "additionalProperties": true,
   "not": {

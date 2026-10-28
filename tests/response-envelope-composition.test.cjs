@@ -26,6 +26,12 @@
  *      2,500-character `message`. The node's body-field declarations are
  *      reduced to `{}` unless they pin a discriminator, so the vectors grade
  *      how the node treats envelope fields, not body-field contents.
+ *   5. `task_id` has one definition, core/task-id.json, which is never empty:
+ *      `task_id: ""` adds exactly its minLength error on every response node
+ *      and every request that carries a task_id. The envelope requires
+ *      `task_id` when `status` is `submitted`, and no submitted node restates
+ *      that requirement: without `task_id` a submitted response fails on the
+ *      envelope rule alone.
  *
  * Requires the built tree (the npm script builds it) and Node 24, as
  * package.json does.
@@ -288,6 +294,38 @@ function completeControl(validate, control) {
   }
 }
 
+/**
+ * The control instance for a node: the node's and the envelope's required
+ * fields, envelope values fitted to the node's pins, discriminator values for
+ * pinned body fields, and a placeholder for other body fields, completed
+ * against the node's conditions.
+ */
+function nodeControl(node, validate) {
+  const control = {};
+  for (const name of new Set([...(node.required || []), 'status'])) {
+    const declaration = node.properties?.[name];
+    if (ENVELOPE_NAMES.has(name)) control[name] = fitValue(ENVELOPE_VALUES[name], declaration);
+    else if (pins(declaration)) control[name] = has(declaration, 'const') ? declaration.const : declaration.enum[0];
+    else control[name] = 'x';
+  }
+  completeControl(validate, control);
+  return control;
+}
+
+function errorKey(error) {
+  return `${error.instancePath}|${error.schemaPath}|${error.keyword}|${JSON.stringify(error.params)}`;
+}
+
+/** Errors the vector raises that the control does not, as instancePath/keyword/params. */
+function addedErrors(validate, control, vector) {
+  validate(control);
+  const controlKeys = new Set((validate.errors || []).map(errorKey));
+  validate(vector);
+  return (validate.errors || [])
+    .filter((error) => !controlKeys.has(errorKey(error)))
+    .map(({ instancePath, keyword, params }) => ({ instancePath, keyword, params }));
+}
+
 /** Whether a node's own `not` deliberately excludes a field (a completed branch's task_id). */
 function excludes(node, name) {
   const forbidden = node.not;
@@ -402,17 +440,7 @@ test('every response node accepts every envelope field, acceptance vectors', asy
   for (const { rel, pointer, node } of RESPONSE_NODES) {
     await t.test(`${rel}#${pointer}`, async () => {
       const validate = await nodeWithEnvelopeValidator(rel, pointer);
-      // The control: the node's and the envelope's required fields, envelope
-      // values fitted to the node's pins, discriminator values for pinned
-      // body fields, and a placeholder for other body fields.
-      const control = {};
-      for (const name of new Set([...(node.required || []), 'status'])) {
-        const declaration = node.properties?.[name];
-        if (ENVELOPE_NAMES.has(name)) control[name] = fitValue(ENVELOPE_VALUES[name], declaration);
-        else if (pins(declaration)) control[name] = has(declaration, 'const') ? declaration.const : declaration.enum[0];
-        else control[name] = 'x';
-      }
-      completeControl(validate, control);
+      const control = nodeControl(node, validate);
       assert.equal(validate(control), true,
         `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)} ${JSON.stringify(control)}`);
 
@@ -437,4 +465,109 @@ test('every response node accepts every envelope field, acceptance vectors', asy
   }
   // A run that skips subtests (as Node 22's runner does here) must not pass.
   assert.equal(ran + excluded, RESPONSE_NODES.length * cases.length, 'not every acceptance vector ran');
+});
+
+test('an empty task_id is rejected on every response node, single fault', async () => {
+  let ran = 0;
+  for (const { rel, pointer, node } of RESPONSE_NODES) {
+    if (excludes(node, 'task_id')) continue;
+    const validate = await nodeWithEnvelopeValidator(rel, pointer);
+    const control = { ...nodeControl(node, validate), task_id: ENVELOPE_VALUES.task_id };
+    assert.equal(validate(control), true, `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)}`);
+    assert.deepEqual(addedErrors(validate, control, { ...control, task_id: '' }),
+      [{ instancePath: '/task_id', keyword: 'minLength', params: { limit: 1 } }],
+      `${rel}#${pointer}: an empty task_id must fail only on core/task-id.json's minLength`);
+    ran += 1;
+  }
+  assert.ok(ran > 100, `expected the rule to run on every response node, ran ${ran}`);
+});
+
+test('a submitted response without task_id fails only on the envelope rule', async () => {
+  // Submitted nodes no longer list task_id in their own required lists; the
+  // envelope requires it when status is submitted. The verdict is the same:
+  // the response is rejected, now by the envelope's if/then.
+  const submitted = RESPONSE_NODES.filter(({ node }) => node.properties?.status?.const === 'submitted');
+  assert.ok(submitted.length >= 19, `expected the submitted nodes, found ${submitted.length}`);
+  for (const { rel, pointer, node } of submitted) {
+    assert.ok(!(node.required || []).includes('task_id'), `${rel}#${pointer} restates the envelope's task_id requirement`);
+    const validate = await nodeWithEnvelopeValidator(rel, pointer);
+    const control = nodeControl(node, validate);
+    assert.equal(control.task_id, ENVELOPE_VALUES.task_id, `${rel}#${pointer}: the envelope rule must add task_id to the control`);
+    assert.equal(validate(control), true, `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)}`);
+    const { task_id: _removed, ...vector } = control;
+    assert.deepEqual(addedErrors(validate, control, vector), [
+      { instancePath: '', keyword: 'required', params: { missingProperty: 'task_id' } },
+      { instancePath: '', keyword: 'if', params: { failingKeyword: 'then' } },
+    ], `${rel}#${pointer}: a submitted response without task_id must fail on the envelope rule only`);
+  }
+});
+
+/** Instance paths at which a schema declares a task identifier through core/task-id.json. */
+function taskIdPaths(node, here = []) {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return [];
+  const refersToTaskId = node.$ref === '/schemas/core/task-id.json'
+    || (node.allOf || []).some((member) => member && member.$ref === '/schemas/core/task-id.json');
+  if (refersToTaskId) return [here];
+  const out = [];
+  for (const [name, child] of Object.entries(node.properties || {})) out.push(...taskIdPaths(child, [...here, name]));
+  if (node.items) out.push(...taskIdPaths(node.items, [...here, 0]));
+  return out;
+}
+
+function setAt(target, segments, value) {
+  let cursor = target;
+  segments.forEach((segment, index) => {
+    if (index === segments.length - 1) {
+      cursor[segment] = value;
+      return;
+    }
+    if (cursor[segment] === undefined) cursor[segment] = typeof segments[index + 1] === 'number' ? [] : {};
+    cursor = cursor[segment];
+  });
+}
+
+// Controls for requests whose task_id sits under conditions that the
+// top-level completion cannot meet: force_task_completion carries the task's
+// result, a get_products response.
+const REQUEST_CONTROL_SEEDS = {
+  'compliance/comply-test-controller-request.json': {
+    scenario: 'force_task_completion',
+    account: { account_id: 'acc_envelope_0001', sandbox: true },
+    params: { result: { status: 'completed', products: [], cache_scope: 'account' } },
+  },
+};
+
+test('every request that carries a task_id rejects an empty one, single fault', async () => {
+  const requests = [];
+  (function walk(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('-request.json')) requests.push(path.relative(SOURCE_DIR, full).split(path.sep).join('/'));
+    }
+  })(SOURCE_DIR);
+  const ran = [];
+  for (const rel of requests.sort()) {
+    for (const segments of taskIdPaths(readSource(rel))) {
+      const validate = await validatorFor(`${BUILT_ORIGIN}${rel}`);
+      const control = structuredClone(REQUEST_CONTROL_SEEDS[rel] || {});
+      setAt(control, segments, ENVELOPE_VALUES.task_id);
+      completeControl(validate, control);
+      assert.equal(validate(control), true, `control does not pass ${rel}: ${JSON.stringify(validate.errors)}`);
+      const vector = structuredClone(control);
+      setAt(vector, segments, '');
+      const instancePath = `/${segments.join('/')}`;
+      assert.deepEqual(addedErrors(validate, control, vector),
+        [{ instancePath, keyword: 'minLength', params: { limit: 1 } }],
+        `${rel} ${instancePath}: an empty task_id must fail on minLength`);
+      ran.push(`${rel} ${instancePath}`);
+    }
+  }
+  assert.deepEqual(ran, [
+    'compliance/comply-test-controller-request.json /params/task_id',
+    'core/tasks-get-request.json /task_id',
+    'core/tasks-list-request.json /filters/task_ids/0',
+    'protocol/get-task-status-request.json /task_id',
+    'protocol/list-tasks-request.json /filters/task_ids/0',
+  ], 'every request task_id carrier must run');
 });

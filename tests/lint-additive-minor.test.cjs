@@ -718,7 +718,9 @@ test('the repository corrections list holds exactly the correction tables of DR-
   const record = fs.readdirSync(decisions).find((name) => name.startsWith(`${value.decision}-`));
   const recorded = recordedCorrections(fs.readFileSync(path.join(decisions, record), 'utf8'));
   assert.ok(recorded.size > 0, `${record} has no correction tables`);
-  const listed = value.corrections.map((entry) => `${entry.file}#${entry.pointer} ${entry.property}`);
+  // A bound correction is keyed by its bound (`minLength: 1`), as its table row names it.
+  const listed = value.corrections.map((entry) => `${entry.file}#${entry.pointer} ${
+    typeof entry.bound === 'string' ? `${entry.bound}: ${entry.value}` : entry.property}`);
   assert.deepEqual(listed.filter((key) => !recorded.has(key)), [], 'listed but not in the tables');
   assert.deepEqual([...recorded].filter((key) => !listed.includes(key)), [], 'in the tables but not listed');
 });

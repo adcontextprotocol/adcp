@@ -32,7 +32,7 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["status", "task_id"],
+  "required": ["status"],
   "additionalProperties": true,
   "not": {
     "anyOf": [

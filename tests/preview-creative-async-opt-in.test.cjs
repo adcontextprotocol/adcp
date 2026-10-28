@@ -56,10 +56,12 @@ describe('preview_creative opt-in async contract', () => {
   it('adds one submitted task arm without changing build_creative', () => {
     const submitted = response.oneOf.find((arm) => arm.title === 'PreviewCreativeSubmitted');
     assert.ok(submitted);
-    assert.deepEqual(submitted.required, ['response_type', 'status', 'task_id']);
+    // task_id comes from the protocol envelope (core/task-id.json), which
+    // requires it when status is submitted.
+    assert.deepEqual(submitted.required, ['response_type', 'status']);
     assert.equal(submitted.properties.response_type.const, 'submitted');
     assert.equal(submitted.properties.status.const, 'submitted');
-    assert.equal(submitted.properties.task_id['x-entity'], 'task');
+    assert.equal(submitted.properties.task_id, undefined);
     assert.equal(response.oneOf.length, 4);
   });
 

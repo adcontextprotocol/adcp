@@ -265,6 +265,114 @@
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
       "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for buyer context in a planning cycle. Its opportunity_id is opaque, not a join key. It has no ext."
+    },
+    {
+      "file": "core/protocol-envelope.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The envelope's task_id, carried by every task response."
+    },
+    {
+      "file": "core/mcp-webhook-payload.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task a webhook notification reports on."
+    },
+    {
+      "file": "core/tasks-get-request.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/tasks-get-request.json",
+        "quote": "Unique identifier of the task to retrieve"
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get retrieves; it requires task_id."
+    },
+    {
+      "file": "core/tasks-get-response.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get returns."
+    },
+    {
+      "file": "core/tasks-list-request.json",
+      "pointer": "/properties/filters/properties/task_ids/items",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/tasks-get-request.json",
+        "quote": "Unique identifier of the task to retrieve"
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the tasks/list filter."
+    },
+    {
+      "file": "core/tasks-list-response.json",
+      "pointer": "/properties/tasks/items/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task tasks/list returns."
+    },
+    {
+      "file": "protocol/get-task-status-request.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/tasks-get-request.json",
+        "quote": "Unique identifier of the task to retrieve"
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task get_task_status retrieves; it requires task_id."
+    },
+    {
+      "file": "protocol/list-tasks-request.json",
+      "pointer": "/properties/filters/properties/task_ids/items",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/tasks-get-request.json",
+        "quote": "Unique identifier of the task to retrieve"
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the list_tasks filter."
+    },
+    {
+      "file": "protocol/list-tasks-response.json",
+      "pointer": "/properties/tasks/items/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task list_tasks returns."
     }
   ]
 }

@@ -58,18 +58,26 @@ text, and the correction brings it back in line. A correction that
 reopens a schema makes it open from the correction's release. From then on, a
 minor may add to it as to any open schema.
 
+**A correction may also tighten a bound, the other way a schema can contradict
+its text:** it accepted a value that the published text already excluded. No
+conforming peer sends that value, so the tighter bound rejects nothing a
+conforming peer sends. Each such correction names the location, the bound and
+its value, and the check accepts exactly that bound there. Any other
+tightening still fails.
+
 Each correction is recorded in this section, with its source text and every
 location it changes. The additive-minor check reads the same locations from
 `scripts/lint-additive-minor-corrections.json`. It accepts exactly the listed
 additions, and it fails on an entry that this section doesn't list. So a new
 correction needs a change to this record.
 
-Two corrections are recorded:
+Three corrections are recorded:
 
 | Correction | Source text | Ships in | Check entries |
 |---|---|---|---|
 | (a) Reopen the 3.2 proposal flow | DR-0019 | 3.3.0, and a 3.2.x patch | The table under (a) |
 | (b) Compose the protocol envelope on every task response | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | None: no closed schema changes |
+| (c) `task_id` identifies a task | `core/protocol-envelope.json`, `core/tasks-get-request.json`, 3.2.7 `core/compact-task-submitted.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (c) |
 
 #### (a) Reopen the 3.2 proposal flow
 
@@ -173,6 +181,44 @@ status branch that was still closed is reopened:
 
 This section records the contract reason for the envelope fields. Closed value
 objects and rows inside response bodies stay as they are.
+
+#### (c) `task_id` identifies a task
+
+A `task_id` is the handle a caller polls and a webhook references. The
+published text says so:
+
+- `core/protocol-envelope.json`: "Unique identifier for tracking asynchronous
+  operations. Present when a task requires extended processing time. Used to
+  query task status and retrieve results when complete."
+- `core/tasks-get-request.json` requires `task_id`: "Unique identifier of the
+  task to retrieve".
+- 3.2.7 published `core/compact-task-submitted.json` with `task_id`
+  `{"type": "string", "minLength": 1}`.
+
+An empty string identifies no task and cannot be polled, yet most `task_id`
+declarations accepted it. This correction gives `task_id` one definition,
+`core/task-id.json` (`type: string`, `minLength: 1`), that every declaration
+refers to, and requires `task_id` once, in the envelope, when `status` is
+`submitted`. 3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
+
+The check accepts `minLength: 1` at these locations:
+
+| Schema | Pointer | Bound | Reason |
+|---|---|---|---|
+| `core/protocol-envelope.json` | `/properties/task_id` | `minLength: 1` | The envelope's `task_id`, on every task response. |
+| `core/mcp-webhook-payload.json` | `/properties/task_id` | `minLength: 1` | The task a webhook notification reports on. |
+| `core/tasks-get-request.json` | `/properties/task_id` | `minLength: 1` | The task `tasks/get` retrieves. |
+| `core/tasks-get-response.json` | `/properties/task_id` | `minLength: 1` | The task `tasks/get` returns. |
+| `core/tasks-list-request.json` | `/properties/filters/properties/task_ids/items` | `minLength: 1` | A task named in the `tasks/list` filter. |
+| `core/tasks-list-response.json` | `/properties/tasks/items/properties/task_id` | `minLength: 1` | A task `tasks/list` returns. |
+| `protocol/get-task-status-request.json` | `/properties/task_id` | `minLength: 1` | The task `get_task_status` retrieves. |
+| `protocol/list-tasks-request.json` | `/properties/filters/properties/task_ids/items` | `minLength: 1` | A task named in the `list_tasks` filter. |
+| `protocol/list-tasks-response.json` | `/properties/tasks/items/properties/task_id` | `minLength: 1` | A task `list_tasks` returns. |
+
+`compliance/comply-test-controller-request.json` and
+`compliance/comply-test-controller-response.json` refer to the same definition
+and keep their own `maxLength: 128`. The other declarations carry the 4.0
+bound only as `x-max-length-4.0: 128`.
 
 ## Rationale
 

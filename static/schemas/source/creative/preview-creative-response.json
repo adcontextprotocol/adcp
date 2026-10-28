@@ -372,8 +372,7 @@
       },
       "required": [
         "response_type",
-        "status",
-        "task_id"
+        "status"
       ],
       "additionalProperties": true
     }
