@@ -2557,7 +2557,7 @@ schema-valid. The annotations are registered as a 4.0 tightening in the
 [4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
 **Worst case.** With the 4.0 bounds applied, the largest schema-valid
-capabilities document is 91,262,197 bytes (about 87 MiB), counting only the
+capabilities document is 91,262,190 bytes (about 87 MiB), counting only the
 members the schema declares. `scripts/capabilities-structural-bounds.cjs` computes it
 and `tests/capabilities-structural-bounds.test.cjs` pins it, so the figure moves
 only when a limit moves. The calculation assumes every declared member is
