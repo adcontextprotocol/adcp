@@ -6,6 +6,7 @@ import { ADCPMultiAgentClient, type CreativeManifest } from '@adcp/sdk';
 import { InMemoryStateStore } from '@adcp/sdk/server';
 import { mountCreative33Sandbox } from '../../src/training-agent/creative33/router.js';
 import { clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
+import { ensureTrainingAgentSchemaBundle } from '../../src/training-agent/schema-compat.js';
 
 type Json = Record<string, unknown>;
 const ACCOUNT = { account_id: 'creative33_sandbox' };
@@ -22,6 +23,9 @@ describe('published SDK buyer journeys on the frozen creative 3.3 beta', () => {
   let base: string;
   let agent: ReturnType<ADCPMultiAgentClient['agent']>;
   beforeAll(async () => {
+    // The SDK buyer validates against 3.3.0-beta.0, which the installed SDK
+    // may not package; register the retained bundles first, as the server does.
+    await ensureTrainingAgentSchemaBundle();
     const app = express();
     app.use(express.json({ limit: '1mb', verify: (req, _res, bytes) => {
       (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(bytes);

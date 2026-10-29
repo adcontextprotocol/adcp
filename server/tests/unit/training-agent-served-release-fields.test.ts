@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { getSchemaDocumentByRef } from '@adcp/sdk/schemas';
 import {
   fieldsAddedAfterRelease,
@@ -6,6 +6,11 @@ import {
   propertiesAddedAfterRelease,
   servedReleaseEnum,
 } from '../../src/training-agent/served-release-fields.js';
+import { ensureTrainingAgentSchemaBundle } from '../../src/training-agent/schema-compat.js';
+// The installed SDK may not package every release the training agent serves
+// (3.3.0-beta.0 here); register the retained bundles first, as the server does.
+beforeAll(() => ensureTrainingAgentSchemaBundle());
+
 
 const CAPABILITIES = 'protocol/get-adcp-capabilities-response.json';
 

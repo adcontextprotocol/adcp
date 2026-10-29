@@ -214,7 +214,7 @@
   },
   "dependencies": {
     "@adcp/reporting-storage": "0.3.0-beta.1",
-    "@adcp/sdk": "17.0.0-beta.3",
+    "@adcp/sdk": "17.0.0-beta.6",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.7",

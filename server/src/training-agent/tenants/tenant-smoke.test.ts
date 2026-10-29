@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import type { TrainingContext } from '../types.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { validateSourceSchema } from '../source-schema.js';
 import { clearAccountStore, handleSyncGovernance } from '../account-handlers.js';
 import { clearIdempotencyCache } from '../idempotency.js';
@@ -35,6 +35,10 @@ import { accountScopeFromRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { GovernanceAgentStub } from '@adcp/sdk/testing';
 import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
+import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import addFormats from 'ajv-formats';
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import {
   clearReportingAccountBindingCacheForTesting,
   reportingMediaBuyCandidateHistoryForTesting,
@@ -42,6 +46,54 @@ import {
 } from '../reporting-reliability.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
+
+// The schema trees the build publishes, and the copies inside them that
+// reuse the $ids of the schemas they project.
+const PUBLISHED_SCHEMAS_DIR = path.resolve('dist/schemas');
+const PUBLISHED_COPY_DIRECTORIES = new Set(['bundled', 'mcp', path.join('core', 'async-response-refs')]);
+const publishedValidators = new Map<string, ValidateFunction>();
+
+/** The newest published release of a served line ("3.2" -> "3.2.8"). */
+function newestPublishedRelease(line: string): string {
+  const pattern = new RegExp(`^${line.replace('.', '\\.')}\\.(\\d+)$`);
+  const patches = readdirSync(PUBLISHED_SCHEMAS_DIR)
+    .map(name => pattern.exec(name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
+  const newest = patches.at(-1);
+  if (!newest) throw new Error(`No published ${line} schema release under ${PUBLISHED_SCHEMAS_DIR}`);
+  return newest[0];
+}
+
+/** Validates a response against the published schema of the release it was served at. */
+function validatePublishedSchema(release: string, relativePath: string, value: unknown): {
+  valid: boolean;
+  errors: ErrorObject[];
+} {
+  let validator = publishedValidators.get(`${release}/${relativePath}`);
+  if (!validator) {
+    const root = path.join(PUBLISHED_SCHEMAS_DIR, release);
+    const ajv = new Ajv({ strict: false });
+    addFormats(ajv);
+    const walk = (relative: string): void => {
+      for (const entry of readdirSync(path.join(root, relative), { withFileTypes: true })) {
+        const child = path.join(relative, entry.name);
+        if (entry.isDirectory()) {
+          if (!PUBLISHED_COPY_DIRECTORIES.has(child)) walk(child);
+        } else if (entry.name.endsWith('.json')) {
+          const schema = JSON.parse(readFileSync(path.join(root, child), 'utf8')) as Record<string, unknown>;
+          if (typeof schema.$id === 'string') ajv.addSchema(schema, schema.$id);
+        }
+      }
+    };
+    walk('');
+    validator = ajv.getSchema(`https://adcontextprotocol.org/schemas/${release}/${relativePath}`);
+    if (!validator) throw new Error(`Published ${release} schema not found: ${relativePath}`);
+    publishedValidators.set(`${release}/${relativePath}`, validator);
+  }
+  const valid = validator(value) === true;
+  return { valid, errors: [...(validator.errors ?? [])] };
+}
 
 const SALES_CURRENT_SCENARIOS = [
   'force_creative_status',
@@ -2952,7 +3004,18 @@ describe('tenant routing smoke', () => {
         expect(result?.products, JSON.stringify(listed)).toHaveLength(1);
         expect(result?.products?.[0].product_id).toBe(productId);
         expect(result?.products?.[0].format_options).toEqual([format]);
-        const validation = validateSourceSchema('media-buy/list-products-response.json', result);
+        // The response is served at the training agent's current line (3.2),
+        // so it is graded against that line's newest published schema, not
+        // the 3.3 source: 3.2's list_products does not compose the protocol
+        // envelope and rejects the `status` the 3.3 source requires, and the
+        // SDK omits `status` for a served 3.2 (adcp-client#3493).
+        const served = (result as { adcp_version?: unknown } | undefined)?.adcp_version;
+        expect(served).toBe(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+        const validation = validatePublishedSchema(
+          newestPublishedRelease(TRAINING_AGENT_CURRENT_ADCP_VERSION),
+          'media-buy/list-products-response.json',
+          result,
+        );
         expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
       }
     } finally {
