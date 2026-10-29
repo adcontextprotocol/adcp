@@ -1,0 +1,87 @@
+---
+title: Translating the docs
+sidebarTitle: Translations
+"og:title": "AdCP — Translating the docs"
+description: "How to add a translated AdCP documentation page and wire it into the Mintlify language switcher without moving the English version picker."
+---
+
+English is the normative text of AdCP. A translation is a reading aid. When the two differ, the English specification, task reference, and migration guides win.
+
+## What Simplified Chinese covers
+
+`docs/zh/` is a finished reading path for a reader who starts at the introduction or quickstart and stays inside Getting Started and Building with AdCP: what AdCP is, the conceptual pages in that section, the first integration, operating an agent, and the accounts overview. It is not a second specification.
+
+| Chinese page | English original | Role |
+| --- | --- | --- |
+| `docs/zh/intro` | `docs/intro` | What AdCP is |
+| `docs/zh/quickstart` | `docs/quickstart` | First call against the public test agent |
+| `docs/zh/glossary` | — | Shared terms. Update this before renaming a term on any other page |
+| `docs/zh/protocol/architecture` | `docs/protocol/architecture` | How the protocol domains fit together |
+| `docs/zh/building/concepts/index` | `docs/building/concepts/index` | Why AdCP exists |
+| `docs/zh/building/concepts/protocol-comparison` | `docs/building/concepts/protocol-comparison` | AdCP next to adjacent protocols |
+| `docs/zh/building/concepts/adcp-vs-openrtb` | `docs/building/concepts/adcp-vs-openrtb` | AdCP and OpenRTB |
+| `docs/zh/building/concepts/how-agents-communicate` | `docs/building/concepts/how-agents-communicate` | Discovery and the call shape |
+| `docs/zh/building/concepts/security-model` | `docs/building/concepts/security-model` | Threat model. The L1 security reference stays English |
+| `docs/zh/building/concepts/industry-landscape` | `docs/building/concepts/industry-landscape` | Where AdCP sits among other standards |
+| `docs/zh/building/concepts/managing-response-size` | `docs/building/concepts/managing-response-size` | How callers keep responses usable |
+| `docs/zh/building/index` | `docs/building/index` | Which integration to build |
+| `docs/zh/building/schemas-and-sdks` | `docs/building/schemas-and-sdks` | Schemas and SDK entry points |
+| `docs/zh/building/by-layer/L4/index` | `docs/building/by-layer/L4/index` | L4 hub |
+| `docs/zh/building/by-layer/L4/choose-your-sdk` | `docs/building/by-layer/L4/choose-your-sdk` | Coverage matrix and install commands |
+| `docs/zh/building/by-layer/L4/build-a-caller` | `docs/building/by-layer/L4/build-a-caller` | Buyer-side first integration |
+| `docs/zh/building/by-layer/L4/build-an-agent` | `docs/building/by-layer/L4/build-an-agent` | Seller-side first integration |
+| `docs/zh/building/by-layer/L4/migrate-from-hand-rolled` | `docs/building/by-layer/L4/migrate-from-hand-rolled` | Incremental move onto an SDK |
+| `docs/zh/protocol/calling-an-agent` | `docs/protocol/calling-an-agent` | Wire rules a caller needs. English remains normative |
+| `docs/zh/building/operating/operating-an-agent` | `docs/building/operating/operating-an-agent` | What to run after the protocol layer exists |
+| `docs/zh/accounts/overview` | `docs/accounts/overview` | Commercial layer. English remains normative; account task pages stay English |
+
+Task reference, JSON schemas, migration guides, and domain specifications stay English. A Chinese page links to them and says so in the sentence or card. Do not translate one of those pages and present it as a second source of truth.
+
+## Add a page
+
+1. Copy the English page to `docs/zh/`, keeping the same path after `zh/`.
+2. Translate the prose, navigation labels, image `alt` text, and frontmatter. Leave protocol identifiers, JSON examples, URLs, and task names unchanged. Use the terms in `docs/zh/glossary.mdx`.
+3. Put an info callout at the top that links the English original and points at the glossary. Links that leave Chinese should say they open the English specification.
+4. Give the page its own `description` and `"og:title"`. The SEO check requires both, requires `"og:title"` to start with `AdCP`, and rejects a description or title copied from another page.
+5. Add the published path to the `zh` language navigation in `docs.json`. The navigable path is `zh/dist/docs/<snapshot>/<page>`, where `<snapshot>` is the default English build. Do not reuse an English page path in another language. Mintlify treats duplicate paths as undefined.
+6. Link other Chinese pages with that same published path (`/zh/dist/docs/<snapshot>/...`). A link to `/docs/zh/...` drops the reader onto a URL the switcher cannot match.
+7. When another Chinese page links to a section, put `<a id="english-slug"></a>` on the line before the heading and reuse the English slug, for example `discovery-chain`. Do not write `{#anchor}` in the heading. The MDX syntax check parses `{...}` as an expression and rejects it.
+8. Add a temporary redirect from `/docs/zh/<page>` to `/zh/dist/docs/<snapshot>/<page>`. `scripts/update-release-docs-nav.mjs` rewrites those destinations when the default snapshot changes.
+
+`docs/zh/` stays outside the English version picker. The coverage allowlist in `tests/docs-nav-validation.test.cjs` records that. A translated page still has to appear in the `zh` language navigation. `tests/docs-nav-validation.test.cjs` lists the pages the Chinese path is expected to publish; add a new page there when it becomes part of that path.
+
+## Language switcher
+
+Mintlify enables the other language only when the path after the locale segment is the same. English pages in the version picker are `/dist/docs/<snapshot>/<page>`. A Chinese page at `/docs/zh/<page>` does not match, and this Mintlify version then disables the other language. It does not fall back to the first page.
+
+Published Chinese pages are therefore `/zh/dist/docs/<snapshot>/<page>`: the English path with a `zh` prefix. On a translated page the switcher opens that translation. On a page with no twin, the other language stays disabled. The glossary has no English page at the same path, so English is disabled there; the sidebar still works.
+
+Keep the language code as `zh`. That prefix is the locale segment Mintlify strips. The CLI labels `zh` as "Chinese" and `zh-CN` as "Simplified Chinese", but the local preview shows 简体中文 for `zh`. Changing only the `language` field would desync the dropdown from the paths.
+
+Author the translation in `docs/zh/<page>.mdx`. The file Mintlify serves is a symlink:
+
+```
+zh/dist/docs/<snapshot>/<page>.mdx → docs/zh/<page>.mdx
+```
+
+Git must check the symlink out as a symlink (`core.symlinks=true`). Do not copy the Markdown into `zh/dist/docs/`, and do not put Chinese pages into the English version picker.
+
+## Keep translations in sync
+
+`scripts/update-release-docs-nav.mjs` updates the English `versions` array, including when it is nested under `navigation.languages`. When that update retargets the **default** snapshot, it also:
+
+- rewrites `zh/dist/docs/<old>/` paths in the `zh` navigation
+- rewrites redirect destinations that start with `/zh/dist/docs/<old>/`
+- renames `zh/dist/docs/<old>` to `zh/dist/docs/<new>`
+- replaces `/zh/dist/docs/<old>/` inside `docs/zh/**/*.mdx`
+
+A non-default version bump does not move the Chinese mirror. The script does not translate prose. A release snapshot is not a translation update.
+
+When the English original of a translated page changes:
+
+1. Update the matching `docs/zh/` page in the same pull request when the change is user-visible (steps, install commands, SDK versions, wire rules). A typo-only English edit does not require a translation release by itself.
+2. If a term changes, edit `docs/zh/glossary.mdx` first, then the pages that use it.
+3. If the coverage matrix in `choose-your-sdk` changes, update the Chinese matrix and its "last updated" date together. Do not let the Chinese matrix drift ahead of or behind the English one.
+4. New English pages are not translated automatically. Add one to the `zh` navigation only after the translation exists and the hand-off for anything still in English is explicit.
+
+The docs-index smoke script inlines `docsNavigationVersions` because the runtime image does not contain `scripts/`. If you change `scripts/docs-navigation.cjs`, update the copy in `scripts/smoke-docs-index-runtime.mjs` and the matching function in `server/src/addie/mcp/docs-indexer.ts`.

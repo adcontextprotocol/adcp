@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import canonicalize from 'canonicalize';
 import path from 'node:path';
@@ -19,6 +20,14 @@ import {
   SCHEMA_VERSION_OPTIONS,
   type SchemaRegistry,
 } from '../../../src/addie/mcp/schema-tools.js';
+
+const { docsNavigationVersions } = createRequire(import.meta.url)(
+  '../../../../scripts/docs-navigation.cjs',
+) as {
+  docsNavigationVersions: (config: {
+    navigation?: { versions?: Array<{ version: string; default?: boolean }> };
+  }) => Array<{ version: string; default?: boolean }>;
+};
 
 const PRERELEASE_SELECTOR = /^\d+\.\d+-[0-9a-z]+$/i;
 const LINE_32_CANONICAL = '3.2' in DOCS_SCHEMA_RELEASES
@@ -45,13 +54,12 @@ describe('schema version selection', () => {
 
   it('defaults to the first stable line, which mirrors the docs.json default', () => {
     const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
-    const docsConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs.json'), 'utf8')) as {
-      navigation: { versions: Array<{ version: string; default?: boolean }> };
-    };
-    const labels = docsConfig.navigation.versions.map(
+    const docsConfig = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs.json'), 'utf8'));
+    const versions = docsNavigationVersions(docsConfig);
+    const labels = versions.map(
       ({ version }) => version.replace(/\s*\(archived\)\s*$/i, ''),
     );
-    const docsDefault = docsConfig.navigation.versions.find((entry) => entry.default);
+    const docsDefault = versions.find((entry) => entry.default);
 
     expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual(labels);
     expect(DEFAULT_SCHEMA_VERSION).toBe(docsDefault?.version);
