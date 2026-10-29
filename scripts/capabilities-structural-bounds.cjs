@@ -2,11 +2,13 @@
 /**
  * Structural bounds on the `get_adcp_capabilities` response (#8198).
  *
- * `MAX_CAPABILITIES_BYTES` (64 KiB) is a fetch budget, not a schema property.
- * This module makes the response bounded by structure as well: it walks the
- * response schema and every schema it reaches through `$ref`, reports the
- * arrays, strings, and maps that carry no bound, and computes the worst-case
- * serialized size of a schema-valid document.
+ * The structural bounds are the protocol's limit on the response.
+ * `MAX_CAPABILITIES_BYTES` (64 KiB) is only a receiver backstop, described as
+ * deployment guidance, and is not a design target. This module checks the
+ * structural bound: it walks the response schema and every
+ * schema it reaches through `$ref`, reports the arrays, strings, and maps that
+ * carry no bound, and computes the worst-case serialized size of a
+ * schema-valid document.
  *
  * A bound is one of:
  *   - an enforced keyword (`maxItems`, `maxLength`, `maxProperties`), which
@@ -36,6 +38,7 @@ const path = require('node:path');
 
 const SOURCE = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const ROOT_FILE = 'protocol/get-adcp-capabilities-response.json';
+/** Receiver backstop (deployment guidance), not a design target or a protocol limit. */
 const MAX_CAPABILITIES_BYTES = 65_536;
 
 const ANNOTATION = {
@@ -265,8 +268,8 @@ function describe(node, keyword, exempt) {
  * Every declared member is assumed present, every array and map full, and
  * every string at its maximum length. A union takes its widest branch. Members
  * the schema does not declare are not counted: an open object admits any
- * extra member, so the byte budget, not structure, bounds those. The count of
- * open positions is reported with the result.
+ * extra member, and no structural bound reaches those. The count of open
+ * positions is reported with the result.
  */
 function worstCase(mode, rootFile = ROOT_FILE) {
   const open = new Set();
@@ -430,7 +433,7 @@ function main() {
   }
   console.log(`positions needing a bound: ${rows.length}, unbounded: ${unbounded.length}`);
   for (const r of unbounded) console.log(`  ${r.kind} ${r.key}  (${r.trail})`);
-  console.log(`worst case with 4.0 bounds:       ${kib(wc4.total)} (${wc4.total} bytes), safety net ${MAX_CAPABILITIES_BYTES} bytes`);
+  console.log(`worst case with 4.0 bounds:       ${kib(wc4.total)} (${wc4.total} bytes), receiver backstop ${MAX_CAPABILITIES_BYTES} bytes (not a design target)`);
   console.log(`worst case with enforced bounds:  ${kib(wc3.total)}`);
   console.log(`open positions (undeclared members not counted): ${wc4.openPositions}`);
   const blocks = Object.entries(wc4.perBlock).sort((a, b) => b[1] - a[1]).slice(0, 12);
