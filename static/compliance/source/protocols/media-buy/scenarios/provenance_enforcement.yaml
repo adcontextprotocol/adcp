@@ -1,5 +1,5 @@
 id: media_buy_seller/provenance_enforcement
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller enforces provenance_requirements on sync_creatives"
 category: media_buy_seller
 summary: "Seller publishes provenance_requirements + accepted_verifiers on a product. Four structural rejections (no provenance, missing digital_source_type, off-list verifier, missing disclosure), then a corrected resubmission with on-list verifier is accepted."
@@ -55,6 +55,15 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_pinnacle_sandbox"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   creative_formats:
     - format_id: "provenance_display_300x250"
       fixture:
@@ -155,6 +164,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           context:
             correlation_id: "provenance_enforcement--get_products"
         validations:
@@ -202,6 +212,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_no_provenance_probe_001"
               name: "Acme no-provenance probe"
@@ -271,6 +282,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_no_dst_probe_001"
               name: "Acme no-digital_source_type probe"
@@ -345,6 +357,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_off_list_verifier_probe_001"
               name: "Acme off-list verifier probe"
@@ -432,6 +445,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_disclosure_probe_001"
               name: "Acme disclosure probe — missing block"
@@ -502,6 +516,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_disclosure_probe_001"
               name: "Acme disclosure probe — disclosure attached, on-list verifier"

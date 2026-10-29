@@ -95,6 +95,102 @@ for (const name of ['provenance_enforcement', 'provenance_audit_observation', 'p
     assert.ok(checked > 0, `${name} declares no creative probes — the format checks above graded nothing`);
   });
 }
+const ACCOUNT_SCENARIOS = ['provenance_enforcement', 'provenance_truth_of_claim', 'provenance_audit_observation', 'creative_reception'];
+const loadAccountScenario = name => YAML.parse(fs.readFileSync(path.join(SCENARIOS, `${name}.yaml`), 'utf8'));
+
+test('3.1 account-scoped creative scenarios declare the sandbox identity they use', () => {
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  const fixtures = [];
+  for (const name of ACCOUNT_SCENARIOS) {
+    const storyboard = loadAccountScenario(name);
+    assert.equal(storyboard.prerequisites.controller_seeding, true, name);
+    assert.equal(storyboard.fixtures.accounts.length, 1, name);
+    const row = storyboard.fixtures.accounts[0];
+    fixtures.push(row);
+    assert.equal(row.fixture.sandbox, true, name);
+    assert.equal('operator_unit' in row.fixture, false, '3.1 does not support operator_unit');
+    const refs = storyboard.phases.flatMap(phase => phase.steps)
+      .map(step => step.sample_request?.account).filter(account => account?.operator);
+    assert.ok(refs.length > 0, name);
+    for (const ref of refs) {
+      assert.equal(validateAccountRef(ref), true, ajv.errorsText(validateAccountRef.errors));
+      assert.deepEqual(ref, { brand: row.fixture.brand, operator: row.fixture.operator, sandbox: true }, name);
+    }
+  }
+  for (const row of fixtures) assert.deepEqual(row, fixtures[0], 'a warm 3.1 natural key must reseed idempotently');
+});
+
+// Exercise only the prerequisite contract through the public runner. Full
+// authored storyboards are verified separately against the local MCP agent.
+async function probeAccountPrerequisite(name, accounts, { omitFixture = false, rejectSeed = false } = {}) {
+  const source = loadAccountScenario(name);
+  const request = source.phases.flatMap(phase => phase.steps)
+    .find(step => step.task === 'sync_creatives').sample_request;
+  const storyboard = {
+    ...source,
+    fixtures: { accounts: omitFixture ? [] : source.fixtures.accounts },
+    phases: [{ id: 'account_prerequisite_probe', title: 'Account prerequisite', steps: [{
+      id: 'use_declared_account', title: 'Use declared account', task: 'sync_creatives',
+      sample_request: request,
+      validations: [{ check: 'field_value', path: 'account_ready', value: true }],
+    }] }],
+  };
+  const calls = [];
+  const tools = ['get_adcp_capabilities', 'comply_test_controller', 'sync_creatives'];
+  const key = ref => JSON.stringify([ref.brand.domain, ref.operator, ref.sandbox === true]);
+  const client = { executeTask: async (task, input) => {
+    calls.push({ task, input: structuredClone(input) });
+    if (task === 'comply_test_controller') {
+      if (input.scenario === 'list_scenarios') return { success: true, data: { success: true, scenarios: ['seed_account'] } };
+      assert.equal(input.scenario, 'seed_account');
+      if (rejectSeed) return { success: true, data: { success: false, error: 'INVALID_STATE' } };
+      const row = input.params;
+      const previous = accounts.get(key(row.fixture));
+      assert.ok(!previous || JSON.stringify(previous) === JSON.stringify(row), 'warm seed must not replace the natural key');
+      accounts.set(key(row.fixture), structuredClone(row));
+      return { success: true, data: { success: true, scenario: input.scenario } };
+    }
+    assert.equal(task, 'sync_creatives');
+    const found = accounts.get(key(input.account));
+    return found
+      ? { success: true, status: 'completed', data: { account_ready: true, context: input.context } }
+      : { success: false, error: 'ACCOUNT_NOT_FOUND' };
+  } };
+  const result = await runStoryboard('https://seller.example/mcp', storyboard, {
+    _client: client, agentTools: tools,
+    _profile: { tools, raw_capabilities: { supported_protocols: ['media_buy'] } },
+  });
+  return { result, calls };
+}
+
+test('each 3.1 account prerequisite works cold and after every rotated scenario order', async t => {
+  for (const name of ACCOUNT_SCENARIOS) await t.test(`cold ${name}`, async () => {
+    const { result, calls } = await probeAccountPrerequisite(name, new Map());
+    assert.equal(result.overall_passed, true, JSON.stringify(result));
+    assert.equal(result.skipped_count, 0);
+    const seed = calls.findIndex(call => call.input.scenario === 'seed_account');
+    const use = calls.findIndex(call => call.task === 'sync_creatives');
+    assert.ok(seed >= 0 && use > seed, 'account must be seeded before use');
+  });
+  for (let offset = 0; offset < ACCOUNT_SCENARIOS.length; offset++) await t.test(`rotation ${offset}`, async () => {
+    const accounts = new Map();
+    for (const name of [...ACCOUNT_SCENARIOS.slice(offset), ...ACCOUNT_SCENARIOS.slice(0, offset)]) {
+      const { result } = await probeAccountPrerequisite(name, accounts);
+      assert.equal(result.overall_passed, true, JSON.stringify(result));
+      assert.equal(result.skipped_count, 0);
+    }
+    assert.equal(accounts.size, 1, 'all four scenarios reuse one declared 3.1 sandbox identity');
+  });
+});
+
+test('account prerequisite controls reject omitted fixtures and rejected seeding', async () => {
+  for (const name of ACCOUNT_SCENARIOS) for (const options of [{ omitFixture: true }, { rejectSeed: true }]) {
+    const { result } = await probeAccountPrerequisite(name, new Map(), options);
+    assert.equal(result.overall_passed, false, `${name}: ${JSON.stringify(options)}`);
+    assert.ok(result.failed_count > 0, 'an unavailable prerequisite must not fabricate a pass');
+  }
+});
+
 // One canonical discovery now decides between all three canonical shapes, so the gate
 // and the buy are always the same observation. Only the legacy path reads separately.
 function discoveryKey(request) {

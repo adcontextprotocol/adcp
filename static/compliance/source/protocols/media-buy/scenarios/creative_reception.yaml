@@ -1,5 +1,5 @@
 id: media_buy_seller/creative_reception
-version: "1.0.0"
+version: "1.0.1"
 title: "Sales agent with creative capabilities"
 category: media_buy_seller
 summary: "Stateful sales agent that accepts pushed creative assets and renders them in its environment."
@@ -33,10 +33,22 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The buyer has creative assets (images, catalog feeds, or ad tags) ready to push.
     The test kit provides sample assets compatible with common publisher formats.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_pinnacle_sandbox"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        billing: "operator"
+        status: "active"
+        sandbox: true
 
 phases:
   - id: capability_discovery
@@ -138,6 +150,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_summer_native_001"
               name: "Acme Summer Sale — native 2026"
@@ -206,6 +219,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           request_type: "single"
           creative_manifest:
             creative_id: "acme_summer_native_001"

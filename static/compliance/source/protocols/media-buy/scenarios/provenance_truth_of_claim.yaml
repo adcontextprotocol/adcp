@@ -1,5 +1,5 @@
 id: media_buy_seller/provenance_truth_of_claim
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller refutes a buyer's provenance claim via on-list verifier"
 category: media_buy_seller
 summary: "Buyer attaches a digital_source_type claim. Seller invokes get_creative_features against an on-list verifier (creative_policy.accepted_verifiers); when the verifier contradicts the claim, seller rejects with PROVENANCE_CLAIM_CONTRADICTED carrying audit-safe error.details."
@@ -57,6 +57,15 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_pinnacle_sandbox"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   creative_formats:
     - format_id: "provenance_display_300x250"
       fixture:
@@ -145,6 +154,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           context:
             correlation_id: "provenance_truth_of_claim--get_products"
         validations:
@@ -195,6 +205,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_truth_of_claim_probe_001"
               name: "Acme truth-of-claim probe — contradicted"
@@ -286,6 +297,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_truth_of_claim_probe_002"
               name: "Acme truth-of-claim probe — consistent"

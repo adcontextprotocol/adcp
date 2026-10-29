@@ -15,17 +15,42 @@
  * v5 response into the v6 typed result.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { z } from 'zod';
 import {
   TestControllerError,
   type ComplyControllerConfig,
   type ComplyControllerContext,
 } from '@adcp/sdk/testing';
-import { TOOL_INPUT_SHAPE } from '@adcp/sdk/server';
+import { TOOL_INPUT_SHAPE, createSeedFixtureCache, type SeedFixtureCache } from '@adcp/sdk/server';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
 
 const TRAINING_PRINCIPAL_FIELD = '__training_principal';
+
+// The older SDK's replay key includes caller-supplied correlation/account
+// fields but not the authenticated principal. Bind cache access to the
+// router's trusted caller, before the SDK validates a seed replay.
+const controllerPrincipal = new AsyncLocalStorage<string>();
+
+export function withControllerPrincipal<T>(principal: string, run: () => Promise<T>): Promise<T> {
+  return controllerPrincipal.run(principal, run);
+}
+
+function createPrincipalScopedSeedCache(): SeedFixtureCache {
+  const cache = createSeedFixtureCache();
+  const scoped = (key: string): string => {
+    const principal = controllerPrincipal.getStore();
+    if (!principal) throw new Error('Controller seed cache requires a trusted request principal');
+    return JSON.stringify([principal, key]);
+  };
+  return {
+    get: key => cache.get(scoped(key)),
+    has: key => cache.has(scoped(key)),
+    set: (key, fixture) => cache.set(scoped(key), fixture),
+  };
+}
+
 
 /**
  * v5 handler return shape — wide union of seed/force/simulate response
@@ -206,12 +231,18 @@ export function buildCreativeComplyConfig(): ComplyControllerConfig {
   };
 }
 
-export function buildSalesComplyConfig(): ComplyControllerConfig {
+export function buildSalesComplyConfig(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): ComplyControllerConfig {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
+    seedCache: createPrincipalScopedSeedCache(),
     seed: {
+      ...(storyboardCompat?.version === '3.0' ? {} : {
+        account: cast(seedAdapter('seed_account')),
+      }),
       product: cast(seedAdapter('seed_product')),
       pricing_option: cast(seedAdapter('seed_pricing_option')),
       media_buy: cast(seedAdapter('seed_media_buy')),

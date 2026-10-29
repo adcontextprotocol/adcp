@@ -1,5 +1,5 @@
 id: media_buy_seller/provenance_audit_observation
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller accepts a provenance carve-out claim surfaced as an audit observation"
 category: media_buy_seller
 summary: "Buyer submits AI-assisted creatives with human_oversight directed/edited and disclosure.required false. Seller invokes an on-list verifier, records OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED audit observations, and accepts the creatives rather than treating the observations as rejections."
@@ -50,6 +50,15 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_pinnacle_sandbox"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   creative_formats:
     - format_id: "provenance_display_300x250"
       fixture:
@@ -142,6 +151,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           context:
             correlation_id: "provenance_audit_observation--get_products"
         validations:
@@ -183,6 +193,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "acme_provenance_audit_directed_001"
               name: "Acme provenance audit observation probe — directed"
