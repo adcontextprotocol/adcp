@@ -7,7 +7,7 @@
   "properties": {
     "account_id": {
       "type": "string",
-      "description": "Unique identifier for this account",
+      "description": "Seller-assigned identifier and the account's identity; it never changes.",
       "x-entity": "account"
     },
     "name": {
@@ -38,26 +38,28 @@
     },
     "operator_unit": {
       "$ref": "/schemas/core/operator-unit.json",
-      "description": "Operator-owned business unit, agency seat, or platform account associated with this advertiser account. The id round-trips from the natural key; name is mutable display metadata. This is distinct from account_id, which belongs to the seller/storefront namespace."
+      "description": "Operator-owned business unit, agency seat, or platform account associated with this advertiser account. An account attribute; name is display metadata. This is distinct from account_id, which belongs to the seller/storefront namespace."
     },
     "revision": {
       "type": "integer",
       "minimum": 1,
-      "description": "Monotonically increasing optimistic-concurrency token for this account. Incremented on every persisted settings change, identity-change request, and identity-change disposition; reads, dry runs, validation failures, and exact idempotency replays do not increment it. Pass the latest observed value in a sync_accounts settings-update entry to prevent lost updates."
+      "description": "Monotonically increasing optimistic-concurrency token for this account. Incremented on every persisted settings change, identity-change request, and identity-change disposition; reads, dry runs, validation failures, and exact idempotency replays do not increment it. Pass the latest observed value in a sync_accounts settings-update entry, or a request_account change, to prevent lost updates. A timezone change shows here as a new revision with the new timezone. Reporting subscription writes through sync_principal, including replace_account_configs deactivations, are caller configuration and do not increment it."
     },
     "identity_change": {
       "$ref": "/schemas/core/account-identity-change.json",
-      "description": "Pending or rejected operator-identity transition. While present, the top-level operator and operator_unit remain the current canonical identity. Re-read list_accounts until the request is applied (canonical fields change and this object disappears) or rejected."
+      "deprecated": true,
+      "x-deprecated-in": "3.3.0",
+      "description": "Deprecated in 3.3. Pending or rejected operator-identity transition. While present, the top-level operator and operator_unit remain the current canonical identity. Re-read list_accounts until the request is applied (canonical fields change and this object disappears) or rejected."
     },
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}$",
-      "description": "Immutable transaction currency when the seller's advertiser object is currency-bound. Media buys on this account MUST use this currency. Omit when the account selects currency independently per media buy."
+      "description": "Transaction currency when the seller's advertiser object is currency-bound. An account attribute set when the account opens. Media buys on this account MUST use this currency. Omit when the account selects currency independently per media buy."
     },
     "timezone": {
       "type": "string",
       "minLength": 1,
-      "description": "Immutable operational timezone for this account, expressed as UTC or an IANA timezone identifier. AdCP 3.2 sellers return it on every account. It is the default calendar-day boundary for account-scoped behavior unless a feature explicitly declares another timezone basis. For buyer-selected account_fixed provisioning it participates in the natural account key."
+      "description": "Operational timezone for this account, expressed as UTC or an IANA timezone identifier. An account attribute set when the account opens. AdCP 3.2 sellers return it on every account. It is the default calendar-day boundary for account-scoped behavior unless a feature explicitly declares another timezone basis."
     },
     "billing": {
       "$ref": "/schemas/enums/billing-party.json",
@@ -114,6 +116,18 @@
           "type": "string",
           "format": "date-time",
           "description": "When this setup link expires."
+        },
+        "waiting_on": {
+          "$ref": "/schemas/enums/pending-action-party.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Whose turn it is."
+        },
+        "kind": {
+          "$ref": "/schemas/enums/pending-action-kind.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "What is needed."
         }
       },
       "required": [
@@ -227,7 +241,7 @@
     },
     "sandbox": {
       "type": "boolean",
-      "description": "When true, this is a sandbox account — no real platform calls, no real spend. For account-id namespaces, sandbox accounts are pre-existing test accounts on the platform discovered via list_accounts or supplied out-of-band. For buyer-declared accounts, sandbox is part of the natural key: the same brand/operator pair can have both a production and sandbox account."
+      "description": "When true, this is a sandbox account — no real platform calls, no real spend. For account-id namespaces, sandbox accounts are pre-existing test accounts on the platform discovered via list_accounts or supplied out-of-band. For buyer-declared accounts, sandbox is an account attribute set when the account opens and never changed: the same brand/operator pair can have a production and a sandbox account."
     },
     "notification_configs": {
       "type": "array",

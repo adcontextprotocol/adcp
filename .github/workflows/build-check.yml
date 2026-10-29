@@ -68,11 +68,21 @@ jobs:
       - name: Routed tenant smoke tests
         run: npm run test:tenant-routing
 
+      - name: Published SDK creative 3.3 buyer journeys and isolation
+        run: npm run test:creative33-sandbox
+
       - name: Schema link plugin tests
         run: npm run test:schema-links
 
       - name: Language-tag schema reference guard
         run: npm run test:language-tag-refs
+
+      - name: Additive-minor schema guard (no new non-additive changes)
+        # On pull requests the baseline may only shrink relative to the
+        # target branch's copy.
+        env:
+          ADCP_ADDITIVE_MINOR_BASELINE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+        run: npm run test:additive-minor
 
       - name: Fetch 3.0.x for error-code drift comparison
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'

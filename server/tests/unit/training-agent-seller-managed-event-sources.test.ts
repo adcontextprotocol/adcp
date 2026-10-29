@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import crypto from 'node:crypto';
+
+// `platform_id` is the 3.3 name for an event source's seller-assigned id, so
+// this suite calls as a 3.3 caller through the trusted local candidate wire
+// contract. A 3.2 caller gets `seller_id` alone (#8487).
+vi.hoisted(() => {
+  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.0';
+});
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -37,7 +45,7 @@ async function callTool(
   const handler = requestHandlers.get('tools/call');
   if (!handler) throw new Error('CallTool handler not found');
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, { adcp_version: '3.3-beta.0', ...args }) } },
     {},
   );
   const text = response.content?.[0]?.text;

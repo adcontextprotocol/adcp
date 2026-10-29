@@ -74,7 +74,6 @@ import {
 } from '../services/compliance-testing.js';
 import {
   listAllComplianceStoryboards,
-  getComplianceStoryboardById,
   createTestClient,
   testCapabilityDiscovery,
   type AgentProfile,
@@ -82,6 +81,7 @@ import {
   type StoryboardContext,
   type StoryboardStepResult,
 } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from '../../compliance/storyboard-cache.js';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
@@ -5685,7 +5685,7 @@ export function createMemberToolHandlers(
     const runTarget = targetFromInput(input);
     const runOptions = hostedComplianceOptions(runTarget);
 
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) {
       const all = listAllComplianceStoryboards(runOptions);
       const ids = all.map(s => `\`${s.id}\``).join(', ');
@@ -5765,7 +5765,7 @@ export function createMemberToolHandlers(
     }
 
     const runOptions = hostedComplianceOptions(runTarget);
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
 
     try {
@@ -6051,7 +6051,7 @@ export function createMemberToolHandlers(
     }
 
     const runOptions = hostedComplianceOptions(runTarget);
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
     // Resolve stepId: if caller passed a phase ID, remap to first step of that phase.

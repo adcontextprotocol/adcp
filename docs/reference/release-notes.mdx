@@ -78,8 +78,9 @@ Each beta is immutable. The `3.3-beta` documentation selector advances to the la
 - **Deprecated: RFC 9421 signing profiles (#8162).** `adcp/request-signing/v1` and `adcp/webhook-signing/v1` keep working through 3.x and are removed in 4.0. The replacement is the experimental Web Bot Auth profile; see the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
 - **Deprecated: `seller_id` on event source and audience results (#8290).** Use `platform_id`; the alias keeps working through 3.x, removal no earlier than 4.0.
 - **Deprecated: natural-key account references after provisioning (#8123).** They keep working through 3.x and are planned for removal in 4.0; sellers SHOULD declare `account.stable_account_id`. See [Deprecations](/docs/reference/migration/3-2-to-3-3#deprecations).
+- **Reminder, not new in 3.3: `adcp_major_version` is removed in 4.0 ([DR-0035](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0035-adcp-major-version-removed-in-4-0.md)).** The integer request field and the `adcp.major_versions` capability field have been deprecated since 3.1. They keep working through 3.x, and 4.0 removes both. Send `adcp_version` on every request, keeping the `adcp_major_version` mirror through 3.x. In-house clients that still send only the integer should switch before 4.0. The compliance grader already blocks sellers that do not echo `adcp_version` or emit `adcp.supported_versions`, and at 4.0 rejects the legacy fields.
 
-Each is detailed in the [migration guide](/docs/reference/migration/3-2-to-3-3#required-to-claim-3-3-behavior) and recorded in [3.3 exceptions to 3.x compatibility](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta). Fields that a 3.2 validator rejects, and so are sent only on a negotiated 3.3 version, are listed in [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers). Schema-shape changes for SDK generators are in [SDK and code-generator maintainers](/docs/reference/migration/3-2-to-3-3#sdk-and-code-generator-maintainers). 3.3 deprecates no stable field, task, or enum value; it deprecates one usage and the RFC 9421 signing profiles, listed above.
+Each is detailed in the [migration guide](/docs/reference/migration/3-2-to-3-3#required-to-claim-3-3-behavior) and recorded in [3.3 exceptions to 3.x compatibility](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta). Fields that a 3.2 validator rejects, and so are sent only on a negotiated 3.3 version, are listed in [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers). Schema-shape changes for SDK generators are in [SDK and code-generator maintainers](/docs/reference/migration/3-2-to-3-3#sdk-and-code-generator-maintainers). 3.3 deprecates no stable field, task, or enum value; it deprecates one usage and the RFC 9421 signing profiles, listed above. The `adcp_major_version` reminder restates an existing 3.1 deprecation.
 
 ### Experimental surfaces in 3.3
 
@@ -351,6 +352,28 @@ On 2026-06-30 an accidental release cut published `3.2.0` artifacts built from 3
 3.1.3 added `filters.publisher_domain` to the stable `get_products` request schema in a patch release. New stable protocol fields are minor-version changes under the AdCP release contract. The reference implementation also accepted `publisher_domains[]` on products even though the product schema explicitly permits only singular `publisher_domain` selectors.
 
 The `v3.1.3` tag, schemas, compliance bundles, protocol tarball, signatures, and checksums remain available and immutable for auditability. Public release guidance points back to 3.1.2. A corrected publisher-domain discovery design may return in a future minor release.
+
+---
+
+## 3.1 erratum: HTML-markup legacy formats project to `display_tag`
+
+**Status:** Erratum for the next 3.1.x patch, approved by the AdCP lead ([#8339](https://github.com/adcontextprotocol/adcp/issues/8339)). The stable wire negotiation value remains `"3.1"`.
+
+The AAO reference catalog tagged the HTML-markup legacy formats (`display_html` and `display_WxH_html`) with `canonical: { kind: "html5" }`. That contradicted normative rule 5 of [`canonical-projection-ref.json`](https://adcontextprotocol.org/schemas/v3/core/canonical-projection-ref.json): the projected `slots[]` must be consistent with the v1 format's `assets[*]`. These formats require one `html` asset (`html_creative`, markup rendered verbatim). The `html5` canonical's slot is an `html5_bundle` zip that the seller unpacks and hosts.
+
+The catalog now tags these formats as follows:
+
+```json
+"canonical": {
+  "kind": "display_tag",
+  "asset_source": "buyer_uploaded",
+  "slots_override": [{ "asset_group_id": "html_creative", "asset_type": "html", "required": true }]
+}
+```
+
+This is the same canonical kind `display_js` already used. The catalog also publishes `display_320x50_html` and `display_300x50_html` with this annotation.
+
+**Compatibility.** No schema changes. A 3.1 SDK that reads the corrected catalog projects these formats to `display_tag`, not `html5`. A buyer that sends an `html5` zip creative to an `_html`-only product no longer matches. Those sellers render markup and never accepted bundles. Markup creatives continue to project back to the seller's exact `display_WxH_html` ref with the markup in `html_creative`. The full inline-markup representation (`supported_delivery_types: ["inline_markup"]`) needs 3.2 `display_tag` fields and ships in the next minor.
 
 ---
 

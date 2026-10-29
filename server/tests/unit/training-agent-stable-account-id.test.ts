@@ -165,15 +165,13 @@ describe('training agent: account.stable_account_id', () => {
     stopSessionCleanup();
   });
 
-  it('declares the capability only on the current v6 tenant routes', async () => {
-    for (const path of ['sales/mcp', 'signals/mcp', 'creative/mcp']) {
-      const url = `${server.baseUrl}/${path}`;
-      await initialize(url);
-      const caps = await callTool(url, 'get_adcp_capabilities', { adcp_version: '3.2' });
-      expect(caps?.account?.stable_account_id, path).toBe(true);
-    }
-    // The v5 monolith neither aliases nor rehydrates, so it must not declare.
-    for (const path of ['mcp', 'sales/mcp-strict']) {
+  // account.stable_account_id is a 3.3 field, so no route declares it to a
+  // 3.2 caller (#8487); the v6 tenant routes still alias and rehydrate the
+  // account_id, as the cases below show. The 3.3 declaration, and its absence
+  // from the v5 monolith, are covered in
+  // training-agent-candidate-version.test.ts.
+  it('withholds the 3.3 capability from 3.2 callers on every route', async () => {
+    for (const path of ['sales/mcp', 'signals/mcp', 'creative/mcp', 'mcp', 'sales/mcp-strict']) {
       const url = `${server.baseUrl}/${path}`;
       await initialize(url);
       const caps = await callTool(url, 'get_adcp_capabilities', { adcp_version: '3.2' });

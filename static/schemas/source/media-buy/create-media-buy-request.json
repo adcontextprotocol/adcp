@@ -76,7 +76,7 @@
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account to bill for this media buy. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts."
+      "description": "Account to bill for this media buy. Pass the seller-assigned account_id from sync_accounts or list_accounts. During 3.x, a natural key (brand, operator, optional sandbox) that matches exactly one account also resolves."
     },
     "proposal_id": {
       "type": "string",

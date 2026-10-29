@@ -214,6 +214,12 @@ export function loadSourceSchema(relativePath: string): JsonSchema {
   return structuredClone(readSchema(relativePath));
 }
 
+/** The shared parsed source schema, for read-only walks. Callers must not
+ * mutate it; loadSourceSchema returns a private copy. */
+export function sourceSchemaDocument(relativePath: string): Readonly<JsonSchema> {
+  return readSchema(relativePath);
+}
+
 function schemaFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = join(directory, entry.name);

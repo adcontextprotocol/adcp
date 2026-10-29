@@ -9,6 +9,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
 import { AdcpError, type WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
+import { atLeastAdcpVersion, TRAINING_AGENT_CURRENT_ADCP_VERSION } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import {
   getSession,
@@ -1749,24 +1750,39 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 
   for (const input of req.accounts) {
     if (input.account) {
-      const mixedProvisioningFields = [
-        input.brand !== undefined && 'brand',
-        input.operator !== undefined && 'operator',
-        input.operator_unit !== undefined && 'operator_unit',
-        input.currency !== undefined && 'currency',
-        input.timezone !== undefined && 'timezone',
-        input.billing !== undefined && 'billing',
-        input.sandbox !== undefined && 'sandbox',
-      ].filter(Boolean);
-      if (mixedProvisioningFields.length > 0) {
+      if (input.operator !== undefined) {
         results.push({
           account: input.account,
           action: 'failed',
           status: 'rejected',
           errors: [{
             code: 'INVALID_REQUEST',
-            message: `Settings-update mode must not include provisioning fields: ${mixedProvisioningFields.join(', ')}`,
-            field: String(mixedProvisioningFields[0]),
+            message: 'Settings-update mode must not include operator: a different operator opens its own account',
+            field: 'operator',
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
+      // Account attributes are settable in settings-update mode. This
+      // training agent keys its account store by them, so it declines the
+      // change with UNSUPPORTED_FEATURE and leaves the account unchanged.
+      const attributeChanges = [
+        input.brand !== undefined && 'brand',
+        input.operator_unit !== undefined && 'operator_unit',
+        input.currency !== undefined && 'currency',
+        input.timezone !== undefined && 'timezone',
+        input.billing !== undefined && 'billing',
+        input.sandbox !== undefined && 'sandbox',
+      ].filter(Boolean);
+      if (attributeChanges.length > 0) {
+        results.push({
+          account: input.account,
+          action: 'failed',
+          errors: [{
+            code: 'UNSUPPORTED_FEATURE',
+            message: `This seller does not change account attributes after opening: ${attributeChanges.join(', ')}`,
+            field: String(attributeChanges[0]),
             recovery: 'correctable',
           }],
         });
@@ -1887,11 +1903,14 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       }
       if (input.reporting_delivery_configs !== undefined) changedPaths.push('/reporting_delivery_configs');
 
+      // From 3.2 a settings-update row is identified by the echoed `account`
+      // alone and MUST NOT also carry brand/operator; 3.0 and 3.1 have no
+      // `account` echo and identify the row by its natural key.
+      const naturalKeyIdentity = !atLeastAdcpVersion(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, '3.2');
       const result: Record<string, unknown> = {
         account_id: existing.accountId,
         account: input.account,
-        brand: existing.brand,
-        operator: existing.operator,
+        ...(naturalKeyIdentity && { brand: existing.brand, operator: existing.operator }),
         ...(existing.operatorUnit && { operator_unit: existing.operatorUnit }),
         ...(existing.currency && { currency: existing.currency }),
         ...(existing.timezone && { timezone: existing.timezone }),

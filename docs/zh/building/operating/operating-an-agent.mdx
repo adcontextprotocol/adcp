@@ -6,10 +6,10 @@ description: "协议符合的代理上线之后还要补上的业务设施：产
 ---
 
 <Info>
-译名与[术语表](/zh/dist/docs/3.2.6/glossary)一致。英文原文：[Operating an Agent](/docs/building/operating/operating-an-agent)。没有中文译本的链接会打开英文规范页面。
+译名与[术语表](/zh/dist/docs/3.2.8/glossary)一致。英文原文：[Operating an Agent](/docs/building/operating/operating-an-agent)。没有中文译本的链接会打开英文规范页面。
 </Info>
 
-[搭建代理](/zh/dist/docs/3.2.6/building/by-layer/L4/build-an-agent)那条 2–8 分钟的路径，给你的是一个符合协议的代理。本页讲的是那之后的事：每一次工具调用背后的业务设施，以及由谁来运行它。
+[搭建代理](/zh/dist/docs/3.2.8/building/by-layer/L4/build-an-agent)那条 2–8 分钟的路径，给你的是一个符合协议的代理。本页讲的是那之后的事：每一次工具调用背后的业务设施，以及由谁来运行它。
 
 这里的完整例子是**销售代理**，因为它需要的设施最多。信号、创意和零售媒体代理在运营关注点上的差别，用短的提示标出。
 
@@ -120,13 +120,13 @@ AdCP 定义的是代理之间对话的形状。它不定义：
 如果你在**合作**，问供应商：「你们是否在每次发布时都通过 AdCP 合规套件？哪个版本？我能看最近一次运行吗？」这一个问题覆盖了大部分代码控制面。再问他们是否持有 SOC 2 Type II、ISO 27001，或你所在行业的同等证明，以及泄露通知承诺是什么。如果你在**自托管现成代理**，对着你自己的部署跑合规套件。如果你在**自建**，合规套件就是你的回归套具。
 
 <Note>
-**给安全和 IT 负责人：** [安全模型](/zh/dist/docs/3.2.6/building/concepts/security-model)是写给你们的——品牌、代理商、媒体方和平台上的 CISO、安全架构师和第三方风险复核人。它解释威胁面，以及 AdCP 在设计上防御什么，并附有上线前要问工程团队（或供应商）的问题清单。
+**给安全和 IT 负责人：** [安全模型](/zh/dist/docs/3.2.8/building/concepts/security-model)是写给你们的——品牌、代理商、媒体方和平台上的 CISO、安全架构师和第三方风险复核人。它解释威胁面，以及 AdCP 在设计上防御什么，并附有上线前要问工程团队（或供应商）的问题清单。
 </Note>
 
 ## 下一步
 
 - **[验证你的代理](/docs/building/verification/validate-your-agent)**（英文）— 上面提到的合规套件
 - **[安全](/docs/building/by-layer/L1/security)**（英文）— HMAC、幂等、SSRF 和治理核验的规范参考
-- **[代理如何通信](/zh/dist/docs/3.2.6/building/concepts/how-agents-communicate)** — 通过 `adagents.json` 和 `brand.json` 发现
+- **[代理如何通信](/zh/dist/docs/3.2.8/building/concepts/how-agents-communicate)** — 通过 `adagents.json` 和 `brand.json` 发现
 - **[卖方集成](/docs/building/operating/seller-integration)**（英文）— 把代理接到广告服务器的模式
 - **[已授权媒体资产](/docs/governance/property/authorized-properties)**（英文）— 谁可以卖什么，以及如何声明

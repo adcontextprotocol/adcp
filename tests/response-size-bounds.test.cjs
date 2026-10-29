@@ -145,6 +145,17 @@ describe('client response-size bound (security.mdx)', () => {
     assert.match(body, /backstop for a path with no cap of its own/i);
   });
 
+  it('confines the capabilities budget to the RFC 9421 profile and points large catalogs at Web Bot Auth (#8198)', () => {
+    const rs = read(RESPONSE_SIZE);
+    assert.match(rs, /binds only the discovery path of the \[RFC 9421 signing profile\]/);
+    assert.match(rs, /adds no way around it to that profile/);
+    assert.match(rs, /Adopt the \[Web Bot Auth profile\][^]*keep the capabilities document under 64 KiB/);
+    assert.doesNotMatch(rs, /scope: "signing_discovery"/, 'no request field was added');
+    const sec = read(SECURITY);
+    assert.match(sec, /\*\*The capabilities budget binds this path only\.\*\*/);
+    assert.match(sec, /3\.x does not add a way around the limit to the RFC 9421 profile/);
+  });
+
   it('points large-catalog producers at pagination rather than raised buyer limits', () => {
     assert.match(body, /it does not ask buyers to raise their limits/i);
   });

@@ -27,7 +27,7 @@
       "type": "object",
       "deprecated": true,
       "x-removed-in": "4.0.0",
-      "description": "Legacy credentials block (A2A-compatible), deprecated; removed in AdCP 4.0. The seller's `legacy_hmac_fallback` capability and onboarding record select Bearer/HMAC-SHA256 versus the RFC 9421 profile; this block only delivers the credential, and its presence as a mode trigger is deprecated. A seller with `legacy_hmac_fallback: false` rejects it with `webhook_hmac_not_supported`. A seller MUST NOT sign the same webhook both ways, and a buyer MUST NOT try 9421 first and fall back to HMAC. The seller's 9421 webhook key is published at its brand.json `agents[]` `jwks_uri` with `adcp_use: \"request-signing\"` (deprecated `webhook-signing` keys stay accepted during the compatibility window). See docs/building/by-layer/L1/security.mdx#webhook-callbacks, including the `webhook_mode_mismatch` rejection buyers apply on a mode mismatch.",
+      "description": "Legacy authentication configuration (A2A-compatible), deprecated; removed in AdCP 4.0. Sending this block asks the seller for Bearer or HMAC-SHA256 instead of RFC 9421 signing; omitting it selects the profile that `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the registration with `UNSUPPORTED_FEATURE` and `error.field` pointing at it. A seller MUST NOT sign the same webhook both ways, and a buyer MUST NOT try 9421 first and fall back to HMAC. The seller's 9421 webhook key is published at its brand.json `agents[]` `jwks_uri` with `adcp_use: \"request-signing\"` (deprecated `webhook-signing` keys stay accepted during the compatibility window). See docs/building/by-layer/L1/security.mdx#webhook-callbacks, including the `webhook_mode_mismatch` rejection buyers apply on a mode mismatch.",
       "properties": {
         "schemes": {
           "type": "array",
@@ -41,7 +41,8 @@
         "credentials": {
           "type": "string",
           "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
-          "minLength": 32
+          "minLength": 32,
+          "x-max-length-4.0": 512
         }
       },
       "required": [

@@ -8,14 +8,14 @@ description: "AdCP 快速开始：买方五分钟调用公开测试代理，媒�
 选择你的路径。买方在五分钟内调用公开测试代理。媒体方和卖方搭建一个买方可以调用的代理。
 
 <Info>
-译名与[术语表](/zh/dist/docs/3.2.6/glossary)一致。本页走完发现产品、处理错误、创建媒体购买和带签名的 webhook。要收成可维护的集成，继续看[编写调用方](/zh/dist/docs/3.2.6/building/by-layer/L4/build-a-caller)。英文原文：[Quickstart](/docs/quickstart)。没有中文译本的链接会打开英文规范页面。
+译名与[术语表](/zh/dist/docs/3.2.8/glossary)一致。本页走完发现产品、处理错误、创建媒体购买和带签名的 webhook。要收成可维护的集成，继续看[编写调用方](/zh/dist/docs/3.2.8/building/by-layer/L4/build-a-caller)。英文原文：[Quickstart](/docs/quickstart)。没有中文译本的链接会打开英文规范页面。
 </Info>
 
 <CardGroup cols={2}>
   <Card title="我要调用代理" icon="plug">
     买方一侧。本页其余部分演示如何调用公开测试代理：无需注册，curl 可以直接复制。
   </Card>
-  <Card title="我要搭建代理" icon="server" href="/zh/dist/docs/3.2.6/building/by-layer/L4/build-an-agent">
+  <Card title="我要搭建代理" icon="server" href="/zh/dist/docs/3.2.8/building/by-layer/L4/build-an-agent">
     媒体方或卖方一侧。搭建一个买方可以调用的代理。
   </Card>
 </CardGroup>
@@ -275,7 +275,7 @@ app.post('/webhooks/adcp/*', async (req, res) => {
 
 ## 使用客户端库
 
-上面的例子用原始 HTTP，是为了把过程写清楚。实际使用时，用 AdCP 客户端库处理 SSE 解析、重试和认证。安装与调用形状见[编写调用方](/zh/dist/docs/3.2.6/building/by-layer/L4/build-a-caller)，覆盖矩阵见[选择 SDK](/zh/dist/docs/3.2.6/building/by-layer/L4/choose-your-sdk)：
+上面的例子用原始 HTTP，是为了把过程写清楚。实际使用时，用 AdCP 客户端库处理 SSE 解析、重试和认证。安装与调用形状见[编写调用方](/zh/dist/docs/3.2.8/building/by-layer/L4/build-a-caller)，覆盖矩阵见[选择 SDK](/zh/dist/docs/3.2.8/building/by-layer/L4/choose-your-sdk)：
 
 ```bash
 npm install @adcp/sdk  # JavaScript/TypeScript
@@ -307,10 +307,10 @@ console.log(result.data.products);
 
 中文页面：
 
-- **[编写调用方](/zh/dist/docs/3.2.6/building/by-layer/L4/build-a-caller)**：把本页的 curl 收成 SDK 集成
-- **[调用代理](/zh/dist/docs/3.2.6/protocol/calling-an-agent)**：幂等、`account` 的 `oneOf`、异步 `submitted`
-- **[搭建代理](/zh/dist/docs/3.2.6/building/by-layer/L4/build-an-agent)**：用技能文件和编程代理生成符合故事板的代理
-- **[选择 SDK](/zh/dist/docs/3.2.6/building/by-layer/L4/choose-your-sdk)**：语言覆盖和安装命令
+- **[编写调用方](/zh/dist/docs/3.2.8/building/by-layer/L4/build-a-caller)**：把本页的 curl 收成 SDK 集成
+- **[调用代理](/zh/dist/docs/3.2.8/protocol/calling-an-agent)**：幂等、`account` 的 `oneOf`、异步 `submitted`
+- **[搭建代理](/zh/dist/docs/3.2.8/building/by-layer/L4/build-an-agent)**：用技能文件和编程代理生成符合故事板的代理
+- **[选择 SDK](/zh/dist/docs/3.2.8/building/by-layer/L4/choose-your-sdk)**：语言覆盖和安装命令
 
 仍为英文的规范页面：
 

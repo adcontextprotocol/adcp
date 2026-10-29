@@ -201,8 +201,8 @@ phases:
       Vector 027 (deprecated condition (b), adcp#7563) is gated on
       `webhook_signing.legacy_hmac_fallback: true`: the runner skips it (not a
       failure) when the flag is `false` or the `webhook_signing` block is absent.
-      Such a seller answers an authenticated registration carrying
-      `authentication` with `webhook_hmac_not_supported` (HTTP 400), not
+      Such a seller's task handler rejects a registration carrying
+      `authentication` with `UNSUPPORTED_FEATURE`, not
       `request_signature_required`. Functional storyboards omit
       `push_notification_config.authentication` so they do not conflict with
       this vector.
