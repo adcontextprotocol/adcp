@@ -480,18 +480,6 @@ test('brand-side collection links use their own experimental feature id', () => 
   assert.match(row('brand.collection_links'), /get_brand_identity/);
 });
 
-test('collection card fields are excluded from publisher_collection definition pins', () => {
-  const vectors = JSON.parse(fs.readFileSync(
-    path.join(__dirname, '../static/compliance/source/test-vectors/definition-pins/vectors.json'), 'utf8'));
-  const exclude = vectors.projection_rules.publisher_collection.exclude;
-  for (const key of ['images', 'sample_content', 'url']) assert.ok(exclude.includes(key), `${key} is excluded`);
-  const vector = vectors.equivalence_vectors.find((v) => v.id === 'collection-card-fields-are-not-drift');
-  assert.ok(vector, 'an image-only change has an equivalence vector');
-  assert.equal(vector.expected.same_content_digest, true);
-  const spec = fs.readFileSync(path.join(__dirname, '../docs/media-buy/specification.mdx'), 'utf8');
-  assert.ok(spec.includes('| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` |'));
-});
-
 test('include_collections is part of the feed version scope', () => {
   const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
   const tuple = /deprecated property_list, catalog, include_collections\) for cache_scope: 'public'/;

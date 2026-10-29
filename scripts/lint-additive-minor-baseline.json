@@ -1,6 +1,6 @@
 {
   "$comment": "Non-additive schema changes recorded by scripts/lint-additive-minor.cjs, relative to the release named in base. This list only shrinks: CI rejects an entry that the target branch does not have, unless its change already shipped in a stable release. Remove an entry when its change is reverted or released; record a WG decision in reason. An entry whose detail ends in \"(closed in <release>)\" records an addition to a schema that an earlier release of the major published closed (DR-0036). It shipped before the base and stays until the next major.",
-  "base": "3.2.7",
+  "base": "3.2.8",
   "entries": [
     {
       "file": "compliance/comply-test-controller-response.json",
@@ -234,13 +234,6 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "media-buy/commercial-terms.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property definition_pins added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "media-buy/get-products-request.json",
       "pointer": "/properties/refine/items/oneOf/1",
       "kind": "property-added-to-closed",
@@ -266,20 +259,6 @@
       "pointer": "/properties/refinement_applied/items/oneOf/1",
       "kind": "property-added-to-closed",
       "detail": "property result_product_id added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/product-purchase.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property installments added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/product-purchase.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property rights added",
       "reason": "pending WG decision"
     },
     {

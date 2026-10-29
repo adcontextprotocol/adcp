@@ -9,9 +9,11 @@ description: "Adopter overview of the AdCP 3.3 beta: scheduled, human-gated, and
 
 <Warning>
 **3.3 is in its beta cycle.** Beta.0 publishes the protocol artifacts before SDK support. Beta.1 incorporates integration feedback, then becomes SDK-backed after a second SDK refresh against the exact beta.1 bundle. Use the beta in development and staging, and read the [3.3 beta program](/docs/reference/3-3-beta) before testing. This page lists only what has merged; it is refreshed at each beta cut.
+
+**Three features that shipped in the betas are withdrawn after beta.1: definition pins (beta.0 and beta.1), purchase rights, and installment selection (both beta.1).** All three wait for 4.0, because `commercial-terms` stays closed within 3.x ([details](#withdrawn-from-3-3-planned-for-4-0)).
 </Warning>
 
-AdCP 3.3 lets scheduled, human-gated, and offline media run through the same buy as programmatic. A booking can say when it will be confirmed. A proposal's third-party definitions are pinned so they cannot drift after commitment. A proposal request can target a vendor-measured outcome, and a governance plan can budget by period. Products, audiences, and delivery reports can carry what a linear-TV, print, or DOOH seller actually knows: spot lifecycle and makegoods, break position, print proof of insertion and circulation, structured DOOH location, property-grain rollups, and audience sizes as honest ranges. Minute-level dayparts, broadcast mezzanine formats, and the NMO and VideoAmp demographic systems fill in the TV edges.
+AdCP 3.3 lets scheduled, human-gated, and offline media run through the same buy as programmatic. A booking can say when it will be confirmed. A proposal request can target a vendor-measured outcome, and a governance plan can budget by period. Products, audiences, and delivery reports can carry what a linear-TV, print, or DOOH seller actually knows: spot lifecycle and makegoods, break position, print proof of insertion and circulation, structured DOOH location, property-grain rollups, and audience sizes as honest ranges. Minute-level dayparts, broadcast mezzanine formats, and the NMO and VideoAmp demographic systems fill in the TV edges.
 
 Around that, 3.3 tightens the places where two conformant 3.2 implementations could still disagree: discovery never provisions an account, one agent-resolution rule covers every signing surface, `required_for` is enforced over A2A with its hardening clauses required, and `reporting_webhook.operation_id` correlation fails closed. Catalog intake becomes an optional declaration, verifiers can advertise A2A `required_for` enforcement through `request_signing.operation_sources`, and `ext.adcp` becomes a reserved namespace. New single-adopter surfaces ship as experimental, so 3.4 can reshape them without breaking stable integrations.
 
@@ -21,7 +23,6 @@ No stable field, enum value, or task is removed. Two result fields, one usage, t
 
 - **An account is its account ID.** Sellers MUST return `account_id` from `sync_accounts` once the account is resolved, accept it on every account-scoped task, and never change it. A brand is its domain, plus `brand_id` where its `brand.json` lists several brands. Countries, currency, timezone, sandbox, and `operator_unit` are account attributes that a settings update changes without changing the account. Currency, timezone, and sandbox are set at opening, and a seller can review a countries change before applying it. A seller SHOULD return the existing account when a provisioning entry matches exactly one. Natural keys keep working throughout 3.x, but using them as the reference after provisioning is deprecated and planned for removal in 4.0. They remain the way to open an account and to look up its ID. `account.identity_updates`, `ACCOUNT_MOVED`, `ACCOUNT_IDENTITY_CONFLICT`, and `account.stable_account_id` are deprecated. See [Account identity](/docs/accounts/overview#account-identity).
 - **Expected confirmation time.** The `submitted` envelope of `create_media_buy`, `buy_products`, and `accept_proposal` can carry `expected_confirmation_at`. A seller whose confirmation waits on a booking round or a manual review window SHOULD set it, and buyers SHOULD check status at that time instead of polling tightly. It is an estimate, not a commitment. `refine_proposals` can carry it too, on a `submitted` finalize whose hold waits on a person's agreement, such as a creator or host. On `buy_products`, `accept_proposal`, and `refine_proposals`, send it only to callers negotiating 3.3. See [Expected confirmation time](/docs/media-buy/task-reference/create_media_buy#expected-confirmation-time).
-- **Definition pins.** For callers negotiating 3.3, a seller MUST pin the third-party definitions its proposal terms reference (publisher-catalog format options and placements, `adagents.json` collections, data-provider signals) in `commercial_terms.definition_pins[]`. A changed definition fails finalize with the `definition_changed` reason and fails `accept_proposal` with `REFERENCE_DEFINITION_CHANGED`, before any hold or mutation. See [Definition pins](/docs/media-buy/specification#definition-pins).
 - **Vendor-metric outcome goals.** `criteria.outcome_target.goal` accepts `kind: "vendor_metric"`, so a buyer can plan "5,000 store visits measured by a foot-traffic vendor", optionally with a cost per visit. The seller answers in each forecast point's `vendor_metric_values[]` and plans only `(vendor, metric_id)` pairs its products declare. Send it only on a negotiated 3.3 version. See [Vendor-metric goals](/docs/media-buy/task-reference/request_proposals#vendor-metric-goals).
 - **Governance budget periods (experimental).** A campaign governance plan can split its budget by time with `budget.periods[]`. `check_governance` denies a dated action that straddles a period, sits in unallocated budget, or overruns its period. Governance agents declare `governance.supports_budget_periods`. Part of the experimental `governance.campaign` cluster. See [Budget periods](/docs/governance/campaign/tasks/sync_plans#budget-periods).
 - **Holds you can plan and extend (experimental).** Products and proposals can carry a `hold_policy` (`media_buy.hold_policy`), and `refine_proposals` `extend_hold` lengthens a committed hold without re-finalizing (`media_buy.hold_extension`). See [Hold policy](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental).
@@ -76,7 +77,7 @@ The `pixel_tracker` `event` enum adds `start`, `first_quartile`, `midpoint`, `th
 
 For scheduled media the installment *is* the thing being sold — a slot in a creator's upcoming video, a podcast episode, a sponsored newsletter issue. The canonical Product that `list_products` and the proposal lifecycle read had no `installments`, so a proposal could name the creator but not which slot, when it publishes, or its material deadlines. 3.3 adds `installments[]` of the new `core/canonical-installment.json`, whose identity is the `(collection_ref, installment_id)` tuple alone. Request it in `fields`; omitting it on a product that declares `collections` still means run-of-collection.
 
-Buying *named* slots is experimental under `media_buy.installment_selection`: a purchase lists the exact installments it bought inside `commercial_terms`, so `terms_digest` and the `accept_proposal` digest check bind them, and `refine_proposals` gains `installment_changes` to drop or swap one. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
+A purchase buys the product as offered. Naming the exact slots a purchase buys, and dropping or swapping one through `refine_proposals`, was merged for 3.3 and is withdrawn to 4.0 ([below](#withdrawn-from-3-3-planned-for-4-0)). See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
 
 ## Tightened rules
 
@@ -86,7 +87,6 @@ These narrow what a conformant implementation may do. Each is detailed in the [m
 - **One agent-resolution rule.** Request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations share one algorithm for which brand.json lists an agent and which keys it may sign with. Some signatures that verified under 3.2 now fail. See [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution).
 - **`required_for` over A2A, hardened.** The A2A operation-resolution errata shipped in 3.2.3. Its hardening clauses were SHOULD in 3.2.x and are MUST from 3.3. Verifiers declare support with the new optional `request_signing.operation_sources` capability; a counterparty MUST NOT infer A2A enforcement from an absent field, and buyers sign every operation in `required_for` regardless of the marker. See [Operation resolution over A2A](/docs/building/by-layer/L1/security#operation-resolution-over-a2a).
 - **`reporting_webhook.operation_id` fails closed.** The seller echoes it into every `media_buy_delivery` webhook and sends none to a registration that omits it. See [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks).
-- **Definition pins** are required for callers negotiating 3.3 (above).
 - **Advertise only the measurement terms you accept.** See [Advertise only what you accept](/docs/media-buy/task-reference/get_products#advertise-only-what-you-accept).
 - **Audience identifiers keep their wire form.** `uids[].value` for `uid2` and `euid` is the raw identifier, never the encrypted token, and is never case-folded or re-encoded.
 - **brand.json fetch limits.** The cap rises to 2 MiB, with new MUSTs for streaming enforcement, nesting depth, and bounded fetches.
@@ -122,7 +122,7 @@ A seller agent that answers a discovery call with tens of megabytes is an availa
 
 This is a recommendation, not a conformance requirement, but the interop effect is real in both directions. A buyer adopting the default rejects a response it would previously have buffered, and the rejection arrives as a mid-body connection abort rather than an `adcp_error`. A buyer still on the older 1 MiB figure rejects a response a 3.3 buyer accepts.
 
-The seller-side counterpart matters more than the number: keep discovery responses small. `tools/list`, `get_adcp_capabilities`, and the A2A agent card are the first bytes a counterparty reads, and an oversized one makes an agent unreachable rather than slow. `get_adcp_capabilities` is the sharpest case — above `MAX_CAPABILITIES_BYTES` your signing keys stop resolving too. See [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
+The seller-side counterpart matters more than the number: keep discovery responses small. `tools/list`, `get_adcp_capabilities`, and the A2A agent card are the first bytes a counterparty reads, and an oversized one makes an agent unreachable rather than slow. `get_adcp_capabilities` is the sharpest case for an agent that signs under the deprecated RFC 9421 profile: above `MAX_CAPABILITIES_BYTES` (64 KiB), that profile's key discovery fails and your signing keys stop resolving too. Outside that path, the structural bounds are the protocol's limit on the capabilities response, and 64 KiB is only a receiver backstop, not a design target. See [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
 
 ### Bounded inbound push and webhook bodies
 
@@ -135,13 +135,13 @@ Two capability fields enumerate relationships a *counterparty* asserts:
 populated from those counterparties' `/.well-known/adagents.json`, which any domain
 owner publishes unilaterally and without the named agent's consent. An agent that
 mirrored every publisher claiming it had handed an unauthenticated stranger a write
-primitive into its own discovery document — and since the signing-key path fetches
-that document unnarrowed under `MAX_CAPABILITIES_BYTES`, pushing it past 64 KiB cost
-the victim *signature verification*, arriving a cache cycle later with no visible
-connection to its cause.
+primitive into its own discovery document — and since the RFC 9421 signing-key path
+fetches that document unnarrowed under `MAX_CAPABILITIES_BYTES`, pushing it past
+64 KiB cost a victim that signed under that profile *signature verification*,
+arriving a cache cycle later with no visible connection to its cause.
 
-3.3 adds a normative byte budget — one eighth of the capabilities budget for any
-single counterparty-asserted field, one quarter for both together — and declares
+3.3 adds a normative byte budget — 8,192 bytes for any single
+counterparty-asserted field, 16,384 bytes for both together — and declares
 structural bounds (100 unique entries, 253 characters each) that the conformance
 storyboard grades in 3.x and the schema enforces in 4.0. No previously-valid
 document becomes schema-invalid; what changes is what counts as conformant. Because a bounded
@@ -192,7 +192,7 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 | A buyer that passes `revision` on updates | Expect `CONFLICT` after seller, connected-platform or `sync_creatives` changes; re-read and retry with the new `revision`. |
 | A signing or verifying implementation | Resolve agents by canonical URL from `identity.brand_json_url`, publish every pinned key in your JWKS, apply the A2A hardening clauses, and raise the brand.json cap to 2 MiB. |
 | A seller sending delivery webhooks | Echo `reporting_webhook.operation_id`, and send nothing to a registration without one. |
-| A seller returning proposals | Pin covered third-party definitions for 3.3 callers, and advertise only measurement terms you accept on replay. |
+| A seller returning proposals | Advertise only measurement terms you accept on replay. If you implemented definition pins from `3.3.0-beta.0`, stop emitting `definition_pins[]`, `definition_changed`, and `REFERENCE_DEFINITION_CHANGED` to beta.1 and later peers ([withdrawn](#withdrawn-from-3-3-planned-for-4-0)). |
 | A fixed-price, non-guaranteed seller | Claim `sales-fixed-rate`; keep a held buy in `pending_start` until you confirm or reject it. |
 | A seller that wants to send proposals after the first response | Opt in to `media_buy.open_opportunities`: advertise `list_proposals` first, then `later_proposals` with a `max_open_duration`, and honor buyer consent and limits. |
 | A linear TV, print, or DOOH seller | Adopt the delivery fields you can populate; gate 3.3-only rows and fields on the negotiated version. |
@@ -207,6 +207,18 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 | Any agent operator | Measure `tools/list`, `get_adcp_capabilities`, and your agent card. Oversized discovery makes you unreachable, and oversized capabilities also breaks signing-key discovery. |
 | A buyer operating a webhook or push-notification receiver | Bound the request body (4 MiB default) before signature verification, and answer an over-limit request with 413. |
 | A compliance operator | Treat beta.0 as an implementation input. Do not issue a 3.3 badge from beta.0. |
+
+## Withdrawn from 3.3, planned for 4.0
+
+Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` stays closed within 3.x: a buyer must not be bound by terms it cannot read, and `terms_digest` signs exactly those terms. If the object were open, a 3.2 buyer could accept a 3.3 term it silently ignored. 4.0 gives `commercial_terms` a declared extension point with must-understand and brings them back ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).
+
+| Feature | Where it stood | What changes |
+|---|---|---|
+| **Definition pins** (`commercial_terms.definition_pins[]`, the `definition_changed` refinement reason, `REFERENCE_DEFINITION_CHANGED`, #7960) | Published in `3.3.0-beta.0` and `3.3.0-beta.1` | Removed after beta.1. Stop emitting pins and the reason and code, and stop requiring them. The `definition_pin_drift` storyboard and the controller `definition_pin_probe` scenario are removed with them. |
+| **Purchase rights** (`purchases[].rights[]`, `media_buy.purchase_rights`, #8101) | Published in `3.3.0-beta.1` (experimental) | Removed after beta.1, together with the `brand/rights-scope.json` hoist and the `paid_amplification` and `content_reuse` values of `right-use`. `brand/rights-terms.json` returns to its 3.2 form. |
+| **Installment selection** (`purchases[].installments[]`, `refine_proposals` `installment_changes`, `media_buy.installment_selection`, #8246) | Published in `3.3.0-beta.1` (experimental) | Removed after beta.1. Installments on the canonical product and `holds[]` stay in 3.3. |
+
+The designs are kept for 4.0: see [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3).
 
 ## In review for 3.3
 

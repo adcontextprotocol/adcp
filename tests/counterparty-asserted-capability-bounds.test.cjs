@@ -7,9 +7,11 @@
  * Both are populated from the counterparty's own `/.well-known/adagents.json`,
  * which any domain owner publishes unilaterally with no consent from the agent
  * it names. Unbounded, that let an unrelated third party inflate a victim's
- * capabilities document past `MAX_CAPABILITIES_BYTES`; because the signing-key
- * discovery path fetches that document unnarrowed, the victim lost signature
- * verification rather than merely discovery (#8197).
+ * capabilities document past `MAX_CAPABILITIES_BYTES`; because the deprecated
+ * RFC 9421 signing-key discovery path fetches that document unnarrowed under
+ * that budget, a victim signing under that profile lost signature verification
+ * rather than merely discovery (#8197). The capabilities response itself has no
+ * byte limit (#8198); these per-field budgets are a separate rule.
  *
  * Each assertion pins one part of the fix that closes a specific bypass:
  *
@@ -44,10 +46,11 @@ const AUTHORIZED_PROPERTIES = 'governance/property/authorized-properties.mdx';
 const MIGRATION = 'reference/migration/3-2-to-3-3.mdx';
 const VERSIONING = 'reference/versioning.mdx';
 
+/** Fetch budget of the deprecated RFC 9421 key-discovery chain only. */
 const MAX_CAPABILITIES_BYTES = 65_536;
 /** Per-field and aggregate budgets for counterparty-asserted content. */
-const PER_FIELD_BUDGET = MAX_CAPABILITIES_BYTES / 8;
-const AGGREGATE_BUDGET = MAX_CAPABILITIES_BYTES / 4;
+const PER_FIELD_BUDGET = 8_192;
+const AGGREGATE_BUDGET = 16_384;
 /** Longest presentation-form FQDN without the trailing dot. */
 const MAX_DOMAIN_LENGTH = 253;
 /** A realistic publisher domain, for checking the count bound is not stingy. */
@@ -270,7 +273,8 @@ describe('normative byte budget (security.mdx)', () => {
 
   it('states the budget as a sub-cap rather than an allowance', () => {
     // Without this, an agent reads "a quarter for those two fields" as
-    // "three quarters for mine" and busts MAX_CAPABILITIES_BYTES itself.
+    // "the rest is mine" and, on the deprecated RFC 9421 path, busts
+    // MAX_CAPABILITIES_BYTES itself.
     assert.match(body, /sub-caps, not an allowance/i);
     assert.match(body, /not an entitlement/i);
     assert.match(body, /self-inflicted rather than attacker-inflicted/i);

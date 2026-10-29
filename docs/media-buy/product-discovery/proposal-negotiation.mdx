@@ -66,7 +66,7 @@ Do not flatten task errors and negotiation outcomes into one exception type.
 |---|---|---|---|
 | Task-level error | Malformed payload, more than 25 refinements, duplicate source IDs, count above 10 or `max_alternatives`, explicitly unsupported dimension, unauthorized source | No sibling may mutate | Correct the whole request and retry with a new key. |
 | Per-proposal outcome | `revised`, `partial`, `unable`, `finalized` | One ordered result per source; revision outcomes are independent | Verify the typed result, then select, revise, finalize, or decline. |
-| Atomic finalize outcome | `finalized`, `hold_unavailable`, `definition_changed`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
+| Atomic finalize outcome | `finalized`, `hold_unavailable`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
 | Atomic extend outcome (experimental) | `finalized` (the committed successor), `hold_unavailable`, `batch_aborted` | Every hold is extended or none are; a failed extension leaves the source and its hold unchanged | Accept the successor, or accept the unchanged source before its `expires_at`. |
 
 `constraint_unsatisfiable` means the seller accepted the dimension but did not satisfy it. `unsupported_dimension` is used per proposal only when capabilities were unknown; an explicitly omitted dimension is a task-level `UNSUPPORTED_FEATURE`. `commercially_declined` applies only to `ask`, never to a typed constraint.
@@ -331,7 +331,6 @@ For every returned proposal:
 5. Verify any `targeting_resolution.brief_targeting` against the hard targeting in `ask`, and review every sparse product `targeting_resolution.modifications` departure before selecting that configured product.
 6. On `partial`, enforce the partial invariant: every requirement absent from the unsatisfied sets still passes.
 7. Treat `reason`, `description`, `suggestions`, and `ask` as non-contractual prose.
-8. Keep `commercial_terms.definition_pins[]`. A matching `terms_digest` proves the terms are unchanged, not that the third-party definitions they name are; finalize and acceptance re-verify the pins.
 
 Digest uniqueness alone is not enough for alternatives. Verify that `commercial_terms` are distinct after canonicalization; a seller cannot create fake diversity by changing only IDs, names, descriptions, or digest strings.
 
@@ -358,7 +357,7 @@ Finalization changes no terms:
 }
 ```
 
-A finalize batch contains only finalize entries. The seller preflights every source and creates every hold or none. `hold_unavailable` identifies the source that could not be reserved and `definition_changed` the source whose pinned definition drifted; otherwise eligible siblings use `batch_aborted`.
+A finalize batch contains only finalize entries. The seller preflights every source and creates every hold or none. `hold_unavailable` identifies the source that could not be reserved; otherwise eligible siblings use `batch_aborted`.
 
 The successful result is singular and committed; its commercial terms and digest are unchanged:
 
@@ -417,7 +416,7 @@ Accept the returned committed proposal and its exact digest before `expires_at`:
 }
 ```
 
-The seller atomically verifies the proposal ID, digest, hold expiry, authorization, and any base MediaBuy revision. Expired holds return `PROPOSAL_EXPIRED`; the buyer requests and finalizes fresh terms rather than retrying acceptance against a lapsed hold. If a pinned third-party definition changed after the hold was taken, acceptance returns `REFERENCE_DEFINITION_CHANGED` before mutation even though the digest verifies; finalizing a draft over a changed definition returns `unable` with `reason_code: "definition_changed"` and `drifted_pins[]`. In both cases the buyer revises to re-pin, reviews the changed definition, and finalizes again. See [Definition pins](/docs/media-buy/specification#definition-pins).
+The seller atomically verifies the proposal ID, digest, hold expiry, authorization, and any base MediaBuy revision. Expired holds return `PROPOSAL_EXPIRED`; the buyer requests and finalizes fresh terms rather than retrying acceptance against a lapsed hold.
 
 ### 6. Amend, cancel, or decline
 
@@ -456,44 +455,6 @@ When cancellation requires agreement, fork the accepted snapshot with `change_ki
 ```
 
 Both successors must be finalized and accepted. Direct [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) cancellation is reserved for rights already granted by the accepted terms. When Sam stops pursuing a draft instead, [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) records terminal feedback; it does not mutate the proposal into another state.
-
-### Rights in the purchase
-
-**Experimental (`media_buy.purchase_rights`).** A creator or influencer purchase can carry the rights that make the deal worth doing: whether the brand may run the creator's post as paid media, how it may reuse the content, for how long, and whether competitors are excluded. A purchase declares them in an optional `rights[]` array. Each entry is a [`brand/rights-scope.json`](https://adcontextprotocol.org/schemas/latest/brand/rights-scope.json): `uses`, `start_date`, `end_date`, and `exclusivity`. That is the same scope shape `acquire_rights` returns in `rights-terms`, without the rights-agent pricing fields.
-
-```json
-{
-  "$schema": "/schemas/media-buy/product-purchase.json",
-  "product_id": "creator_video_series",
-  "pricing_option_id": "flat_rate_usd",
-  "pricing": {
-    "pricing_option_id": "flat_rate_usd",
-    "pricing_model": "flat_rate",
-    "currency": "USD",
-    "fixed_price": 5000
-  },
-  "start_time": "2026-11-01T00:00:00Z",
-  "end_time": "2027-01-31T23:59:59Z",
-  "rights": [
-    {
-      "uses": ["paid_amplification", "content_reuse"],
-      "start_date": "2026-11-01",
-      "end_date": "2027-01-31",
-      "exclusivity": { "scope": "competing_beverage_brands", "countries": ["US"] }
-    }
-  ]
-}
-```
-
-- **Bound by the digest.** `rights[]` sits inside `commercial_terms.purchases[]`, so `terms_digest` covers it and [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) binds it with the price. Verify it in step 3 like any other purchase term.
-- **Priced in the purchase.** There is no separate rights `pricing_option_id` or `amount`. The purchase's `pricing` is the price for media and rights together.
-- **The media seller is the grantor.** It warrants that it holds, or will procure, the rights it lists, for example as the creator's agent or network, or by obtaining the creator's platform authorization. A rights agent and `acquire_rights` are not involved.
-- **Seller-authored.** `rights[]` appears in seller proposals and accepted terms. `buy_products` input must match a published offer, which carries no rights, so `product-purchase-input.json` does not accept it and a buyer has no typed way to request or counter rights in 3.3. Product-level rights offers are a later path.
-- **Dates.** `start_date` and `end_date` are calendar dates. The purchase's flight SHOULD fall inside them.
-- **Exclusivity is per purchase.** It applies to the buy it appears on, not to the product.
-- **Two new uses.** `paid_amplification` is the brand running the creator's published content as paid media from the creator's identity (Spark Ads, Partnership Ads, YouTube partnerships). `content_reuse` is the brand republishing the content from its own identity. A rights price differs between the two, which is why `commercial` alone is not enough.
-
-Acceptance mints no rights grant in 3.3. At serving time, amplification runs on a `published_post` asset; see [published-post reference creatives](/docs/creative/published-post-reference-creatives). `rights[]` is the contract. `reference_authorization` is the seller's runtime evidence of the platform authorization, and the two are independent: the window in `rights[]` is contractual in 3.3 and no field enforces it, so the platform authorization SHOULD cover it. Attested grants that a `rights-constraint` can cite are planned for 3.4 ([#5543](https://github.com/adcontextprotocol/adcp/issues/5543)). Sellers that emit `rights[]` MUST list `media_buy.purchase_rights` in `experimental_features`.
 
 ## Seller implementation
 
@@ -559,7 +520,7 @@ For revision batches:
 2. Build candidate `commercial_terms` without mutating the source.
 3. Evaluate every typed constraint and product action against every candidate.
 4. Classify the ordered result as `revised`, `partial`, or `unable`.
-5. Resolve every covered third-party definition (publisher-catalog format options and placements, `adagents.json` collections, data-provider signals), write `commercial_terms.definition_pins[]` in canonical order, generate new proposal IDs, set `parent_proposal_id`, compute JCS digests, and validate the full response.
+5. Generate new proposal IDs, set `parent_proposal_id`, compute JCS digests, and validate the full response.
 6. Commit staged successors only after response validation succeeds.
 
 For `partial`, include every failed constraint key and failed product action. Every unlisted requirement must pass for every returned draft. `constraint_unsatisfiable` takes precedence when it coexists with an alternatives shortfall or uninterpreted prose.
@@ -818,7 +779,6 @@ Keep the following boundaries in your adapter:
 - [ ] Reuse a key only for the exact same request; use a new key for changed payloads.
 - [ ] Stage successors and validate responses before commit.
 - [ ] Create finalize holds atomically and enforce expiry during acceptance.
-- [ ] Pin covered third-party definitions on every draft and revision, verify the pins before taking a hold, and re-verify them before `accept_proposal` mutates state.
 - [ ] Fork accepted snapshots for amendments and negotiated cancellation.
 - [ ] Fence `ask`, authorize every source, rate-limit probing, and avoid sensitive logs.
 - [ ] Run the typed proposal negotiation storyboard against the implementation.
