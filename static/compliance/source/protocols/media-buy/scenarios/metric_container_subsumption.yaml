@@ -68,11 +68,9 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
-# The container-declaring product is non_guaranteed so sales-non-guaranteed-only
-# sellers can run this scenario (#7765); the leaf-declaring sibling is
-# guaranteed instead, and the discovery filter uses non_guaranteed, so the
-# disambiguation the scenario grades (leaf excluded by delivery_type, not by
-# required_metrics) is unchanged. Fixed-price, so the create needs no bid.
+# Both products use auction CPM so metric filtering never requires fixed-rate
+# or guaranteed delivery support. The positive request asks for two leaves,
+# which isolates the container from a product declaring only viewable_rate.
 fixtures:
   products:
     - product_id: "metric_subsumption_container_product"
@@ -89,7 +87,7 @@ fixtures:
           - clicks
           - viewability
     - product_id: "metric_subsumption_leaf_product"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["streaming_audio"]
       format_options:
         - format_option_id: "metric_subsumption_audio_spot"
@@ -106,12 +104,12 @@ fixtures:
       pricing_option_id: "metric_subsumption_container_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 14.0
+      floor_price: 14.0
     - product_id: "metric_subsumption_leaf_product"
       pricing_option_id: "metric_subsumption_leaf_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 9.0
+      floor_price: 9.0
 
 phases:
   - id: setup
@@ -148,9 +146,9 @@ phases:
       follows the container-subsumption rule in
       `enums/available-metric.json` — a product declaring the `viewability`
       container satisfies a requirement for the `viewable_rate` leaf."
-      `delivery_type: "non_guaranteed"` isolates the container-declaring
-      product from its guaranteed leaf-declaring sibling so the match
-      is deterministic.
+      Requiring `viewed_seconds` alongside `viewable_rate` isolates the
+      container-declaring product from its viewable_rate-only sibling without
+      depending on a different delivery or pricing structure.
     steps:
       - id: get_products_required_viewable_rate
         title: "Filter by the viewable_rate leaf; match the viewability container"
@@ -166,7 +164,7 @@ phases:
           filters:
             channels: ["streaming_audio"]
             delivery_type: "non_guaranteed"
-            required_metrics: ["viewable_rate"]
+            required_metrics: ["viewable_rate", "viewed_seconds"]
           account: &buyer_account
             brand:
               domain: "acmeoutdoor.example"
@@ -176,9 +174,9 @@ phases:
         expected: |
           Return the product declaring the `viewability` container even
           though the filter names the `viewable_rate` leaf — container
-          subsumption, not literal set membership. The guaranteed
-          leaf-declaring product is excluded by delivery_type, keeping the
-          match deterministic.
+          subsumption, not literal set membership. The leaf-declaring
+          product cannot satisfy the additional viewed_seconds requirement,
+          keeping the match deterministic.
         context_outputs:
           - path: "products[0].product_id"
             key: "container_product_id"
@@ -201,7 +199,7 @@ phases:
             description: "The leaf-shaped filter did not collapse the product's declared metrics to an empty set (format.json reported_metrics: mixed container/leaf declarations do not produce an empty intersection)"
           - check: field_absent
             path: "products[1]"
-            description: "The guaranteed leaf-declaring product is excluded by delivery_type, not by required_metrics"
+            description: "The viewable_rate-only product cannot satisfy the additional viewed_seconds requirement"
 
   - id: requested_metrics_leaf_to_carrier
     title: "requested_metrics narrows delivery to the resolved carrier"

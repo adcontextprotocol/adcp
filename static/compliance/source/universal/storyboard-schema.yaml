@@ -1011,9 +1011,14 @@
 #     2. THIS field (storyboard-root `context:` block, fixed at run start)
 #     3. Test-kit substitutions where explicitly scoped into context
 #
-#   Values MUST be scalars (strings, numbers, booleans — JSON scalar types).
-#   Object and array values are not supported here — capture structured values
-#   from step responses via `context_outputs:` instead.
+#   Values may be JSON scalars, objects, or arrays. For example, a structured
+#   `account` default preserves the same caller scope for native catalog
+#   discovery and subsequent fixture preparation. A whole-value `$context.key`
+#   substitution preserves its JSON type; it does not stringify structured
+#   values. Ordinary request substitution does not drill into a captured object
+#   with `$context.key.child`: declare or capture that leaf under its own key.
+#   Seller-issued values still come from earlier step responses via
+#   `context_outputs:`, not from invented initial defaults.
 #
 #   See "Context accumulator and substitution" below for the full precedence
 #   contract, runner substitution rules, and unresolved-substitution grading.)

@@ -101,7 +101,7 @@ fixtures:
         sandbox: true
   products:
     - product_id: "async_signed_io_q2"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
@@ -113,7 +113,7 @@ fixtures:
       pricing_option_id: "cpm_guaranteed"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 18.0
+      floor_price: 18.0
 
 phases:
   - id: force_submitted_arm
@@ -234,6 +234,7 @@ phases:
             - product_id: "async_signed_io_q2"
               budget: 30000
               pricing_option_id: "cpm_guaranteed"
+              bid_price: 27
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_create_media_buy_async_submitted"

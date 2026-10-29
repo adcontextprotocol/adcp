@@ -7,6 +7,14 @@ track: reporting
 requires:
   - controller
 
+requires_all_capabilities:
+  - path: media_buy.buying_modes
+    contains: wholesale
+  - path: compliance_testing.scenarios
+    contains: seed_product
+  - path: compliance_testing.scenarios
+    contains: seed_pricing_option
+
 required_tools:
   - get_products
   - create_media_buy
@@ -51,38 +59,117 @@ caller:
 
 prerequisites:
   description: |
-    The seller publishes `reporting_capabilities.available_metrics` on its
-    products and supports comply_test_controller's simulate_delivery
-    scenario for delivery reporting tests.
+    The seller supports wholesale discovery and publishes a native CTV product
+    whose available_metrics includes completed_views. Fully paginated, schema-valid
+    discovery establishes this support before the controller seeds the synthetic
+    reporting fixture. A valid no-match is fixture_unsatisfied coverage, not a pass
+    or a claim that the seller cannot report completed views in another mode.
+    This slice requires seed_product and seed_pricing_option to be advertised in
+    compliance_testing.scenarios before any fixture mutation.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+context:
+  account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: measurement-accountability.pinnacle-agency.example
+    sandbox: true
 fixtures:
+  accounts:
+    - account_id: acct_measurement_accountability_sandbox
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: measurement-accountability.pinnacle-agency.example
+        sandbox: true
+        billing: operator
+        status: active
   products:
-    - product_id: "ctv_premium_completed_views"
-      # Non-guaranteed so sales-non-guaranteed-only sellers can run this scenario
-      # (#7754). Fixed-price because discovery filters on is_fixed_price and the
-      # create sends no bid. available_metrics matches the required_metrics filter.
-      delivery_type: "non_guaranteed"
-      channels: ["ctv"]
-      format_options:
-        - format_option_id: "video_15s"
-          format_kind: "video_hosted"
-          params:
-            duration_ms_exact: 15000
-      reporting_capabilities:
-        available_metrics:
-          - impressions
-          - completed_views
-          - spend
-  pricing_options:
-    - product_id: "ctv_premium_completed_views"
-      pricing_option_id: "cpm_standard"
-      pricing_model: "cpm"
-      currency: "USD"
-      fixed_price: 25.0
+    - product_id: native_completed_view_reporting_support
+fixture_resolution:
+  products:
+    - handle: native_completed_view_reporting_support
+      strategies:
+        - discover
+      match:
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /channels
+          operator: contains_all
+          value:
+            - ctv
+        - path: /reporting_capabilities/available_metrics
+          operator: contains_all
+          value:
+            - completed_views
 
 phases:
+  - id: seed_supported_reporting_fixture
+    title: Prepare reporting fixtures only after declared native support
+    steps:
+      - id: seed_reporting_product
+        title: Seed the reporting product after native support is established
+        task: comply_test_controller
+        schema_ref: compliance/comply-test-controller-request.json
+        response_schema_ref: compliance/comply-test-controller-response.json
+        doc_ref: /building/by-layer/L3/comply-test-controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: measurement-accountability.pinnacle-agency.example
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: ctv_premium_completed_views
+            fixture:
+              delivery_type: non_guaranteed
+              channels:
+                - ctv
+              format_options:
+                - format_option_id: video_15s
+                  format_kind: video_hosted
+                  params:
+                    duration_ms_exact: 15000
+              reporting_capabilities:
+                available_metrics:
+                  - impressions
+                  - completed_views
+                  - spend
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The supported reporting fixture is seeded successfully
+      - id: seed_reporting_price
+        title: Seed auction pricing for the reporting fixture
+        task: comply_test_controller
+        schema_ref: compliance/comply-test-controller-request.json
+        response_schema_ref: compliance/comply-test-controller-response.json
+        doc_ref: /building/by-layer/L3/comply-test-controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: measurement-accountability.pinnacle-agency.example
+            sandbox: true
+          scenario: seed_pricing_option
+          params:
+            product_id: ctv_premium_completed_views
+            pricing_option_id: cpm_standard
+            fixture:
+              pricing_model: cpm
+              currency: USD
+              floor_price: 25
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The auction reporting price is seeded successfully
   - id: discover_with_required_metrics
     title: "Discover products that commit to reporting completed_views"
     narrative: |
@@ -105,7 +192,7 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "pinnacle-agency.example"
+              operator: "measurement-accountability.pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_accountability_setup_sync_accounts"
@@ -134,13 +221,12 @@ phases:
           brief: "CTV inventory with completed-view reporting for a Q2 CPCV campaign."
           filters:
             channels: ["ctv"]
-            is_fixed_price: true
             required_metrics:
               - "completed_views"
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "measurement-accountability.pinnacle-agency.example"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -152,12 +238,13 @@ phases:
           - check: field_present
             path: "products[0].product_id"
             description: "At least one product matched the required metrics"
+          - check: field_contains
+            path: "products[0].reporting_capabilities.available_metrics[*]"
+            value: "completed_views"
+            description: "The selected product actually declares the required completed_views reporting metric"
           - check: field_present
-            path: "products[0].reporting_capabilities.available_metrics"
-            description: "Matched product declares its available_metrics — schema validation confirms the superset relationship via the closed enum"
-          - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "The captured pricing option is selectable with fixed or auction pricing"
 
   - id: create_media_buy
     title: "Commit the media buy"
@@ -179,7 +266,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "measurement-accountability.pinnacle-agency.example"
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
           packages:
@@ -215,6 +302,9 @@ phases:
           The test controller acknowledges the simulated delivery data.
         sample_request:
           account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: measurement-accountability.pinnacle-agency.example
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -261,7 +351,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "measurement-accountability.pinnacle-agency.example"
           media_buy_ids:
             - "$context.media_buy_id"
         validations:
