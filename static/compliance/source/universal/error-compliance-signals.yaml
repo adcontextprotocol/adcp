@@ -1,31 +1,31 @@
 id: error_compliance_signals
-version: "1.0.0"
+version: "1.0.1"
 title: "Error handling — signals protocol"
 category: error_compliance
-summary: "Validates that signals agents return properly structured AdCP errors with correct codes, recovery hints, and transport bindings."
+summary: "Checks discovery error codes, context echo, and protocol versions for owned and marketplace signals agents."
 track: error_handling
 requires:
   - controller
 
 required_tools:
   - get_signals
-  - activate_signal
 
 narrative: |
-  Every AdCP agent must handle invalid input gracefully. When a buyer sends a
-  nonexistent signal ID, an activation request with a missing required field, or
-  a protocol version the agent cannot support, the agent should return a structured
-  error response — not a stack trace or a generic 500.
+  Every signals agent must handle invalid discovery input gracefully. This
+  baseline uses get_signals for owned agents and marketplaces alike. Activation
+  negatives live in signal_marketplace/error_compliance, selected by the
+  signal-marketplace specialism. Exposing optional activation without that
+  specialism does not add activation coverage to this baseline.
 
   AdCP defines three compliance levels for error responses:
   - L1: isError flag set on the MCP response
   - L2: JSON text fallback with adcp_error object in content
   - L3: structuredContent.adcp_error binding (full compliance)
 
-  This storyboard sends intentionally bad input to a signals agent and validates
-  that the agent rejects it with the correct error code, recovery classification,
-  and transport binding. Agents that use the adcpError() helper from @adcp/client
-  get L3 compliance automatically.
+  This storyboard sends intentionally bad discovery input and validates error
+  codes and context echo. The error structure and transport requirements above
+  remain normative; these executable checks do not independently validate every
+  message/recovery field or capture the raw MCP isError flag.
 
   Context echo is required on error responses — the correlation ID is even more
   important for error diagnosis than for success cases. Every error response must
@@ -95,7 +95,7 @@ phases:
         stateful: false
         expected: |
           Return capabilities declaring signals in supported_protocols, confirming
-          the agent exposes get_signals and activate_signal.
+          the agent exposes get_signals. Activation support is not required.
         sample_request:
           context:
             correlation_id: "error_compliance_signals--get_capabilities"
@@ -114,139 +114,32 @@ phases:
             value: "error_compliance_signals--get_capabilities"
             description: "Context correlation_id returned unchanged"
 
-  - id: error_responses
-    title: "Error responses for invalid input"
-    narrative: |
-      The buyer sends activation requests with intentionally invalid data — a
-      nonexistent signal ID and an activation request missing a required field.
-      Each request should be rejected with a structured error containing an
-      appropriate AdCP error code.
-
-    steps:
-      - id: nonexistent_signal
-        title: "Reject nonexistent signal_agent_segment_id"
-        narrative: |
-          The buyer references a signal_agent_segment_id that does not exist on
-          this platform. REFERENCE_NOT_FOUND is the canonical code for a typed
-          parameter with no dedicated error code that fails to resolve. INVALID_REQUEST
-          is accepted as an alternative. SIGNAL_NOT_FOUND is reserved for unresolvable
-          signal_id (data-provider catalog references), not for opaque agent-internal
-          segment IDs.
-        task: activate_signal
-        schema_ref: "signals/activate-signal-request.json"
-        response_schema_ref: "signals/activate-signal-response.json"
-        doc_ref: "/signals/tasks/activate_signal"
-        comply_scenario: error_handling
-        expect_error: true
-        negative_path: payload_well_formed
-        stateful: false
-        expected: |
-          Reject the request with:
-          - code: REFERENCE_NOT_FOUND or INVALID_REQUEST
-          - recovery: correctable
-
-        sample_request:
-          account:
-            brand:
-              domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
-            operator_unit:
-              id: "compliance-error_compliance_signals-2d7e8fc7"
-            sandbox: true
-          signal_agent_segment_id: "nonexistent-signal-id-xyz"
-          destinations:
-            - type: "agent"
-              agent_url: "https://test-dsp.example"
-          idempotency_key: "$generate:uuid_v4#error-signals-nonexistent"
-          context:
-            correlation_id: "error_compliance_signals--nonexistent_signal"
-        validations:
-          - check: error_code
-            allowed_values: ["REFERENCE_NOT_FOUND", "INVALID_REQUEST"]
-            description: "Error code is REFERENCE_NOT_FOUND or INVALID_REQUEST for unresolvable signal_agent_segment_id"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "error_compliance_signals--nonexistent_signal"
-            description: "Context correlation_id returned unchanged"
-
-      - id: missing_required_field
-        title: "Reject activation missing signal_agent_segment_id"
-        narrative: |
-          Send an activate_signal request without the required
-          signal_agent_segment_id field. The agent must reject this malformed
-          request with a structured error.
-        task: activate_signal
-        expect_error: true
-        negative_path: schema_invalid
-        schema_ref: "signals/activate-signal-request.json"
-        response_schema_ref: "signals/activate-signal-response.json"
-        doc_ref: "/signals/tasks/activate_signal"
-        comply_scenario: error_handling
-        stateful: false
-        # signal_agent_segment_id is required per the schema — this request
-        # intentionally omits it to verify the agent's validation response.
-        sample_request_skip_schema: true
-        expected: |
-          Reject the request with:
-          - code: INVALID_REQUEST or VALIDATION_ERROR
-          - recovery: correctable
-
-        sample_request:
-          account:
-            brand:
-              domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
-            operator_unit:
-              id: "compliance-error_compliance_signals-2d7e8fc7"
-            sandbox: true
-          destinations:
-            - type: "agent"
-              agent_url: "https://test-dsp.example"
-          idempotency_key: "$generate:uuid_v4#error-signals-missing-field"
-          context:
-            correlation_id: "error_compliance_signals--missing_required_field"
-        validations:
-          - check: error_code
-            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
-            description: "Error code is INVALID_REQUEST or VALIDATION_ERROR"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "error_compliance_signals--missing_required_field"
-            description: "Context correlation_id returned unchanged"
-
   - id: error_structure
-    title: "Error structure compliance"
+    title: "Discovery error codes and context"
     narrative: |
-      Validates that error responses follow the AdCP 3.2 error structure with
-      required code, message, and recovery fields plus optional retry metadata.
+      A malformed discovery request must return an error code and echo context.
+      Error producers still owe the full version-appropriate error structure.
 
     steps:
       - id: validate_error_shape
-        title: "Validate error response structure"
+        title: "Check discovery error code and context"
         narrative: |
           Trigger an error and inspect the response structure. The adcp_error object
           must have code, message, and recovery. Optional fields include retry_after,
           field, and suggestion. The shared schema remains permissive for legacy input,
           but omission of recovery is a 3.2 producer conformance failure.
-        task: activate_signal
-        schema_ref: "signals/activate-signal-request.json"
-        response_schema_ref: "signals/activate-signal-response.json"
-        doc_ref: "/signals/tasks/activate_signal"
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
         comply_scenario: error_codes
         expect_error: true
-        negative_path: payload_well_formed
+        negative_path: schema_invalid
+        sample_request_skip_schema: true
         stateful: false
         expected: |
           Error response with:
-          - code: a recognized AdCP error code
+          - code: INVALID_REQUEST or VALIDATION_ERROR
           - message: human-readable description
           - recovery: transient, correctable, or terminal (required for a 3.2 producer)
 
@@ -258,15 +151,13 @@ phases:
             operator_unit:
               id: "compliance-error_compliance_signals-2d7e8fc7"
             sandbox: true
-          signal_agent_segment_id: "nonexistent-signal-error-structure"
-          destinations:
-            - type: "agent"
-              agent_url: "https://test-dsp.example"
-          idempotency_key: "$generate:uuid_v4#error-signals-structure"
+          # A numeric spec is invalid for every signals interaction model.
+          signal_spec: 123
           context:
             correlation_id: "error_compliance_signals--validate_error_shape"
         validations:
           - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
             description: "Response surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
           - check: field_present
             path: "context"
@@ -371,30 +262,28 @@ phases:
             description: "Context correlation_id returned unchanged"
 
   - id: error_transport
-    title: "Error transport bindings"
+    title: "Discovery error context echo"
     narrative: |
-      Validates that errors are transported correctly via MCP. The isError flag must
-      be set, and the error should be available in both JSON text content (L2) and
-      structuredContent (L3) bindings.
+      Check that a discovery rejection preserves the caller context. Raw MCP
+      flags and content bindings require separate transport capture evidence.
 
     steps:
       - id: validate_transport_binding
-        title: "Validate error transport binding"
+        title: "Check context on a discovery rejection"
         narrative: |
-          Trigger an error and verify the MCP transport binding: isError flag must
-          be set to true, and the error content should include the adcp_error object.
-        task: activate_signal
-        schema_ref: "signals/activate-signal-request.json"
-        response_schema_ref: "signals/activate-signal-response.json"
-        doc_ref: "/signals/tasks/activate_signal"
+          Send a wrong-typed discovery spec and check the normalized error code
+          and context echo. This step does not independently capture MCP isError.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
         comply_scenario: error_transport
         expect_error: true
-        negative_path: payload_well_formed
+        negative_path: schema_invalid
+        sample_request_skip_schema: true
         stateful: false
         expected: |
-          MCP response with:
-          - isError: true
-          - content containing adcp_error (L2: JSON text, L3: structuredContent)
+          A structured rejection with a typed error code and unchanged context.
 
         sample_request:
           account:
@@ -404,16 +293,14 @@ phases:
             operator_unit:
               id: "compliance-error_compliance_signals-2d7e8fc7"
             sandbox: true
-          signal_agent_segment_id: "nonexistent-signal-transport-test"
-          destinations:
-            - type: "agent"
-              agent_url: "https://test-dsp.example"
-          idempotency_key: "$generate:uuid_v4#error-signals-transport"
+          # A numeric spec is invalid for every signals interaction model.
+          signal_spec: 123
           context:
             correlation_id: "error_compliance_signals--validate_transport_binding"
         validations:
           - check: error_code
-            description: "Transport binding surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Discovery rejection surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object even on errors"
