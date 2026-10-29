@@ -60,5 +60,5 @@
   },
   "minProperties": 1,
   "dependencies": { "product_ids_exclusive": ["product_ids"] },
-  "additionalProperties": false
+  "additionalProperties": true
 }

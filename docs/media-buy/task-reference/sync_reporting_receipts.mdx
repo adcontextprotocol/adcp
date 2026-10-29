@@ -38,6 +38,14 @@ billing-system record while reconciling a `spend` control-total delta. Acceptanc
 records matching reporting evidence; that billing system still decides whether any
 invoice action is appropriate.
 
+**After authority ends.** Receipts carry no seller data, and billing
+reconciliation needs them. When the caller loses authority for an account, the
+seller still accepts receipts for revisions the caller read before
+`unauthorized_at`, until `status_retention_days` after it; the per-item result
+discloses nothing further. Every other reference to that account fails exactly
+like an unknown identifier. See
+[when authorization ends](/docs/media-buy/task-reference/get_reporting_status#when-authorization-ends).
+
 **Request schema:** [`sync-reporting-receipts-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/sync-reporting-receipts-request.json)
 
 **Response schema:** [`sync-reporting-receipts-response.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/sync-reporting-receipts-response.json)

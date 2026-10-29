@@ -51,6 +51,10 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
+// The canonical Product's `not`, as the projection serializes it.
+const CANONICAL_PRODUCT_PROHIBITION = JSON.stringify({
+  not: JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, 'core', 'canonical-product.json'), 'utf8')).not,
+}).slice(1, -1);
 // The generated profiles describe the active surface of the package's release
 // line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
 // manifest declares via added_in; once the line has a stable release it is the
@@ -1110,7 +1114,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
-      assert.doesNotMatch(output, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
+      // The canonical Product forbids the legacy Product's keys by name;
+      // forbidding them does not expose them.
+      const exposed = output.replaceAll(CANONICAL_PRODUCT_PROHIBITION, '');
+      assert.doesNotMatch(exposed, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
         `${toolName} output must not expose the legacy Product graph`);
     }
   }
@@ -1252,7 +1259,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // to 21_021_886 bytes, so the cap moves to 22 MiB. Experimental
   // list_collections and the collection card webhooks (#8183) take it from
   // 21_151_775 to 21_294_989 bytes, still under the cap.
-  assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // request_account change mode (#8543) puts the Account snapshot on resolved
+  // requests, reached from request_account and list_accounts (23,090,968 bytes
+  // measured), so the cap moves to 23 MiB.
+  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

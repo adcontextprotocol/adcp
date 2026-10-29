@@ -54,7 +54,7 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { servesReleaseBefore, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -75,7 +75,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
-import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease } from './served-release-fields.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -3123,7 +3123,14 @@ function productForServedAdcpVersion(product: Product, servedAdcpVersion: string
     audience_activation?: unknown;
     overlay_support?: unknown;
   };
-  return rest as Product;
+  if (!servesReleaseBefore(servedAdcpVersion, 3, 1)) return rest as Product;
+  // 3.0 cards are a format reference plus its manifest, not the inline card.
+  const {
+    product_card: _inlineCard,
+    product_card_detailed: _inlineDetailedCard,
+    ...withoutInlineCards
+  } = rest as Product & { product_card?: unknown; product_card_detailed?: unknown };
+  return { ...withoutInlineCards, ...threeZeroProductCards(product) } as unknown as Product;
 }
 
 /**
@@ -3159,6 +3166,7 @@ import {
   briefExcludesProduct,
   buildCatalog,
   buildProposals,
+  threeZeroProductCards,
   TRAINING_AUDIENCE_ACTIVATION_METHODS,
 } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
@@ -3561,8 +3569,11 @@ export function resolveServedAdcpVersionForTool(
   supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
 ): VersionResolution {
   const splitProductTool = isProductDiscoveryTool(toolName) && toolName !== 'get_products';
+  // An unpinned call defaults to 3.0, which does not define a tool a later
+  // release adds (validate_input, the split product tools, search_brands,
+  // report_plan_adjustment). Serve those at the highest supported 3.x.
   if (
-    (toolName === 'validate_input' || splitProductTool)
+    (toolName === 'validate_input' || splitProductTool || toolAddedAfterRelease(toolName, DEFAULT_ADCP_VERSION))
     && args.adcp_version === undefined
     && args.adcp_major_version === undefined
   ) {
@@ -5030,6 +5041,41 @@ function availableActionsForMediaBuy(mb: MediaBuyState, status: string, servedAd
 }
 
 /**
+ * The wire shape of `available_actions` for the served release. 3.1
+ * introduced the field with a closed available-action object (action, mode,
+ * sla, terms_ref); `task`, `change_term_id` and `applicable_package_ids`
+ * arrive with the 3.2 lifecycle split, and the action and mode enums are the
+ * served release's own (the same projection the SDK applies on the tenant
+ * routes). 3.0 does not define the field and leaves the media-buy object
+ * open. Authorization keeps reading the full internal entries.
+ */
+function availableActionsForServedRelease(
+  actions: readonly MediaBuyAvailableActionState[],
+  servedAdcpVersion: string | undefined,
+): MediaBuyAvailableActionState[] {
+  if (
+    servedAdcpVersion === undefined
+    || !servesReleaseBefore(servedAdcpVersion, 3, 2)
+    || servesReleaseBefore(servedAdcpVersion, 3, 1)
+  ) return [...actions];
+  const servedActions = servedReleaseEnum('enums/media-buy-valid-action.json', servedAdcpVersion);
+  const servedModes = servedReleaseEnum('enums/media-buy-action-mode.json', servedAdcpVersion);
+  return actions
+    .filter(action => (!servedActions || servedActions.has(action.action)) && (!servedModes || servedModes.has(action.mode)))
+    .map(action => ({
+      action: action.action,
+      mode: action.mode,
+      ...(action.sla && { sla: action.sla }),
+      ...(action.terms_ref !== undefined && { terms_ref: action.terms_ref }),
+    }));
+}
+
+/** `available_actions` for a media-buy response at the served release. */
+function availableActionsWireForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
+  return availableActionsForServedRelease(availableActionsForMediaBuy(mb, status, servedAdcpVersion), servedAdcpVersion);
+}
+
+/**
  * Frequency-cap actions derive from the product capability snapshots taken
  * when each package was created. `update_frequency_caps` names the exact
  * eligible packages through `applicable_package_ids` when the buy is
@@ -5476,7 +5522,7 @@ function actionNotAllowedError(
       details: {
         attempted_action: attemptedAction,
         reason: projectedReason,
-        currently_available_actions: availableActions,
+        currently_available_actions: availableActionsForServedRelease(availableActions, servedAdcpVersion),
       },
     }],
     ...(context !== undefined && { context }),
@@ -11171,7 +11217,9 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
   if (COMPACT_MEDIA_BUY_TOOLS.has(toolName)) {
     return supportsGetProductsRejected(servedAdcpVersion);
   }
-  return true;
+  // A tool a later stable release adds (search_brands in 3.1,
+  // report_plan_adjustment in 3.2) has no schema in the served release.
+  return !toolAddedAfterRelease(toolName, servedAdcpVersion);
 }
 
 // ── Task handler implementations ──────────────────────────────────
@@ -13027,15 +13075,20 @@ export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingCon
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  // The 3.0 FormatIDParameter enum predates pixel-density negotiation. Keep
-  // the template available to compatibility runners, but do not advertise an
-  // enum member their pinned response schema cannot represent.
-  if (ctx.storyboardCompat?.version === '3.0') {
-    formats = formats.map(format => format.accepts_parameters?.includes('pixel_ratio')
+  // FormatIDParameter is a closed enum, and releases before 3.2 predate
+  // pixel-density negotiation (`pixel_ratio`). Keep the template available to
+  // older callers, but advertise only the parameters their served release
+  // defines.
+  const servedFormatParameters = servedReleaseEnum(
+    'enums/format-id-parameter.json',
+    lifecycleSplitVersionForContext(ctx) ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
+  if (servedFormatParameters) {
+    formats = formats.map(format => format.accepts_parameters?.some(parameter => !servedFormatParameters.has(parameter))
       ? {
           ...format,
-          accepts_parameters: format.accepts_parameters.filter(parameter => parameter !== 'pixel_ratio'),
-          description: format.format_id.id === 'display_image'
+          accepts_parameters: format.accepts_parameters.filter(parameter => servedFormatParameters.has(parameter)),
+          description: format.format_id.id === 'display_image' && !servedFormatParameters.has('pixel_ratio')
             ? 'Static image display ad. Provide logical width and height in format_id.'
             : format.description,
         }
@@ -13161,8 +13214,12 @@ interface ListTransformersArgs {
   pagination?: { max_results?: number; cursor?: string };
 }
 
-export async function handleListTransformers(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
+export async function handleListTransformers(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListTransformersArgs;
+  // 3.1 names a transformer's inputs and outputs by legacy format
+  // (`output_format_ids` is required); the canonical `output_capability_ids`
+  // and `input_formats` declarations replace them in 3.2.
+  const namedFormatRelease = servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 2);
 
   // Pricing is account-scoped — the request schema makes account conditionally
   // required when include_pricing is true.
@@ -13246,8 +13303,15 @@ export async function handleListTransformers(args: ToolArgs, _ctx: TrainingConte
       name: t.name,
       ...(t.description && { description: t.description }),
       ...(t.metadata && { metadata: t.metadata }),
-      ...(t.input_formats && { input_formats: t.input_formats }),
-      output_capability_ids: t.output_capability_ids,
+      ...(namedFormatRelease
+        ? {
+          ...(t.input_format_ids && { input_format_ids: t.input_format_ids }),
+          output_format_ids: t.output_format_ids,
+        }
+        : {
+          ...(t.input_formats && { input_formats: t.input_formats }),
+          output_capability_ids: t.output_capability_ids,
+        }),
       params,
       ...(t.multiplicity && { multiplicity: t.multiplicity }),
       ...(req.include_pricing && t.pricing_options && { pricing_options: t.pricing_options }),
@@ -16995,7 +17059,7 @@ async function handleCreateMediaBuyUnlocked(
     ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
     ...(mediaBuy.aggregateBidding && { bidding: mediaBuy.aggregateBidding }),
     valid_actions: validActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
-    available_actions: availableActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsWireForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -17131,7 +17195,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
         valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-        available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+        available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
         currency: mb.currency,
         total_budget: totalBudget,
         ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
@@ -18831,6 +18895,22 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // gate in #2847 and tracks the spec-side clarification referenced there.
   const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
   const selectedFields = req.fields?.length ? new Set(req.fields) : undefined;
+  // 3.0 identifies every listed creative by `format_id` (required); the
+  // canonical `format_kind` record arrives in 3.1. Project canonical
+  // creatives to their legacy format for a 3.0 caller.
+  const legacyProjectionAdapters = servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1)
+    ? filterProjectionAdapters ?? creativeProjectionAdapters()
+    : undefined;
+  const creativeFormatRecord = (creative: CreativeState): Record<string, unknown> => {
+    const stored = storedCreativeFormatRecord(creative);
+    if (!legacyProjectionAdapters || isRecord(stored.format_id)) return stored;
+    try {
+      const projected = projectCreativeRecordForWire(stored, 'legacy', legacyProjectionAdapters);
+      return isRecord(projected.format_id) ? { format_id: projected.format_id } : stored;
+    } catch {
+      return stored;
+    }
+  };
 
   return {
     query_summary: {
@@ -18849,7 +18929,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     creatives: pageCreatives.map(c => {
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        ...storedCreativeFormatRecord(c),
+        ...creativeFormatRecord(c),
         name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
@@ -19215,11 +19295,14 @@ async function handleUpdateMediaBuyUnlocked(
     return {
       media_buy_id: mb.mediaBuyId,
       ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-      status,
+      // Body `status: MediaBuyStatus` is deprecated in 3.1 and removed in 3.2
+      // (#4906). Root `status` is the envelope task status from 3.1 on (3.1
+      // composes both, so only shared values validate); 3.0 carries it.
+      ...(servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1) && { status }),
       media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-      available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+      available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
       ...(warnings.length > 0 && { warnings }),
       ...(req.context !== undefined && { context: req.context }),
@@ -20289,11 +20372,14 @@ async function handleUpdateMediaBuyUnlocked(
     ...(mb.name && { name: mb.name }),
     ...(mb.invoiceRecipient && { invoice_recipient: structuredClone(mb.invoiceRecipient) }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-    status,
+    // Body `status: MediaBuyStatus` is deprecated in 3.1 and removed in 3.2
+    // (#4906). Root `status` is the envelope task status from 3.1 on (3.1
+    // composes both, so only shared values validate); 3.0 carries it.
+    ...(servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1) && { status }),
     media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-    available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
     ...((aggregateUpdate.total_budget !== undefined || packageBudgetChanged) && {
       currency: mb.currency,
       total_budget: mb.totalBudget,
@@ -20704,6 +20790,17 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
 const MAX_SIGNAL_RESULTS = 10;
 
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
+  const signalSpecInput = (args as { signal_spec?: unknown }).signal_spec;
+  if (signalSpecInput !== undefined && typeof signalSpecInput !== 'string') {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'signal_spec must be a string.',
+        field: 'signal_spec',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   const req = args as unknown as GetSignalsRequest & ToolArgs & {
     brief?: string;
     discovery_mode?: 'brief' | 'wholesale';
