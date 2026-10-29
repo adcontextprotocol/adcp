@@ -74,7 +74,7 @@ Send either `account_id` (to change or select), or `brand` and `operator` (to op
 
 ## Changing an account
 
-Send the `account_id` and only the attributes to change. The changeable attributes are those [#8474](https://github.com/adcontextprotocol/adcp/pull/8474) defines: the brand's `countries`, `operator_unit`, `billing`, `billing_entity`, and `payment_terms`. `currency` and `timezone` are set when the account opens, and a seller MAY refuse to change them; `sandbox` never changes.
+Send the `account_id` and only the attributes to change. The changeable attributes are those [#8474](https://github.com/adcontextprotocol/adcp/pull/8474) defines: the brand's `countries`, `operator_unit`, `billing`, `billing_entity`, and `payment_terms`. `currency` and `timezone` are set when the account opens, and a seller MAY refuse to change them; `sandbox` never changes. Set `allow_separate_account: true` if you would accept the change on a separate new account when the seller can't make it on this one; it defaults to `false`.
 
 ```json
 {
@@ -91,10 +91,11 @@ The seller validates a changed attribute as it does when the account opens, incl
 - **It applies the change:** `state: resolved`, `resolution: updated`, and `account` carrying the updated attributes and new `revision`.
 - **It reviews the change first:** `state: in_review` with a pending action. The account keeps its current attributes until the request resolves.
 - **It refuses the change:** `state: rejected` with the reason. The account is unchanged.
-- **It opens a separate account instead:** `state: resolved`, `resolution: created`, and a new `account_id`, with `account` carrying the new account. The seller says "yes, but as a separate account", for example when a new market needs its own contract or invoicing entity. The new account has the named account's attributes with the requested change applied. Terms the seller needs to set differently go through a pending action before the request resolves.
+- **It opens a separate account instead, if the buyer allowed it:** `state: resolved`, `resolution: created`, and a new `account_id`, with `account` carrying the new account. The seller says "yes, but as a separate account", for example when a new market needs its own contract or invoicing entity. The seller may do this only when the request set `allow_separate_account: true`. The new account has the named account's attributes with the requested change applied. Terms the seller needs to set differently go through a pending action before the request resolves.
+- **It would accept the change only as a separate account, and the buyer didn't allow that:** `state: rejected` with [`ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT`](/docs/building/verification/compliance-catalog#error-code-account-change-requires-new-account). The account is unchanged. The buyer can tell this from a plain refusal: it may open a new account itself, resend the change with `allow_separate_account: true`, or keep the account as it is.
 - **It points to an account the caller already holds:** `state: resolved`, `resolution: matched`, and that account's `account_id`. The seller uses this when the change would make the named account duplicate an account the caller can already reach; see [Accounts that end up alike](/docs/accounts/overview#account-identity). As with `candidates`, the seller MUST NOT point to an account outside the caller's grants.
 
-In the last two cases the named account is untouched: it keeps its attributes, media buys, and reporting history, and stays usable. The seller MUST NOT move media buys, creatives, or reporting between the two accounts. Which account carries new buys is the buyer's choice. A buyer can tell these outcomes apart because the resolved `account_id` differs from `requested.account_id`.
+When the request resolves to another account (`created` or `matched`), the named account is untouched: it keeps its attributes, media buys, and reporting history, and stays usable. The seller MUST NOT move media buys, creatives, or reporting between the two accounts. Which account carries new buys is the buyer's choice. A buyer can tell these outcomes apart because the resolved `account_id` differs from `requested.account_id`.
 
 When a change is applied, the account keeps its `account_id`, media buys, and reporting history. Changes never alter the account's identity, so there is nothing to retire. What a seller may use `countries` for, and what a change to them does to accepted media buys, is set out in [Account identity](/docs/accounts/overview#account-identity).
 
@@ -213,7 +214,7 @@ A seller that does deduplicate typically answers a repeated *open* request as fo
 2. Store `request_id` against (seller, key).
 3. While the request is open, if the seller declares `account.requests.event_type`, register for `account_request.changed` through [`sync_principal`](/docs/protocol/sync_principal) or [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs), or poll [`list_accounts`](/docs/accounts/tasks/list_accounts) with `request_ids` and backoff.
 4. Until it resolves, call discovery tasks without `account`, which returns the seller's public view.
-5. When a change request resolves with an `account_id` other than the one it named (`resolution: created` or `matched`), the named account is unchanged. Decide which account to use for new buys; nothing moves on its own.
+5. When a change request resolves with an `account_id` other than the one it named (`resolution: created` or `matched`), the named account is unchanged. Decide which account to use for new buys; nothing moves on its own. A change rejected with `ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT` is acceptable on a new account: open one, or resend with `allow_separate_account: true`, if you want it.
 6. After a cold start, [`list_accounts`](/docs/accounts/tasks/list_accounts) with `include_requests: true` recovers accounts and open requests. Requests page separately from accounts: follow `account_requests_pagination` with `requests_pagination` until `has_more` is false.
 
 ## Errors

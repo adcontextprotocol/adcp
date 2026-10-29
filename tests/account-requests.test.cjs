@@ -247,6 +247,32 @@ test('a change request can resolve to a separate or existing account, leaving th
   assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl', resolution: 'matched' }), JSON.stringify(v.errors));
 });
 
+test('a separate account on a change is opt-in; otherwise the seller rejects with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT', () => {
+  const req = read('account/request-account-request.json');
+  assert.equal(req.properties.allow_separate_account.type, 'boolean');
+  assert.equal(req.properties.allow_separate_account.default, false);
+  assert.match(req.properties.allow_separate_account.description, /ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT/);
+  assert.match(read('enums/account-request-resolution.json').enumDescriptions.created, /only when the change request set allow_separate_account: true/);
+  const codes = read('enums/error-code.json');
+  assert.ok(codes.enum.includes('ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT'));
+  assert.equal(codes.enumMetadata.ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT.recovery, 'correctable');
+  const rowDescription = read('account/sync-accounts-response.json').oneOf[0].properties.accounts.items.properties.request_id.description;
+  assert.match(rowDescription, /never resolves as created/);
+  const vReq = validate('/schemas/account/request-account-request.json');
+  const change = { adcp_version: '3.3', idempotency_key: '7b0c8a4e-1f2d-4e6a-9c3b-5d8e2f1a6b70', account_id: 'acc_nova_europe', brand: { domain: 'nova-athletics.example', countries: ['NL'] }, allow_separate_account: true };
+  assert.ok(vReq(change), JSON.stringify(vReq.errors));
+  const vRec = validate('/schemas/core/account-request-record.json');
+  const refused = {
+    request_id: 'areq_change_3',
+    state: 'rejected',
+    requested: { account_id: 'acc_nova_europe', brand: { domain: 'nova-athletics.example', countries: ['NL'] } },
+    errors: [{ code: 'ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT', message: 'NL needs a separate Dutch contract.' }],
+    created_at: '2026-10-29T09:00:00Z',
+    updated_at: '2026-10-29T09:00:00Z',
+  };
+  assert.ok(vRec(refused), JSON.stringify(vRec.errors));
+});
+
 test('a sync_accounts settings-update row under review carries the request_id', () => {
   const res = read('account/sync-accounts-response.json');
   const rowSchema = res.oneOf[0].properties.accounts.items;

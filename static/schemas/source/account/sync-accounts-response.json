@@ -39,7 +39,7 @@
                 "x-added-in": "3.3.0",
                 "minLength": 1,
                 "maxLength": 128,
-                "description": "Experimental (account.requests). Identifier of the seller's account request behind a pending_approval row. On a provisioning row, it stands in for the account_id the seller has not issued. On a settings-update row whose change the seller is reviewing, it names the request for that change, and a seller that supports account.requests MUST include it; the request resolves as updated, created, or matched, or is rejected, as request_account change requests do. Read it with list_accounts (request_ids) or wait for account_request.changed. It is not an account_id and is never accepted as an AccountRef."
+                "description": "Experimental (account.requests). Identifier of the seller's account request behind a pending_approval row. On a provisioning row, it stands in for the account_id the seller has not issued. On a settings-update row whose change the seller is reviewing, it names the request for that change, and a seller that supports account.requests MUST include it; the request resolves as updated or matched, or is rejected, as a request_account change request without allow_separate_account does. It never resolves as created; a seller that would accept the change only as a separate account rejects it with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT. Read it with list_accounts (request_ids) or wait for account_request.changed. It is not an account_id and is never accepted as an AccountRef."
               },
               "resolution": {
                 "$ref": "/schemas/enums/account-request-resolution.json",

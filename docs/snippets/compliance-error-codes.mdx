@@ -13,6 +13,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | Code | Recovery | Suggested action |
 |------|----------|------------------|
 | `ACCOUNT_AMBIGUOUS` | correctable | pass the account_id of the intended account from error.details.candidates or list_accounts |
+| `ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT` | correctable | open a separate account for the change (request_account, or a sync_accounts provisioning entry), or resend the change with allow_separate_account: true; the named account is unchanged |
 | `ACCOUNT_IDENTITY_CONFLICT` | correctable | choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged |
 | `ACCOUNT_MOVED` | correctable | replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key |
 | `ACCOUNT_NOT_FOUND` | terminal | for a natural key, provision through sync_accounts or omit account for public discovery; for an account_id, verify via list_accounts or contact seller |
@@ -146,6 +147,15 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 **Suggested action:** pass the account_id of the intended account from error.details.candidates or list_accounts
 
 A natural-key reference matches more than one of the caller's accounts. error.details MAY list candidates[] (account_id, name), conforming to error-details/account-ambiguous.json, limited to accounts the caller is already granted. Recovery: correctable (pass the intended account_id).
+
+</Accordion>
+<a id="error-code-account-change-requires-new-account"></a>
+
+<Accordion title="ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT — correctable">
+
+**Suggested action:** open a separate account for the change (request_account, or a sync_accounts provisioning entry), or resend the change with allow_separate_account: true; the named account is unchanged
+
+The seller would accept a requested account change only as a separate account, for example because the new market needs its own contract, legal entity, invoicing entity, or currency, and the caller did not allow that. Returned for a request_account change request whose allow_separate_account is absent or false, and for a sync_accounts settings update, which has no such option. The named account is unchanged. error.details.reason MAY say what the separate account needs. Distinct from a plain refusal: the change is acceptable on a new account. Recovery: correctable (open a separate account with request_account or a sync_accounts provisioning entry, or resend the change with allow_separate_account: true, or keep the account as it is).
 
 </Accordion>
 <a id="error-code-account-identity-conflict"></a>
