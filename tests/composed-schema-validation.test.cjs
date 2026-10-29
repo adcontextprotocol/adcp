@@ -5076,7 +5076,7 @@ async function runTests() {
     commercial_terms: laterDraft.commercial_terms,
     terms_digest: `sha256:${'A'.repeat(43)}`
   };
-  const offerEntry = { proposal: sellerOffer, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'seller_offer' };
+  const offerEntry = { proposal: sellerOffer, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'seller_offer', offer_reason: 'installment_postponed' };
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
     { outcome: 'listed', proposals: [offerEntry], opportunities: [] },
