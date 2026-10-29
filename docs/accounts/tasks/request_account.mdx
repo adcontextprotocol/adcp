@@ -214,7 +214,7 @@ A seller that does deduplicate typically answers a repeated *open* request as fo
 2. Store `request_id` against (seller, key).
 3. While the request is open, if the seller declares `account.requests.event_type`, register for `account_request.changed` through [`sync_principal`](/docs/protocol/sync_principal) or [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs), or poll [`list_accounts`](/docs/accounts/tasks/list_accounts) with `request_ids` and backoff.
 4. Until it resolves, call discovery tasks without `account`, which returns the seller's public view.
-5. When a change request resolves with an `account_id` other than the one it named (`resolution: created` or `matched`), the named account is unchanged. Decide which account to use for new buys; nothing moves on its own. A change rejected with `ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT` is acceptable on a new account: open one, or resend with `allow_separate_account: true`, if you want it.
+5. When a change request resolves with an `account_id` other than the one it named (`resolution: created` or `matched`), the named account is unchanged. Decide which account to use for new buys; nothing moves on its own. A change rejected with [`ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT`](/docs/building/verification/compliance-catalog#error-code-account-change-requires-new-account) is acceptable on a new account: open one, or resend with `allow_separate_account: true`, if you want it.
 6. After a cold start, [`list_accounts`](/docs/accounts/tasks/list_accounts) with `include_requests: true` recovers accounts and open requests. Requests page separately from accounts: follow `account_requests_pagination` with `requests_pagination` until `has_more` is false.
 
 ## Errors
