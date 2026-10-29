@@ -74,6 +74,7 @@ function buildGovernanceTrainingCtx(ctx: {
   account?: { authInfo?: { principal?: string } };
   agent?: { agent_url: string };
   authInfo?: { extra?: Record<string, unknown> };
+  servedAdcpVersion?: string;
 } | undefined): TrainingContext {
   const governanceAgentCredential = governanceAgentCredentialFromExtra(ctx?.authInfo?.extra);
   const hostedGraderCredential = hostedGraderCredentialFromExtra(ctx?.authInfo?.extra);
@@ -86,6 +87,9 @@ function buildGovernanceTrainingCtx(ctx: {
     ...(governanceAgentCredential && { governanceAgentCredential }),
     // Hosted-grader buyer credential; same always-carried rule.
     ...(hostedGraderCredential && { hostedGraderCredential }),
+    // The release the SDK serves this request at, for release-shaped fields
+    // (a 3.0 or 3.1 conditions verdict carries expires_at).
+    ...(ctx?.servedAdcpVersion && { servedAdcpVersion: ctx.servedAdcpVersion }),
   };
 }
 

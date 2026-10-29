@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/media-buy-available-action.json",
+  "title": "Media Buy Available Action",
+  "description": "An action currently available on a media buy, resolved against the buy's current status, account authorization, and applicable governance delegation. Buy changes also resolve accepted commercial_terms.change_terms: this projection MUST NOT replace negotiated rights. Issue reporting is an independent operational capability and requires no negotiated change term. The containing array is uniquely keyed by action.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "change_term_link": "When change_term_id is present, it resolves to exactly one accepted_proposal.commercial_terms.change_terms[].term_id whose action, service_mode, and processing_sla agree with this projection.",
+      "legacy_alias_agreement": "When change_term_id and deprecated terms_ref are both present and terms_ref is being used as the proposal-term link, their values are identical. A 3.1 terms_ref with no accepted change term remains an opaque legacy commercial pointer and MUST NOT be reinterpreted as authority.",
+      "applicable_package_scope": "Every applicable_package_ids value identifies a package of this media buy."
+    }
+  },
+  "type": "object",
+  "properties": {
+    "action": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/media-buy-available-action-id.json",
+      "description": "The action identifier."
+    },
+    "mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/media-buy-action-mode.json",
+      "description": "The single mode that applies right now on this buy for this action. Singular because the buy has a concrete state, exactly one mode applies. Buyer SDKs branch on this to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback."
+    },
+    "task": {
+      "type": "string",
+      "enum": [
+        "control_media_buy",
+        "refine_proposals",
+        "sync_creatives",
+        "report_media_buy_issue"
+      ],
+      "description": "Task for this resolved action: operational control, commercial refinement, creative lifecycle mutation, or seller-side issue reporting."
+    },
+    "sla": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/sla-window.json",
+      "description": "Optional SLA commitment for this action on this buy. Absence means no commitment, not zero commitment."
+    },
+    "review_sla": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/creative-review-sla.json",
+      "x-added-in": "3.3.0",
+      "description": "Product review commitment resolved for applicable packages. Separate from the SLA for applying the creative mutation; not a negotiated change term."
+    },
+    "change_term_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/media-buy-change-term-id.json"
+    },
+    "terms_ref": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/media-buy-legacy-terms-ref.json"
+    },
+    "applicable_package_ids": {
+      "type": "array",
+      "description": "For a package-scoped action, the exact packages currently eligible. Omission means every relevant package. Root actions omit this field.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/applicable-package-id.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "action",
+    "mode"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "update_creative_start_policy"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "required": [
+          "task",
+          "applicable_package_ids"
+        ],
+        "properties": {
+          "task": {
+            "type": "string",
+            "const": "control_media_buy"
+          },
+          "change_term_id": false,
+          "terms_ref": false
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "task": {
+            "const": "report_media_buy_issue"
+          }
+        },
+        "required": [
+          "task"
+        ]
+      },
+      "then": {
+        "properties": {
+          "action": {
+            "const": "report_media_buy_issue"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "report_media_buy_issue"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "sla": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/escalation-sla.json"
+          },
+          "mode": {
+            "const": "seller_managed"
+          },
+          "task": {
+            "const": "report_media_buy_issue"
+          },
+          "change_term_id": false,
+          "terms_ref": false
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "review_sla"
+        ]
+      },
+      "then": {
+        "properties": {
+          "action": {
+            "enum": [
+              "sync_creatives",
+              "replace_creative",
+              "update_creative_assignments"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

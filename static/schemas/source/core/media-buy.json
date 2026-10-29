@@ -85,6 +85,12 @@
       },
       "additionalProperties": false
     },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-added-in": "3.3.0",
+      "description": "When the seller moved the buy to completed; present when status is completed. Sellers advertising media_buy.reporting_subscriptions MUST populate it for completed buys, because a buy that completes before end_time stops being owed reporting at this instant."
+    },
     "total_budget": {
       "type": "number",
       "description": "Hard aggregate lifetime budget amount",

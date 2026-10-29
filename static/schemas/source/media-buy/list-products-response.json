@@ -79,5 +79,5 @@
       { "required": ["unchanged"] }
     ]
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

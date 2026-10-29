@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/account-candidate.json",
+  "title": "Account Candidate",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "An account that matches an account request or an ambiguous account reference, offered so a human can pick one. Only accounts the caller is already granted are ever offered.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "x-entity": "account"
+    },
+    "name": {
+      "type": "string"
+    },
+    "brand": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-key.json"
+    },
+    "operator": {
+      "type": "string"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    }
+  },
+  "required": [
+    "account_id",
+    "name"
+  ],
+  "additionalProperties": true
+}

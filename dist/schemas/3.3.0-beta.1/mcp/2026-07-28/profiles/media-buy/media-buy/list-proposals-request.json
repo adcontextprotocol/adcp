@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/media-buy/media-buy/list-proposals-request.json",
+  "x-status": "experimental",
+  "type": "object",
+  "x-operation-family": "list_proposals",
+  "x-added-in": "3.3.0",
+  "x-legacy-fallback": {
+    "mode": "none"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1context.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/context.json"
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1push-notification-config.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/push-notification-config.json"
+    },
+    "account": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+        }
+      ]
+    },
+    "opportunity_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+        "x-entity": "opportunity"
+      },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "media_buy"
+      },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    },
+    "proposal_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "x-entity": "proposal"
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true
+    },
+    "dispositions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:enums~1proposal-disposition.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_results": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 25
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "account"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/version-envelope.json",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "x-max-length-4.0": 32
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "x-removed-in": "4.0.0",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/context.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/context.json",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/push-notification-config.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/push-notification-config.json",
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "x-removed-in": "4.0.0",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/media-buy/media-buy/list-proposals-request.json#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32,
+              "x-max-length-4.0": 512
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        },
+        "signing_profile": {
+          "x-status": "experimental",
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/media-buy/media-buy/list-proposals-request.json#/$defs/external:enums~1webhook-signing-profile.json",
+          "x-added-in": "3.3.0"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "not": {
+        "required": [
+          "authentication",
+          "signing_profile"
+        ]
+      }
+    },
+    "external:enums/auth-scheme.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/auth-scheme.json",
+      "deprecated": true,
+      "x-removed-in": "4.0.0",
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:enums/webhook-signing-profile.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/webhook-signing-profile.json",
+      "type": "string",
+      "enum": [
+        "adcp/webhook-signing/v1",
+        "web-bot-auth"
+      ],
+      "x-added-in": "3.3.0"
+    },
+    "external:core/canonical-account-ref.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-account-ref.json",
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/media-buy/media-buy/list-proposals-request.json#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/media-buy/media-buy/list-proposals-request.json#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-key.json",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/media-buy/media-buy/list-proposals-request.json#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-id.json",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "x-max-length-4.0": 64
+    },
+    "external:core/operator-unit.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/operator-unit.json",
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/proposal-disposition.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/proposal-disposition.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "type": "string",
+      "enum": [
+        "available",
+        "accepted",
+        "declined",
+        "expired",
+        "withdrawn"
+      ]
+    },
+    "external:core/ext.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/ext.json",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Read the seller's current proposals for an account, optionally narrowed to opportunities or proposal IDs. Experimental (media_buy.open_opportunities): sellers implementing it MUST list the feature id in experimental_features. Each invocation completes synchronously and never mutates proposal or opportunity state. It is the authoritative current-state and repair read for proposal.created notifications, for proposal.offered notifications (the buy-scoped sibling for seller offers against accepted media buys, defined with media_buy.seller_offers), and for proposal records in list_account_changes; buyers use the notification or the change feed to learn that something changed, not routine polling. Results are visible to every principal the seller authorizes for the account, the same as other account-scoped reads, and never cross accounts."
+}

@@ -8,7 +8,7 @@
     "mode": {
       "type": "string",
       "enum": ["seller_fixed", "account_fixed"],
-      "description": "seller_fixed means every account uses fixed_timezone. account_fixed means each account has an immutable timezone returned on Account and selected or assigned during account establishment."
+      "description": "seller_fixed means every account uses fixed_timezone. account_fixed means each account has its own timezone, returned on Account and selected or assigned when the account opens."
     },
     "fixed_timezone": {
       "type": "string",
