@@ -1833,7 +1833,7 @@ describe('createTrainingAgentServer', () => {
 
   it('keeps the seller-level vendor_metric_optimization.supported_metrics rollup consistent with the catalog', async () => {
     // The rollup is a 3.3 field (#8070), served only on a 3.3 response (#8487).
-    const result = await handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, servedAdcpVersion: '3.3-beta.0' });
+    const result = await handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, servedAdcpVersion: '3.3-beta.1' });
     const rollup = ((result as Record<string, any>).media_buy.vendor_metric_optimization.supported_metrics) as Array<{
       vendor: { domain: string; brand_id?: string };
       metric_id: string;
