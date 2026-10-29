@@ -61,12 +61,10 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // opportunity.later_proposals adds a Duration reference to the shared
   // opportunity context reached from the proposal and purchase tools (+2).
   // Core gender adds one shared predicate reached by five inputs.
-  // The collection-mechanism enum is reached once through
-  // billing_measurement.counting_mechanisms (measurement_terms).
   // Purchase rights add rights-scope and the right-use enum to the
   // proposal-bearing tools (+2 instances, +2 unique).
-  assert.equal(report.definition_instances, 716);
-  assert.equal(report.unique_definitions, 196);
+  assert.equal(report.definition_instances, 715);
+  assert.equal(report.unique_definitions, 195);
   assert.equal(report.repeated_definitions, 137);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
@@ -191,7 +189,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 196);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 195);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

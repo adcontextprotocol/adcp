@@ -85,6 +85,8 @@ export function listAccountChangesTool(storyboardCompat?: TrainingContext['story
     {
       annotations: { readOnlyHint: true, idempotentHint: true },
       payloadErrorsAsSuccess: true,
+      // Pre-3.2 callers get UNSUPPORTED_FEATURE from the handler.
+      gatesOwnRelease: true,
       ...(storyboardCompat && { trainingContext: { storyboardCompat } }),
     },
   );

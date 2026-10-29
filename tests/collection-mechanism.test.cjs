@@ -40,48 +40,70 @@ describe("collection mechanism vocabulary", () => {
     assert.equal(counting["x-status"], "experimental");
     assert.equal(counting["x-added-in"], "3.3.0");
     assert.match(counting.description, /Not `measurement_source`, which names the provider/);
-    const vmv = readSchema("/schemas/core/vendor-metric-value.json");
-    const prov = vmv.properties.measurement_provenance;
+    const prov = readSchema("/schemas/core/vendor-metric-provenance.json");
     assert.equal(prov["x-status"], "experimental");
     assert.equal(prov["x-added-in"], "3.3.0");
     assert.match(prov.description, /not `measurement_source`, which names the provider/);
+    const sibling = readSchema("/schemas/core/delivery-metrics.json").properties.vendor_metric_provenance;
+    assert.equal(sibling["x-status"], "experimental");
+    assert.equal(sibling["x-added-in"], "3.3.0");
+    assert.equal(sibling.items.$ref, "/schemas/core/vendor-metric-provenance.json");
   });
 
-  describe("vendor_metric_values[].measurement_provenance", () => {
-    let validate;
-    const row = (mp) => ({
-      vendor: { domain: "panelmeasurement.example" },
-      metric_id: "demographic_reach",
-      value: 1,
-      ...(mp === undefined ? {} : { measurement_provenance: mp }),
-    });
+  it("leaves the closed schemas unchanged (DR-0036): the fields live on open homes", () => {
+    const row = readSchema("/schemas/core/vendor-metric-value.json");
+    assert.equal(row.additionalProperties, false);
+    assert.equal(row.properties.measurement_provenance, undefined);
+    const canonical = readSchema("/schemas/core/canonical-measurement-terms.json");
+    assert.equal(canonical.properties.billing_measurement.properties.counting_mechanisms, undefined);
+  });
+
+  describe("delivery-metrics vendor_metric_provenance[]", () => {
+    let validateMetrics;
+    let validateEntry;
+    const key = { vendor: { domain: "panelmeasurement.example" }, metric_id: "demographic_reach" };
+    const row = { ...key, value: 1 };
+    const entry = (mp) => ({ ...key, ...mp });
     before(async () => {
-      validate = await compile("/schemas/core/vendor-metric-value.json");
+      validateMetrics = await compile("/schemas/core/delivery-metrics.json");
+      validateEntry = await compile("/schemas/core/vendor-metric-provenance.json");
     });
 
-    it("is optional", () => assert.ok(validate(row())));
+    it("is optional on delivery metrics", () => assert.ok(validateMetrics({ vendor_metric_values: [row] })));
     it("accepts mechanisms with and without deduplicated", () => {
-      assert.ok(validate(row({ mechanisms: ["set_top_box", "panel"], deduplicated: true })));
-      assert.ok(validate(row({ mechanisms: ["acr"] })));
-      assert.ok(validate(row({ mechanisms: ["set_top_box"], deduplicated: false })));
+      for (const mp of [
+        { mechanisms: ["set_top_box", "panel"], deduplicated: true },
+        { mechanisms: ["acr"] },
+        { mechanisms: ["set_top_box"], deduplicated: false },
+      ]) {
+        assert.ok(validateMetrics({ vendor_metric_values: [row], vendor_metric_provenance: [entry(mp)] }), JSON.stringify(mp));
+      }
+    });
+    it("carries the row's qualifier so the join key is the row key", () => {
+      const qualifier = { attribution_window: { interval: 7, unit: "days" } };
+      assert.ok(validateEntry(entry({ mechanisms: ["panel"], qualifier })));
+      assert.ok(!validateEntry(entry({ mechanisms: ["panel"], qualifier: { attribution_window: "7d", unknown_key: 1 } })));
     });
     it("rejects empty, duplicate, and unknown mechanisms", () => {
-      assert.ok(!validate(row({ mechanisms: [] })));
-      assert.ok(!validate(row({ mechanisms: ["panel", "panel"] })));
-      assert.ok(!validate(row({ mechanisms: ["ad_server"] })));
+      assert.ok(!validateEntry(entry({ mechanisms: [] })));
+      assert.ok(!validateEntry(entry({ mechanisms: ["panel", "panel"] })));
+      assert.ok(!validateEntry(entry({ mechanisms: ["ad_server"] })));
     });
-    it("requires mechanisms and a boolean deduplicated", () => {
-      assert.ok(!validate(row({ deduplicated: true })));
-      assert.ok(!validate(row({ mechanisms: ["panel"], deduplicated: "yes" })));
+    it("requires the join key, mechanisms and a boolean deduplicated", () => {
+      assert.ok(!validateEntry({ ...key, deduplicated: true }));
+      assert.ok(!validateEntry({ metric_id: key.metric_id, mechanisms: ["panel"] }));
+      assert.ok(!validateEntry({ vendor: key.vendor, mechanisms: ["panel"] }));
+      assert.ok(!validateEntry(entry({ mechanisms: ["panel"], deduplicated: "yes" })));
+      assert.ok(!validateMetrics({ vendor_metric_provenance: [] }));
     });
     it("stays open per DR-0009 while the enclosing row stays closed", () => {
-      assert.ok(validate(row({ mechanisms: ["panel"], vendor_note: "x" })));
-      assert.ok(!validate({ ...row(), mechanisms: ["panel"] }));
+      assert.ok(validateEntry(entry({ mechanisms: ["panel"], vendor_note: "x" })));
+      assert.ok(!validateMetrics({ vendor_metric_values: [{ ...row, mechanisms: ["panel"] }] }));
     });
   });
 
   describe("billing_measurement.counting_mechanisms[]", () => {
-    for (const uri of ["/schemas/core/measurement-terms.json", "/schemas/core/canonical-measurement-terms.json"]) {
+    for (const uri of ["/schemas/core/measurement-terms.json"]) {
       describe(uri, () => {
         let validate;
         const terms = (cs) => ({

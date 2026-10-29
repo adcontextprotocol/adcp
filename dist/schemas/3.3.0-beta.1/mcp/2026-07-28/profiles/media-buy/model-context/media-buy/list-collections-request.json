@@ -1,0 +1,255 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "account": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+        }
+      ]
+    },
+    "collections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1collection-selector.json"
+      }
+    },
+    "filters": {
+      "type": "object",
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1collection-kind.json"
+          }
+        },
+        "genres_include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "genres_exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "genre_taxonomy": {
+          "$ref": "#/$defs/external:enums~1genre-taxonomy.json"
+        },
+        "statuses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1collection-status.json"
+          }
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1locale-tag.json"
+          }
+        },
+        "talent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string"
+              },
+              "brand_id": {
+                "$ref": "#/$defs/external:core~1brand-id.json"
+              }
+            },
+            "required": [
+              "domain"
+            ]
+          }
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name_contains": {
+          "type": "string"
+        }
+      }
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-request.json"
+    },
+    "if_collections_version": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/context.json": {
+      "type": "object"
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id"
+          ]
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "sandbox": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/brand-id.json": {
+      "type": "string"
+    },
+    "external:core/operator-unit.json": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "external:core/collection-selector.json": {
+      "type": "object",
+      "properties": {
+        "publisher_domain": {
+          "type": "string"
+        },
+        "collection_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "publisher_domain"
+      ]
+    },
+    "external:enums/collection-kind.json": {
+      "enum": [
+        "series",
+        "publication",
+        "event_series",
+        "rotation",
+        "channel"
+      ]
+    },
+    "external:enums/genre-taxonomy.json": {
+      "enum": [
+        "iab_content_3.0",
+        "iab_content_2.2",
+        "gracenote",
+        "eidr",
+        "apple_genres",
+        "google_genres",
+        "roku",
+        "amazon_genres",
+        "custom"
+      ]
+    },
+    "external:enums/collection-status.json": {
+      "enum": [
+        "active",
+        "hiatus",
+        "ended",
+        "upcoming"
+      ]
+    },
+    "external:core/locale-tag.json": {
+      "type": "string"
+    },
+    "external:core/pagination-request.json": {
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer"
+        },
+        "cursor": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

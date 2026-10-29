@@ -4,7 +4,7 @@ title: One collection-mechanism vocabulary serves discovery-time counting and re
 class: normative
 status: proposed
 date: 2026-10-09
-refs: ["#6878", "#2041", "DR-0009", "DR-0019", "#7177"]
+refs: ["#6878", "#2041", "DR-0009", "DR-0019", "DR-0036", "#7177"]
 dissent: none
 ---
 
@@ -15,8 +15,9 @@ count is built from." It is used in two places and nowhere else may fork it:
 
 1. `measurement_terms.billing_measurement.counting_mechanisms[]` — discovery-time,
    scoped to the billing count.
-2. `vendor_metric_values[].measurement_provenance.mechanisms[]` — report-time,
-   scoped to one reported vendor row.
+2. `delivery-metrics.vendor_metric_provenance[].mechanisms[]` — report-time,
+   scoped to one reported vendor row and joined to it on
+   `(vendor, metric_id, qualifier)`.
 
 The enum names collection **mechanisms** (`set_top_box`, `acr`, `panel`,
 `server_logs`, `client_tracker`, `sdk`), never parties and never coverage claims.
@@ -34,9 +35,18 @@ enum and field descriptions say they are not `measurement_source`. Broadcast
 as-run logs and station affidavits are airing evidence carried in `by_spot[]`,
 not a mechanism.
 
-`measurement_provenance` is an open object (DR-0009): a descriptor, not a join
-key, so it does not meet DR-0019 Class A. It is deliberately not a `qualifier`
+`vendor_metric_provenance[]` entries are open objects (DR-0009): descriptors,
+not join-key objects, so they do not meet DR-0019 Class A. The entry carries the
+row's key only to join to it. It is deliberately not a `qualifier`
 key and stays out of the `(vendor, metric_id, qualifier)` reconciliation join.
+
+Both homes are open. `vendor-metric-value.json` is a closed row envelope
+(DR-0019 class B) and `canonical-measurement-terms.json` holds terms the buyer
+is bound by, so under DR-0036 neither takes a new field in a minor. Provenance
+therefore lives in a sibling array on the open `delivery-metrics.json`, and
+`counting_mechanisms` stays on the open `measurement-terms.json`; the canonical
+terms gain `counting_mechanisms` in 4.0 (registry check
+`canonical_counting_mechanisms_required_in_4_0`).
 `mechanisms` is a set (unique, order-insignificant). `deduplicated` is
 tri-state by presence — `true`, `false` (senders MUST serialize it), or absent
 (unspecified).

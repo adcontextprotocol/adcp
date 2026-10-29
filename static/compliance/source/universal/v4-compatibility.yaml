@@ -232,6 +232,22 @@ checks:
           Buyer-sent field on schemas that are closed in 3.x. A 3.x seller
           run cannot send or observe it.
 
+  - id: canonical_counting_mechanisms_required_in_4_0
+    issue: 6878
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A seller that lists media_buy.measurement_provenance in experimental_features declares counting_mechanisms on measurement_terms.billing_measurement but not on the canonical commercial terms."
+    fix: >-
+      Declare the experimental billing_measurement.counting_mechanisms on the
+      canonical commercial terms too. 3.3 carries it only on
+      core/measurement-terms.json, because canonical-measurement-terms.json is a
+      closed schema and a minor release does not change a closed schema.
+    observed_by:
+      none:
+        reason: >-
+          The canonical schema is closed in 3.x and does not carry the field, so
+          a 3.x seller run cannot send or observe it.
+
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
 # why a 3.x agent is not graded on it.

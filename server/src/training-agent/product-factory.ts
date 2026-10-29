@@ -102,6 +102,99 @@ function productCardImage(pub: PublisherProfile): ProductCardImage | undefined {
   };
 }
 
+/**
+ * The reference creative agent that defines the 3.0 card formats
+ * (server/src/creative-agent/ui-element-formats.json).
+ */
+const REFERENCE_CREATIVE_AGENT_URL = 'https://creative.adcontextprotocol.org/';
+
+/** 3.0 card manifest asset ids, keyed by the inline card specification label
+ * the same value is published under on 3.1+ (`product_card_detailed`). */
+const THREE_ZERO_CARD_SPECIFICATION_ASSETS: Readonly<Record<string, string>> = {
+  Publisher: 'publisher_name',
+  'Primary asset': 'primary_asset_type',
+  Audience: 'audience_summary',
+  'Estimated volume': 'estimated_volume',
+};
+
+type InlineCardImage = { url?: unknown; width?: unknown; height?: unknown; alt_text?: unknown };
+
+/**
+ * AdCP 3.0 shapes `product_card` and `product_card_detailed` as a creative
+ * format reference plus the manifest that renders it (`{ format_id,
+ * manifest }`, both required). 3.1 replaced that with the inline card the
+ * catalog builds. Rebuild the 3.0 cards from the same product data, against
+ * the reference creative agent's `product_card_standard` /
+ * `product_card_detailed` formats and their asset ids.
+ *
+ * Both formats require `product_image`, `product_name` and
+ * `product_description`; a product without them gets no 3.0 card (the field
+ * is optional) rather than an incomplete manifest.
+ */
+export function threeZeroProductCards(product: Product): {
+  product_card?: ProductCardManifest;
+  product_card_detailed?: ProductCardManifest;
+} {
+  const inline = product as unknown as {
+    product_card?: { image?: InlineCardImage; title?: unknown; description?: unknown };
+    product_card_detailed?: {
+      hero_image?: InlineCardImage;
+      title?: unknown;
+      description?: unknown;
+      specifications?: Array<{ label?: unknown; value?: unknown }>;
+    };
+  };
+  const card = inline.product_card;
+  const detailed = inline.product_card_detailed;
+  const image = card?.image ?? detailed?.hero_image;
+  const name = card?.title ?? detailed?.title;
+  const description = card?.description ?? detailed?.description;
+  if (
+    !image || typeof image.url !== 'string'
+    || typeof image.width !== 'number' || typeof image.height !== 'number'
+    || typeof name !== 'string' || typeof description !== 'string'
+  ) return {};
+
+  const text = (content: string) => ({ asset_type: 'text', content });
+  const assets: Record<string, unknown> = {
+    product_image: {
+      asset_type: 'image',
+      url: image.url,
+      width: image.width,
+      height: image.height,
+      ...(typeof image.alt_text === 'string' && { alt_text: image.alt_text }),
+    },
+    product_name: text(name),
+    product_description: text(description),
+    delivery_type: text(product.delivery_type),
+  };
+  const pricing = product.pricing_options?.[0] as {
+    pricing_model?: unknown;
+    fixed_price?: unknown;
+    floor_price?: unknown;
+    currency?: unknown;
+  } | undefined;
+  if (typeof pricing?.pricing_model === 'string') {
+    assets.pricing_model = text(pricing.pricing_model.toUpperCase());
+    const amount = typeof pricing.fixed_price === 'number' ? pricing.fixed_price : pricing.floor_price;
+    if (typeof amount === 'number') assets.pricing_amount = text(String(amount));
+    if (typeof pricing.currency === 'string') assets.pricing_currency = text(pricing.currency);
+  }
+  for (const spec of detailed?.specifications ?? []) {
+    const assetId = typeof spec.label === 'string' ? THREE_ZERO_CARD_SPECIFICATION_ASSETS[spec.label] : undefined;
+    if (assetId && typeof spec.value === 'string') assets[assetId] = text(spec.value);
+  }
+
+  const cardFor = (id: 'product_card_standard' | 'product_card_detailed'): ProductCardManifest => {
+    const formatId = { agent_url: REFERENCE_CREATIVE_AGENT_URL, id };
+    return { format_id: formatId, manifest: { format_id: formatId, assets } };
+  };
+  return {
+    product_card: cardFor('product_card_standard'),
+    product_card_detailed: cardFor('product_card_detailed'),
+  };
+}
+
 function productCardPriceLabel(pricing: PricingTemplate | undefined): string | undefined {
   if (!pricing) return undefined;
   const price = pricing.fixedPrice ?? pricing.floorPrice;
