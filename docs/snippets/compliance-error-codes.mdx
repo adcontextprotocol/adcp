@@ -13,6 +13,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | Code | Recovery | Suggested action |
 |------|----------|------------------|
 | `ACCOUNT_AMBIGUOUS` | correctable | pass the account_id of the intended account from error.details.candidates or list_accounts |
+| `ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT` | correctable | open a separate account for the change (request_account, or a sync_accounts provisioning entry), or resend the change with allow_separate_account: true; the named account is unchanged |
 | `ACCOUNT_IDENTITY_CONFLICT` | correctable | choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged |
 | `ACCOUNT_MOVED` | correctable | replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key |
 | `ACCOUNT_NOT_FOUND` | terminal | for a natural key, provision through sync_accounts or omit account for public discovery; for an account_id, verify via list_accounts or contact seller |
@@ -110,7 +111,6 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PROVENANCE_VERIFIER_NOT_ACCEPTED` | correctable | replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts |
 | `RATE_LIMITED` | transient | wait top-level error.retry_after seconds when present, then retry |
 | `READ_ONLY_SCOPE` | correctable | use a non-mutating alternative, or surface to the operator to request a scope that permits mutation |
-| `REFERENCE_DEFINITION_CHANGED` | correctable | refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal |
 | `REFERENCE_NOT_FOUND` | correctable | verify the referenced identifier exists and is accessible to the caller |
 | `REQUOTE_REQUIRED` | correctable | use error.details.decline_reason when present to inform recovery, then refine accepted_proposal_id and apply the amendment through accept_proposal, or keep control_media_buy inside the accepted envelope; some policies require a free-text ask or human negotiation, and 3.1 compatibility callers must adjust or rediscover |
 | `RIGHTS_CHANNEL_VIOLATION` | correctable | advisory — inspect error.details.rights_id and the requested channel against rights[].channels / excluded_channels; target a capability on a permitted channel, confirm the rights entry applies to this output, or have the holder grant the channel (a human or holder action) |
@@ -146,6 +146,15 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 **Suggested action:** pass the account_id of the intended account from error.details.candidates or list_accounts
 
 A natural-key reference matches more than one of the caller's accounts. error.details MAY list candidates[] (account_id, name), conforming to error-details/account-ambiguous.json, limited to accounts the caller is already granted. Recovery: correctable (pass the intended account_id).
+
+</Accordion>
+<a id="error-code-account-change-requires-new-account"></a>
+
+<Accordion title="ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT — correctable">
+
+**Suggested action:** open a separate account for the change (request_account, or a sync_accounts provisioning entry), or resend the change with allow_separate_account: true; the named account is unchanged
+
+The seller would accept a requested account change only as a separate account, for example because the new market needs its own contract, legal entity, invoicing entity, or currency, and the caller did not allow that. Returned for a request_account change request whose allow_separate_account is absent or false, and for a sync_accounts settings update, which has no such option. The named account is unchanged. error.details.reason MAY say what the separate account needs. Distinct from a plain refusal: the change is acceptable on a new account. Recovery: correctable (open a separate account with request_account or a sync_accounts provisioning entry, or resend the change with allow_separate_account: true, or keep the account as it is).
 
 </Accordion>
 <a id="error-code-account-identity-conflict"></a>
@@ -1083,15 +1092,6 @@ Request rate exceeded. Sellers SHOULD populate top-level <code>{"error.retry_aft
 **Suggested action:** use a non-mutating alternative, or surface to the operator to request a scope that permits mutation
 
 The caller's scope is read-only; the invoked task would mutate state and was rejected. Distinct from <code>{"SCOPE_INSUFFICIENT"}</code> (task not in scope at all) — the task is in some scopes this seller supports, just not this caller's. Recovery: correctable but not agent-autonomous — use a non-mutating alternative, or surface to the operator to request a scope that permits mutation.
-
-</Accordion>
-<a id="error-code-reference-definition-changed"></a>
-
-<Accordion title="REFERENCE_DEFINITION_CHANGED — correctable">
-
-**Suggested action:** refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal
-
-A third-party-published definition pinned in a proposal's commercial_terms.definition_pins[] (a publisher-catalog format option, publisher-catalog placement, adagents.json collection, or data-provider signal) no longer resolves to the pinned content_digest. Returned by accept_proposal, which re-verifies every pin before mutating any state, so no MediaBuy is created or amended. terms_digest can still verify because it covers the pin, not the definition the pin names. Error details SHOULD conform to error-details/reference-definition-changed.json: error.field names the failing pin (for example commercial_terms.definition_pins[2]) and details.current_content_digest carries the digest the definition resolves to now; one error is returned per drifted pin. Distinct from REFERENCE_NOT_FOUND (an identifier that does not exist or is inaccessible) and PROPOSAL_EXPIRED (the hold lapsed). The same drift found while finalizing is reported as an unable outcome with reason_code definition_changed and drifted_pins[] rather than as an error. A definition withdrawn from a successfully fetched document is drift and omits current_content_digest; a document that cannot be fetched or parsed is not drift and returns SERVICE_UNAVAILABLE instead. Because nothing was mutated, sellers SHOULD set error.mutation_outcome to not_applied. Recovery: correctable (re-run request_proposals or refine_proposals so the seller re-resolves the definitions and issues fresh pins, review the changed terms, and finalize again).
 
 </Accordion>
 <a id="error-code-reference-not-found"></a>

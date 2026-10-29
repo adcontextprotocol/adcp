@@ -252,6 +252,7 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 | [`ACCOUNT_IDENTITY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-account-identity-conflict) | correctable | **Deprecated in 3.3.** A deprecated `operator_identity` change targets another account's natural key | Choose another operator identity or retain the current identity; do not retry unchanged |
 | [`ACCOUNT_SETUP_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-setup-required) | correctable | Account needs setup before use | Check `details.setup` for URL or instructions |
 | [`ACCOUNT_AMBIGUOUS`](/docs/building/verification/compliance-catalog#error-code-account-ambiguous) | correctable | Natural key matches more than one account | Pass an `account_id` from `details.candidates` or `list_accounts` |
+| [`ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT`](/docs/building/verification/compliance-catalog#error-code-account-change-requires-new-account) | correctable | The seller would accept the account change only as a separate account, and the caller didn't allow one | Open a separate account, resend the [`request_account`](/docs/accounts/tasks/request_account) change with `allow_separate_account: true`, or keep the account as it is |
 | [`ACCOUNT_PAYMENT_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-payment-required) | terminal | Outstanding balance requires payment | Buyer must resolve billing |
 | [`ACCOUNT_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-account-suspended) | terminal | Account has been suspended | Contact seller to resolve |
 
@@ -619,7 +620,7 @@ function isRetryable(error, knownRecoveryByCode) {
 
 For an async task the claim exists from submit, so only (b) can apply to a failure after submit.
 
-**Worked example of (b).** [`REFERENCE_DEFINITION_CHANGED`](/docs/building/verification/compliance-catalog#error-code-reference-definition-changed) is pre-commit by construction: [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) re-verifies every definition pin before mutating any state, so no MediaBuy is created or amended. A seller returning it SHOULD set `mutation_outcome: "not_applied"`. A `SERVICE_UNAVAILABLE` from the same task because a pinned document could not be fetched is a different case and follows the rules above for its own failure point.
+**Worked example of (b).** [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired) from [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) is pre-commit when the seller checks `expires_at` before mutating any state, so no MediaBuy is created or amended. A seller that verified expiry first SHOULD set `mutation_outcome: "not_applied"`. A `SERVICE_UNAVAILABLE` from the same task because a downstream call failed mid-write is a different case and follows the rules above for its own failure point.
 
 **Seller obligations (sellers declaring AdCP 3.3 or later in `supported_versions`; earlier sellers MAY emit the field on the same terms).** Emitting `unknown` on a fenced claim is a SHOULD in 3.3 and becomes a MUST in 3.4, the same two-step cadence used for other hardening rules; the prohibitions below apply from 3.3.
 

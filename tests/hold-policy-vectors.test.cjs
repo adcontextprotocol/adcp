@@ -19,7 +19,7 @@ const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
-const { jcs, termsDigest } = require('./helpers/reference-definition-pin.cjs');
+const { jcs, termsDigest } = require('./helpers/terms-digest.cjs');
 const { ensureBuiltSchemas, readBuiltSchema, builtSchemaFiles } = require('../scripts/built-schemas.cjs');
 
 ensureBuiltSchemas();

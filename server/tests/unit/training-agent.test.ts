@@ -16586,6 +16586,38 @@ describe('get_signals handler', () => {
     stopSessionCleanup();
   });
 
+  it.each([
+    { signalSpec: 123 },
+    { signalSpec: 0 },
+    { signalSpec: true },
+    { signalSpec: false },
+    { signalSpec: null },
+    { signalSpec: ['automotive'] },
+    { signalSpec: { text: 'automotive' } },
+  ])('rejects non-string signal_spec $signalSpec instead of returning a catalog', async ({ signalSpec }) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: signalSpec,
+    });
+
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('signal_spec');
+    expect(result.recovery).toBe('correctable');
+    expect(result.signals).toBeUndefined();
+  });
+
+  it.each([
+    { signal_spec: '' },
+    { brief: 'automotive purchase intent' },
+  ])('preserves valid string and legacy brief discovery %#', async (criteria) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', { account, ...criteria });
+
+    expect(Array.isArray(result.signals)).toBe(true);
+    expect((result.signals as unknown[]).length).toBeGreaterThan(0);
+  });
+
   it('returns full catalog (capped) when neither signal_spec nor signal_ids provided', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_signals', { account });

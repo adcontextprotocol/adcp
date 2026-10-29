@@ -147,7 +147,7 @@ Filters run on the seller's copy, so a match on an anchored field (`genre`, `sta
 
 ### Authority
 
-A `list_collections` entry is a response copy, and the rules in [Collections in responses](/docs/media-buy/product-discovery/collections-and-installments#collections-in-responses) apply unchanged: `adagents.json` is authoritative, the copy wins only on its closed list of display fields, a copy is never authorization evidence, an unverified copy (of an undeclared collection, or from an agent `adagents.json` does not authorize) is display-only and never feeds carriage verification, and [definition pins](/docs/media-buy/specification#definition-pins) hash `adagents.json`, never the copy. This page does not restate that list.
+A `list_collections` entry is a response copy, and the rules in [Collections in responses](/docs/media-buy/product-discovery/collections-and-installments#collections-in-responses) apply unchanged: `adagents.json` is authoritative, the copy wins only on its closed list of display fields, a copy is never authorization evidence, an unverified copy (of an undeclared collection, or from an agent `adagents.json` does not authorize) is display-only and never feeds carriage verification. This page does not restate that list.
 
 **Consistency with `include_collections`.** Both reads serve the same copy. For the same key, account and moment, a seller MUST return the same copy from `list_collections` as from a product or proposal read with `include_collections: true`, and the same copy it pushes in `collection_card.updated`.
 

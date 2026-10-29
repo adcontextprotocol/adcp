@@ -203,10 +203,11 @@ checks:
         Tighten the nested object lists that multiply the worst case: the
         brand-ref (brand_kit_override, provenance), creative format
         declaration (macro_resolution_capabilities), attestation issuer,
-        audience activation method, and geo place system limits. 3.3
-        accepts an 87 MiB structural ceiling because MAX_CAPABILITIES_BYTES
-        is the operative cap; 4.0 can lower the ceiling before the
-        annotations become keywords.
+        audience activation method, and geo place system limits. The
+        structural bounds are the protocol's limit on the capabilities
+        document, and they allow an 87 MiB worst case. MAX_CAPABILITIES_BYTES
+        is only a receiver backstop, so 4.0 lowers that ceiling with tighter
+        nested bounds before the annotations become keywords.
     observed_by:
       none:
         reason: >-
@@ -231,6 +232,96 @@ checks:
         reason: >-
           Buyer-sent field on schemas that are closed in 3.x. A 3.x seller
           run cannot send or observe it.
+  - id: seller_held_change_terms_required_in_4_0
+    issue: 8087
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A seller that changes a signed purchase on its own authority carries no seller-held entry in commercial_terms.change_terms[] naming the bounded change."
+    fix: >-
+      From 4.0, declare each pre-agreed, bounded seller change as a
+      change_terms[] entry with holder seller, a purchase_index, one of
+      decrease_budget, update_impression_goal, update_flight_dates or
+      update_targeting, and at least one absolute bound (a minimum result, an
+      earliest or latest result, or an ordered alternates chain), stated in the
+      committed terms and bound by the buyer through accept_proposal. 3.3 has
+      no such lane, because commercial_terms and change-term.json are closed
+      and a minor release does not change a closed schema. Until 4.0, send a
+      seller offer (media_buy.seller_offers) for every seller-initiated change
+      to a signed buy.
+    observed_by:
+      none:
+        reason: >-
+          Seller-side lane on schemas that are closed in 3.x, and nothing in
+          a 3.x run carries or reads it. A 3.x run cannot observe this check.
+
+  - id: definition_pins_required_in_4_0
+    issue: 7660
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A proposal's commercial_terms references a third-party-published definition (a publisher-catalog format option or placement, an adagents.json collection, or a data-provider signal) and carries no seller-authored definition pin over it."
+    fix: >-
+      Nothing in 3.3. Definition pins shipped in 3.3.0-beta.0 and
+      3.3.0-beta.1 and are withdrawn after beta.1 because commercial_terms is
+      closed in 3.x (adcp#8501). Do not emit definition_pins, the
+      definition_changed refinement reason, or REFERENCE_DEFINITION_CHANGED
+      to a peer on a later 3.3 release. 4.0 reintroduces the design through a declared
+      commercial_terms extension point that the buyer must understand.
+    observed_by:
+      none:
+        reason: >-
+          The pin is a seller-authored field on commercial_terms, which is
+          closed in 3.x, and 3.3 has no wire form for it after beta.1. A 3.x run
+          cannot observe it.
+
+  - id: purchase_rights_required_in_4_0
+    issue: 8090
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A creator-deal proposal binds usage, paid-amplification, or exclusivity rights in a purchase of its commercial_terms."
+    fix: >-
+      Nothing in 3.3. Purchase rights (purchases[].rights[]) shipped in
+      3.3.0-beta.1 and are withdrawn after it because commercial_terms is closed in
+      3.x (adcp#8501). Carry rights through the brand protocol's
+      acquire_rights until 4.0 reintroduces them through a declared
+      commercial_terms extension point that the buyer must understand.
+    observed_by:
+      none:
+        reason: >-
+          A seller-authored term on commercial_terms, which is closed in 3.x.
+          3.3 has no wire form for it, so a 3.x run cannot observe it.
+
+  - id: installment_selection_required_in_4_0
+    issue: 8230
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A proposal for a product that declares installments cannot name the exact installments a purchase buys, or accept a refine_proposals installment_changes list."
+    fix: >-
+      Nothing in 3.3. A purchase buys the product as offered, and the
+      installments a product includes are readable on the product. Selecting
+      installments inside purchases[] and refining them with
+      installment_changes wait for 4.0, where commercial_terms gets a declared
+      extension point that the buyer must understand (adcp#8501).
+    observed_by:
+      none:
+        reason: >-
+          Selection is a buyer-sent and seller-authored term on
+          commercial_terms, which is closed in 3.x. 3.3 has no wire form for
+          it, so a 3.x run cannot observe it.
+  - id: canonical_counting_mechanisms_required_in_4_0
+    issue: 6878
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A seller that lists media_buy.measurement_provenance in experimental_features declares counting_mechanisms on measurement_terms.billing_measurement but not on the canonical commercial terms."
+    fix: >-
+      Declare the experimental billing_measurement.counting_mechanisms on the
+      canonical commercial terms too. 3.3 carries it only on
+      core/measurement-terms.json, because canonical-measurement-terms.json is a
+      closed schema and a minor release does not change a closed schema.
+    observed_by:
+      none:
+        reason: >-
+          The canonical schema is closed in 3.x and does not carry the field, so
+          a 3.x seller run cannot send or observe it.
 
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says

@@ -20770,6 +20770,17 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
 const MAX_SIGNAL_RESULTS = 10;
 
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
+  const signalSpecInput = (args as { signal_spec?: unknown }).signal_spec;
+  if (signalSpecInput !== undefined && typeof signalSpecInput !== 'string') {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'signal_spec must be a string.',
+        field: 'signal_spec',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   const req = args as unknown as GetSignalsRequest & ToolArgs & {
     brief?: string;
     discovery_mode?: 'brief' | 'wholesale';

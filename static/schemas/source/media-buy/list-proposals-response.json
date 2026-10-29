@@ -31,7 +31,13 @@
             "enum": ["request", "refinement", "later", "seller_offer"],
             "description": "How the snapshot was created: in a request_proposals response, by refine_proposals, by the seller after the creating task completed under later_proposals consent, or by the seller as an offer against an accepted media buy (media_buy.seller_offers, distinct from later proposals). Always seller_offer for a snapshot with proposal_initiator seller."
           },
-          "later_reason": { "$ref": "/schemas/enums/later-proposal-reason.json" }
+          "later_reason": { "$ref": "/schemas/enums/later-proposal-reason.json" },
+          "offer_reason": {
+            "$ref": "/schemas/enums/offer-reason.json",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Experimental (media_buy.seller_offers). Why the seller made the offer. Present exactly when origin is seller_offer. It describes the offer and is not part of the proposal's canonical terms."
+          }
         },
         "required": ["proposal", "disposition", "disposition_changed_at", "origin"],
         "if": {
@@ -58,6 +64,7 @@
               "required": ["origin"]
             },
             "then": {
+              "required": ["offer_reason"],
               "properties": {
                 "proposal": {
                   "properties": {
@@ -70,6 +77,7 @@
               }
             },
             "else": {
+              "not": { "required": ["offer_reason"] },
               "properties": {
                 "proposal": {
                   "properties": { "proposal_initiator": { "not": { "const": "seller" } } }

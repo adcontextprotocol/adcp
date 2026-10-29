@@ -673,24 +673,29 @@ source timezone, or billing cycle), anchor, and timezone. A single-account subsc
 can override the timezone with `period_timezone`. The owed periods are the complete
 periods that:
 
-1. start on or after the first boundary at or after the latest of:
+1. start on or after the first boundary at or after the later of:
    - the subscription version's `accepted_at`, in the
-     [`get_principal`](/docs/protocol/get_principal) readback;
-   - the buy's `confirmed_at`, when the seller committed to it; and
-   - the account's `authorization.authorized_at`, when the current grant began; and
-2. overlap the buy's flight, from its `start_time` to its **stop time**. The stop time
+     [`get_principal`](/docs/protocol/get_principal) readback; and
+   - the account's `authorization.authorized_at`, when the current authorization chain began. A re-grant within `status_retention_days` of losing authority continues the chain and leaves it unchanged;
+2. end after the buy's `confirmed_at`, when the seller committed to it, so the period
+   in which the buy is confirmed is owed in full; and
+3. overlap the buy's flight, from its `start_time` to its **stop time**. The stop time
    is the earliest of `end_time`, `cancellation.canceled_at`, and `completed_at`,
    which sellers advertising `media_buy.reporting_subscriptions` populate for every
    completed buy.
 
-Periods are never clipped. A mid-period start begins at the next boundary, as for an
-account-level configuration, and the period containing the stop time is owed in full.
-A buy canceled mid-period owes that period and none after it. A buy confirmed on
+Periods are never clipped. A subscription accepted or authorized mid-period begins at
+the next boundary, as for an account-level configuration. A buy confirmed mid-period is
+owed that period in full, as the account-level ledger includes any buy confirmed by a
+period's end: a buy confirmed at 10:00 on its start day owes that whole day on a daily
+feed, and one confirmed on November 12 owes all of November on a monthly billing feed.
+The period containing the stop time is also owed in full.
+A buy canceled mid-period owes that period and none after it, and a buy canceled before its flight starts owes nothing. A buy confirmed on
 November 1 with a December 1 start owes nothing before December 1. Every buy has an
 `end_time`, so there is no open-ended case.
 
-Flight values are taken as of each period's `scope_resolved_at`, matching how each
-obligation freezes its `media_buy_ids`. An
+Flight values are taken as of each period's `scope_resolved_at`, which for a subscription
+obligation is the period end, matching how each obligation freezes its `media_buy_ids`. An
 [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) extension adds
 only periods not yet resolved. Reinstating or extending a buy after a period has
 elapsed never makes that period owed retroactively.
@@ -719,9 +724,10 @@ owed.
 - **New version.** A new `subscription_version` gets its own `accepted_at`, which is T.
   Scope changes count, so adding an account starts a new version. For an account in
   both versions the old version is outgoing and the new one incoming. An account that
-  is new in the new version follows the ordinary start rule. Earlier versions'
-  `accepted_at` values stay in the readback as `prior_versions` while their
-  obligations are retained.
+  is new in the new version follows the ordinary start rule. Earlier versions stay
+  in the readback as `prior_versions`, each with its `accepted_at`, `superseded_at`,
+  and `configuration`, while their obligations are retained, so a buyer can
+  recompute after losing local state.
 - **Deactivation** at `deactivated_at` has no incoming schedule: periods that started
   before it stay owed, and no later ones are created.
 - **Overrides and `replace_account_configs`.** When the principal's own account-level
@@ -732,9 +738,20 @@ owed.
 - **Resolution change.** If the seller adds an offering that changes the resolution, the
   old offering is outgoing and the new one incoming, so the change never touches a
   period already started.
+- **Different offerings on each side.** With `match: all`, or a resolution change, the
+  outgoing and incoming sides can resolve different offerings. E is then computed per
+  incoming offering: an offering present on both sides hands off at the end of its own
+  last period that started before T; a newly resolved offering starts at the latest
+  such end across the outgoing offerings.
+- **Reactivation.** Turning an inactive subscription back on is a fresh start at the
+  reactivation instant, under the ordinary start rule. Nothing that starts while the
+  subscription was inactive is owed. The readback lists each interval in
+  `inactive_intervals`, so a buyer can recompute after losing local state.
 - **Account timezone change.** For account-timezone periods, the old timezone's
   schedule is outgoing. The E instant is listed as `effective_at` in
-  `timezone_cutovers[]`, and `list_accounts` shows the new `timezone` and `revision`.
+  `timezone_cutovers[]`, with the old zone as `previous_timezone`, and `list_accounts`
+  shows the new `timezone` and `revision`. When the account's offerings have different
+  boundaries, the seller lists one entry per `offering_id`.
 
 Each obligation names the `offering_id` and `report_definition_id` it used, and that
 offering is authoritative for the obligation's timing: its alignment, anchor, and
@@ -826,13 +843,17 @@ data.
   statuses for revisions the caller read before `unauthorized_at`. Every other
   reference to the account is unavailable.
 - **Re-grant.** The account leaves `accounts_unauthorized[]` and is readable here
-  again. Withheld periods are owed again, due at the re-grant time plus the offering's
+  again. The re-grant continues the earlier authorization chain, so
+  `authorization.authorized_at` keeps its original value. Withheld periods are owed again, due at the re-grant time plus the offering's
   `delivery_sla` rather than their original `expected_at`. With
   `subscriptions.backfill_on_regrant: true`, no gap is recorded and every period in
   the revoked interval is owed, on the same re-grant deadline. Otherwise the interval
   is recorded in `gaps[]` with reason `unauthorized`, `from` the last boundary at or
   before `unauthorized_at` `until` the first boundary at or after the re-grant, and its
-  periods are not owed.
+  periods are not owed. Boundaries differ between offerings, so when the account's
+  offerings have different boundaries the seller records one gap per `offering_id`,
+  each with that offering's boundaries; a gap without `offering_id` applies to every
+  offering.
 - **Expired entry.** After `status_retention_days` the `accounts_unauthorized[]` entry
   drops. A later re-grant is then a fresh coverage start from the new `authorized_at`,
   with no gap claimed.

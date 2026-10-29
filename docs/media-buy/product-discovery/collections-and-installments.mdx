@@ -141,7 +141,7 @@ The collection does not copy person-level identity. A buyer that wants the perso
 
 Keep arrays short: `adagents.json` has fetch-size budgets, so `images` and `sample_content` are capped at 10 entries each. `sample_content` carries no `kind`; the platform URL implies it.
 
-`images`, `sample_content` and `url` are excluded from the `publisher_collection` [definition pin](/docs/media-buy/specification#definition-pin-preimage) projection, so refreshing a thumbnail or a sample does not fail committed proposals with `REFERENCE_DEFINITION_CHANGED`.
+`images`, `sample_content` and `url` are display copies, so a seller can refresh a thumbnail or a sample without changing the collection the publisher authorizes.
 
 ## Programmed channels and owner-sold carriage
 
@@ -787,73 +787,11 @@ Two qualifications matter in practice.
 
 **The collection scope is a buyer check, not just a seller rule.** Every top-level `collection_ref` MUST be one the product's `collections` selectors already name, and `publisher_domain` is the authorization root — it names the `adagents.json` that declares the collection. JSON Schema cannot express the set relationship, so buyers MUST reject a product whose installment names a collection its own selectors do not, rather than treating the installment as authorized inventory. (A `derivative_of.installment_ref` is deliberately exempt: a clip may name a source in another collection, and it is a provenance pointer rather than something being sold.)
 
-### Buying exact installments (experimental)
+### Buying a product that names installments
 
-Naming the specific slots a purchase buys is experimental under the feature id `media_buy.installment_selection`. A proposal's `commercial_terms.purchases[].installments` holds canonical references into the allocated product's `installments`:
+A purchase buys the product as offered: run-of-collection when the product names no installments, and the product's complete installment set when it does. In 3.3 a purchase cannot name the exact slots it buys, and `refine_proposals` cannot drop or swap one. `commercial_terms` is closed in 3.x, so a slot selection a buyer could not read, but would be bound by through `terms_digest`, cannot be added in a minor release. Installment selection is planned for 4.0, where `commercial_terms` gets a declared extension point with must-understand; see [Planned for 4.0](/docs/reference/migration/v4-compatibility#installment_selection_required_in_4_0).
 
-```json
-{
-  "product_id": "creatorloop_creator_juniper_vale",
-  "pricing_option_id": "flat_usd",
-  "installments": [
-    {
-      "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
-      "installment_id": "juniper_vale_slot_1"
-    },
-    {
-      "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
-      "installment_id": "juniper_vale_slot_2"
-    }
-  ]
-}
-```
-
-Present, the array is the complete bought set for that purchase, ordered by the JCS bytes of each reference so equal bought sets always serialize to equal digests. Absent, the purchase buys the product as offered — run-of-collection when the product names no installments, and the product's complete installment set when it does. Absence never means "no installments", which is why a buyer that does not implement the feature MUST reject a proposal carrying `installments` rather than ignore the field: ignoring it reads a two-slot buy as an eight-slot one.
-
-Because `installments` lives inside `commercial_terms`, it is covered by `terms_digest`. Dropping or swapping a slot produces a different digest, so the `proposal_terms_digest` that [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) verifies binds the exact slots bought, not just the product and the price.
-
-### Dropping and swapping a slot
-
-`refine_proposals` carries `installment_changes`, the installment-level analogue of `product_changes`. A tuple cannot be an object key, so it is a list rather than a map, and each entry names the purchase by `product_id`:
-
-```json
-{
-  "proposal_id": "prop_creatorloop_7781",
-  "action": "revise",
-  "installment_changes": [
-    {
-      "product_id": "creatorloop_creator_juniper_vale",
-      "installment_ref": {
-        "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
-        "installment_id": "juniper_vale_slot_2"
-      },
-      "action": "omit"
-    },
-    {
-      "product_id": "creatorloop_creator_juniper_vale",
-      "installment_ref": {
-        "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
-        "installment_id": "juniper_vale_slot_3"
-      },
-      "action": "include"
-    }
-  ]
-}
-```
-
-A swap is one `omit` plus one `include` in the same refinement, and it is not atomic — the seller may satisfy the `omit`, fail the `include`, and return `partial`. Entries MUST be unique by `(product_id, installment_ref)`. Unlike `product_changes`, whose object keys make a contradiction structurally impossible, that is a requirement the list shape cannot enforce, so a seller receiving a repeated or contradictory pair rejects the request with `INVALID_REQUEST` rather than applying entries in an arbitrary order. Changes the seller understood but could not satisfy come back as `constraint_unsatisfiable` with the failing entries echoed in `unsatisfied_installment_changes`. For the full check order and error codes, see [Change installments](/docs/media-buy/task-reference/refine_proposals#change-installments-experimental).
-
-Three seller postures are visible from capabilities, and buyers should expect all three:
-
-| Seller declares | What a buyer can do |
-|---|---|
-| Product `installments`, no feature id | See the slot set; take the product or leave it |
-| `media_buy.installment_selection` in `experimental_features` | Also read the exact slots a proposal bought, bound by `terms_digest` |
-| …plus `installment_changes` in `supported_dimensions` | Also drop or swap a slot through `refine_proposals` |
-
-A committed proposal can separately read back which installments its hold covers, in `holds[]` (experimental, `media_buy.installment_holds`); see [Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental). Keep the two arrays distinct: `purchases[].installments` is contract and is covered by `terms_digest`; `holds[]` is readback about the hold finalize placed and is not. The terms already fix what is reserved: a purchase that names `installments` is one the seller reserves exactly, whenever its effective hold policy holds at all. The readback is the looser side — every `holds[]` entry names a product the proposal purchases and an installment that product includes, but no rule says the array enumerates every reserved slot, and its "one that product includes" wording does not yet say whether the bought subset or the product's full slate bounds it. So whether a seller may list a slot you dropped through `installment_changes` is unsettled for now, as is whether revising away from a held slot releases that hold. Because `extend_hold` changes no terms, `installment_changes` is forbidden on it.
-
-Sellers declare support by listing `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, which requires `media_buy.installment_selection` in `experimental_features`. Buyers MUST NOT send the field otherwise.
+A committed proposal can read back which installments its hold covers, in `holds[]` (experimental, `media_buy.installment_holds`); see [Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental). `holds[]` is readback about the hold finalize placed, not contract, and is not covered by `terms_digest`.
 
 ## get_products response structure
 
@@ -1308,7 +1246,6 @@ Composition and views are inline on the product. The follower count lives on the
 - `as_of` is when the count last changed, not when it was last read. A refresh that leaves `lower_bound`, `upper_bound` and `precision` unchanged is not a change: the seller keeps the earlier `as_of`, no feed or `list_collections` version moves, and no [collection card webhook](/docs/media-buy/task-reference/list_collections#collection-card-webhooks) fires. A scheduled sweep can therefore check every count without forcing buyers to resync. Buyers comparing two creators compare `as_of` first.
 - The value counts accounts, not de-duplicated people, even though `audience-size` is worded for people. A person who follows the same creator on two platforms is counted twice, so buyers MUST NOT sum `followers` across `distribution` entries or treat it as reach.
 - Display and comparison only. It is not a targeting predicate and does not size a buyable audience.
-- It is outside the [definition pin](/docs/media-buy/specification#definition-pins) projection: a refreshed count does not change the collection's `content_digest`, while any other change to a `distribution` entry does.
 
 A seller that serves or relays collection objects carrying `followers` MUST list `media_buy.collection_cards` in `experimental_features` on `get_adcp_capabilities`. A publisher authoring the field directly in `adagents.json` has no capabilities response; the field is experimental either way. See [experimental status](/docs/reference/experimental-status).
 

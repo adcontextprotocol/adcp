@@ -1388,7 +1388,7 @@ The `identity.brand_json_url` field on `get_adcp_capabilities` (added in 3.x, se
 7. **`identity.key_origins` consistency check (mandatory when signing).** For every surface/purpose declared under `identity.key_origins` on the capabilities response, the host of the resolved `jwks_uri` MUST equal the declared origin for that surface/purpose. Mismatch on any surface/purpose → reject with `request_signature_key_origin_mismatch` carrying `{ purpose, expected_origin, actual_origin }`. A publisher pin does not skip this check, because the JWKS source is always the operator brand.json. If the agent declares signing without a corresponding `identity.key_origins.{purpose}` entry, reject with `request_signature_key_origin_missing` carrying `{ purpose, posture }`.
 8. Fetch JWKS, find the `kid`, verify per the existing RFC 9421 profile (steps 7+ of the [verifier checklist](#verifier-checklist-requests)).
 
-**The capabilities budget binds this path only.** The `MAX_CAPABILITIES_BYTES` budget (64 KiB) applies to step 1 of this chain, which is part of the RFC 9421 profile that 3.3 deprecates. The fetch has no narrowing lever: it reads the whole `get_adcp_capabilities` response, and the request carries no way to ask for less. A capabilities document above the budget fails with `request_signature_capabilities_unreachable` and the agent's signing keys stop resolving. The [Web Bot Auth profile](#web-bot-auth-identities) is unaffected. Its verifier fetches the key directory at the signer's origin and makes no `get_adcp_capabilities` call, so the size of the capabilities document does not gate signature verification there. An agent whose capabilities cannot stay under 64 KiB, such as a creative agent with a large `creative.supported_formats` catalog, adopts the Web Bot Auth profile or keeps the document under the budget. 3.x does not add a way around the limit to the RFC 9421 profile. See [Response Size Bounds](#response-size-bounds).
+**The capabilities budget binds this path only.** `MAX_CAPABILITIES_BYTES` (64 KiB) is the fetch budget of step 1 of this chain. It belongs to the RFC 9421 profile, which 3.3 deprecates and 4.0 removes. It is not a protocol limit on the `get_adcp_capabilities` response, which is bounded by structure (see [Response Size Bounds](#response-size-bounds)). Outside this chain, the same figure is only a receiver backstop. The fetch has no narrowing lever: it reads the whole `get_adcp_capabilities` response, and the request carries no way to ask for less. A capabilities document above the budget fails with `request_signature_capabilities_unreachable` and the agent's signing keys stop resolving. The [Web Bot Auth profile](#web-bot-auth-identities) is unaffected. Its verifier fetches the key directory at the signer's origin and makes no `get_adcp_capabilities` call, so the size of the capabilities document does not gate signature verification there. An agent whose capabilities cannot stay under 64 KiB, such as a creative agent with a large `creative.supported_formats` catalog, adopts the Web Bot Auth profile or keeps the document under the budget. 3.x does not add a way around the limit to the RFC 9421 profile, and 4.0 removes this fetch budget together with the profile.
 
 **Key material and key pointers do not belong in capabilities.** The `identity.brand_json_url` pointer exists for this deprecated chain only, and the chain stays as written through 3.x. No new path reads keys, or a pointer to keys, from `get_adcp_capabilities`. A signing path added after 3.3 finds keys through the signer's key directory, as the [Web Bot Auth profile](#web-bot-auth-identities) does, and does not fetch capabilities to do it. A field that carries or points at key material MUST NOT be added to the capabilities response. This keeps the size of the capabilities document from ever gating signature verification on a path that is not already deprecated.
 
@@ -1435,7 +1435,7 @@ Mirrors the [request-signing quickstart](#quickstart-opt-into-request-signing-in
 Pseudocode (TypeScript-flavored; SDK helpers below collapse this to a single call):
 
 ```ts
-const MAX_CAPABILITIES_BYTES = 65_536;
+const MAX_CAPABILITIES_BYTES = 65_536;                                      // deprecated RFC 9421 chain only
 const MAX_BRAND_JSON_BYTES   = 2_097_152;                                   // 2 MiB; brand.json only
 const MAX_JWKS_BYTES         = 65_536;
 const FETCH_BUDGETS          = { connect: 5_000, total: 10_000, maxRedirects: 0 };
@@ -2428,7 +2428,8 @@ the first body byte.
 **Precedence.** 4 MiB is a ceiling on what a *default* may be, not a target and
 not a license to raise a tighter path-specific cap. Where a path defines its
 own cap, that cap governs that path: `MAX_BRAND_JSON_BYTES` (2 MiB),
-`MAX_JWKS_BYTES` and `MAX_CAPABILITIES_BYTES` (64 KiB each), the 4 MiB
+`MAX_JWKS_BYTES` (64 KiB), `MAX_CAPABILITIES_BYTES` (64 KiB, on the capabilities
+fetch of the deprecated RFC 9421 key-discovery chain only), the 4 MiB
 attestation task-body cap, the 4096-byte `adcp_error` cap in
 [Transport Error Mapping](/docs/building/operating/transport-errors#security-considerations),
 the 5 MB general SSRF body cap for fetches of counterparty-supplied URLs
@@ -2466,14 +2467,15 @@ and the authenticated extended card is larger, not smaller. On `tools/list`
 the page size is the server's choice — MCP's `cursor` carries no page-size
 parameter — so a buyer cannot ask for less, though AdCP task names are fixed
 by the protocol, so it can still call the named tasks directly. A buyer can
-narrow `get_adcp_capabilities` with `protocols[]`, but that does not help the
-case that matters most: the signing-key discovery path fetches capabilities
-unnarrowed under `MAX_CAPABILITIES_BYTES` (64 KiB), so a capabilities document
-above that budget fails with `request_signature_capabilities_unreachable` and
-makes the agent's signing keys unresolvable for any verifier without a live
-cached mapping, and for the rest within one cache cycle. An oversized
-capabilities document therefore costs signature verification as well as
-discovery. See
+narrow `get_adcp_capabilities` with `protocols[]`, but that does not help on
+the deprecated RFC 9421 signing-key discovery path. That path fetches
+capabilities unnarrowed under `MAX_CAPABILITIES_BYTES` (64 KiB), so a
+capabilities document above that budget fails with
+`request_signature_capabilities_unreachable` and makes the agent's signing keys
+unresolvable for any verifier without a live cached mapping, and for the rest
+within one cache cycle. For an agent that signs under that profile, an
+oversized capabilities document therefore costs signature verification as well
+as discovery. See
 [Discovering an agent's signing keys](#discovering-an-agents-signing-keys-via-brand_json_url)
 and [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
 
@@ -2485,17 +2487,17 @@ contents: `media_buy.portfolio.publisher_domains` and
 `/.well-known/adagents.json`, which any domain owner publishes unilaterally and
 without the named agent's consent. An agent that mirrors "every publisher whose
 adagents.json names me" has handed an unauthenticated stranger a write
-primitive into its own capabilities document — and because that document is
-fetched unnarrowed under `MAX_CAPABILITIES_BYTES` on the
-[signing-key discovery path](#discovering-an-agents-signing-keys-via-brand_json_url),
-inflating it past 64 KiB costs the victim signature verification, not merely
-discovery. The attacker needs no relationship with the victim, and the failure
+primitive into its own capabilities document — and because the deprecated
+RFC 9421 [signing-key discovery path](#discovering-an-agents-signing-keys-via-brand_json_url)
+fetches that document unnarrowed under `MAX_CAPABILITIES_BYTES`, inflating it
+past 64 KiB costs a victim that signs under that profile signature
+verification, not merely discovery. The attacker needs no relationship with
+the victim, and the failure
 arrives a cache cycle later, far from its cause.
 
 Agents therefore **MUST NOT** reflect a counterparty-asserted list unbounded.
-A single counterparty-asserted field **MUST NOT** exceed one eighth of
-`MAX_CAPABILITIES_BYTES` (8,192 bytes), and all such fields together
-**MUST NOT** exceed one quarter (16,384 bytes). Measure uncompressed
+A single counterparty-asserted field **MUST NOT** exceed 8,192 bytes, and all
+such fields together **MUST NOT** exceed 16,384 bytes. Measure uncompressed
 serialized JSON — the member name, the array punctuation, and the quoted
 elements — because that is the unit the consumer's cap is enforced in: a
 field that fits only once gzipped still trips a verifier counting decoded
@@ -2503,15 +2505,15 @@ bytes. Today exactly two fields carry this class, so the aggregate equals
 their sum and binds nothing the per-field rule does not; it is written to
 hold when a third such field lands.
 
-**These are sub-caps, not an allowance.** They carve a ceiling out of a
-budget the whole document must already stay under; the remaining bytes are
-not an entitlement for self-declared fields to grow into. An agent whose
-counterparty-asserted fields sit at 2 KiB and whose format catalog takes the
-document past 64 KiB has satisfied every MUST in this paragraph and still
-lost signature verification — self-inflicted rather than attacker-inflicted,
-and just as broken.
+**These are sub-caps, not an allowance.** They cap what a third party can
+write into the document. They are not an entitlement for self-declared fields
+to grow into the rest. An agent that signs under the deprecated RFC 9421
+profile, whose counterparty-asserted fields sit at 2 KiB and whose format
+catalog takes the document past that profile's 64 KiB fetch budget, has
+satisfied every MUST in this paragraph and still lost signature verification —
+self-inflicted rather than attacker-inflicted, and just as broken.
 
-**Capabilities are bounded by structure as well as by bytes.** From 3.3 the
+**Capabilities are bounded by structure.** From 3.3 the
 `get_adcp_capabilities` response schema, and every shared schema it references,
 bounds each array with a maximum item count, each string with a maximum
 length, and each keyed map with a maximum member count, so that the largest
@@ -2557,7 +2559,7 @@ schema-valid. The annotations are registered as a 4.0 tightening in the
 [4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
 **Worst case.** With the 4.0 bounds applied, the largest schema-valid
-capabilities document is 91,266,501 bytes (about 87 MiB), counting only the
+capabilities document is 91,808,275 bytes (about 88 MiB), counting only the
 members the schema declares. `scripts/capabilities-structural-bounds.cjs` computes it
 and `tests/capabilities-structural-bounds.test.cjs` pins it, so the figure moves
 only when a limit moves. The calculation assumes every declared member is
@@ -2575,16 +2577,36 @@ schemas: a brand reference (`brand-ref`, up to 111 KiB each, most of it
 (`creative-operation-format-declaration`, up to 107 KiB each, most of it
 `macro_resolution_capabilities`), an attestation issuer entry (322 KiB each),
 an audience activation method (144 KiB), and a geographic place system (534
-KiB). 3.3 accepts the ceiling because the byte limits are the operative cap.
+KiB). The way to lower that ceiling is a tighter structural bound on those
+nested lists, not a byte cap.
 Tightening those nested limits is registered as a 4.0 follow-up in the
 [4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
-That figure bounds the shape of a document; it is not a size target and it is
-far above both the 4 MiB client default and `MAX_CAPABILITIES_BYTES`. The byte
-limits therefore stay. `MAX_CAPABILITIES_BYTES` (64 KiB) remains the safety net
-on the RFC 9421 key-discovery path, and the client default applies to every
-other read. Structural bounds make growth predictable and give a producer a
-per-field budget to design to. They do not make a document small.
+**The structural bounds are the limit.** The structural bounds are the
+protocol's limit on the `get_adcp_capabilities` response. Agents **MUST NOT**
+design to a byte figure. The worst-case figure describes the shape the bounds
+allow; it is not a size target. The bounds cover the members the schema
+declares; members a producer adds at the open positions above, such as `ext`,
+fall outside them.
+
+**The byte figure is a receiver backstop.** Receivers commonly bound response
+size at the HTTP or gateway layer, as they do for any body they read. A limit
+around 64 KiB (`MAX_CAPABILITIES_BYTES`) is a reasonable backstop against
+runaway or hostile documents. It is not a design target. The figure is
+deployment guidance for receivers, not a protocol rule on the response. Its
+only job is to keep such a document from exhausting a verifier. The same
+constant is also the fetch budget of step 1 in the deprecated
+[RFC 9421 discovery chain](#discovering-an-agents-signing-keys-via-brand_json_url).
+That budget is unchanged through 3.x, and 4.0 removes it with the chain.
+
+Nothing large belongs in capabilities. Outside the deprecated chain, keys come
+from the signer's key directory, and no new path reads keys or a key pointer
+from this response. Property lists travel as references that
+the receiver resolves with `get_property_list`, and publisher authorization
+lives in each publisher's `adagents.json`. Structural bounds make growth
+predictable and give a producer a per-field budget to design to. They do not
+make a document small, so a producer still keeps it small, as **Discovery
+responses stay small** earlier in this section says.
 
 The structural bounds carried in `x-adcp-validation` — at most 100 unique
 entries, each at most 253 characters — are a coarse ceiling and are not

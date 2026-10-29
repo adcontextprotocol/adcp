@@ -47,7 +47,7 @@
       "format": "date-time",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "When the current grant to this caller began. Reporting subscriptions cover the account from the first period boundary at or after it. Sellers advertising media_buy.reporting_subscriptions MUST populate it."
+      "description": "When the caller's current authorization chain for this account began. A re-grant before the previous unauthorized_at plus status_retention_days continues the chain and leaves authorized_at unchanged; a later re-grant starts a new chain and sets it to the re-grant time. Reporting subscriptions cover the account from the first period boundary at or after it. Sellers advertising media_buy.reporting_subscriptions MUST populate it."
     },
     "read_only": {
       "type": "boolean",

@@ -4,7 +4,7 @@
   "title": "Reporting Subscription Coverage",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Exceptions to one principal-level reporting subscription's coverage of one account (experimental, media_buy.reporting_subscriptions), returned in get_reporting_status. Coverage itself is computable by the buyer without asking, by the rule in reporting-subscription.json: each visible confirmed buy and resolved offering is owed the complete periods of that offering's published schedule that start on or after the first boundary at or after the latest of the version's accepted_at, the buy's confirmed_at, and the account's authorized_at, and that overlap the buy's flight. The seller reports only exceptions. Each removes the periods whose start falls in the half-open interval [from, until) of cutover instants; none adds one. Readable only while the caller is authorized for the account; loss of authority is reported in the caller's own get_principal subscription state.",
+  "description": "Exceptions to one principal-level reporting subscription's coverage of one account (experimental, media_buy.reporting_subscriptions), returned in get_reporting_status. Coverage itself is computable by the buyer without asking, by the rule in reporting-subscription.json: each visible confirmed buy and resolved offering is owed the complete periods of that offering's published schedule that start on or after the first boundary at or after the later of the version's accepted_at and the account's authorized_at, that end after the buy's confirmed_at, and that overlap the buy's flight. The seller reports only exceptions. Each removes the periods whose start falls in the half-open interval [from, until) of cutover instants; none adds one. Readable only while the caller is authorized for the account; loss of authority is reported in the caller's own get_principal subscription state.",
   "type": "object",
   "definitions": {
     "ReportingSubscriptionExclusionReason": {
@@ -83,10 +83,12 @@
     },
     "timezone_cutovers": {
       "type": "array",
-      "description": "Account timezone changes affecting account_timezone-aligned periods, retained for status_retention_days. A cutover: periods under the old timezone are owed when they start before the change, so they end by effective_at; periods under the new timezone are owed when they start at or after effective_at. Any stretch from effective_at to the first new-timezone boundary is owed under neither.",
+      "description": "Account timezone changes affecting account_timezone-aligned periods, retained for status_retention_days. A cutover: periods under the old timezone are owed when they start before the change, so they end by effective_at; periods under the new timezone are owed when they start at or after effective_at. Any stretch from effective_at to the first new-timezone boundary is owed under neither. Period boundaries differ between offerings, so when the account's covered offerings have different boundaries the seller lists one entry per offering_id; an entry without offering_id applies to every offering on the account.",
       "items": {
         "type": "object",
         "properties": {
+          "offering_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The offering whose account_timezone periods this cutover applies to, when covered offerings have different boundaries. Absent: every account_timezone offering on the account." },
+          "previous_timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The IANA timezone in effect before the change. Sellers MUST include it: the account's current timezone already shows the new zone, so a buyer cannot otherwise recover the old schedule." },
           "effective_at": { "type": "string", "format": "date-time", "description": "End of the last old-timezone period that started before the change." },
           "timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The account's new IANA timezone, as list_accounts shows it." }
         },
@@ -96,10 +98,11 @@
     },
     "gaps": {
       "type": "array",
-      "description": "Intervals between a loss of authority and re-grant that the seller did not backfill (backfill_on_regrant false or absent). Periods starting in [from, until) are not owed. With backfill_on_regrant true no gap is recorded. A re-grant after the accounts_unauthorized entry expired is a fresh coverage start from authorized_at, with no gap. Retained for status_retention_days after until.",
+      "description": "Intervals between a loss of authority and re-grant that the seller did not backfill (backfill_on_regrant false or absent). Periods starting in [from, until) are not owed. With backfill_on_regrant true no gap is recorded. A re-grant after the accounts_unauthorized entry expired is a fresh coverage start from authorized_at, with no gap. Retained for status_retention_days after until. Period boundaries differ between offerings, so when the account's covered offerings have different boundaries the seller lists one entry per offering_id, each with that offering's boundaries; an entry without offering_id applies to every offering on the account.",
       "items": {
         "type": "object",
         "properties": {
+          "offering_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The offering whose boundaries from and until use, when covered offerings have different boundaries. Absent: the gap applies to every offering on the account." },
           "from": { "type": "string", "format": "date-time", "description": "Last period boundary at or before unauthorized_at." },
           "until": { "type": "string", "format": "date-time", "description": "First period boundary at or after the re-grant." },
           "reason": { "type": "string", "enum": ["unauthorized"] }

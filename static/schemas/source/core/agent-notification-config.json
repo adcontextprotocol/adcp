@@ -116,6 +116,7 @@
             "signal.priced",
             "signal.removed",
             "wholesale_feed.bulk_change",
+            "proposal.offered",
             "collection_card.updated",
             "collection_card.removed",
             "collection_catalog.bulk_change",

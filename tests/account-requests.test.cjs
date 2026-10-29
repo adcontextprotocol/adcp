@@ -230,6 +230,66 @@ test('request_account changes an account by account_id and resolves as updated',
   assert.equal(v({ ...change, state: 'in_review', account, pending_action: { waiting_on: 'seller', kind: 'review', message: 'x' } }), false, 'no account snapshot while pending');
 });
 
+test('a change request can resolve to a separate or existing account, leaving the named one untouched', () => {
+  const resolution = read('enums/account-request-resolution.json');
+  assert.match(resolution.enumDescriptions.created, /On a change request, the seller opened a separate account/);
+  assert.match(resolution.enumDescriptions.matched, /On a change request, the seller pointed to an account the caller already holds/);
+  assert.match(read('core/account-request-record.json').properties.account_id.description, /different account from requested\.account_id/);
+  const v = validate('/schemas/core/account-request-record.json');
+  const change = {
+    request_id: 'areq_change_2',
+    requested: { account_id: 'acc_nova_europe', brand: { domain: 'nova-athletics.example', countries: ['NL'] } },
+    created_at: '2026-10-29T09:00:00Z',
+    updated_at: '2026-10-29T09:00:00Z',
+  };
+  const separate = { account_id: 'acc_nova_nl_2', name: 'Nova Athletics NL', status: 'active', revision: 1 };
+  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl_2', resolution: 'created', account: separate }), JSON.stringify(v.errors));
+  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl', resolution: 'matched' }), JSON.stringify(v.errors));
+});
+
+test('a separate account on a change is opt-in; otherwise the seller rejects with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT', () => {
+  const req = read('account/request-account-request.json');
+  assert.equal(req.properties.allow_separate_account.type, 'boolean');
+  assert.equal(req.properties.allow_separate_account.default, false);
+  assert.match(req.properties.allow_separate_account.description, /ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT/);
+  assert.match(read('enums/account-request-resolution.json').enumDescriptions.created, /only when the change request set allow_separate_account: true/);
+  const codes = read('enums/error-code.json');
+  assert.ok(codes.enum.includes('ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT'));
+  assert.equal(codes.enumMetadata.ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT.recovery, 'correctable');
+  const rowDescription = read('account/sync-accounts-response.json').oneOf[0].properties.accounts.items.properties.request_id.description;
+  assert.match(rowDescription, /never resolves as created/);
+  const vReq = validate('/schemas/account/request-account-request.json');
+  const change = { adcp_version: '3.3', idempotency_key: '7b0c8a4e-1f2d-4e6a-9c3b-5d8e2f1a6b70', account_id: 'acc_nova_europe', brand: { domain: 'nova-athletics.example', countries: ['NL'] }, allow_separate_account: true };
+  assert.ok(vReq(change), JSON.stringify(vReq.errors));
+  const vRec = validate('/schemas/core/account-request-record.json');
+  const refused = {
+    request_id: 'areq_change_3',
+    state: 'rejected',
+    requested: { account_id: 'acc_nova_europe', brand: { domain: 'nova-athletics.example', countries: ['NL'] } },
+    errors: [{ code: 'ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT', message: 'NL needs a separate Dutch contract.' }],
+    created_at: '2026-10-29T09:00:00Z',
+    updated_at: '2026-10-29T09:00:00Z',
+  };
+  assert.ok(vRec(refused), JSON.stringify(vRec.errors));
+});
+
+test('a sync_accounts settings-update row under review carries the request_id', () => {
+  const res = read('account/sync-accounts-response.json');
+  const rowSchema = res.oneOf[0].properties.accounts.items;
+  assert.match(rowSchema.properties.request_id.description, /On a settings-update row whose change the seller is reviewing/);
+  assert.match(rowSchema.properties.request_id.description, /MUST include it/);
+  const v = validate('/schemas/account/sync-accounts-response.json');
+  const row = {
+    account: { account_id: 'acc_nova_pinnacle' },
+    action: 'unchanged',
+    status: 'pending_approval',
+    request_id: 'areq_nova_be_market',
+    setup: { message: 'Adding BE requires a market review.' },
+  };
+  assert.ok(v({ status: 'completed', accounts: [row] }), JSON.stringify(v.errors));
+  assert.equal(v({ status: 'completed', accounts: [{ ...row, status: 'active' }] }), false, 'request_id only while pending_approval');
+});
+
 test('list_accounts returns the caller\'s requests; get_account_requests is gone', () => {
   const req = read('account/list-accounts-request.json');
   assert.ok(req.properties.include_requests && req.properties.request_ids && req.properties.requests_pagination);

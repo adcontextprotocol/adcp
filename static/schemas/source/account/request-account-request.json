@@ -34,6 +34,11 @@
       "minimum": 1,
       "description": "Guard when changing an account (with account_id): the account revision the change is based on. Required when the change touches billing, billing_entity, or payment_terms, because a lost update there costs money; optional for other changes. Sellers enforce this at runtime and reject a money change without revision with INVALID_REQUEST. A stale revision fails the call with CONFLICT and changes nothing. Read it from list_accounts."
     },
+    "allow_separate_account": {
+      "type": "boolean",
+      "default": false,
+      "description": "Change requests only (with account_id and change fields): whether the seller may answer by opening a separate account that carries the requested change, leaving this account unchanged (resolution: created). When false or absent, a seller that would accept the change only as a separate account rejects the request with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT instead. It never permits changing or retiring the named account, and it is ignored when opening an account."
+    },
     "brand": {
       "$ref": "/schemas/core/brand-key.json",
       "description": "Advertiser identity. Required to open an account. Sellers matching on brand use domain and brand_id; countries is an attribute. With account_id, send brand only to change countries; domain and brand_id must equal the account's."
