@@ -44,6 +44,20 @@
       "format": "date-time",
       "description": "When active false was applied. Present when and only when state is inactive."
     },
+    "inactive_intervals": {
+      "type": "array",
+      "maxItems": 64,
+      "description": "Intervals during which the subscription was inactive, oldest first, retained while any obligation they affect is retained, so a buyer can recompute expected periods after local-state loss. Reactivation is a fresh start: nothing that starts during an interval is owed, and coverage resumes at the first boundary at or after reactivated_at. The current interval, while the subscription is inactive, has no reactivated_at.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "deactivated_at": { "type": "string", "format": "date-time", "description": "When active false was applied." },
+          "reactivated_at": { "type": "string", "format": "date-time", "description": "When active true was applied again. Absent for the current interval while the subscription is inactive." }
+        },
+        "required": ["deactivated_at"],
+        "additionalProperties": false
+      }
+    },
     "destination_ref": {
       "type": "string",
       "minLength": 1,

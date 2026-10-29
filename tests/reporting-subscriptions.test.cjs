@@ -584,3 +584,37 @@ test('readback exception reasons stay in sync with the coverage enum', () => {
   const coverage = read('core/reporting-subscription-coverage.json').definitions.ReportingSubscriptionExclusionReason.enum;
   assert.deepEqual(state, coverage);
 });
+
+test('offerings publish mapped dimensions so a buyer resolves match from the wire', () => {
+  const offering = read('core/reporting-delivery-offering.json');
+  assert.equal(offering.properties.standard_dimensions.items.$ref, '/schemas/enums/reporting-dimension.json');
+  assert.match(offering.properties.standard_dimensions.description, /MUST include it on every offering/);
+  assert.match(offering.properties.unmapped_dimensions.description, /count as distinct under match exact/);
+  const subscription = read('core/reporting-subscription.json');
+  assert.match(subscription['x-adcp-validation'].selection, /publishes the result on the offering as standard_dimensions/);
+  assert.match(subscription.properties.selector.properties.match.description, /With match exact and no dimensions, every candidate qualifies and the lowest offering_id wins/);
+  assert.match(subscription.properties.selector.properties.period_timezone.description, /utc offering matches only when this is a UTC alias/);
+});
+
+test('cutovers, authorization chains, reactivation, and period arithmetic are pinned', () => {
+  const v = read('core/reporting-subscription.json')['x-adcp-validation'];
+  assert.match(v.cutover, /E is computed per incoming offering/);
+  assert.match(v.coverage, /scope_resolved_at is the period end/);
+  assert.match(v.coverage, /re-grant before unauthorized_at plus status_retention_days continues the earlier grant/);
+  assert.match(v.coverage, /Reactivating an inactive subscription is a fresh start/);
+  assert.match(read('core/account-authorization.json').properties.authorized_at.description, /continues the chain and leaves authorized_at unchanged/);
+  assert.match(read('core/reporting-schedule.json')['x-adcp-validation'].period_generation, /Hours, minutes, and seconds are exact elapsed time/);
+  assert.match(read('core/reporting-schedule.json')['x-adcp-validation'].period_generation, /zero length and is never owed/);
+});
+
+test('readback lists inactive intervals; coverage entries can be per offering', () => {
+  const vState = validate('/schemas/core/reporting-subscription-state.json');
+  const state = read('core/reporting-subscription-state.json');
+  assert.ok(state.properties.inactive_intervals, 'inactive_intervals readback');
+  assert.deepEqual(state.properties.inactive_intervals.items.required, ['deactivated_at']);
+  const coverage = read('core/reporting-subscription-coverage.json');
+  assert.ok(coverage.properties.gaps.items.properties.offering_id);
+  assert.ok(coverage.properties.timezone_cutovers.items.properties.offering_id);
+  assert.match(coverage.properties.timezone_cutovers.items.properties.previous_timezone.description, /Sellers MUST include it/);
+  assert.ok(vState, 'state schema compiles');
+});
