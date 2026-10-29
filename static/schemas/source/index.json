@@ -280,10 +280,6 @@
           "$ref": "/schemas/core/audience-evidence-target.json",
           "description": "Experimental. Buyer-named audience and minimum evidence value inside audience-evidence requirements"
         },
-        "definition-pin": {
-          "$ref": "/schemas/core/definition-pin.json",
-          "description": "Seller-authored integrity pin over one third-party-published definition referenced by commercial terms"
-        },
         "audience-size": {
           "$ref": "/schemas/core/audience-size.json",
           "description": "Count of people reported as a range with a stated precision (lower_bound, upper_bound, precision, optional as_of)"
@@ -376,10 +372,6 @@
         "installment-deadlines": {
           "$ref": "/schemas/core/installment-deadlines.json",
           "description": "Booking, cancellation, and material submission deadlines for an installment"
-        },
-        "installment-change-set": {
-          "$ref": "/schemas/core/installment-change-set.json",
-          "description": "Installment-level include and omit actions for a proposal refinement"
         },
         "material-deadline": {
           "$ref": "/schemas/core/material-deadline.json",
@@ -1369,10 +1361,6 @@
         "seller-policy-decline-reason": {
           "$ref": "/schemas/enums/seller-policy-decline-reason.json",
           "description": "Machine-readable seller-policy reason for declining a MediaBuy control shape"
-        },
-        "definition-pin-ref-kind": {
-          "$ref": "/schemas/enums/definition-pin-ref-kind.json",
-          "description": "Kinds of third-party-published definition a definition pin can cover"
         },
         "proposal-refinement-reason": {
           "$ref": "/schemas/enums/proposal-refinement-reason.json",
@@ -2996,10 +2984,6 @@
         "rights-pricing-option": {
           "$ref": "/schemas/brand/rights-pricing-option.json",
           "description": "Pricing option for licensable rights"
-        },
-        "rights-scope": {
-          "$ref": "/schemas/brand/rights-scope.json",
-          "description": "What a rights grant covers — uses, grant window, and exclusivity — shared by rights-terms and media-buy purchases"
         },
         "rights-terms": {
           "$ref": "/schemas/brand/rights-terms.json",

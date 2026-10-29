@@ -6,11 +6,6 @@
       "target_version": "3.3",
       "note": "request_account and sync_accounts settings updates return this when the seller would accept the change only as a separate account and the caller did not allow one. New 3.3 account wire code \u2014 held for 3.3."
     },
-    "REFERENCE_DEFINITION_CHANGED": {
-      "disposition": "held-for-next-minor",
-      "target_version": "3.3",
-      "note": "accept_proposal returns this when a pinned third-party definition no longer matches its definition pin. New 3.3 media-buy wire code \u2014 held for 3.3."
-    },
     "CREATIVE_MERGE_REJECTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.3",

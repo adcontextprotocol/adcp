@@ -58,7 +58,7 @@ Verify the Sigstore signature before using the bundle as a build input. See [Ver
 At beta.0, useful tests are:
 
 1. Generate or refresh types from the pinned bundled schemas.
-2. Validate representative requests and responses for the roles you implement, including the new 3.3 surfaces you plan to adopt: `expected_confirmation_at`, `commercial_terms.definition_pins[]`, vendor-metric `outcome_target` goals, `reporting_webhook.operation_id`, `media_buy.features.catalog_ingestion`, the DOOH `location` and `dooh_inventory_summary` fields, `sync_audiences` audience sizes, and the experimental spot, print, daypart, loudness, and governance `budget.periods[]` fields.
+2. Validate representative requests and responses for the roles you implement, including the new 3.3 surfaces you plan to adopt: `expected_confirmation_at`, vendor-metric `outcome_target` goals, `reporting_webhook.operation_id`, `media_buy.features.catalog_ingestion`, the DOOH `location` and `dooh_inventory_summary` fields, `sync_audiences` audience sizes, and the experimental spot, print, daypart, loudness, and governance `budget.periods[]` fields.
 3. Compare your advertised tools with `schemas/manifest.json`.
 4. Exercise raw MCP or A2A calls with `adcp_version: "3.3-beta.0"` against a staging peer that advertises the same pin.
 5. Run the compliance assets with a source-compatible runner if you maintain one. Do not weaken production authentication to accommodate a beta runner.
@@ -92,6 +92,18 @@ The beta.1 protocol checkpoint is ready to cut when:
 - the cumulative migration guide and release notes describe any beta.0-to-beta.1 correction that requires adopter action.
 
 After `3.3.0-beta.1` is published, SDK maintainers ingest that signed bundle and publish an exact beta.1 support statement or an explicit unsupported/partial result. Only after the matching buyer/seller scenarios pass is beta.1 the SDK-backed ecosystem checkpoint. Do not combine an SDK generated from beta.0 with a beta.1 wire pin unless that SDK explicitly documents forward compatibility.
+
+## Withdrawn after beta.1
+
+Three features shipped in `3.3.0-beta.1` and are not part of 3.3. They leave the protocol after beta.1. All three add terms to `commercial_terms`, which stays closed within 3.x so that a buyer is never bound by terms it cannot read ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). They are planned for 4.0, where `commercial_terms` gets a declared extension point with must-understand.
+
+| Feature | Shipped in | Action |
+|---|---|---|
+| Definition pins: `commercial_terms.definition_pins[]`, the `definition_changed` reason, `drifted_pins[]`, `REFERENCE_DEFINITION_CHANGED`, the `definition_pin_probe` scenario, and the `definition_pin_drift` storyboard ([#7960](https://github.com/adcontextprotocol/adcp/pull/7960)) | beta.0 and beta.1 | Stop emitting and requiring them. A seller that emits pins to a peer on the later schema sends a field a closed `commercial_terms` rejects. The beta rule that sellers pin covered definitions no longer applies. |
+| Purchase rights (`media_buy.purchase_rights`): `purchases[].rights[]`, `brand/rights-scope.json`, and the `paid_amplification` and `content_reuse` values of `right-use` ([#8101](https://github.com/adcontextprotocol/adcp/pull/8101)) | beta.1 | Stop listing the feature id and emitting `rights[]`. Carry rights through `acquire_rights` until 4.0. |
+| Installment selection (`media_buy.installment_selection`): `purchases[].installments[]` and `refine_proposals` `installment_changes` ([#8246](https://github.com/adcontextprotocol/adcp/pull/8246)) | beta.1 | Stop listing the feature id and emitting or accepting the fields. Installments on the canonical product and `holds[]` stay. |
+
+The [migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) lists every surface removed, and [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) keeps the designs.
 
 ## Required integration evidence
 
@@ -154,7 +166,7 @@ Four proposed records document surfaces merged for beta.0 and await working-grou
 | Commercial flow | [#8096](https://github.com/adcontextprotocol/adcp/issues/8096) | Open opportunities: later proposals and `list_proposals` | — | Experimental open opportunities and `list_proposals` (#8103), seller-offer origin and `media_buy_ids` filter (#8223) |
 | Commercial flow | [#8086](https://github.com/adcontextprotocol/adcp/issues/8086) | Hold extension, ranking, and installment holds | — | `expected_confirmation_at` on `refine_proposals` (#8104, #8203), `hold_policy` (#8140), `extend_hold` (#8097), hold ranking (#8255), and installment holds (#8257) |
 | Commercial flow | [#8087](https://github.com/adcontextprotocol/adcp/issues/8087) | Seller-proposed changes to a signed media buy | [#8102](https://github.com/adcontextprotocol/adcp/pull/8102) (draft) | — |
-| Commercial flow | [#8090](https://github.com/adcontextprotocol/adcp/issues/8090) | Usage and amplification rights in the purchase | [#8101](https://github.com/adcontextprotocol/adcp/pull/8101) (draft) | — |
+| Commercial flow | [#8090](https://github.com/adcontextprotocol/adcp/issues/8090) | Usage and amplification rights in the purchase | [#8101](https://github.com/adcontextprotocol/adcp/pull/8101) (merged, shipped in beta.1, then withdrawn) | Withdrawn from 3.3 and planned for 4.0; see [Withdrawn after beta.1](#withdrawn-after-beta-1) |
 | Commercial flow | [#8158](https://github.com/adcontextprotocol/adcp/issues/8158) | Signal for buys accepted under a compromised key, and bulk resolution | — | — |
 | Commercial flow | [#8184](https://github.com/adcontextprotocol/adcp/issues/8184) | Invoice lines on `get_account_financials` tied to billed reporting | [#8207](https://github.com/adcontextprotocol/adcp/pull/8207) (draft) | — |
 | Commercial flow | [#8142](https://github.com/adcontextprotocol/adcp/issues/8142) | Seller revision that advances on every committed change | — | Media-buy, account, and creative seller revisions from any origin (#8159, DR-0031 recorded in #8389); other resource families deferred to 3.4 |

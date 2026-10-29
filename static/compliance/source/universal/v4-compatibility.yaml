@@ -233,6 +233,60 @@ checks:
           Buyer-sent field on schemas that are closed in 3.x. A 3.x seller
           run cannot send or observe it.
 
+  - id: definition_pins_required_in_4_0
+    issue: 7660
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A proposal's commercial_terms references a third-party-published definition (a publisher-catalog format option or placement, an adagents.json collection, or a data-provider signal) and carries no seller-authored definition pin over it."
+    fix: >-
+      Nothing in 3.3. Definition pins shipped in 3.3.0-beta.0 and
+      3.3.0-beta.1 and are withdrawn after beta.1 because commercial_terms is
+      closed in 3.x (adcp#8501). Do not emit definition_pins, the
+      definition_changed refinement reason, or REFERENCE_DEFINITION_CHANGED
+      to a peer on a later 3.3 release. 4.0 reintroduces the design through a declared
+      commercial_terms extension point that the buyer must understand.
+    observed_by:
+      none:
+        reason: >-
+          The pin is a seller-authored field on commercial_terms, which is
+          closed in 3.x, and 3.3 has no wire form for it after beta.1. A 3.x run
+          cannot observe it.
+
+  - id: purchase_rights_required_in_4_0
+    issue: 8090
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A creator-deal proposal binds usage, paid-amplification, or exclusivity rights in a purchase of its commercial_terms."
+    fix: >-
+      Nothing in 3.3. Purchase rights (purchases[].rights[]) shipped in
+      3.3.0-beta.1 and are withdrawn after it because commercial_terms is closed in
+      3.x (adcp#8501). Carry rights through the brand protocol's
+      acquire_rights until 4.0 reintroduces them through a declared
+      commercial_terms extension point that the buyer must understand.
+    observed_by:
+      none:
+        reason: >-
+          A seller-authored term on commercial_terms, which is closed in 3.x.
+          3.3 has no wire form for it, so a 3.x run cannot observe it.
+
+  - id: installment_selection_required_in_4_0
+    issue: 8230
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A proposal for a product that declares installments cannot name the exact installments a purchase buys, or accept a refine_proposals installment_changes list."
+    fix: >-
+      Nothing in 3.3. A purchase buys the product as offered, and the
+      installments a product includes are readable on the product. Selecting
+      installments inside purchases[] and refining them with
+      installment_changes wait for 4.0, where commercial_terms gets a declared
+      extension point that the buyer must understand (adcp#8501).
+    observed_by:
+      none:
+        reason: >-
+          Selection is a buyer-sent and seller-authored term on
+          commercial_terms, which is closed in 3.x. 3.3 has no wire form for
+          it, so a 3.x run cannot observe it.
+
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
 # why a 3.x agent is not graded on it.
