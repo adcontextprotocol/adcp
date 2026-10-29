@@ -21,6 +21,7 @@ import { handleComplyTestController } from '../comply-test-controller.js';
 import { adcpError, resolveServedAdcpVersion, supportedCanonicalFormatsCapability } from '../task-handlers.js';
 import type { TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
+import { withControllerPrincipal } from './comply.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -310,10 +311,10 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       try {
         await resolved.server.connect(transport);
         logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
-        await runWithSessionContext(async () => {
+        await withControllerPrincipal(principal ?? 'anonymous', () => runWithSessionContext(async () => {
           await transport.handleRequest(req, res, req.body);
           await flushDirtySessions();
-        });
+        }));
       } catch (err) {
         logger.error({ err, tenantId: resolved.tenantId }, 'tenant MCP error');
         if (!res.headersSent) {
