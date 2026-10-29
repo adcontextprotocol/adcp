@@ -965,6 +965,10 @@
           "$ref": "/schemas/core/indicators-changed-webhook.json",
           "description": "Account-level invalidation payload for a semantic indicator snapshot change"
         },
+        "proposal-offered-webhook": {
+          "$ref": "/schemas/core/proposal-offered-webhook.json",
+          "description": "Account-level invalidation payload for a seller offer against an accepted media buy. Experimental."
+        },
         "warning": {
           "$ref": "/schemas/core/warning.json",
           "description": "Structured non-blocking receipt returned only on synchronous mutation success"
@@ -1353,6 +1357,14 @@
         "later-proposal-reason": {
           "$ref": "/schemas/enums/later-proposal-reason.json",
           "description": "Why the seller created a later proposal (experimental)"
+        },
+        "proposal-initiator": {
+          "$ref": "/schemas/enums/proposal-initiator.json",
+          "description": "Which party originated a proposal (buyer or seller). Experimental."
+        },
+        "offer-reason": {
+          "$ref": "/schemas/enums/offer-reason.json",
+          "description": "Why a seller offered a change to an accepted media buy. Experimental."
         },
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
