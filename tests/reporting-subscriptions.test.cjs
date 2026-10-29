@@ -618,3 +618,16 @@ test('readback lists inactive intervals; coverage entries can be per offering', 
   assert.match(coverage.properties.timezone_cutovers.items.properties.previous_timezone.description, /Sellers MUST include it/);
   assert.ok(vState, 'state schema compiles');
 });
+
+test('prior_versions carry the configuration each version had', () => {
+  const item = read('core/reporting-subscription-state.json').properties.prior_versions.items;
+  assert.equal(item.properties.configuration.$ref, '/schemas/core/reporting-subscription.json');
+  assert.match(item.properties.configuration.description, /Sellers MUST include it/);
+});
+
+test('sub-daily local periods restart at each local midnight, not at 1970 offsets', () => {
+  const rule = read('core/reporting-schedule.json')['x-adcp-validation'].period_generation;
+  assert.match(rule, /MUST divide 24 hours/);
+  assert.match(rule, /counted afresh each local day/);
+  assert.match(rule, /a 23-hour DST day has 23 hourly periods and a 25-hour day 25/);
+});
