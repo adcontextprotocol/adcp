@@ -39,7 +39,7 @@
                 "x-added-in": "3.3.0",
                 "minLength": 1,
                 "maxLength": 128,
-                "description": "Experimental (account.requests). Identifier of the seller's account request behind this row, present while the row is pending_approval and the seller has not issued an account_id. Read it with list_accounts (include_requests) or wait for account_request.changed. It is not an account_id and is never accepted as an AccountRef."
+                "description": "Experimental (account.requests). Identifier of the seller's account request behind a pending_approval row. On a provisioning row, it stands in for the account_id the seller has not issued. On a settings-update row whose change the seller is reviewing, it names the request for that change, and a seller that supports account.requests MUST include it; the request resolves as updated, created, or matched, or is rejected, as request_account change requests do. Read it with list_accounts (request_ids) or wait for account_request.changed. It is not an account_id and is never accepted as an AccountRef."
               },
               "resolution": {
                 "$ref": "/schemas/enums/account-request-resolution.json",
@@ -282,7 +282,7 @@
                 }
               },
               {
-                "description": "Experimental (account.requests): request_id stands in for account_id only while the row is pending_approval.",
+                "description": "Experimental (account.requests): request_id appears only on a pending_approval row. On a provisioning row it stands in for account_id; on a settings-update row it names the review of the change.",
                 "if": { "required": ["request_id"] },
                 "then": {
                   "properties": { "status": { "const": "pending_approval" } },
