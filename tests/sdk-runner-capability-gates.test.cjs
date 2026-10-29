@@ -4,10 +4,19 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const YAML = require('yaml');
 
-const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
+const {
+  parseStoryboard,
+  runStoryboard,
+  createTestClient,
+  applyStoryboardVersionOptions,
+  resolveStoryboardsForCapabilities,
+  resolveBundleOrStoryboard,
+  buildComplianceBundleResults,
+} = require('@adcp/sdk/testing');
 
 const mediaBuyScenariosPath = path.join(
   __dirname,
@@ -1514,5 +1523,184 @@ test('accepting active does not bypass context echoes or upstream side effects',
     assert.ok(steps[0].validations.some(check => !check.passed && (
       override.badContext ? check.path === 'context.correlation_id' : check.check === 'upstream_traffic'
     )), JSON.stringify(steps[0].validations));
+  }
+});
+
+function signalErrorComplianceSelection(t, marketplace) {
+  // Copy real authored bundles into a cache matching the installed SDK's schema
+  // version. No generated/released cache or installed SDK file is modified.
+  const source = path.join(__dirname, '..', 'static/compliance/source');
+  const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'signal-error-compliance-'));
+  t.after(() => fs.rmSync(cache, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(cache, 'universal'), { recursive: true });
+  fs.copyFileSync(
+    path.join(source, 'universal/error-compliance-signals.yaml'),
+    path.join(cache, 'universal/error-compliance-signals.yaml'),
+  );
+  for (const relative of ['protocols/signals', 'specialisms/signal-owned', 'specialisms/signal-marketplace']) {
+    fs.cpSync(path.join(source, relative), path.join(cache, relative), { recursive: true });
+  }
+  fs.writeFileSync(path.join(cache, 'index.json'), JSON.stringify({
+    adcp_version: require('@adcp/sdk').ADCP_VERSION,
+    generated_at: '2026-10-29T00:00:00Z',
+    universal: ['error-compliance-signals'],
+    protocols: [{ id: 'signals', title: 'Signals', has_baseline: true, path: 'protocols/signals' }],
+    specialisms: ['signal-owned', 'signal-marketplace'].map(id => ({
+      id, protocol: 'signals', title: id, status: 'stable', path: `specialisms/${id}`,
+    })),
+  }));
+  const capabilities = { supported_protocols: ['signals'], specialisms: [marketplace ? 'signal-marketplace' : 'signal-owned'] };
+  const options = { complianceDir: cache };
+  const resolved = resolveStoryboardsForCapabilities(capabilities, options);
+  return { capabilities, options, resolved };
+}
+
+async function runSignalErrorEvidence(storyboard, {
+  marketplace = false,
+  activation = marketplace,
+  controller = true,
+  discovery = true,
+  fault,
+} = {}) {
+  const tools = [
+    'get_adcp_capabilities',
+    ...(discovery ? ['get_signals'] : []),
+    ...(activation ? ['activate_signal'] : []),
+    ...(controller ? ['comply_test_controller'] : []),
+  ];
+  const capabilities = {
+    status: 'completed',
+    adcp: { major_versions: [3], idempotency: { supported: false } },
+    supported_protocols: ['signals'],
+    specialisms: [marketplace ? 'signal-marketplace' : 'signal-owned'],
+  };
+  const calls = [];
+  const rejection = (request, code) => ({
+    success: false,
+    data: {
+      status: 'failed',
+      errors: [{ code, message: 'Fixture rejection', recovery: 'correctable' }],
+      ...(fault !== 'missing-context' && { context: request.context }),
+    },
+  });
+  const success = request => ({
+    success: true,
+    data: { status: 'completed', signals: [], cache_scope: 'account', context: request.context },
+  });
+  const runOptions = applyStoryboardVersionOptions(storyboard, {
+    _profile: { tools, raw_capabilities: capabilities },
+    agentTools: tools,
+    skip_controller_seeding: true,
+    test_kit: YAML.parse(fs.readFileSync(path.join(__dirname, '../static/compliance/source/test-kits/nova-motors.yaml'), 'utf8')),
+  });
+  // Keep the SDK's version metadata on the official client instance so the
+  // version-annotated resolver output reuses this isolated test client.
+  runOptions._client = Object.assign(createTestClient('https://agent.example/mcp', 'mcp', runOptions), {
+      resetContext() {},
+      async getAdcpCapabilities(request) {
+        calls.push({ task: 'get_adcp_capabilities', request });
+        return { success: true, data: { ...capabilities, context: request.context } };
+      },
+      async getSignals(request, _context, options) {
+        calls.push({ task: 'get_signals', request, options });
+        if (request.adcp_major_version === 99) return rejection(request, 'VERSION_UNSUPPORTED');
+        if (typeof request.signal_spec !== 'string') {
+          if (fault === 'accept-invalid-discovery') return success(request);
+          return rejection(request, fault === 'wrong-code' ? 'ACCOUNT_SETUP_REQUIRED' : 'INVALID_REQUEST');
+        }
+        return success(request);
+      },
+      async activateSignal(request, _context, options) {
+        calls.push({ task: 'activate_signal', request, options });
+        const missing = request.signal_agent_segment_id === undefined;
+        if (fault === (missing ? 'accept-missing-segment' : 'accept-unknown-segment')) return success(request);
+        return rejection(request, missing ? 'INVALID_REQUEST' : 'REFERENCE_NOT_FOUND');
+      },
+  });
+  const result = await runStoryboard('https://agent.example/mcp', storyboard, runOptions);
+  return { result, calls };
+}
+
+test('signals error evidence follows the actual owned/marketplace bundle selection', t => {
+  const owned = signalErrorComplianceSelection(t, false);
+  assert.ok(owned.resolved.storyboards.some(storyboard => storyboard.id === 'error_compliance_signals'));
+  assert.ok(!owned.resolved.storyboards.some(storyboard => storyboard.id === 'signal_marketplace/error_compliance'));
+
+  const marketplace = signalErrorComplianceSelection(t, true);
+  assert.ok(marketplace.resolved.storyboards.some(storyboard => storyboard.id === 'signal_marketplace/error_compliance'));
+  const index = marketplace.resolved.storyboards.find(storyboard => storyboard.id === 'signal_marketplace');
+  assert.ok(index.requires_scenarios.includes('signal_marketplace/error_compliance'));
+  assert.deepEqual(
+    resolveBundleOrStoryboard('signal_marketplace/error_compliance', marketplace.options).map(storyboard => storyboard.id),
+    ['signal_marketplace/error_compliance'],
+  );
+});
+
+test('signals discovery errors execute fully for both models without requiring activation', async t => {
+  for (const [marketplace, activation] of [[false, false], [true, true], [false, true]]) {
+    const { resolved } = signalErrorComplianceSelection(t, marketplace);
+    const bundle = resolved.bundles.find(entry => entry.ref.id === 'error-compliance-signals');
+    const storyboard = bundle.storyboards[0];
+    const { result, calls } = await runSignalErrorEvidence(storyboard, { marketplace, activation });
+    assert.equal(result.overall_passed, true, JSON.stringify(result));
+    assert.equal(result.passed_count, 5);
+    assert.equal(result.skipped_count, 0);
+    // The maintenance branch deliberately retains SDK 14. Its default
+    // lifecycle assertions observe no resources in this discovery-only
+    // storyboard, so its legacy rollup remains incomplete. Preserve that
+    // limit rather than fabricating observations or suppressing assertions.
+    const observations = (result.assertions ?? []).filter(assertion => typeof assertion.observation_count === 'number');
+    assert.ok(observations.length > 0);
+    assert.ok(observations.every(assertion => assertion.observation_count === 0));
+    assert.equal(buildComplianceBundleResults([bundle], [result])[0].status, 'partial');
+    assert.ok(!calls.some(call => call.task === 'activate_signal'));
+    const malformed = calls.filter(call => call.task === 'get_signals' && call.request.signal_spec === 123);
+    assert.equal(malformed.length, 2, 'both authored error probes reach discovery with wrong-typed input');
+    assert.ok(malformed.every(call => call.options?.skipRequestValidation === true));
+    // An owned agent exposing optional activation still claims only owned
+    // coverage: selection does not silently imply marketplace conformance.
+    if (!marketplace) {
+      assert.ok(!resolved.storyboards.some(entry => entry.id === 'signal_marketplace/error_compliance'));
+    }
+  }
+});
+
+test('signals discovery errors preserve failures and missing required evidence', async t => {
+  const { resolved } = signalErrorComplianceSelection(t, false);
+  const bundle = resolved.bundles.find(entry => entry.ref.id === 'error-compliance-signals');
+  for (const fault of ['accept-invalid-discovery', 'wrong-code', 'missing-context']) {
+    const { result } = await runSignalErrorEvidence(bundle.storyboards[0], { fault });
+    assert.equal(buildComplianceBundleResults([bundle], [result])[0].status, 'failing', fault);
+    assert.ok(result.failed_count > 0);
+  }
+  for (const unavailable of [{ discovery: false }, { controller: false }]) {
+    const { result, calls } = await runSignalErrorEvidence(bundle.storyboards[0], unavailable);
+    assert.equal(buildComplianceBundleResults([bundle], [result])[0].status, 'partial');
+    assert.ok(!calls.some(call => call.task === 'get_signals'));
+  }
+});
+
+test('marketplace activation errors execute both negatives and cap the real bundle on failure or gaps', async t => {
+  const { resolved } = signalErrorComplianceSelection(t, true);
+  const bundle = resolved.bundles.find(entry => entry.ref.id === 'signal-marketplace');
+  const storyboard = bundle.storyboards.find(entry => entry.id === 'signal_marketplace/error_compliance');
+  const { result, calls } = await runSignalErrorEvidence(storyboard, { marketplace: true });
+  assert.equal(result.overall_passed, true, JSON.stringify(result));
+  assert.equal(result.passed_count, 2);
+  assert.equal(result.skipped_count, 0);
+  assert.equal(calls.filter(call => call.task === 'activate_signal').length, 2);
+  assert.equal(calls.find(call => call.request.signal_agent_segment_id === undefined).options.skipRequestValidation, true);
+  assert.notEqual(calls.find(call => call.request.signal_agent_segment_id !== undefined).options?.skipRequestValidation, true);
+  // Other marketplace flows have not run in this focused regression. Keep
+  // them incomplete rather than fabricating sibling passes to credit a role.
+  assert.equal(buildComplianceBundleResults([bundle], [result])[0].status, 'partial');
+  for (const fault of ['accept-unknown-segment', 'accept-missing-segment']) {
+    const broken = await runSignalErrorEvidence(storyboard, { marketplace: true, fault });
+    assert.equal(buildComplianceBundleResults([bundle], [broken.result])[0].status, 'failing', fault);
+  }
+  for (const unavailable of [{ activation: false }, { controller: false }]) {
+    const missing = await runSignalErrorEvidence(storyboard, { marketplace: true, ...unavailable });
+    assert.equal(buildComplianceBundleResults([bundle], [missing.result])[0].status, 'partial');
+    assert.equal(missing.calls.length, 0);
   }
 });
