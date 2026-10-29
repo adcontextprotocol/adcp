@@ -23,7 +23,7 @@
     "accepted_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When the seller accepted the current subscription_version. Immutable for that version. Coverage starts at the first boundary at or after the latest of this instant, the buy's confirmed_at, and the account's authorized_at."
+      "description": "When the seller accepted the current subscription_version. Immutable for that version. Coverage starts at the first boundary at or after the later of this instant and the account's authorized_at; a buy is owed from the period in which it is confirmed."
     },
     "prior_versions": {
       "type": "array",
