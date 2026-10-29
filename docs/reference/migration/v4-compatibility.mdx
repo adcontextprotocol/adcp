@@ -37,6 +37,7 @@ In raw runner output, a check observed by a validation appears as a `validation_
 | [`legacy_hmac_fallback_removed_in_4_0`](#legacy_hmac_fallback_removed_in_4_0) | [#4205](https://github.com/adcontextprotocol/adcp/issues/4205) | All agents | `capability_discovery` |
 | [`capabilities_structural_bounds_required_in_4_0`](#capabilities_structural_bounds_required_in_4_0) | [#8198](https://github.com/adcontextprotocol/adcp/issues/8198) | All agents | Not observable |
 | [`purchase_target_audiences_required_in_4_0`](#purchase_target_audiences_required_in_4_0) | [#8125](https://github.com/adcontextprotocol/adcp/issues/8125) | Sellers | Not observable in 3.x |
+| [`seller_held_change_terms_required_in_4_0`](#seller_held_change_terms_required_in_4_0) | [#8087](https://github.com/adcontextprotocol/adcp/issues/8087) | Sellers | Not observable in 3.x |
 | [`canonical_counting_mechanisms_required_in_4_0`](#canonical_counting_mechanisms_required_in_4_0) | [#6878](https://github.com/adcontextprotocol/adcp/issues/6878) | Sellers | Not observable in 3.x |
 
 ## Checks
@@ -197,6 +198,17 @@ Nothing here is graded. 3.3 has no wire form for any of it after beta.1, so a ru
 - Selection is a negotiation surface, not a discovery one: no request field names installments.
 
 **Where it is preserved:** commit `0555b8a99` (#8246) carries `core/installment-change-set.json`, the `product-purchase.json` and `proposal-refinement.json` fields, the `refine_proposals` section "Change installments", and `tests/canonical-installments.test.cjs`.
+
+<a id="seller_held_change_terms_required_in_4_0"></a>
+### Seller-held change terms
+
+**Check id:** `seller_held_change_terms_required_in_4_0` · **Change:** new requirement
+
+**Detects:** a seller that changes a signed purchase on its own authority carries no seller-held entry in `commercial_terms.change_terms[]` naming the bounded change.
+
+In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers) that the buyer accepts. A way for the buyer to pre-agree bounded seller changes (a budget release, a schedule shift, ordered line alternates) would add `holder` and `purchase_index` to `change-term.json` and new constraint kinds. `commercial_terms` and `change-term.json` are closed schemas, and a minor release never changes a closed schema, so the lane ships in 4.0. The expected shape is in [Planned for 4.0](/docs/media-buy/product-discovery/proposal-negotiation#planned-for-40-seller-held-change-terms).
+
+**Fix:** until 4.0, send a seller offer for every seller-initiated change to a signed buy. A 3.x run cannot observe this check, so it reports as not observable.
 
 <a id="canonical_counting_mechanisms_required_in_4_0"></a>
 ### Canonical terms carry counting mechanisms

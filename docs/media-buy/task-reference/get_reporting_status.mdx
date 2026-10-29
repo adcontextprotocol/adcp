@@ -719,9 +719,10 @@ owed.
 - **New version.** A new `subscription_version` gets its own `accepted_at`, which is T.
   Scope changes count, so adding an account starts a new version. For an account in
   both versions the old version is outgoing and the new one incoming. An account that
-  is new in the new version follows the ordinary start rule. Earlier versions'
-  `accepted_at` values stay in the readback as `prior_versions` while their
-  obligations are retained.
+  is new in the new version follows the ordinary start rule. Earlier versions stay
+  in the readback as `prior_versions`, each with its `accepted_at`, `superseded_at`,
+  and `configuration`, while their obligations are retained, so a buyer can
+  recompute after losing local state.
 - **Deactivation** at `deactivated_at` has no incoming schedule: periods that started
   before it stay owed, and no later ones are created.
 - **Overrides and `replace_account_configs`.** When the principal's own account-level

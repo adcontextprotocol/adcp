@@ -232,6 +232,27 @@ checks:
         reason: >-
           Buyer-sent field on schemas that are closed in 3.x. A 3.x seller
           run cannot send or observe it.
+  - id: seller_held_change_terms_required_in_4_0
+    issue: 8087
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A seller that changes a signed purchase on its own authority carries no seller-held entry in commercial_terms.change_terms[] naming the bounded change."
+    fix: >-
+      From 4.0, declare each pre-agreed, bounded seller change as a
+      change_terms[] entry with holder seller, a purchase_index, one of
+      decrease_budget, update_impression_goal, update_flight_dates or
+      update_targeting, and at least one absolute bound (a minimum result, an
+      earliest or latest result, or an ordered alternates chain), stated in the
+      committed terms and bound by the buyer through accept_proposal. 3.3 has
+      no such lane, because commercial_terms and change-term.json are closed
+      and a minor release does not change a closed schema. Until 4.0, send a
+      seller offer (media_buy.seller_offers) for every seller-initiated change
+      to a signed buy.
+    observed_by:
+      none:
+        reason: >-
+          Seller-side lane on schemas that are closed in 3.x, and nothing in
+          a 3.x run carries or reads it. A 3.x run cannot observe this check.
 
   - id: definition_pins_required_in_4_0
     issue: 7660
