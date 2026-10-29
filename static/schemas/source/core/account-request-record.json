@@ -41,7 +41,7 @@
     },
     "account_id": {
       "type": "string",
-      "description": "Present when state is resolved. The account to use on every account-scoped task. Never changes for the life of the account.",
+      "description": "Present when state is resolved. The account to use on every account-scoped task. Never changes for the life of the account. On a change request that resolves as created or matched, this is a different account from requested.account_id, and the named account is unchanged.",
       "x-entity": "account"
     },
     "account": {
@@ -50,7 +50,7 @@
     },
     "resolution": {
       "$ref": "/schemas/enums/account-request-resolution.json",
-      "description": "Present when state is resolved: whether the seller matched an existing account or created one."
+      "description": "Present when state is resolved: whether the seller matched an existing account, created one, or updated the named account. A change request can resolve as any of the three."
     },
     "candidates": {
       "type": "array",
