@@ -32,7 +32,7 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
 }
 ```
 
-`include_collections` (experimental, `media_buy.collection_cards`, default `false`) asks for the response-level `collections` array described below. This request rejects unknown fields, so send it only to a seller that lists `media_buy.collection_cards` in `experimental_features`. The flag is part of the selection that `feed_version` is scoped to; see [availability forecasts](#availability-forecasts-are-a-per-read-overlay) below.
+`include_collections` (experimental, `media_buy.collection_cards`, default `false`) asks for the response-level `collections` array described below. The 3.2 schema of this request rejects unknown fields, so send it only to a seller that lists `media_buy.collection_cards` in `experimental_features`. The flag is part of the selection that `feed_version` is scoped to; see [availability forecasts](#availability-forecasts-are-a-per-read-overlay) below.
 
 `brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
 
@@ -52,6 +52,10 @@ that scope. See [filter migration](/docs/reference/migration/targeting-aware-dis
 When a product can honor the overlay exactly, it does not echo the request. A product that proposes a different executable overlay returns sparse `targeting_resolution.modifications`; selecting that configured product accepts those disclosed changes. Compact products have no `is_custom` flag: `expires_at` marks a request-specific configured product, whether it accepts the overlay exactly or discloses modifications, and a product carrying `targeting_resolution` always carries `expires_at`. Sellers return both whenever they return modifications, even when `fields` omits them.
 
 Property and collection lists are the exception to the no-echo rule because the buyer cannot otherwise observe their seller-specific inventory effect. Every returned product carries one `list_applications` receipt per effective targeting reference. Exclusion applications carry zero-match receipts; zero matches for any inclusion application make the product ineligible, so it is not returned. The receipt contains no fetch credential; its counts are scoped to that product and its timestamps, and the product's price and forecast reflect the post-application inventory.
+
+For scheduled media, request `installments` in `fields` to see which episodes, issues, airings, or creator slots a product includes, with their `scheduled_at` and their booking, cancellation, and material `deadlines`. `fields` is a closed enum, so send `installments` only to a seller that advertises AdCP 3.3; a 3.2 seller rejects the whole read rather than ignoring the value. A canonical installment's identity is the `(collection_ref, installment_id)` tuple, so a projection that asks for `installments` also gets `collections` back.
+
+Absence is only meaningful inside a projection that asked for the field: a product that declares `collections` and omits `installments` **in a response that returned `installments` for other products** is run-of-collection. In a projection that never requested `installments`, absence says nothing, so a buyer deciding between "specific slots" and "run-of-collection" requests the field explicitly. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
 
 ## Response
 

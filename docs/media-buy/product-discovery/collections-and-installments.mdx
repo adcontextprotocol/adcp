@@ -141,7 +141,7 @@ The collection does not copy person-level identity. A buyer that wants the perso
 
 Keep arrays short: `adagents.json` has fetch-size budgets, so `images` and `sample_content` are capped at 10 entries each. `sample_content` carries no `kind`; the platform URL implies it.
 
-`images`, `sample_content` and `url` are excluded from the `publisher_collection` [definition pin](/docs/media-buy/specification#definition-pin-preimage) projection, so refreshing a thumbnail or a sample does not fail committed proposals with `REFERENCE_DEFINITION_CHANGED`.
+`images`, `sample_content` and `url` are display copies, so a seller can refresh a thumbnail or a sample without changing the collection the publisher authorizes.
 
 ## Programmed channels and owner-sold carriage
 
@@ -685,11 +685,13 @@ This tells buyer agents that The Ember is a finite opportunity — 8 installment
 
 ## How products reference collections
 
-Products reference collections via `collections` — an array of `{publisher_domain, collection_ids}` selectors that point to collections declared in the publisher's `adagents.json`. This is the same pattern as `publisher_properties`. Full collection objects come from the response's top-level [`collections`](#collections-in-responses) array when the buyer asks for them with `include_collections` and the seller includes them, and otherwise from the publisher's `adagents.json`. Episodes are listed per-product in the `installments` array, since different products may scope different installments of the same collection.
+Products reference collections via `collections` — an array of `{publisher_domain, collection_ids}` selectors that point to collections declared in the publisher's `adagents.json`. This is the same pattern as `publisher_properties`, including its roster rule: a non-empty `collections` is the complete roster, and an empty `collections` (`[]`) means the seller does not disclose it. An absent `collections` makes no collection declaration and never means undisclosed. See [Roster coverage](/docs/media-buy/product-discovery/media-products#roster-coverage) for the emission gate and for how collection allow lists and exclusion lists behave against an undisclosed roster. Full collection objects come from the response's top-level [`collections`](#collections-in-responses) array when the buyer asks for them with `include_collections` and the seller includes them, and otherwise from the publisher's `adagents.json`. Episodes are listed per-product in the `installments` array, since different products may scope different installments of the same collection.
 
 ### Reporting actual delivery
 
 Discovery and delivery answer different questions. A collection's `distribution` metadata or a product's property selectors say where content is carried or sellable. After purchase, `get_media_buy_delivery` can report `by_collection`, `by_property`, and `by_installment` marginals. Those independent arrays do not prove a relationship between their rows. Products that declare `supports_collection_property_breakdown` can return `by_collection_property`, whose rows are affirmative evidence that a collection actually delivered on a specific property. For a scheduled airing, episode, issue, or programming block, `supports_installment_property_breakdown` enables `by_installment_property`, proving that the specific installment delivered on the host property. This is the grain needed to distinguish the same programmed airing across two host apps without inferring delivery from catalog carriage. Collections and installments use publisher-scoped references; property rows use a publisher-scoped operational identifier and add a catalog property reference when one exists. If the response is truncated or suppressed, an absent intersection row proves nothing.
+
+For an installment's own lifecycle, `by_installment` rows can carry an experimental `installment_status` (including `postponed` and `cancelled`) and, for a digital installment that published, a `publication` record with its `published_at` and the URL of each post. See [Installment lifecycle and proof of publication](/docs/media-buy/media-buys/optimization-reporting#installment-lifecycle-and-proof-of-publication).
 
 ### Run-of-collection (no specific installments)
 
@@ -738,6 +740,58 @@ For premium or guaranteed buys, the seller scopes to specific installments:
   ]
 }
 ```
+
+## Installments in the compact lifecycle
+
+The examples above are the additive `get_products` Product. The compact lifecycle — [`list_products`](/docs/media-buy/task-reference/list_products), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) — uses the closed canonical Product, which carries installments from AdCP 3.3 onward.
+
+One shape difference matters. A canonical installment's identity is the `(collection_ref, installment_id)` tuple and nothing else: `collection_ref` is **required**, and the deprecated publisher-domain-free `collection_id` shorthand that `core/installment.json` still accepts is absent. Legacy `get_products` keeps its existing form.
+
+{/* Using latest because canonical-installment.json is not yet released in any version.
+     Update to correct version alias after the next release. */}
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/canonical-installment.json",
+  "installment_id": "juniper_vale_slot_2",
+  "collection_ref": {
+    "publisher_domain": "creatorloop.example",
+    "collection_id": "creatorloop_channel_juniper_vale"
+  },
+  "name": "Juniper Vale Cooks: Meal prep Sunday (sponsored integration)",
+  "status": "scheduled",
+  "scheduled_at": "2026-12-29T17:00:00Z",
+  "duration_seconds": 720,
+  "valid_until": "2026-11-17T17:00:00Z",
+  "deadlines": {
+    "booking_deadline": "2026-11-17T17:00:00Z",
+    "cancellation_deadline": "2026-11-24T17:00:00Z",
+    "material_deadlines": [
+      { "stage": "talking_points", "due_at": "2026-12-01T17:00:00Z", "label": "Talking points and brand guidelines" },
+      { "stage": "script", "due_at": "2026-12-15T17:00:00Z", "label": "Creator script for brand approval" },
+      { "stage": "draft", "due_at": "2026-12-22T17:00:00Z", "label": "Draft cut for final review" }
+    ]
+  }
+}
+```
+
+### Absence is run-of-collection, not "unknown"
+
+A canonical product that declares `collections` and omits `installments` is run-of-collection: inventory across those collections, whatever publishes during the flight. This is the same rule as the legacy Product, and it is the reason `installments` cannot be used to say "no installments are available" — a seller with nothing bookable omits the product.
+
+The converse is a schema rule, not a convention: `installments` requires `collections`, because a canonical installment names the collection that scopes its ID. A projection that asks for `installments` therefore gets `collections` back too.
+
+Two qualifications matter in practice.
+
+**Absence only means run-of-collection inside a projection that asked for the field.** `list_products` returns what `fields` requested, so a product with no `installments` in a projection that never requested them says nothing at all. A buyer choosing between specific slots and run-of-collection requests `installments` explicitly.
+
+**The collection scope is a buyer check, not just a seller rule.** Every top-level `collection_ref` MUST be one the product's `collections` selectors already name, and `publisher_domain` is the authorization root — it names the `adagents.json` that declares the collection. JSON Schema cannot express the set relationship, so buyers MUST reject a product whose installment names a collection its own selectors do not, rather than treating the installment as authorized inventory. (A `derivative_of.installment_ref` is deliberately exempt: a clip may name a source in another collection, and it is a provenance pointer rather than something being sold.)
+
+### Buying a product that names installments
+
+A purchase buys the product as offered: run-of-collection when the product names no installments, and the product's complete installment set when it does. In 3.3 a purchase cannot name the exact slots it buys, and `refine_proposals` cannot drop or swap one. `commercial_terms` is closed in 3.x, so a slot selection a buyer could not read, but would be bound by through `terms_digest`, cannot be added in a minor release. Installment selection is planned for 4.0, where `commercial_terms` gets a declared extension point with must-understand; see [Planned for 4.0](/docs/reference/migration/v4-compatibility#installment_selection_required_in_4_0).
+
+A committed proposal can read back which installments its hold covers, in `holds[]` (experimental, `media_buy.installment_holds`); see [Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental). `holds[]` is readback about the hold finalize placed, not contract, and is not covered by `terms_digest`.
 
 ## get_products response structure
 
@@ -1192,7 +1246,6 @@ Composition and views are inline on the product. The follower count lives on the
 - `as_of` is when the count last changed, not when it was last read. A refresh that leaves `lower_bound`, `upper_bound` and `precision` unchanged is not a change: the seller keeps the earlier `as_of`, no feed or `list_collections` version moves, and no [collection card webhook](/docs/media-buy/task-reference/list_collections#collection-card-webhooks) fires. A scheduled sweep can therefore check every count without forcing buyers to resync. Buyers comparing two creators compare `as_of` first.
 - The value counts accounts, not de-duplicated people, even though `audience-size` is worded for people. A person who follows the same creator on two platforms is counted twice, so buyers MUST NOT sum `followers` across `distribution` entries or treat it as reach.
 - Display and comparison only. It is not a targeting predicate and does not size a buyable audience.
-- It is outside the [definition pin](/docs/media-buy/specification#definition-pins) projection: a refreshed count does not change the collection's `content_digest`, while any other change to a `distribution` entry does.
 
 A seller that serves or relays collection objects carrying `followers` MUST list `media_buy.collection_cards` in `experimental_features` on `get_adcp_capabilities`. A publisher authoring the field directly in `adagents.json` has no capabilities response; the field is experimental either way. See [experimental status](/docs/reference/experimental-status).
 
@@ -1421,3 +1474,5 @@ The collection/installment model works identically for print publications and au
 - [Print ads](/docs/creative/channels/print) — print-specific creative formats, physical dimensions, bleed, and DPI
 - [brand.json](/docs/brand-protocol/brand-json) — talent identity and brand safety evaluation
 - [Product discovery](/docs/media-buy/product-discovery) — how buyers discover inventory via `get_products`
+- [`list_products`](/docs/media-buy/task-reference/list_products) — requesting `installments` on the canonical product
+- [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals#change-installments-experimental) — dropping and swapping a bought slot

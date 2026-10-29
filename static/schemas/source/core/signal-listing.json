@@ -62,11 +62,18 @@
     },
     "restricted_attributes": {
       "type": "array",
-      "description": "Restricted attribute categories this listing touches. Required with demographic_predicate and must include age. For referenced provider/source signals, any projected values must match the authoritative definition.",
+      "description": "Restricted attribute categories this listing touches. Required with demographic_predicate and must include age for age predicates and sex_gender for gender predicates. For referenced provider/source signals, any projected values must match the authoritative definition.",
       "items": {
         "$ref": "/schemas/enums/restricted-attribute.json"
       },
       "minItems": 1
+    },
+    "pricing_group": {
+      "type": "string",
+      "description": "Experimental (signals.pricing_groups). Optional seller-defined key naming the set of signals whose fees combine under one signal_pricing_group_rules entry when selected in the same package. The key is scoped to the listing surface (product options or the get_signals agent) it appears on. A product-scoped value overrides the get_signals value, as product-scoped pricing_options do; an option omitting it inherits. Omit when the fee is independent. Distinct from selection_group, which governs targeting composability, not fees.",
+      "minLength": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
     },
     "demographic_predicate": {
       "$ref": "/schemas/core/demographic-predicate.json",
@@ -119,7 +126,16 @@
       }
     },
     {
-      "if": { "required": ["demographic_predicate"] },
+      "if": {
+        "properties": {
+          "demographic_predicate": {
+            "required": [
+              "age"
+            ]
+          }
+        },
+        "required": ["demographic_predicate"]
+      },
       "then": {
         "properties": {
           "restricted_attributes": {
@@ -128,6 +144,33 @@
           }
         },
         "required": ["restricted_attributes"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "demographic_predicate": {
+            "required": [
+              "gender"
+            ]
+          }
+        },
+        "required": [
+          "demographic_predicate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "restricted_attributes": {
+            "type": "array",
+            "contains": {
+              "const": "sex_gender"
+            }
+          }
+        },
+        "required": [
+          "restricted_attributes"
+        ]
       }
     }
   ],

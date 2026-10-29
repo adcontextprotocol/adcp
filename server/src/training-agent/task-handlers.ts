@@ -54,7 +54,7 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { servesReleaseBefore, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -75,6 +75,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -2006,6 +2007,33 @@ function packageReadinessFields(pkg: PackageState, session: SessionState): Recor
   };
 }
 
+/** The reference seller serves approved assignments independently and does not
+ * implement an initial all-creatives gate. Never acknowledge a requested hold
+ * that delivery simulation would ignore. */
+function unsupportedCreativeStartPolicyError(request: unknown): TaskError | undefined {
+  if (!isRecord(request)) return undefined;
+  for (const field of ['packages', 'new_packages'] as const) {
+    const packages = request[field];
+    if (!Array.isArray(packages)) continue;
+    const index = packages.findIndex(pkg => isRecord(pkg) && pkg.start_requires_all_creatives_approved === true);
+    if (index < 0) continue;
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: 'This seller does not support holding package startup until every assigned creative is approved.',
+      field: `${field}[${index}].start_requires_all_creatives_approved`,
+      recovery: 'correctable',
+    };
+  }
+  return undefined;
+}
+
+function creativeStartPolicyForWire(ctx: TrainingContext): Record<string, boolean> {
+  const version = parseAdcpReleaseVersion(lifecycleSplitVersionForContext(ctx) ?? DEFAULT_ADCP_VERSION);
+  return version && (version.major > 3 || (version.major === 3 && version.minor >= 3))
+    ? { start_requires_all_creatives_approved: false }
+    : {};
+}
+
 const MAX_URL_LEN = 2048;
 const MAX_ID_LEN = 256;
 const MAX_TOKEN_LEN = 4096;
@@ -3095,7 +3123,14 @@ function productForServedAdcpVersion(product: Product, servedAdcpVersion: string
     audience_activation?: unknown;
     overlay_support?: unknown;
   };
-  return rest as Product;
+  if (!servesReleaseBefore(servedAdcpVersion, 3, 1)) return rest as Product;
+  // 3.0 cards are a format reference plus its manifest, not the inline card.
+  const {
+    product_card: _inlineCard,
+    product_card_detailed: _inlineDetailedCard,
+    ...withoutInlineCards
+  } = rest as Product & { product_card?: unknown; product_card_detailed?: unknown };
+  return { ...withoutInlineCards, ...threeZeroProductCards(product) } as unknown as Product;
 }
 
 /**
@@ -3131,6 +3166,7 @@ import {
   briefExcludesProduct,
   buildCatalog,
   buildProposals,
+  threeZeroProductCards,
   TRAINING_AUDIENCE_ACTIVATION_METHODS,
 } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
@@ -3143,7 +3179,7 @@ import {
   getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
-import { getAgentUrl } from './config.js';
+import { getAgentUrl, getIdentityBaseUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
   handleSyncPlans,
@@ -3266,6 +3302,7 @@ import {
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const SUPPORTED_RELEASE_VERSIONS = TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS;
 const DEFAULT_ADCP_VERSION = TRAINING_AGENT_DEFAULT_ADCP_VERSION;
+const CORE_GENDER_CANDIDATE_VERSION = '3.3-beta.0';
 export const TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH = '/registry/acceptance-policy-catalog.json';
 export const TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST = 'sha256:3afb3865dbd69025b4f925c5c018c7659fa0a744efcb0b12b87e1b3a119b3d2a';
 export const TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE = 'meta_political_advertising_acceptance';
@@ -3416,7 +3453,9 @@ function signingCompatibleReleaseVersions(ctx: TrainingContext): readonly string
   // parser. Legacy-profile routes (either/forbidden digest policy, or the
   // required-digest legacy route) advertise 3.0/3.1 only.
   if (!signingCap.supported || requestSigningProfileVersion(ctx) === CURRENT_REQUEST_SIGNING_PROFILE_VERSION) {
-    return SUPPORTED_RELEASE_VERSIONS;
+    return ctx.developmentCoreGender
+      ? [...new Set([...SUPPORTED_RELEASE_VERSIONS, CORE_GENDER_CANDIDATE_VERSION])]
+      : SUPPORTED_RELEASE_VERSIONS;
   }
   return SUPPORTED_RELEASE_VERSIONS.filter(version => {
     const parsed = parseAdcpReleaseVersion(version);
@@ -3530,8 +3569,11 @@ export function resolveServedAdcpVersionForTool(
   supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
 ): VersionResolution {
   const splitProductTool = isProductDiscoveryTool(toolName) && toolName !== 'get_products';
+  // An unpinned call defaults to 3.0, which does not define a tool a later
+  // release adds (validate_input, the split product tools, search_brands,
+  // report_plan_adjustment). Serve those at the highest supported 3.x.
   if (
-    (toolName === 'validate_input' || splitProductTool)
+    (toolName === 'validate_input' || splitProductTool || toolAddedAfterRelease(toolName, DEFAULT_ADCP_VERSION))
     && args.adcp_version === undefined
     && args.adcp_major_version === undefined
   ) {
@@ -4758,6 +4800,12 @@ export function deriveStatus(mb: MediaBuyState, session?: SessionState): string 
   if (needsCreative && mb.status !== 'completed' && !mb.complyControllerForced) {
     return 'pending_creatives';
   }
+  // A provisional buy (confirmed_at null) is held for seller review. It reports
+  // the status it will have on confirmation and is never active, even when its
+  // flight has started: it stays pending_start until the seller commits.
+  if (mb.confirmedAt === null && (mb.status === 'active' || mb.status === 'paused')) {
+    return 'pending_start';
+  }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
     if (new Date(mb.endTime) < now) return 'completed';
@@ -4990,6 +5038,41 @@ function availableActionsForMediaBuy(mb: MediaBuyState, status: string, servedAd
     || withFrequencyCaps.some(action => action.action === 'resume')
   ) return withFrequencyCaps;
   return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...withFrequencyCaps];
+}
+
+/**
+ * The wire shape of `available_actions` for the served release. 3.1
+ * introduced the field with a closed available-action object (action, mode,
+ * sla, terms_ref); `task`, `change_term_id` and `applicable_package_ids`
+ * arrive with the 3.2 lifecycle split, and the action and mode enums are the
+ * served release's own (the same projection the SDK applies on the tenant
+ * routes). 3.0 does not define the field and leaves the media-buy object
+ * open. Authorization keeps reading the full internal entries.
+ */
+function availableActionsForServedRelease(
+  actions: readonly MediaBuyAvailableActionState[],
+  servedAdcpVersion: string | undefined,
+): MediaBuyAvailableActionState[] {
+  if (
+    servedAdcpVersion === undefined
+    || !servesReleaseBefore(servedAdcpVersion, 3, 2)
+    || servesReleaseBefore(servedAdcpVersion, 3, 1)
+  ) return [...actions];
+  const servedActions = servedReleaseEnum('enums/media-buy-valid-action.json', servedAdcpVersion);
+  const servedModes = servedReleaseEnum('enums/media-buy-action-mode.json', servedAdcpVersion);
+  return actions
+    .filter(action => (!servedActions || servedActions.has(action.action)) && (!servedModes || servedModes.has(action.mode)))
+    .map(action => ({
+      action: action.action,
+      mode: action.mode,
+      ...(action.sla && { sla: action.sla }),
+      ...(action.terms_ref !== undefined && { terms_ref: action.terms_ref }),
+    }));
+}
+
+/** `available_actions` for a media-buy response at the served release. */
+function availableActionsWireForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
+  return availableActionsForServedRelease(availableActionsForMediaBuy(mb, status, servedAdcpVersion), servedAdcpVersion);
 }
 
 /**
@@ -5354,7 +5437,7 @@ function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean
   ].some(field => Object.hasOwn(root, field))) return true;
   if (req.new_packages?.length) return true;
   return Boolean(req.packages?.some(update => Object.keys(update as unknown as Record<string, unknown>)
-    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives'].includes(field))));
+    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives', 'start_requires_all_creatives_approved'].includes(field))));
 }
 
 const UNTYPED_ACCEPTED_CHANGE_ROOT_FIELDS = [
@@ -5439,7 +5522,7 @@ function actionNotAllowedError(
       details: {
         attempted_action: attemptedAction,
         reason: projectedReason,
-        currently_available_actions: availableActions,
+        currently_available_actions: availableActionsForServedRelease(availableActions, servedAdcpVersion),
       },
     }],
     ...(context !== undefined && { context }),
@@ -5862,9 +5945,91 @@ let cachedCatalog: CatalogProduct[] | null = null;
 let cachedFormats: ReturnType<typeof buildFormats> | null = null;
 let cachedProposals: import('@adcp/sdk').Proposal[] | null = null;
 
-function getCatalog(): CatalogProduct[] {
+function getCatalog(ctx?: TrainingContext): CatalogProduct[] {
   if (!cachedCatalog) cachedCatalog = buildCatalog();
-  return cachedCatalog;
+  if (!ctx?.developmentCoreGender || !coreGenderVersionSupported(ctx)) return cachedCatalog;
+  const demonstrationProduct = cachedCatalog.find(entry => (
+    entry.product.channels?.includes('display') && entry.product.delivery_type === 'non_guaranteed'
+  ));
+  return cachedCatalog.map(entry => {
+    if (entry !== demonstrationProduct) return entry;
+    const product = entry.product as unknown as Record<string, unknown>;
+    return { ...entry, product: {
+      ...product,
+      demographic_targeting: {
+        ...(isRecord(product.demographic_targeting) ? product.demographic_targeting : {}),
+        gender: { execution_modes: ['native'], values: ['female', 'male', 'non_binary'], unknown_handling: 'selectable' },
+      },
+      overlay_support: { ...(isRecord(product.overlay_support) ? product.overlay_support : {}), demographics: { gender: true } },
+    } as unknown as Product };
+  });
+}
+
+function coreGenderVersionSupported(ctx: TrainingContext): boolean {
+  const version = parseAdcpReleaseVersion(ctx.servedAdcpVersion
+    ?? (ctx.developmentCoreGender ? CORE_GENDER_CANDIDATE_VERSION : DEFAULT_ADCP_VERSION));
+  return version !== undefined && version.major === 3 && version.minor >= 3;
+}
+
+const CORE_GENDER_TYPED_CONTAINERS = new Set([
+  'targeting_overlay', 'targeting', 'targeting_resolution', 'overlay_support', 'required_overlay_support',
+  'criteria', 'updates', 'packages', 'new_packages', 'purchases', 'products', 'product', 'affected_packages',
+  'media_buys', 'proposal', 'proposals', 'accepted_proposal', 'commercial_terms', '__canonical_commercial_terms',
+  'allocations', 'plans', 'plan', 'signals', 'signal', 'definitions', 'definition', 'enrichment',
+  'signal_definition', 'signal_definition_enrichment', 'signal_targeting_options',
+  'media_buy', 'execution', 'features', 'acceptance_policy', 'acceptance_policy_requirements',
+  'requirements', 'policies', 'policy', 'conditions', 'alternatives',
+]);
+
+function coreGenderSurfacePath(value: unknown, path = ''): string | undefined {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      const found = coreGenderSurfacePath(item, `${path}[${index}]`);
+      if (found) return found;
+    }
+  } else if (isRecord(value)) {
+    if (Array.isArray(value.restricted_attributes) && value.restricted_attributes.includes('sex_gender')) {
+      return `${path}${path ? '.' : ''}restricted_attributes`;
+    }
+    for (const field of ['demographics', 'demographic_targeting', 'demographic_predicate']) {
+      const object = value[field];
+      if (isRecord(object) && object.gender !== undefined) return `${path}${path ? '.' : ''}${field}.gender`;
+      if (field === 'demographics' && isRecord(object)) {
+        for (const predicate of ['requested', 'applied']) {
+          if (isRecord(object[predicate]) && object[predicate].gender !== undefined) return `${path}${path ? '.' : ''}${field}.${predicate}.gender`;
+        }
+      }
+    }
+    for (const [field, item] of Object.entries(value)) {
+      // Only typed protocol containers have demographic semantics. Vendor
+      // breakdowns, creative params, context, ext and raw attestations remain
+      // opaque even when their keys resemble core fields.
+      if (field === 'params' && typeof value.scenario === 'string' && isRecord(item) && isRecord(item.fixture)) {
+        const found = coreGenderSurfacePath(item.fixture, `${path}${path ? '.' : ''}params.fixture`);
+        if (found) return found;
+        continue;
+      }
+      // A governance intent carries the exact downstream tool arguments.
+      if (field === 'payload' && typeof value.tool === 'string') {
+        const found = coreGenderSurfacePath(item, `${path}${path ? '.' : ''}payload`);
+        if (found) return found;
+        continue;
+      }
+      if (!CORE_GENDER_TYPED_CONTAINERS.has(field)) continue;
+      const found = coreGenderSurfacePath(item, `${path}${path ? '.' : ''}${field}`);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+function coreGenderVersionError(ctx: TrainingContext, value: unknown): TaskError | undefined {
+  if (coreGenderVersionSupported(ctx)) return undefined;
+  const field = coreGenderSurfacePath(value);
+  return field ? {
+    code: 'UNSUPPORTED_FEATURE', field, recovery: 'correctable',
+    message: 'Experimental core gender requires a negotiated 3.3 contract; AdCP 3.2 core remains age-only.',
+  } : undefined;
 }
 
 function getProposals(): import('@adcp/sdk').Proposal[] {
@@ -7644,10 +7809,13 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
 // Default list_products projection onto the closed core/canonical-product.json.
 // Legacy-only Product keys stay on get_products: audience_activation (the
 // experimental per-product declaration has no canonical counterpart yet; the
-// seller-wide union remains on get_adcp_capabilities), installments (deferred
-// until installment.json drops the deprecated collection_id shorthand), and
-// is_custom (canonical products mark request-specific configured offers with
-// expires_at alone).
+// seller-wide union remains on get_adcp_capabilities) and is_custom (canonical
+// products mark request-specific configured offers with expires_at alone).
+// installments project onto the closed core/canonical-installment.json, which
+// carries no deprecated collection_id shorthand and names a derivative source
+// by installment_ref rather than a response-local installment_id.
+const CANONICAL_PRODUCT_SCHEMA = 'core/canonical-product.json';
+
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7659,8 +7827,96 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'demographic_targeting', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
   'sponsored_placement_types', 'overlay_support', 'media_buy_support', 'identity',
-  'targeting_resolution', 'collections', 'collection_targeting_allowed', 'ext',
+  'targeting_resolution', 'collections', 'collection_targeting_allowed',
+  'installments', 'ext',
 ]);
+
+// core/canonical-installment.json is closed and drops the legacy deprecated
+// collection_id shorthand; identity is the (collection_ref, installment_id)
+// tuple alone.
+const COMPACT_INSTALLMENT_FIELDS = new Set([
+  'installment_id', 'collection_ref', 'name', 'season', 'installment_number',
+  'scheduled_at', 'status', 'duration_seconds', 'flexible_end', 'valid_until',
+  'content_rating', 'topics', 'special', 'guest_talent', 'ad_inventory',
+  'deadlines', 'ext',
+]);
+
+/** Canonical identity is the (collection_ref, installment_id) tuple, so a
+ * legacy installment carrying only the deprecated shorthand is unprojectable.
+ * Resolve it against the product's collections when that is unambiguous —
+ * which is exactly the condition the shorthand is documented to be valid
+ * under — and give up otherwise. */
+function canonicalCollectionRef(
+  installment: Record<string, unknown>,
+  productCollectionIds: ReadonlyMap<string, string>,
+): Record<string, unknown> | undefined {
+  if (isRecord(installment.collection_ref)) return structuredClone(installment.collection_ref);
+  const shorthand = installment.collection_id;
+  if (typeof shorthand !== 'string') return undefined;
+  const publisherDomain = productCollectionIds.get(shorthand);
+  return publisherDomain === undefined
+    ? undefined
+    : { publisher_domain: publisherDomain, collection_id: shorthand };
+}
+
+/** Project one legacy Product installment onto the closed canonical shape.
+ * Returns undefined when the installment cannot be represented there, which
+ * the caller treats as "this product has no canonical installments" rather
+ * than silently shortening the set — an omitted installments array reads as
+ * run-of-collection, so a partial set would be a different claim. */
+function compactInstallment(
+  installment: Record<string, unknown>,
+  productCollectionIds: ReadonlyMap<string, string>,
+  siblings: readonly Record<string, unknown>[],
+): Record<string, unknown> | undefined {
+  const collectionRef = canonicalCollectionRef(installment, productCollectionIds);
+  if (collectionRef === undefined) return undefined;
+  if (typeof installment.installment_id !== 'string' || installment.installment_id.length === 0) return undefined;
+  const projected = pickCompactFields(installment, COMPACT_INSTALLMENT_FIELDS);
+  projected.collection_ref = collectionRef;
+  // The canonical shape requires at least one entry where the legacy shape
+  // allows an empty array, so an empty one is dropped rather than emitted.
+  for (const field of ['topics', 'guest_talent'] as const) {
+    if (Array.isArray(projected[field]) && (projected[field] as unknown[]).length === 0) delete projected[field];
+  }
+  // derivative_of names a response-local installment_id in the legacy shape and
+  // a canonical installment_ref here. The source may sit in another collection
+  // of a multi-collection product, so resolve it against the sibling that
+  // actually declares that ID rather than assuming the enclosing collection.
+  const derivative = installment.derivative_of;
+  if (isRecord(derivative) && typeof derivative.installment_id === 'string' && typeof derivative.type === 'string') {
+    const source = siblings.find(entry => entry.installment_id === derivative.installment_id);
+    const sourceRef = source && canonicalCollectionRef(source, productCollectionIds);
+    if (sourceRef !== undefined) {
+      projected.derivative_of = {
+        installment_ref: { collection_ref: sourceRef, installment_id: derivative.installment_id },
+        type: derivative.type,
+      };
+    }
+  }
+  return projected;
+}
+
+/** Collection IDs a product's selectors name, mapped to their publisher
+ * domain. An ID claimed by two domains is ambiguous and is left out, so an
+ * installment can never be attributed to the wrong publisher namespace. */
+function productCollectionIndex(collections: unknown): ReadonlyMap<string, string> {
+  const index = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  if (!Array.isArray(collections)) return index;
+  for (const selector of collections) {
+    if (!isRecord(selector) || typeof selector.publisher_domain !== 'string') continue;
+    if (!Array.isArray(selector.collection_ids)) continue;
+    for (const collectionId of selector.collection_ids) {
+      if (typeof collectionId !== 'string') continue;
+      const seen = index.get(collectionId);
+      if (seen !== undefined && seen !== selector.publisher_domain) ambiguous.add(collectionId);
+      else index.set(collectionId, selector.publisher_domain);
+    }
+  }
+  for (const collectionId of ambiguous) index.delete(collectionId);
+  return index;
+}
 
 let canonicalReportingCapabilityFields: ReadonlySet<string> | undefined;
 
@@ -7692,15 +7948,21 @@ function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<
 }
 
 /** Project the additive 3.x get_products representation into the closed
- * canonical offer shape used by list_products. */
-function compactLifecycleProduct(
+ * canonical offer shape used by list_products. With a served release, fields
+ * the source schema adds after it (for 3.2, the 3.3 `installments`) are
+ * withheld; without one the projection follows the source schema. */
+export function compactLifecycleProduct(
   product: Record<string, unknown>,
   requestedFields?: ReadonlySet<string>,
   requiredFields: ReadonlySet<string> = new Set(),
+  servedAdcpVersion?: string,
 ): Record<string, unknown> {
-  const selectedFields = requestedFields
-    ? new Set(['product_id', 'name', ...requestedFields, ...requiredFields])
-    : COMPACT_PRODUCT_FIELDS;
+  const withheldFields = servedAdcpVersion === undefined
+    ? new Set<string>()
+    : propertiesAddedAfterRelease(CANONICAL_PRODUCT_SCHEMA, servedAdcpVersion);
+  const selectedFields = new Set([...(requestedFields
+    ? ['product_id', 'name', ...requestedFields, ...requiredFields]
+    : COMPACT_PRODUCT_FIELDS)].filter(field => !withheldFields.has(field)));
   const projected = pickCompactFields(product, selectedFields);
   // A returned overlay_support.collection_list is only schema-valid alongside
   // collection_targeting_allowed: true, so it overrides a narrower projection.
@@ -7721,13 +7983,39 @@ function compactLifecycleProduct(
       .filter(isRecord)
       .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
   }
+  // pickCompactFields copies installments verbatim, so clear it before the
+  // guard: a non-array value must never reach the closed canonical shape.
+  delete projected.installments;
+  if (selectedFields.has('installments') && Array.isArray(product.installments)) {
+    // canonical-product.json requires the collections that scope installment
+    // IDs, so without them the field cannot be returned at all.
+    const collectionIds = productCollectionIndex(product.collections);
+    const source = product.installments.filter(isRecord);
+    const installments = collectionIds.size === 0
+      ? []
+      : source.map(entry => compactInstallment(entry, collectionIds, source));
+    // All or nothing: a shortened set would claim the buyer can only buy the
+    // slots that happened to project. Omitting instead is the lesser of two
+    // wrong answers, not a neutral one — inside a projection that asked for
+    // installments, absence reads as run-of-collection. A seller whose
+    // catalog can reach this must add collection_ref rather than ship either
+    // claim; see the migration note for 3.3.
+    if (installments.length > 0 && installments.every(entry => entry !== undefined)) {
+      projected.installments = installments as Record<string, unknown>[];
+      if (projected.collections === undefined && product.collections !== undefined) {
+        projected.collections = structuredClone(product.collections);
+      }
+    }
+  }
   if (selectedFields.has('reporting_capabilities') && isRecord(product.reporting_capabilities)) {
     projected.reporting_capabilities = pickCompactFields(
       product.reporting_capabilities,
       compactReportingCapabilityFields(),
     );
   }
-  return projected;
+  return servedAdcpVersion === undefined
+    ? projected
+    : omitFieldsAddedAfterRelease(projected, CANONICAL_PRODUCT_SCHEMA, servedAdcpVersion);
 }
 
 /** Match a buyer's future targeting requirement against a Product's binding
@@ -8106,7 +8394,16 @@ function resolveConfiguredPurchaseTargeting(
   requested: Record<string, unknown> | undefined,
   support: unknown,
   path: string,
-): { targeting?: Record<string, unknown>; errorPath?: string } {
+): { targeting?: Record<string, unknown>; errorPath?: string; requiresRequote?: boolean } {
+  const boundDemographics = isRecord(bound?.demographics) ? bound.demographics : undefined;
+  const requestedDemographics = isRecord(requested?.demographics) ? requested.demographics : undefined;
+  if (boundDemographics && (boundDemographics.gender !== undefined || requestedDemographics?.gender !== undefined)
+    && requested && Object.hasOwn(requested, 'demographics')
+    && (!requestedDemographics || ['age', 'gender'].some(dimension => (
+      boundDemographics[dimension] !== undefined && requestedDemographics[dimension] === undefined
+    )))) {
+    return { errorPath: `${path}.demographics`, requiresRequote: true };
+  }
   if (!bound && requested) {
     const supportRecord = isRecord(support) ? support : {};
     for (const [field, requestedValue] of Object.entries(requested)) {
@@ -8354,10 +8651,13 @@ function concreteTargetingError(
   targeting: Record<string, unknown>,
   path: string,
 ): TaskError | undefined {
+  const demographicError = compileGenderDemographics(product, targeting, path).error;
+  if (demographicError) return demographicError;
   const productRecord = product as unknown as Record<string, unknown>;
   const support = isRecord(productRecord.overlay_support) ? productRecord.overlay_support : {};
   const inherentPlacementMatch = matchesInherentPlacementSelection(product, targeting);
   for (const [field, value] of Object.entries(targeting)) {
+    if (field === 'demographics' && isRecord(value) && value.gender !== undefined) continue;
     if (field === 'placement_selection' && inherentPlacementMatch === true) continue;
     if (!concreteTargetingSupportedForProduct(support, field, value)) {
       return {
@@ -8550,11 +8850,281 @@ function configuredProductOwner(
     : undefined;
 }
 
+/** Compile gender only from a declared product capability and authoritative
+ * predicates. Labels and an open overlay_support object are not execution
+ * evidence. Keep legacy age-only execution unchanged. */
+function compileGenderDemographics(
+  product: Product,
+  targeting: Record<string, unknown> | undefined,
+  path: string,
+): { resolution?: Record<string, unknown>; error?: TaskError } {
+  const demographics = isRecord(targeting?.demographics) ? targeting.demographics : undefined;
+  if (!demographics || demographics.gender === undefined) return {};
+  const fail = (dimension: string, message: string, code = 'UNSUPPORTED_FEATURE') => ({
+    error: { code, message, field: `${path}.demographics.${dimension}`, recovery: 'correctable' } as TaskError,
+  });
+  const unsupportedDimension = Object.keys(demographics).find(dimension => !['age', 'gender', 'ext'].includes(dimension));
+  if (unsupportedDimension) return fail(unsupportedDimension, 'The training seller cannot execute this additional demographic dimension.');
+  const gender = demographics.gender;
+  const strictTargeting = Object.fromEntries(Object.entries(targeting ?? {}).filter(([, value]) => value !== null));
+  const schemaValidation = validateSourceSchema('core/targeting.json', strictTargeting);
+  if (!schemaValidation.valid) {
+    const issue = schemaValidation.errors[0];
+    return fail('gender', `Invalid effective gender targeting${issue?.instancePath ?? ''}: ${issue?.message ?? 'schema validation failed'}`, 'INVALID_REQUEST');
+  }
+  if (!isRecord(gender)
+    || !Array.isArray(gender.values) || gender.values.length === 0
+    || gender.values.some(value => typeof value !== 'string' || !['female', 'male', 'non_binary'].includes(value))
+    || new Set(gender.values).size !== gender.values.length
+    || typeof gender.include_unknown !== 'boolean') {
+    return fail('gender', 'Gender targeting requires unique supported values and explicit include_unknown.', 'INVALID_REQUEST');
+  }
+  const productRecord = product as unknown as Record<string, unknown>;
+  const capability = isRecord(productRecord.demographic_targeting) ? productRecord.demographic_targeting : {};
+  const genderSupport = isRecord(capability.gender) ? capability.gender : undefined;
+  const supportedGenderValues = Array.isArray(genderSupport?.values) ? genderSupport.values : [];
+  const unknownMatches = (support: Record<string, unknown>, predicate: Record<string, unknown>) => (
+    support.unknown_handling === 'selectable'
+    || (support.unknown_handling === 'always_excluded' && predicate.include_unknown === false)
+    || (support.unknown_handling === 'always_included' && predicate.include_unknown === true)
+  );
+  if (!genderSupport || !Array.isArray(genderSupport.values)
+    || gender.values.some(value => !supportedGenderValues.includes(value))
+    || !unknownMatches(genderSupport, gender)) {
+    return fail('gender', 'The selected product cannot execute the requested gender values and unknown handling exactly.');
+  }
+  const requested: Record<string, unknown> = { gender: structuredClone(gender) };
+  const applied: Record<string, unknown> = {
+    gender: { values: structuredClone(gender.values), include_unknown: gender.include_unknown },
+  };
+  const age = isRecord(demographics.age) ? demographics.age : undefined;
+  if (age) {
+    if (typeof age.min === 'number' && typeof age.max === 'number' && age.min > age.max) {
+      return fail('age', 'Minimum age must not exceed maximum age.', 'INVALID_REQUEST');
+    }
+    if (isRecord(targeting?.age_restriction)) {
+      if (age.include_unknown === true || (typeof age.max === 'number'
+        && typeof targeting.age_restriction.min === 'number' && age.max < targeting.age_restriction.min)) {
+        return fail('age', 'The age predicate and legal minimum-age eligibility have an empty or unknown-age intersection.', 'INVALID_REQUEST');
+      }
+      if (targeting.age_restriction.verification_required === true) {
+        return fail('age', 'The training seller cannot attest the requested legal age verification basis.');
+      }
+    }
+    if (age.accepted_bases !== undefined || age.accepted_verification_methods !== undefined) {
+      return fail('age', 'The training seller cannot attest the requested age determination or verification basis.');
+    }
+    requested.age = structuredClone(age);
+    applied.age = {
+      ...(age.min !== undefined && { min: age.min }),
+      ...(age.max !== undefined && { max: age.max }),
+      include_unknown: age.include_unknown,
+    };
+  }
+  const options = Array.isArray(productRecord.signal_targeting_options)
+    ? productRecord.signal_targeting_options.filter(isRecord).filter(option => (
+        isRecord(option.signal_ref) && isRecord(option.demographic_predicate)
+        && Array.isArray(option.restricted_attributes)
+      ))
+    : [];
+  const sameAge = (left: Record<string, unknown>, right: Record<string, unknown>) => (
+    left.min === right.min && left.max === right.max && left.include_unknown === right.include_unknown
+  );
+  const sameGender = (left: Record<string, unknown>, right: Record<string, unknown>) => (
+    left.include_unknown === right.include_unknown
+    && isDeepStrictEqual(canonicalStringSet(left.values), canonicalStringSet(right.values))
+  );
+  const genderModes = Array.isArray(genderSupport.execution_modes) ? genderSupport.execution_modes : [];
+  const ageSupport = isRecord(capability.age) ? capability.age : undefined;
+  const ageModes = Array.isArray(ageSupport?.execution_modes) ? ageSupport.execution_modes : [];
+  // A joint signal proves the entire conjunction. Never describe a correlated
+  // age+gender segment as an independent dimension-local gender signal.
+  if (age && ageSupport && unknownMatches(ageSupport, age)
+    && ageModes.includes('signals') && genderModes.includes('signals')
+    && productRecord.signal_targeting_allowed === true) {
+    const joint = options.find(option => {
+      const predicate = option.demographic_predicate as Record<string, unknown>;
+      return Object.keys(predicate).length === 2
+        && isRecord(predicate.age) && sameAge(predicate.age, age)
+        && isRecord(predicate.gender) && sameGender(predicate.gender, gender)
+        && (option.restricted_attributes as unknown[]).includes('age')
+        && (option.restricted_attributes as unknown[]).includes('sex_gender');
+    });
+    if (joint) return { resolution: {
+      requested, applied, equivalent: true,
+      execution: { type: 'signals', signal_refs: [structuredClone(joint.signal_ref)] },
+    } };
+  }
+  let genderExecution: Record<string, unknown> | undefined;
+  if (genderModes.includes('native')) genderExecution = { type: 'gender_values' };
+  else if (genderModes.includes('signals') && productRecord.signal_targeting_allowed === true) {
+    const requestedValues = new Set(gender.values);
+    const candidates = options.filter(option => {
+      const predicate = option.demographic_predicate as Record<string, unknown>;
+      const signalGender = isRecord(predicate.gender) ? predicate.gender : undefined;
+      return Object.keys(predicate).length === 1 && signalGender
+        && Array.isArray(signalGender.values) && signalGender.values.length > 0
+        && signalGender.values.every(value => requestedValues.has(value))
+        && typeof signalGender.include_unknown === 'boolean'
+        && (!signalGender.include_unknown || gender.include_unknown)
+        && (option.restricted_attributes as unknown[]).includes('sex_gender');
+    });
+    const covered = new Set(candidates.flatMap(option => (
+      (option.demographic_predicate as { gender: { values: unknown[] } }).gender.values
+    )));
+    const unknownCovered = candidates.some(option => (
+      (option.demographic_predicate as { gender: { include_unknown: boolean } }).gender.include_unknown
+    ));
+    if (gender.values.every(value => covered.has(value)) && unknownCovered === gender.include_unknown) {
+      genderExecution = { type: 'signals', signal_refs: candidates.map(option => structuredClone(option.signal_ref)) };
+    }
+  }
+  if (!genderExecution) return fail('gender', 'No declared native execution or authoritative signal union exactly matches the gender predicate.');
+  if (!age) return { resolution: { requested, applied, equivalent: true, execution: genderExecution } };
+  if (!ageSupport || !unknownMatches(ageSupport, age)) return fail('age', 'The selected product cannot execute the accompanying age predicate exactly.');
+  const low = typeof age.min === 'number' ? age.min : Number.NEGATIVE_INFINITY;
+  const high = typeof age.max === 'number' ? age.max : Number.POSITIVE_INFINITY;
+  if (low > high) return fail('age', 'Minimum age must not exceed maximum age.', 'INVALID_REQUEST');
+  let ageExecution: Record<string, unknown> | undefined;
+  if (ageModes.includes('continuous_bounds')
+    && [age.min, age.max].every(bound => bound === undefined || (
+      typeof bound === 'number' && typeof ageSupport.min_supported_age === 'number'
+      && typeof ageSupport.max_supported_age === 'number'
+      && bound >= ageSupport.min_supported_age && bound <= ageSupport.max_supported_age
+    ))
+    && (age.min !== undefined || ageSupport.supports_unbounded_min === true)
+    && (age.max !== undefined || ageSupport.supports_unbounded_max === true)) {
+    ageExecution = { type: 'continuous_bounds' };
+  }
+  if (!ageExecution && ageModes.includes('enumerated_intervals') && Array.isArray(ageSupport.intervals)) {
+    const intervals = ageSupport.intervals.filter(isRecord).filter(interval => (
+      isRecord(interval.age) && typeof interval.interval_id === 'string'
+      && (typeof interval.age.min === 'number' ? interval.age.min : Number.NEGATIVE_INFINITY) >= low
+      && (typeof interval.age.max === 'number' ? interval.age.max : Number.POSITIVE_INFINITY) <= high
+      && (!interval.age.include_unknown || age.include_unknown)
+    )).sort((left, right) => (
+      ((left.age as { min?: number }).min ?? Number.NEGATIVE_INFINITY)
+      - ((right.age as { min?: number }).min ?? Number.NEGATIVE_INFINITY)
+    ));
+    let end = low;
+    let startsAtLow = false;
+    let hasGap = false;
+    for (const [index, interval] of intervals.entries()) {
+      const bounds = interval.age as { min?: number; max?: number };
+      const start = bounds.min ?? Number.NEGATIVE_INFINITY;
+      if (index === 0) startsAtLow = start === low;
+      else if (start > end + 1) hasGap = true;
+      end = Math.max(end, bounds.max ?? Number.POSITIVE_INFINITY);
+    }
+    const unknownCovered = intervals.some(interval => (interval.age as { include_unknown: boolean }).include_unknown);
+    if (intervals.length > 0 && startsAtLow && !hasGap && end === high && unknownCovered === age.include_unknown) {
+      ageExecution = { type: 'enumerated_intervals', interval_ids: intervals.map(interval => interval.interval_id) };
+    }
+  }
+  if (!ageExecution && ageModes.includes('signals') && productRecord.signal_targeting_allowed === true) {
+    const signal = options.find(option => {
+      const predicate = option.demographic_predicate as Record<string, unknown>;
+      return Object.keys(predicate).length === 1 && isRecord(predicate.age)
+        && sameAge(predicate.age, age) && (option.restricted_attributes as unknown[]).includes('age');
+    });
+    if (signal) ageExecution = { type: 'signals', signal_refs: [structuredClone(signal.signal_ref)] };
+  }
+  if (!ageExecution) return fail('age', 'No declared execution exactly matches the accompanying age predicate.');
+  return { resolution: {
+    requested, applied, equivalent: true,
+    execution: { type: 'per_dimension', age: ageExecution, gender: genderExecution },
+  } };
+}
+
+/** Top-level targeting dimensions are replacement patches. A demographics
+ * value replaces that entire dimension; null clears both age and gender. */
+function genderTargetingMutation(
+  base: PackageTargeting | undefined,
+  input: unknown,
+): Record<string, unknown> | undefined {
+  const currentDemographics = isRecord(base?.demographics) ? base.demographics : undefined;
+  const inputDemographics = isRecord(input) && isRecord(input.demographics) ? input.demographics : undefined;
+  if (currentDemographics?.gender === undefined && inputDemographics?.gender === undefined
+    && !(isRecord(input) && input.demographics === null)) {
+    return isRecord(input) ? input : undefined;
+  }
+  if (!isRecord(input)) return base ? structuredClone(base) : undefined;
+  const effective: Record<string, unknown> = structuredClone(base ?? {});
+  for (const [dimension, value] of Object.entries(input)) {
+    if (value === null) delete effective[dimension];
+    // Open schema keys are data, including a literal __proto__ key.
+    else Object.defineProperty(effective, dimension, {
+      value: structuredClone(value), enumerable: true, writable: true, configurable: true,
+    });
+  }
+  return Object.keys(effective).length > 0 ? effective : undefined;
+}
+
+function genderTargetingMutationError(base: PackageTargeting | undefined, input: unknown, path: string): TaskError | undefined {
+  const current = isRecord(base?.demographics) ? base.demographics : undefined;
+  const supplied = isRecord(input) && isRecord(input.demographics) ? input.demographics : undefined;
+  if (current?.gender === undefined && supplied?.gender === undefined) return undefined;
+  if (input === undefined) return undefined;
+  const validation = validateSourceSchema('core/targeting-input.json', input);
+  if (validation.valid) {
+    const effective = genderTargetingMutation(base, input);
+    if (!effective || validateSourceSchema('core/targeting.json', effective).valid) return undefined;
+  }
+  return { code: 'INVALID_REQUEST', message: 'The targeting mutation must leave a valid non-null effective targeting state.', field: path, recovery: 'correctable' };
+}
+
+function hasCoreGenderTargeting(value: unknown): boolean {
+  return isRecord(value) && isRecord(value.demographics) && value.demographics.gender !== undefined;
+}
+
+function unsupportedGenderGovernanceError(): TaskError {
+  return { code: 'UNSUPPORTED_FEATURE', field: 'targeting_overlay.demographics.gender', recovery: 'correctable',
+    message: 'The training governance evaluator cannot evaluate effective core gender targeting. This governed operation was not executed.' };
+}
+
+/** Inspect principal-owned configured and proposal defaults before verifying a
+ * governance token; verification itself reserves its local replay identifier. */
+async function createUsesEffectiveCoreGender(req: ToolArgs, ctx: TrainingContext, session: SessionState): Promise<boolean> {
+  const request = req as unknown as Record<string, unknown>;
+  const packages = Array.isArray(request.packages) ? request.packages.filter(isRecord) : [];
+  const proposalId = typeof request.proposal_id === 'string' ? request.proposal_id : undefined;
+  if (proposalId) {
+    const proposalSession = await getSession(productDiscoverySessionKey({ ...req, __compact_proposal_lifecycle: true } as ToolArgs, ctx));
+    for (const candidateSession of [session, proposalSession]) {
+      const record = candidateSession.proposalRefinementRecords.get(proposalId);
+      const proposal = record ? canonicalProposalFromRecord(record) as unknown as Record<string, unknown>
+        : candidateSession.lastGetProductsContext?.proposals?.find(candidate => candidate.proposal_id === proposalId) as unknown as Record<string, unknown> | undefined;
+      const terms = isRecord(proposal?.commercial_terms) ? proposal.commercial_terms
+        : isRecord(proposal?.__canonical_commercial_terms) ? proposal.__canonical_commercial_terms : undefined;
+      if (Array.isArray(terms?.purchases)) packages.push(...terms.purchases.filter(isRecord));
+      if (Array.isArray(proposal?.allocations)) packages.push(...proposal.allocations.filter(isRecord));
+    }
+  }
+  const owner = configuredProductOwner(req, ctx);
+  for (const pkg of packages) {
+    if (hasCoreGenderTargeting(pkg.targeting_overlay ?? pkg.targeting)) return true;
+    if (typeof pkg.product_id !== 'string') continue;
+    const configuredOwner = session.configuredProductOwners.get(pkg.product_id);
+    if ((!configuredOwner || (owner && isDeepStrictEqual(configuredOwner, owner)))
+      && hasCoreGenderTargeting(session.configuredProductTargeting.get(pkg.product_id))) return true;
+    if (!owner) continue;
+    const productId = pkg.product_id;
+    const inherited = await findSessionMatching(candidate => (
+      hasCoreGenderTargeting(candidate.configuredProductTargeting.get(productId))
+      && isDeepStrictEqual(candidate.configuredProductOwners.get(productId), owner)
+    ));
+    if (inherited) return true;
+  }
+  return false;
+}
+
 function packageTargetingResolution(
   product: Product,
   targeting: PackageTargeting | undefined,
 ): Record<string, unknown> | undefined {
   const targetingRecord = targeting as unknown as Record<string, unknown> | undefined;
+  const genderResolution = compileGenderDemographics(product, targetingRecord, 'targeting_overlay').resolution;
+  if (genderResolution) return { demographics: genderResolution };
   const demographics = targetingRecord && isRecord(targetingRecord.demographics)
     ? targetingRecord.demographics
     : undefined;
@@ -8644,11 +9214,14 @@ function applyDiscoveryTargeting(
   if (!targetingOverlay) return { products: targeted, capacityDrops: 0 };
   const inherentlyMatched: Product[] = [];
   targeted = targeted.filter(product => {
+    if (compileGenderDemographics(product, targetingOverlay, 'targeting_overlay').error) return false;
     const inherentMatch = matchesInherentPlacementSelection(product, targetingOverlay);
     if (inherentMatch === undefined) {
       const support = (product as unknown as Record<string, unknown>).overlay_support;
       const supportRecord = isRecord(support) ? support : {};
       return Object.entries(targetingOverlay).every(([field, value]) => (
+        (field === 'demographics' && isRecord(value) && value.gender !== undefined)
+        ||
         concreteTargetingSupportedForProduct(supportRecord, field, value)
       ));
     }
@@ -9514,6 +10087,7 @@ export function projectProductDiscoveryResult(
   toolName: string,
   result: Record<string, unknown>,
   originalArgs: Record<string, unknown>,
+  servedAdcpVersion: string,
 ): Record<string, unknown> {
   if (!isProductDiscoveryTool(toolName) || toolName === 'get_products') return result;
   if (Array.isArray(result.errors) && result.errors.length > 0 && !Array.isArray(result.products)) return result;
@@ -9584,13 +10158,22 @@ export function projectProductDiscoveryResult(
     }
     if (isRecord(criteria?.targeting_overlay)) {
       requiredProductFields.add('expires_at');
+      if (isRecord(criteria.targeting_overlay.demographics)
+        && criteria.targeting_overlay.demographics.gender !== undefined) {
+        requiredProductFields.add('demographic_targeting');
+      }
       if (products.some(product => isRecord(product.targeting_resolution))) {
         requiredProductFields.add('targeting_resolution');
       }
     }
     return {
       outcome: 'listed',
-      products: products.map(product => compactLifecycleProduct(product, requestedFields, requiredProductFields)),
+      products: products.map(product => compactLifecycleProduct(
+        product,
+        requestedFields,
+        requiredProductFields,
+        servedAdcpVersion,
+      )),
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
       ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
@@ -10634,7 +11217,9 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
   if (COMPACT_MEDIA_BUY_TOOLS.has(toolName)) {
     return supportsGetProductsRejected(servedAdcpVersion);
   }
-  return true;
+  // A tool a later stable release adds (search_brands in 3.1,
+  // report_plan_adjustment in 3.2) has no schema in the served release.
+  return !toolAddedAfterRelease(toolName, servedAdcpVersion);
 }
 
 // ── Task handler implementations ──────────────────────────────────
@@ -10953,7 +11538,7 @@ async function handleGetProductsUnlocked(
     } as GetProductsResponse;
   }
 
-  let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
+  let products: Product[] = getCatalog(ctx).map(cp => ({ ...cp.product }));
   const compactLifecycleRequest = buyingMode === 'refine'
     && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
 
@@ -11189,7 +11774,7 @@ async function handleGetProductsUnlocked(
   // is intentionally not part of the deprecated get_products wire schema.
   type RefineEntry =
     | { scope: 'request'; ask?: string }
-    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string; package?: Record<string, unknown> }
     | {
         scope: 'proposal';
         proposal_id: string;
@@ -11221,6 +11806,7 @@ async function handleGetProductsUnlocked(
       : [],
   );
   const refinementApplied: RefinementAppliedEntry[] = [];
+  const unsupportedPackageForecastIds = new Set<string>();
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
@@ -11407,6 +11993,16 @@ async function handleGetProductsUnlocked(
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
+          if (op.package !== undefined) {
+            unsupportedPackageForecastIds.add(op.product_id);
+            refinementApplied.push({
+              scope: 'product',
+              product_id: op.product_id,
+              status: 'unable',
+              notes: 'The training agent cannot compute an availability forecast for an exact proposed package.',
+            });
+            continue;
+          }
           if (!passesFilters) {
             refinementApplied.push({
               scope: 'product',
@@ -12271,10 +12867,20 @@ async function handleGetProductsUnlocked(
   }
 
   // Store context for refine
-  const responseProducts = products.map(product => productForServedAdcpVersion(
-    isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
-    ctx.servedAdcpVersion,
-  ));
+  const responseProducts = products.map(product => {
+    const servedProduct = productForServedAdcpVersion(
+      isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
+      ctx.servedAdcpVersion,
+    );
+    // Suppress ordinary/horizon forecasts after every generic forecast path;
+    // none is evidence that the unsupported exact package was evaluated.
+    const sourceProductId = discoverySourceProductIds.get(product.product_id) ?? product.product_id;
+    if (!unsupportedPackageForecastIds.has(sourceProductId)
+      && !unsupportedPackageForecastIds.has(product.product_id)) return servedProduct;
+    const withoutForecast = { ...servedProduct };
+    delete withoutForecast.forecast;
+    return withoutForecast;
+  });
   const retainedCommittedProposals = new Map(
     (session.lastGetProductsContext?.proposals ?? [])
       .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
@@ -12469,15 +13075,20 @@ export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingCon
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  // The 3.0 FormatIDParameter enum predates pixel-density negotiation. Keep
-  // the template available to compatibility runners, but do not advertise an
-  // enum member their pinned response schema cannot represent.
-  if (ctx.storyboardCompat?.version === '3.0') {
-    formats = formats.map(format => format.accepts_parameters?.includes('pixel_ratio')
+  // FormatIDParameter is a closed enum, and releases before 3.2 predate
+  // pixel-density negotiation (`pixel_ratio`). Keep the template available to
+  // older callers, but advertise only the parameters their served release
+  // defines.
+  const servedFormatParameters = servedReleaseEnum(
+    'enums/format-id-parameter.json',
+    lifecycleSplitVersionForContext(ctx) ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
+  if (servedFormatParameters) {
+    formats = formats.map(format => format.accepts_parameters?.some(parameter => !servedFormatParameters.has(parameter))
       ? {
           ...format,
-          accepts_parameters: format.accepts_parameters.filter(parameter => parameter !== 'pixel_ratio'),
-          description: format.format_id.id === 'display_image'
+          accepts_parameters: format.accepts_parameters.filter(parameter => servedFormatParameters.has(parameter)),
+          description: format.format_id.id === 'display_image' && !servedFormatParameters.has('pixel_ratio')
             ? 'Static image display ad. Provide logical width and height in format_id.'
             : format.description,
         }
@@ -12603,8 +13214,12 @@ interface ListTransformersArgs {
   pagination?: { max_results?: number; cursor?: string };
 }
 
-export async function handleListTransformers(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
+export async function handleListTransformers(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListTransformersArgs;
+  // 3.1 names a transformer's inputs and outputs by legacy format
+  // (`output_format_ids` is required); the canonical `output_capability_ids`
+  // and `input_formats` declarations replace them in 3.2.
+  const namedFormatRelease = servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 2);
 
   // Pricing is account-scoped — the request schema makes account conditionally
   // required when include_pricing is true.
@@ -12688,8 +13303,15 @@ export async function handleListTransformers(args: ToolArgs, _ctx: TrainingConte
       name: t.name,
       ...(t.description && { description: t.description }),
       ...(t.metadata && { metadata: t.metadata }),
-      ...(t.input_formats && { input_formats: t.input_formats }),
-      output_capability_ids: t.output_capability_ids,
+      ...(namedFormatRelease
+        ? {
+          ...(t.input_format_ids && { input_format_ids: t.input_format_ids }),
+          output_format_ids: t.output_format_ids,
+        }
+        : {
+          ...(t.input_formats && { input_formats: t.input_formats }),
+          output_capability_ids: t.output_capability_ids,
+        }),
       params,
       ...(t.multiplicity && { multiplicity: t.multiplicity }),
       ...(req.include_pricing && t.pricing_options && { pricing_options: t.pricing_options }),
@@ -14807,6 +15429,8 @@ export async function handleCreateMediaBuy(
 ) {
   const invalidCollectionSelector = invalidSelectedCollectionSelector(args, ['packages']);
   if (invalidCollectionSelector) return { errors: invalidCollectionSelector };
+  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
+  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
 
   const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
   if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx, options);
@@ -14891,6 +15515,8 @@ async function handleCreateMediaBuyUnlocked(
   options: MediaBuyExecutionOptions,
 ) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { paused?: boolean };
+  const inputVersionError = coreGenderVersionError(ctx, req);
+  if (inputVersionError) return { errors: [inputVersionError] };
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(
     sessionKey,
@@ -14967,6 +15593,18 @@ async function handleCreateMediaBuyUnlocked(
     };
   }
 
+  // Peek at a force_media_buy_confirmation `hold` directive. It is consumed only
+  // when this call actually creates a media buy, so a request that fails
+  // validation leaves it in place for the buyer's retry.
+  let holdSession: SessionState | undefined = session.complyExtensions.forcedMediaBuyHold ? session : undefined;
+  if (!holdSession) {
+    const ownerKey = controllerPublicTaskSessionKey(req, ctx);
+    if (ownerKey && ownerKey !== sessionKey) {
+      const ownerSession = await getSession(ownerKey);
+      if (ownerSession.complyExtensions.forcedMediaBuyHold) holdSession = ownerSession;
+    }
+  }
+
   // Enforce account status gates set by comply_test_controller
   const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
   if (accountId?.account_id) {
@@ -15000,6 +15638,10 @@ async function handleCreateMediaBuyUnlocked(
     ctx.principal,
     req.account,
   );
+  const createGovernanceRequired = Boolean(govCtx || session.governancePlans.size > 0 || governanceAgents.length > 0);
+  if (createGovernanceRequired && await createUsesEffectiveCoreGender(req, ctx, session)) {
+    return { errors: [unsupportedGenderGovernanceError()] };
+  }
   let governanceIntentClaims: Record<string, unknown> | undefined;
   if (govCtx) {
     const buyBudget = req.total_budget?.amount
@@ -15099,7 +15741,7 @@ async function handleCreateMediaBuyUnlocked(
     }
   }
 
-  const catalog = getCatalog();
+  const catalog = getCatalog(ctx);
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
   const configuredProductSessions = [session];
@@ -15992,7 +16634,8 @@ async function handleCreateMediaBuyUnlocked(
       )
       : undefined;
     const ordinaryTargetingError = requestedTargeting
-      ? identityAbsenceFrequencyCapError(product, requestedTargeting, targetingPath)
+      ? compileGenderDemographics(product, resolvedTargeting.targeting ?? requestedTargeting, targetingPath).error
+        ?? identityAbsenceFrequencyCapError(product, requestedTargeting, targetingPath)
         ?? packageFrequencyCapError(
           product,
           (resolvedTargeting.targeting ?? requestedTargeting).frequency_cap,
@@ -16004,17 +16647,23 @@ async function handleCreateMediaBuyUnlocked(
       errors.push(ordinaryTargetingError);
     } else if (resolvedTargeting.errorPath) {
       errors.push({
-        code: 'UNSUPPORTED_FEATURE',
-        message: `${pkgLabel}: Targeting is not supported by the selected product.`,
+        code: 'requiresRequote' in resolvedTargeting && resolvedTargeting.requiresRequote ? 'REQUOTE_REQUIRED' : 'UNSUPPORTED_FEATURE',
+        message: 'requiresRequote' in resolvedTargeting && resolvedTargeting.requiresRequote
+          ? `${pkgLabel}: Replacing the configured demographics requires a new quote.`
+          : `${pkgLabel}: Targeting is not supported by the selected product.`,
         field: resolvedTargeting.errorPath,
         recovery: 'correctable',
       });
     }
     const incomingTargeting = materializeDefaultCollectionSelection(
       product,
-      resolvedTargeting.targeting,
+      genderTargetingMutation(undefined, resolvedTargeting.targeting),
     );
     const targetingResult = validateTargeting(incomingTargeting, targetingPath);
+    const effectiveDemographicError = ordinaryTargetingError
+      ? undefined
+      : compileGenderDemographics(product, targetingResult.targeting, targetingPath).error;
+    if (effectiveDemographicError) errors.push(effectiveDemographicError);
     const collectionError = collectionSelectionError(product, targetingResult.targeting, targetingPath);
     if (collectionError) errors.push(collectionError);
     if (targetingResult.errors.length) {
@@ -16188,6 +16837,12 @@ async function handleCreateMediaBuyUnlocked(
     return { errors };
   }
 
+  const effectiveVersionError = coreGenderVersionError(ctx, createdPackages.map(pkg => ({ targeting_overlay: pkg.targeting })));
+  if (effectiveVersionError) return { errors: [effectiveVersionError] };
+  if (createGovernanceRequired && createdPackages.some(pkg => hasCoreGenderTargeting(pkg.targeting))) {
+    return { errors: [unsupportedGenderGovernanceError()] };
+  }
+
   // Accept a buyer-supplied `media_buy_id` when present. Conformance
   // storyboards (sales_non_guaranteed, governance_delivery_monitor) hard-code
   // an id in the request and then query it on later steps; without this
@@ -16303,7 +16958,7 @@ async function handleCreateMediaBuyUnlocked(
     startTime: resolvedStart,
     endTime: buyEnd,
     revision: 1,
-    confirmedAt: now,
+    confirmedAt: holdSession ? null : now,
     ...(governanceContext && { governanceContext }),
     ...(isRecord(req.context) && { context: req.context }),
     createdAt: now,
@@ -16363,6 +17018,7 @@ async function handleCreateMediaBuyUnlocked(
       }
     }
   }
+  if (holdSession) holdSession.complyExtensions.forcedMediaBuyHold = undefined;
   session.mediaBuys.set(mediaBuyId, mediaBuy);
   await captureMediaBuyReportingState(
     ctx,
@@ -16403,7 +17059,7 @@ async function handleCreateMediaBuyUnlocked(
     ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
     ...(mediaBuy.aggregateBidding && { bidding: mediaBuy.aggregateBidding }),
     valid_actions: validActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
-    available_actions: availableActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsWireForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -16418,13 +17074,14 @@ async function handleCreateMediaBuyUnlocked(
       end_time: pkg.endTime,
       ...packageFormatSelectorForWire(pkg, ctx),
       ...packageReadinessFields(pkg, session),
+      ...creativeStartPolicyForWire(ctx),
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
       ...(pkg.propertyListApplication && {
         ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
       }),
-      ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
+      ...(pkg.committedMetrics && mediaBuy.confirmedAt !== null && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignmentDetails
         ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
@@ -16538,7 +17195,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
         valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-        available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+        available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
         currency: mb.currency,
         total_budget: totalBudget,
         ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
@@ -16589,6 +17246,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             end_time: pkg.endTime,
             ...packageFormatSelectorForWire(pkg, ctx),
             ...packageReadinessFields(pkg, session),
+            ...creativeStartPolicyForWire(ctx),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
@@ -16605,7 +17263,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
               ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
             }),
             ...(pkg.optimizationGoals && { optimization_goals: pkg.optimizationGoals }),
-            ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
+            ...(pkg.committedMetrics && mb.confirmedAt !== null && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -16765,7 +17423,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       mb = ownerSession.mediaBuys.get(mediaBuyId);
     }
   }
-  const catalog = getCatalog();
+  const catalog = getCatalog(ctx);
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
   overlaySeededProducts(session, productMap);
   overlayConfiguredProducts(session, productMap);
@@ -18237,6 +18895,22 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // gate in #2847 and tracks the spec-side clarification referenced there.
   const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
   const selectedFields = req.fields?.length ? new Set(req.fields) : undefined;
+  // 3.0 identifies every listed creative by `format_id` (required); the
+  // canonical `format_kind` record arrives in 3.1. Project canonical
+  // creatives to their legacy format for a 3.0 caller.
+  const legacyProjectionAdapters = servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1)
+    ? filterProjectionAdapters ?? creativeProjectionAdapters()
+    : undefined;
+  const creativeFormatRecord = (creative: CreativeState): Record<string, unknown> => {
+    const stored = storedCreativeFormatRecord(creative);
+    if (!legacyProjectionAdapters || isRecord(stored.format_id)) return stored;
+    try {
+      const projected = projectCreativeRecordForWire(stored, 'legacy', legacyProjectionAdapters);
+      return isRecord(projected.format_id) ? { format_id: projected.format_id } : stored;
+    } catch {
+      return stored;
+    }
+  };
 
   return {
     query_summary: {
@@ -18255,7 +18929,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     creatives: pageCreatives.map(c => {
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        ...storedCreativeFormatRecord(c),
+        ...creativeFormatRecord(c),
         name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
@@ -18402,6 +19076,8 @@ async function handleUpdateMediaBuyUnlocked(
   options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
+  const inputVersionError = coreGenderVersionError(ctx, req);
+  if (inputVersionError) return { errors: [inputVersionError] };
   let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
@@ -18428,6 +19104,8 @@ async function handleUpdateMediaBuyUnlocked(
   if (!mb) {
     return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
   }
+  const storedVersionError = coreGenderVersionError(ctx, mb.packages.map(pkg => ({ targeting_overlay: pkg.targeting })));
+  if (storedVersionError) return { errors: [storedVersionError] };
 
   // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
   // media_buy_seller/invalid_transitions pins this error code explicitly.
@@ -18441,7 +19119,7 @@ async function handleUpdateMediaBuyUnlocked(
     return { errors: [{ code, message }] };
   }
 
-  const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
   // The owning partition's catalog is authoritative for capability checks;
   // the request partition only fills in fixtures the owner cannot see.
   if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
@@ -18474,6 +19152,13 @@ async function handleUpdateMediaBuyUnlocked(
     if (!packageState || !isRecord(requested)) continue;
     const product = productMap.get(packageState.productId);
     const targetingPath = `packages[${updateIndex}].targeting_overlay`;
+    const targetingMutationError = genderTargetingMutationError(packageState.targeting, requested, targetingPath);
+    if (targetingMutationError) return { errors: [targetingMutationError] };
+    const effectiveGenderTargeting = genderTargetingMutation(packageState.targeting, requested);
+    const demographicError = product
+      ? compileGenderDemographics(product, effectiveGenderTargeting, targetingPath).error
+      : undefined;
+    if (demographicError) return { errors: [demographicError] };
     const inherentPlacementMatch = product
       ? matchesInherentPlacementSelection(product, requested)
       : undefined;
@@ -18610,16 +19295,22 @@ async function handleUpdateMediaBuyUnlocked(
     return {
       media_buy_id: mb.mediaBuyId,
       ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-      status,
+      // Body `status: MediaBuyStatus` is deprecated in 3.1 and removed in 3.2
+      // (#4906). Root `status` is the envelope task status from 3.1 on (3.1
+      // composes both, so only shared values validate); 3.0 carries it.
+      ...(servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1) && { status }),
       media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-      available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+      available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
       ...(warnings.length > 0 && { warnings }),
       ...(req.context !== undefined && { context: req.context }),
     };
   }
+
+  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(req);
+  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
 
   if (
     !options.acceptedProposalExecution
@@ -18746,6 +19437,20 @@ async function handleUpdateMediaBuyUnlocked(
     ctx.principal,
     mb.accountRef,
   );
+  const updateGovernanceRequired = Boolean(updateGovernanceContext
+    || (requiresGovernance && (session.governancePlans.size > 0 || updateGovernanceAgents.length > 0)));
+  if (updateGovernanceRequired) {
+    const retainedGender = mb.packages.some(pkg => {
+      const update = validationReq.packages?.find(candidate => candidate.package_id === pkg.packageId);
+      if (pkg.canceled || update?.canceled) return false;
+      const overlay = update?.targeting_overlay ?? (update as PackageUpdateExt | undefined)?.targeting;
+      return hasCoreGenderTargeting(overlay === undefined ? pkg.targeting : genderTargetingMutation(pkg.targeting, overlay));
+    });
+    const newGender = validationReq.new_packages?.length
+      ? await createUsesEffectiveCoreGender({ ...req, packages: validationReq.new_packages } as ToolArgs, ctx, session)
+      : false;
+    if (retainedGender || newGender) return { errors: [unsupportedGenderGovernanceError()] };
+  }
   if (updateGovernanceContext) {
     const commitmentError = await governedCommitmentError(
       updateGovernanceContext,
@@ -18948,9 +19653,10 @@ async function handleUpdateMediaBuyUnlocked(
           }
         }
       }
-      const incomingTargeting = (update as PackageUpdateExt).targeting_overlay
+      const rawIncomingTargeting = (update as PackageUpdateExt).targeting_overlay
         ?? (update as PackageUpdateExt).targeting
         ?? pkg.targeting;
+      const incomingTargeting = genderTargetingMutation(pkg.targeting, rawIncomingTargeting);
       const targetingResult = validateTargeting(incomingTargeting, `packages[${pkgId}].targeting_overlay`);
       if (targetingResult.errors.length) return { errors: targetingResult.errors };
       if (enforceLifecycleSplit) {
@@ -19187,12 +19893,17 @@ async function handleUpdateMediaBuyUnlocked(
 
       const updateTargeting = update.targeting_overlay ?? update.targeting;
       if (updateTargeting !== undefined) {
-        const targetingResult = validateTargeting(updateTargeting, `packages[${pkgId}].targeting_overlay`);
+        const effectiveTargeting = genderTargetingMutation(pkg.targeting, updateTargeting);
+        const targetingResult = validateTargeting(effectiveTargeting, `packages[${pkgId}].targeting_overlay`);
         if (targetingResult.errors.length) {
           return { errors: targetingResult.errors };
         }
         const before = pkg.targeting;
         pkg.targeting = targetingResult.targeting;
+        const targetingProduct = productMap.get(pkg.productId);
+        pkg.targetingResolution = targetingProduct
+          ? packageTargetingResolution(targetingProduct, pkg.targeting)
+          : undefined;
         const listApplication = propertyListApplications.get(pkgId);
         if (listApplication) pkg.propertyListApplication = listApplication;
         else delete pkg.propertyListApplication;
@@ -19298,11 +20009,13 @@ async function handleUpdateMediaBuyUnlocked(
       );
 
       const pkgId = `pkg-${mb.packages.length + i}`;
-      const newTargeting = npkg.targeting_overlay ?? npkg.targeting;
+      const newTargeting = genderTargetingMutation(undefined, npkg.targeting_overlay ?? npkg.targeting);
       const targetingResult = validateTargeting(newTargeting, `new_packages[${i}].targeting_overlay`);
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const demographicError = compileGenderDemographics(product, targetingResult.targeting, `new_packages[${i}].targeting_overlay`).error;
+      if (demographicError) return { errors: [demographicError] };
       const newPackageListOutcome = await applyPropertyListTargeting({
         product,
         targeting: targetingResult.targeting,
@@ -19404,6 +20117,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
         creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
         targeting: targetingResult.targeting,
+        targetingResolution: packageTargetingResolution(product, targetingResult.targeting),
         ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
         frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
@@ -19636,6 +20350,7 @@ async function handleUpdateMediaBuyUnlocked(
     end_time: pkg.endTime,
     ...packageFormatSelectorForWire(pkg, ctx),
     ...packageReadinessFields(pkg, session),
+    ...creativeStartPolicyForWire(ctx),
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
@@ -19657,11 +20372,14 @@ async function handleUpdateMediaBuyUnlocked(
     ...(mb.name && { name: mb.name }),
     ...(mb.invoiceRecipient && { invoice_recipient: structuredClone(mb.invoiceRecipient) }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-    status,
+    // Body `status: MediaBuyStatus` is deprecated in 3.1 and removed in 3.2
+    // (#4906). Root `status` is the envelope task status from 3.1 on (3.1
+    // composes both, so only shared values validate); 3.0 carries it.
+    ...(servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1) && { status }),
     media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-    available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
     ...((aggregateUpdate.total_budget !== undefined || packageBudgetChanged) && {
       currency: mb.currency,
       total_budget: mb.totalBudget,
@@ -19712,9 +20430,18 @@ async function handleUpdateMediaBuyUnlocked(
 }
 
 export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
-  const versionResolution = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
+  const versionResolution = resolveServedAdcpVersion(args as unknown as Record<string, unknown>, signingCompatibleReleaseVersions(ctx));
   const servedAdcpVersion = ctx.servedAdcpVersion
     ?? (versionResolution.ok ? versionResolution.servedVersion : DEFAULT_ADCP_VERSION);
+  const discoverySession = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const discoveryProducts = new Map(getCatalog(ctx).map(entry => [entry.product.product_id, entry.product]));
+  overlaySeededProducts(discoverySession, discoveryProducts);
+  const genderSupported = [...discoveryProducts.values()].some(product => {
+    const declaration = (product as unknown as Record<string, unknown>).demographic_targeting;
+    return isRecord(declaration) && isRecord(declaration.gender)
+      && Array.isArray(declaration.gender.values) && declaration.gender.values.length > 0
+      && Array.isArray(declaration.gender.execution_modes) && declaration.gender.execution_modes.length > 0;
+  });
   const tasks = visibleToolsForContext(ctx)
     .filter(tool => toolAvailableForServedAdcpVersion(tool.name, servedAdcpVersion))
     .map(t => t.name)
@@ -19759,6 +20486,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     'force_account_status',
     'force_media_buy_status',
     'force_create_media_buy_arm',
+    ...(!isThreeZeroResponse && supportsSalesFixedRate(servedAdcpVersion) ? ['force_media_buy_confirmation'] : []),
     'force_task_completion',
     'force_creative_purge',
     'force_session_status',
@@ -19809,6 +20537,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
           ? [{ task: 'build_creative', modes: ['signed_context'] }]
           : [];
   const experimentalFeatures = [
+    ...(coreGenderVersionSupported(ctx) && genderSupported ? ['media_buy.gender_targeting'] : []),
     ...((governanceEnforcementTasks.length > 0 || ctx.tenantId === 'governance')
       ? ['governance.campaign']
       : []),
@@ -19820,7 +20549,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   const supportedCreativeFormats = includeThreeOneFields(ctx)
     ? supportedCanonicalFormatsCapability()
     : undefined;
-  return {
+  const capabilities = {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -19866,7 +20595,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         delivery_retry_horizon_seconds: 86400,
       },
       identity: {
-        brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
+        brand_json_url: `${getIdentityBaseUrl()}/.well-known/brand.json`,
       },
     }),
     media_buy: {
@@ -19969,6 +20698,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       }),
       execution: {
         targeting: {
+          ...(coreGenderVersionSupported(ctx) && genderSupported && { demographics: { supported: true, gender: { supported: true } } }),
           geo_countries: true,
           geo_regions: true,
           geo_metros: { nielsen_dma: true },
@@ -20046,6 +20776,13 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       description: 'Training agent for AdCP protocol testing and certification',
     },
   };
+  // Withhold fields added after the served release, such as the 3.3
+  // property-breakdown feature flags on a 3.2 response.
+  return omitFieldsAddedAfterRelease(
+    capabilities,
+    'protocol/get-adcp-capabilities-response.json',
+    isThreeZeroResponse ? '3.0' : servedAdcpVersion,
+  );
 }
 
 // ── Signal task handlers ──────────────────────────────────────────
@@ -20053,6 +20790,17 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
 const MAX_SIGNAL_RESULTS = 10;
 
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
+  const signalSpecInput = (args as { signal_spec?: unknown }).signal_spec;
+  if (signalSpecInput !== undefined && typeof signalSpecInput !== 'string') {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'signal_spec must be a string.',
+        field: 'signal_spec',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   const req = args as unknown as GetSignalsRequest & ToolArgs & {
     brief?: string;
     discovery_mode?: 'brief' | 'wholesale';
@@ -22469,13 +23217,14 @@ export async function executeProductDiscoveryPlatformTool(
         return proposalArgs;
       })()
     : normalizeProductDiscoveryArgs(toolName, args);
+  const servedAdcpVersion = ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION;
   const result = await Promise.resolve(handler(normalized as ToolArgs, {
     ...ctx,
-    servedAdcpVersion: ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION,
+    servedAdcpVersion,
   }));
   await flushDirtySessions();
   if (typedRefinement) return result as Record<string, unknown>;
-  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args);
+  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args, servedAdcpVersion);
 }
 
 function legacyPackagesFromPurchases(
@@ -22573,7 +23322,7 @@ export async function handleBuyProducts(
     }] };
   }
 
-  const catalog = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
+  const catalog = new Map(getCatalog(ctx).map(entry => [entry.product.product_id, entry.product]));
   overlaySeededProducts(session, catalog);
   overlayConfiguredProducts(session, catalog);
   const purchaseStartedAt = new Date().toISOString();
@@ -22635,9 +23384,12 @@ export async function handleBuyProducts(
     const requestedTargeting = isRecord(purchase.targeting_overlay)
       ? purchase.targeting_overlay
       : undefined;
-    const overlaySupport = isRecord(productTerms.overlay_support)
-      ? productTerms.overlay_support
+    const overlaySupport: Record<string, unknown> = isRecord(productTerms.overlay_support)
+      ? { ...productTerms.overlay_support }
       : {};
+    const requestedGender = compileGenderDemographics(product, requestedTargeting, `purchases[${index}].targeting_overlay`);
+    if (requestedGender.error) return { errors: [requestedGender.error] };
+    if (requestedGender.resolution) overlaySupport.demographics = true;
     if (requestedTargeting) {
       for (const field of [
         'geo_regions', 'geo_regions_exclude',
@@ -22673,14 +23425,18 @@ export async function handleBuyProducts(
     if (resolvedTargeting.errorPath) {
       return {
         errors: [{
-          code: 'UNSUPPORTED_FEATURE',
-          message: 'Purchase targeting must narrow targeting bound to the configured product or use a dimension declared in overlay_support.',
+          code: resolvedTargeting.requiresRequote ? 'REQUOTE_REQUIRED' : 'UNSUPPORTED_FEATURE',
+          message: resolvedTargeting.requiresRequote
+            ? 'Replacing configured demographics requires a new quote.'
+            : 'Purchase targeting must narrow targeting bound to the configured product or use a dimension declared in overlay_support.',
           field: resolvedTargeting.errorPath,
           recovery: 'correctable',
         }],
       };
     }
     const effectiveTargeting = resolvedTargeting.targeting;
+    const demographicError = compileGenderDemographics(product, effectiveTargeting, `purchases[${index}].targeting_overlay`).error;
+    if (demographicError) return { errors: [demographicError] };
     const purchaseStartTime = purchase.start_time ?? args.start_time;
     canonicalPurchases.push({
       ...structuredClone(purchase),
@@ -23331,8 +24087,10 @@ async function handleControlMediaBuyUnlocked(
     if (args.revision !== mediaBuy.revision) {
       return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mediaBuy.revision}, got ${args.revision}` }] };
     }
+    const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
+    if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
     const currentStatus = deriveStatus(mediaBuy, session);
-    const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
     if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
     overlaySeededProducts(session, productMap);
     const servedAdcpVersion = lifecycleSplitVersionForContext(ctx);
@@ -23683,6 +24441,12 @@ function validateIdempotencyProtectedInput(
   if (args.brief !== undefined && typeof args.brief !== 'string') {
     return { message: 'brief must be a string when provided', field: 'brief' };
   }
+  if (Array.isArray(args.refine) && args.refine.some(entry => isRecord(entry) && 'package' in entry)) {
+    // The pinned SDK preserves unknown entry fields. Validate structured
+    // packages against source before replay claims or downstream state changes.
+    const sourceError = validateProductDiscoverySourceInput('get-products-request', args);
+    if (sourceError) return sourceError;
+  }
   const hasDecline = Array.isArray(args.refine) && args.refine.some(entry => (
     isRecord(entry) && entry.scope === 'proposal' && entry.action === 'decline'
   ));
@@ -23726,7 +24490,7 @@ function validateIdempotencyProtectedInput(
     // source-schema-driven compact projection below.
     const requestedFields = Array.isArray(args.fields) ? args.fields : undefined;
     const legacySchemaFields = requestedFields?.filter(field => field !== 'identity');
-    const schemaArgs = requestedFields?.includes('identity')
+    let schemaArgs = requestedFields?.includes('identity')
       ? {
         ...args,
         fields: legacySchemaFields && legacySchemaFields.length > 0
@@ -23734,6 +24498,20 @@ function validateIdempotencyProtectedInput(
           : ['product_id'],
       }
       : args;
+    const overlay = isRecord(args.targeting_overlay) ? args.targeting_overlay : undefined;
+    const demographics = isRecord(overlay?.demographics) ? overlay.demographics : undefined;
+    if (demographics?.gender !== undefined) {
+      // The pinned SDK still requires age on demographics. Validate the real
+      // request against source, then validate remaining legacy fields through
+      // its parser without inventing an age constraint or dropping wire state.
+      const sourceError = validateProductDiscoverySourceInput('get-products-request', args);
+      if (sourceError) return sourceError;
+      schemaArgs = structuredClone(schemaArgs);
+      const parserOverlay = schemaArgs.targeting_overlay as Record<string, unknown>;
+      const parserDemographics = parserOverlay.demographics as Record<string, unknown>;
+      delete parserDemographics.gender;
+      if (Object.keys(parserDemographics).length === 0) delete parserOverlay.demographics;
+    }
     const parsed = GetProductsRequestSchema.safeParse(schemaArgs);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -23870,10 +24648,12 @@ async function executeTrainingAgentToolInContext(
   // returning the original caller's correlation data.
   const rawArgs = args as unknown as Record<string, unknown>;
   const { context: callerContext, ...initialHandlerArgs } = rawArgs;
-  const versionResolution = resolveServedAdcpVersionForTool(toolName, initialHandlerArgs);
+  const versionResolution = resolveServedAdcpVersionForTool(toolName, initialHandlerArgs, signingCompatibleReleaseVersions(ctx));
   if (!versionResolution.ok) {
     return { success: false, error: versionResolution.message };
   }
+  const inputVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion: versionResolution.servedVersion }, initialHandlerArgs);
+  if (inputVersionError) return { success: false, error: `${inputVersionError.code}: ${inputVersionError.message}` };
   if (
     !trainingToolAvailableForContext(toolName, ctx)
     || !toolAvailableForServedAdcpVersion(toolName, versionResolution.servedVersion)
@@ -23963,10 +24743,13 @@ async function executeTrainingAgentToolInContext(
       ),
     });
     if (outcome.kind === 'replay') {
+      const replayVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion: versionResolution.servedVersion }, outcome.response);
+      if (replayVersionError) return { success: false, error: replayVersionError.message };
       const replayed = projectProductDiscoveryResult(
         toolName,
         outcome.response as Record<string, unknown>,
         initialHandlerArgs,
+        versionResolution.servedVersion,
       );
       return {
         success: true,
@@ -23993,15 +24776,18 @@ async function executeTrainingAgentToolInContext(
     claim = { payloadHash: outcome.payloadHash, claimToken: outcome.claimToken };
   }
   try {
-    const result = await Promise.resolve(handler(
+    let result = await Promise.resolve(handler(
       handlerArgs as ToolArgs,
       { ...ctx, servedAdcpVersion: versionResolution.servedVersion },
     ));
+    const responseVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion: versionResolution.servedVersion }, result);
+    if (responseVersionError) result = { errors: [responseVersionError] };
     const cacheResponse = addServedAdcpVersion(result, versionResolution.servedVersion) as Record<string, unknown>;
     const projectedResponse = projectProductDiscoveryResult(
       toolName,
       result as Record<string, unknown>,
       initialHandlerArgs,
+      versionResolution.servedVersion,
     );
     const response = addServedAdcpVersion(projectedResponse, versionResolution.servedVersion, callerContext) as Record<string, unknown>;
     if (claim && typeof idempotencyKey === 'string') {
@@ -24113,6 +24899,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       };
     }
     const servedAdcpVersion = versionResolution.servedVersion;
+    const inputVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion }, initialHandlerArgs);
+    if (inputVersionError) return {
+      result: adcpError(inputVersionError.code, { message: inputVersionError.message, field: inputVersionError.field, recovery: 'correctable' }, callerContext, servedAdcpVersion),
+      flushable: false,
+    };
 
     if (
       !handler
@@ -24327,6 +25118,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         };
       }
       if (outcome.kind === 'replay') {
+        const replayVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion }, outcome.response);
+        if (replayVersionError) return {
+          result: adcpError(replayVersionError.code, replayVersionError, callerContext, servedAdcpVersion),
+          flushable: false,
+        };
         // Cached inner response; envelope fields (`replayed`, `context`,
         // `status`) are produced fresh on every response per security.mdx.
         // Replayed responses bypass the handler entirely — no mutations, no
@@ -24339,6 +25135,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           name,
           outcome.response as Record<string, unknown>,
           initialHandlerArgs,
+          servedAdcpVersion,
         );
         const body: Record<string, unknown> = { ...replayBody, replayed: true };
         if (!isTaskRequest && body.status === undefined) body.status = 'completed';
@@ -24463,10 +25260,27 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     if (skipHandler) {
       // toolResult already set from idempotency replay path above
     } else try {
-      const result = await Promise.resolve(handler(
+      let result = await Promise.resolve(handler(
         (handlerArgs as ToolArgs) || {},
         { ...ctx, servedAdcpVersion },
       ));
+      // The local 3.3 preview uses this raw MCP dispatcher rather than the
+      // deployed tenant adapter. Keep legacy lifecycle status out of the
+      // protocol envelope before publishing or caching the candidate result.
+      if (
+        ctx.developmentCoreGender
+        && coreGenderVersionSupported({ ...ctx, servedAdcpVersion })
+        && name === 'update_media_buy'
+        && isRecord(result)
+        && typeof result.media_buy_status === 'string'
+        && result.status === result.media_buy_status
+      ) {
+        const canonicalResult = { ...result };
+        delete canonicalResult.status;
+        result = canonicalResult;
+      }
+      const responseVersionError = coreGenderVersionError({ ...ctx, servedAdcpVersion }, result);
+      if (responseVersionError) result = { errors: [responseVersionError] };
       const resultObj = result as Record<string, unknown> & {
         errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }>;
       };
@@ -24522,7 +25336,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `completed` on synchronous success — handlers that emit a different
         // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
         // `inner` and we honor that value.
-        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs);
+        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs, servedAdcpVersion);
         const response: Record<string, unknown> = { ...outwardInner };
         if (response.status === undefined) response.status = 'completed';
         response.adcp_version = servedAdcpVersion;
@@ -24611,6 +25425,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         name,
         cachableResponse,
         initialHandlerArgs,
+        servedAdcpVersion,
       );
       maybeEmitCompletionWebhook({
         toolName: name,

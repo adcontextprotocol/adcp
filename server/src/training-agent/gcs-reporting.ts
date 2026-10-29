@@ -2,17 +2,15 @@ import { Pool } from 'pg';
 import { Storage } from '@google-cloud/storage';
 import { canonicalize } from '@adcp/sdk';
 import { AdcpError, type NotificationSubscriptionConfigInput, type ResolveContext } from '@adcp/sdk/server';
-import {
-  PostgresReportingLedgerStore, PostgresReportingManagedDeliveryStore,
-  reportingManagedDeliveryBindingV1, reportingObjectWriteScopeKey,
-  type ReportingManagedDeliveryAdapterV1, type ReportingPgPool,
-} from '@adcp/sdk/reporting/ledger';
-import { createGcsReportingManagedDeliveryAdapterV1, createGcsReportingObjectFenceV1, isReportingGcsFenceError, type GcsReportingReaderOptionsV1 } from '@adcp/sdk/reporting/gcs';
+import { reportingManagedDeliveryBindingV1 } from '@adcp/sdk/reporting/ledger';
+import { reportingSchedulerErrorMessage, type ReliableReportingConfigurationInputV1 } from '@adcp/sdk/reporting/service';
+import { PostgresReportingLedgerStore, reportingObjectWriteScopeKey, type ReportingPgPool } from '@adcp/reporting-storage';
+import { PostgresReportingManagedDeliveryStore, type ReportingManagedDeliveryAdapterV1 } from '@adcp/reporting-storage/managed';
+import { createGcsReportingManagedDeliveryAdapterV1, createGcsReportingObjectFenceV1, isReportingGcsFenceError, type GcsReportingReaderOptionsV1 } from '@adcp/reporting-storage/gcs';
 import { createPostgresReliableReportingProductionService,
   type CreatePostgresReliableReportingProductionServiceOptionsV1,
   type PostgresReliableReportingProductionServiceV1,
-  type ReliableReportingConfigurationInputV1,
-} from '@adcp/sdk/reporting/service';
+} from '@adcp/reporting-storage/service';
 import type { ExpectedReportingPeriod } from '@adcp/sdk/reporting/consumer';
 import { getDatabaseConfig } from '../config.js';
 import { createLogger } from '../logger.js';
@@ -44,6 +42,26 @@ function unavailable(): never {
 }
 function denied(): never {
   throw new AdcpError('ACCOUNT_NOT_FOUND', { recovery: 'correctable', message: 'Reporting account was not found.' });
+}
+
+/** Keep the PostgreSQL receipt when the storage layer wraps a query failure. */
+export function logTrainingReportingSchedulerFailure(error: unknown): void {
+  let databaseCode: string | undefined;
+  let cause = error;
+  for (let depth = 0; depth < 8 && typeof cause === 'object' && cause !== null; depth++) {
+    try {
+      // Do not invoke accessors or serialize database messages, SQL or values.
+      const code = Object.getOwnPropertyDescriptor(cause, 'code');
+      if (code && 'value' in code && typeof code.value === 'string' && /^[0-9A-Z]{5}$/.test(code.value)) {
+        databaseCode = code.value;
+        break;
+      }
+      const next = Object.getOwnPropertyDescriptor(cause, 'cause');
+      cause = next && 'value' in next ? next.value : undefined;
+    } catch { break; }
+  }
+  logger.error({ diagnostic: reportingSchedulerErrorMessage(error), databaseCode },
+    'Durable reporting scheduler failed');
 }
 
 /** Reserve one active or unfinished canary account per organization. Retired
@@ -382,7 +400,7 @@ export class TrainingGcsReporting {
   start(onError?: (error: unknown) => void): void {
     this.service.start({ deploymentWide: true, intervalMilliseconds: 15_000, maxObligationsPerAccount: 4, maxWorkerIterationsPerAccount: 2,
       executionDeadlineMilliseconds: limits.operationMilliseconds, notificationRecoveryLimit: 25, webhookRecoveryLimit: 10,
-      ...(onError ? { onError } : { logger: { warn: message => logger.error({ diagnostic: message }, 'Durable reporting scheduler failed') } }) });
+      onError: onError ?? logTrainingReportingSchedulerFailure });
   }
   async probe(): Promise<boolean> {
     if (this.stopping) return false;

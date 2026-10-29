@@ -44,7 +44,8 @@
           "reporting.delivery_ready",
           "reporting.status_changed",
           "reporting.ledger_changed",
-          "proposal.created"
+          "proposal.created",
+          "proposal.offered"
         ]
       },
       "minItems": 1,
@@ -58,7 +59,8 @@
     "authentication": {
       "type": "object",
       "deprecated": true,
-      "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` — presence opts the seller into Bearer or HMAC-SHA256 signing; absence selects the default RFC 9421 webhook profile keyed off the seller's brand.json `agents[]` JWKS. The same signed-registration downgrade-resistance rules apply to accounts[].notification_configs[].authentication. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
+      "x-removed-in": "4.0.0",
+      "description": "Legacy authentication selector. Same semantics as `push-notification-config.authentication`: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the entry as a per-account validation failure with `UNSUPPORTED_FEATURE` and `error.field` pointing at it. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
       "properties": {
         "schemes": {
           "type": "array",
@@ -82,7 +84,8 @@
     "signing_profile": {
       "x-status": "experimental",
       "$ref": "/schemas/enums/webhook-signing-profile.json",
-      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the entry as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at it. MUST NOT be combined with `authentication`."
+      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the entry as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at it. MUST NOT be combined with `authentication`.",
+      "x-added-in": "3.3.0"
     },
     "active": {
       "type": "boolean",

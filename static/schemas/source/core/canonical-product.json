@@ -5,18 +5,23 @@
   "description": "Standalone compact Product view for the AdCP 3.2 lifecycle. product_id and name are the only always-returned fields; requested detail fields are optional. Legacy named formats, coarse MediaBuy actions, and the legacy Product inheritance graph are absent.",
   "type": "object",
   "properties": {
+    "creative_policy": {
+      "$ref": "/schemas/core/creative-policy.json",
+      "x-added-in": "3.3.0",
+      "description": "Product creative requirements, including optional review_sla."
+    },
     "product_id": { "type": "string", "minLength": 1, "x-entity": "product" },
     "name": { "type": "string", "minLength": 1 },
     "description": { "type": "string" },
     "publisher_properties": {
       "type": "array",
+      "description": "A non-empty array is the complete roster. `[]` means undisclosed, not no properties. MUST NOT be `[]` below 3.3.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/publisher-property-selector.json" },
           { "not": { "required": ["publisher_domains"] } }
         ]
-      },
-      "minItems": 1
+      }
     },
     "channels": { "type": "array", "items": { "$ref": "/schemas/enums/channels.json" }, "uniqueItems": true },
     "video_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/video-placement-type.json" }, "minItems": 1, "uniqueItems": true },
@@ -27,26 +32,40 @@
     "placements": { "type": "array", "items": { "$ref": "/schemas/core/canonical-placement.json" } },
     "collections": {
       "type": "array",
-      "description": "Collections available in this product, each referencing collections declared in an adagents.json by domain and explicit collection_ids. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
+      "description": "A non-empty array is the complete roster. `[]` means undisclosed. MUST NOT be `[]` below 3.3. Each entry references collections declared in an adagents.json by domain and explicit collection_ids. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/collection-selector.json" },
           { "required": ["collection_ids"] }
         ]
-      },
-      "minItems": 1
+      }
     },
     "collection_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list or targeting_overlay.collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match)."
+      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list, collection_lists, or collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match)."
+    },
+    "installments": {
+      "type": "array",
+      "x-added-in": "3.3.0",
+      "description": "Specific installments this product includes — the episodes, issues, airings, rotation periods, or creator slots being sold. Each entry names its parent through the canonical collection_ref tuple; unlike the legacy get_products installment there is no publisher-domain-free shorthand. Every referenced collection MUST be one the product's collections selectors name, so collections is required alongside. Absence is meaningful within a projection that requested this field, and is not 'no installments known': a product that carries collections and omits installments is run-of-collection — inventory across those collections, whatever publishes during the flight. Absence from a list_products response whose fields projection did not request installments carries no meaning at all, which is why a buyer that depends on the run-of-collection reading MUST request the field explicitly. Buyers MUST reject a product whose installment collection_ref is not one its own collections selectors name; the seller's collections are what the referenced adagents.json authorizes.",
+      "items": { "$ref": "/schemas/core/canonical-installment.json" },
+      "minItems": 1,
+      "maxItems": 500,
+      "x-adcp-validation": {
+        "unique_by": ["collection_ref", "installment_id"],
+        "verifier_constraints": {
+          "installment_collection_scope": "every_top_level_installment_collection_ref_is_named_by_product_collections",
+          "scope": "top_level_only"
+        }
+      }
     },
     "delivery_type": { "$ref": "/schemas/enums/delivery-type.json" },
     "exclusivity": { "$ref": "/schemas/enums/exclusivity.json" },
     "pricing_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-pricing-option.json" }, "minItems": 1 },
     "forecast": { "$ref": "/schemas/core/canonical-delivery-forecast.json" },
     "reporting_capabilities": { "$ref": "/schemas/core/canonical-reporting-capabilities.json" },
-    "dooh_inventory_summary": { "$ref": "/schemas/core/dooh-inventory-summary.json" },
+    "dooh_inventory_summary": { "$ref": "/schemas/core/dooh-inventory-summary.json", "x-added-in": "3.3.0" },
     "measurement_terms": {
       "$ref": "/schemas/core/canonical-measurement-terms.json",
       "description": "Default billing measurement and makegood terms inherited by a direct purchase unless a negotiated proposal replaces them."
@@ -140,14 +159,20 @@
   },
   "required": ["product_id", "name"],
   "dependencies": {
-    "targeting_resolution": ["expires_at"]
+    "targeting_resolution": ["expires_at"],
+    "installments": ["collections"]
   },
   "allOf": [
     {
       "description": "Collection inclusion support requires selectable product collections.",
       "if": {
         "properties": {
-          "overlay_support": { "required": ["collection_list"] }
+          "overlay_support": {
+            "anyOf": [
+              { "required": ["collection_list"] },
+              { "required": ["collection_lists"] }
+            ]
+          }
         },
         "required": ["overlay_support"]
       },
@@ -205,5 +230,28 @@
       }
     }
   ],
-  "additionalProperties": false
+  "not": {
+    "anyOf": [
+      { "required": ["audience_activation"] },
+      { "required": ["cancellation_policy"] },
+      { "required": ["conversion_tracking"] },
+      { "required": ["data_provider_signals"] },
+      { "required": ["delivery_measurement"] },
+      { "required": ["enforced_policies"] },
+      { "required": ["format_ids"] },
+      { "required": ["included_signals"] },
+      { "required": ["is_custom"] },
+      { "required": ["material_submission"] },
+      { "required": ["measurement_readiness"] },
+      { "required": ["metric_optimization"] },
+      { "required": ["outcome_measurement"] },
+      { "required": ["product_card"] },
+      { "required": ["product_card_detailed"] },
+      { "required": ["property_targeting_allowed"] },
+      { "required": ["signal_targeting_options"] },
+      { "required": ["trusted_match"] },
+      { "required": ["vendor_metric_optimization"] }
+    ]
+  },
+  "additionalProperties": true
 }

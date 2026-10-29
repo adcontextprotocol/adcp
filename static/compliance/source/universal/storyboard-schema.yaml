@@ -620,6 +620,8 @@
 #     - canonical_format_satisfies: candidate format declaration at `path`
 #       satisfies the canonical format requirement in `value` using the same
 #       directional algorithm as the `canonical_format_satisfaction` check.
+#     - collection_selection_satisfies: qualifies a concrete collection-bearing
+#       product using the closed collection fixture preparation contract below.
 #   Unknown operators are an authoring error, not a forward-compatible skip.
 #
 #   strategy disposition:
@@ -635,7 +637,9 @@
 #       grades `fixture_unsatisfied`, not passed.
 #
 #   Discovery selection is deterministic. After excluding candidates already
-#   pinned to non-reusable handles, the runner sorts matches by UTF-8 bytewise
+#   pinned to non-reusable handles, and product candidates unable to satisfy
+#   each dependent discover-only pricing declaration as described below,
+#   the runner sorts matches by UTF-8 bytewise
 #   seller identity (product_id; then product_id + U+0000 + pricing_option_id
 #   for pricing options) and selects the first. Response order is never the
 #   tie-breaker. An empty, valid result is an unavailable strategy; a malformed,
@@ -654,6 +658,161 @@
 #
 #   See runner-output-contract.yaml > fixture_resolution_result for evidence and
 #   `fixture_unsatisfied` grading. See governance decision DR-0010.
+#
+# Collection fixture preparation (additive runner/authoring contract)
+#
+# This is runner-owned fixture metadata, not a seller capability declaration,
+# a new wire collection shape, or a controller negotiation/refusal extension.
+# It does not attest ownership, host permission or supply-path authorization.
+#
+# collection_selection_satisfies:
+#   value is a CLOSED object:
+#     collection_targeting: fixed | selectable | any  # required
+#     minimum_pairs: 1 | 2                            # optional; default 1
+#     require_cross_publisher_collection: boolean     # optional; default false
+#   Unknown keys, wrong types and unknown enum values are authoring errors.
+#   Match paths remain RFC 6901; path: '' means the whole candidate entity.
+#   For the product/witness use below, authors SHOULD use path: ''.
+#   fixed accepts literal false OR omission of collection_targeting_allowed;
+#   selectable requires literal true; any accepts either boolean or omission.
+#   Null/wrong-typed seller flags are not repaired. Discovery schema failure
+#   remains terminal rather than becoming an unsupported-feature skip.
+#
+#   Normalize the complete product collections to distinct
+#   (publisher_domain, collection_id) pairs. Product composition MUST carry
+#   explicit collection_ids; authorization-only domain bulk grants do not
+#   qualify. Preserve empty-string and Unicode IDs, grouping/order independence,
+#   publisher namespace identity and schema-valid redundancy. Do not invent
+#   pair-uniqueness, nonempty-ID, trimming or case-normalization requirements.
+#   minimum_pairs counts distinct concrete pairs. One-pair default coverage
+#   and two-pair strict-subset coverage MUST resolve independently; a missing
+#   companion fixture MUST NOT suppress an independently applicable scope.
+#
+#   The cross-publisher condition means at least one collection namespace lies
+#   outside ALL property publisher domains of that SAME product. Traverse all
+#   singular publisher_properties[].publisher_domain values. A product without
+#   observable property domains cannot establish the relation. The compact
+#   publisher_domains[] form remains invalid on products. This is a declared
+#   structural relationship only, never proof of ownership/authorization.
+#
+# Parent selection with dependent scoped pricing declarations:
+#   Before product identity ordering, additionally exclude a product lacking
+#   at least one matching scoped price for EACH dependent discover-only price
+#   declaration. This existence check is claim-blind: it is not an assignment
+#   solver, does not reserve a distinct price for each child, and does not
+#   reselect the parent after a child fails. Preserve the original UTF-8
+#   identity ordering, identity-reuse rules and terminal-failure behavior.
+#
+# fixture_resolution.products[].context_outputs and
+# fixture_resolution.pricing_options[].context_outputs:
+#   Nonempty array of CLOSED entries: key plus EXACTLY ONE of:
+#     path: nonempty dotted/bracket storyboard path relative to selected entity
+#     snapshot: selected_entity
+#     witness: one of the seven names below
+#   Do not confuse capture paths with match JSON Pointers. A leading '/' is an
+#   authoring error. Empty and dot-only root paths ('', '.', '..', etc.) are
+#   invalid; use snapshot: selected_entity to request the whole selected entity.
+#   Path capture fails for absent/null/empty-string values;
+#   use snapshot for legally absent optional commercial fields. Zero, false,
+#   empty arrays and empty objects are values, not automatic capture failures.
+#   snapshot preserves field absence and never fabricates a zero/default;
+#   redact secret-shaped keys under runner-output-contract security rules.
+#
+#   key MUST match ^__adcp_fixture_[A-Za-z0-9_]+$ and be unique across all
+#   fixture captures. Unknown entry keys/forms/literals are authoring errors.
+#   witness is product-only and requires a direct collection predicate on the
+#   SAME declaration; a nested any_match predicate does not supply its witness.
+#   If multiple direct predicates are authored, retain the last eligible
+#   evaluated witness in authored clause order, from the selected entity only.
+#   Consumer recommendation: combine carriage targeting, pair-count and relation
+#   requirements in ONE direct witness-producing predicate; an earlier relation
+#   predicate does not transfer relation authority to a later nonrelation
+#   witness.
+#   Witnesses are NOT intersected/merged: a later nonrelation predicate can
+#   replace a prior cross-publisher witness with a locally derived subset.
+#   Loader acceptance alone does not establish that captured selectors retain
+#   the relation required by an earlier clause.
+#
+#   Witness values (selector arrays substitute whole into collections):
+#     declared_selectors: complete concrete domain/ID composition as selectors
+#     distinct_pairs: diagnostic [{publisher_domain, collection_id}], NOT wire
+#     strict_subset: one-entry selector array containing one real pair; fails
+#       when fewer than two distinct TOTAL pairs exist
+#     undeclared_collection_id_selectors: one-entry selector array, domain
+#       present on this product and ID verified absent in that domain
+#     undeclared_publisher_domain_selectors: one-entry selector array, a domain
+#       verified absent from this product's COLLECTION namespaces and a real
+#       retained collection ID; not a claim of absence from every other product
+#     cross_publisher_relation: {collection_publisher_domain,
+#       property_publisher_domains: string[], selector}; requires the relation
+#       operand. selector.publisher_domain equals collection_publisher_domain
+#     property_publisher_domains: bytewise-ordered declared property domains
+#   When the RETAINED witness's predicate requests a relation, strict_subset
+#   and negative-ID domain use the
+#   retained cross-publisher namespace; the negative-domain witness retains a
+#   collection ID from that relation. One cross-publisher plus one local pair
+#   suffices. Generate and collision-check negatives against the COMPLETE
+#   selected product; a reserved-looking domain/string is not itself evidence.
+#
+#   Stage captures until the WHOLE graph resolves. Never publish partial
+#   captures or silently reselect after capture failure. Unbuildable declared
+#   captures are failed setup, not fixture_unsatisfied or optional success.
+#   Capture resource-bound violations fail visibly rather than truncating.
+#
+# Reserved context and preparation lifecycle:
+#   __adcp_fixture_ is reserved to preparation. Storyboard context defaults,
+#   ordinary/generated/task-completion output keys, and response-gate
+#   context_keys MUST NOT use it. __proto__, constructor and prototype are
+#   forbidden context keys. Apply these load-time constraints before contact.
+#   Caller context/provenance/unavailability maps cannot import that authority.
+#   Runtime writes/deletes/provenance/unavailability updates are atomic; a
+#   rejected patch applies nothing. Committed captures cannot be recommitted,
+#   mutated through aliases, suppressed or replaced by any ordinary writer.
+#
+#   A reusable preparation pins the selected graph and terminal disposition,
+#   storyboard content, schema artifact identity, route, brand/account/sandbox
+#   and credential scope. No-match is fixture_unsatisfied; advertised/begun
+#   discovery/setup errors remain failed. Retry cannot repick to hide failure.
+#   Runtime object identity, principal strings and opaque/sealed references do
+#   not establish current hosted authorization. Reuse requires a live authorizer
+#   on every lookup, before disclosure/contact and after effective routing,
+#   account and credential resolution. The host owns authenticated principal,
+#   current grant, expiry and revocation checks. Preparation APIs do not create
+#   a grant service or authorize bundle-wide comply() reuse.
+#   Bind the exact immutable schema artifact or a verified content digest;
+#   file-inventory fingerprints satisfy this only when artifact immutability is
+#   independently established. They are not signed content digests or in-place
+#   mutation detection. Process-local objects are not serialized authority.
+#   Full/standalone fixture parity does not promise phase.skip_if execution or
+#   general timestamp, maturation, commercial arithmetic or reporting oracles.
+#
+# collection_set_equals_context (AUTHORED step check):
+#   path: nonempty storyboard path to actual response selector array
+#   context_key: required own accumulator key holding expected selectors
+#   description: required normal authored description
+#   Compare exact normalized domain-qualified pair sets, ignoring grouping and
+#   ordering. Do not flatten IDs across domains. Missing expected context,
+#   malformed expected/actual data and bound exhaustion MUST fail; this check
+#   is expressly outside the branch-safe context_key_absent success rule.
+#   Pair normalization does not replace response_schema: selected collections
+#   still require explicit IDs and reject identical outer entries by schema.
+#   Preserve all existing array cardinality and sort assertions independently.
+#
+# Runner-synthesized additions (MUST NOT be authored in validations):
+#   fixture_capture_unbuildable — capture build/commit or failed-preparation reuse
+#   protected_context_violation — a refused protected-context patch
+#   prepared_fixtures_authorization — local preparation reuse/metadata refusal
+#     (retained in the authorized record only; the refused caller receives a
+#     typed authorization denial, not a grading result)
+#   See runner-output-contract.yaml > collection_fixture_preparation_output for
+#   per-arm expected/actual, pointer, wire-evidence and nullability requirements.
+#
+# Downgrade: a published storyboard using this feature MUST carry the new
+# declaration/operator, not only the validator name. A runner lacking the closed
+# declaration/operator fails load; unknown-check forward compatibility remains
+# unchanged and MUST NOT be presented as successful set validation.
+# Unsupported grammar is runner/authoring incompatibility, not evidence of
+# seller feature nonsupport or an agent conformance violation.
 #
 # creative_build_probe: object (optional; runner preparation, not agent capability)
 #   context_prefix: lowercase context namespace for the atomic route/input binding
@@ -1249,6 +1408,13 @@
 #     steps is caught statically.
 #   Omitting `negative_path` when `expect_error: true` behaves as `schema_invalid`
 #   (backwards-compatible default).
+#
+# enrich_request: true (optional — only with expect_error: true and
+#   negative_path: payload_well_formed). Opt this semantic rejection probe into
+#   the normal per-task request enricher, including discovered auction bids.
+#   The default for negative probes preserves the authored request exactly;
+#   intentionally malformed requests MUST NOT set this flag. Explicit fixture
+#   values still win, and governance-authorized payloads remain unmodified.
 #
 # sample_request_skip_schema: boolean (optional — explicit opt-out of schema
 #   validation for a step regardless of `expect_error` / `negative_path`. Use
@@ -1986,6 +2152,9 @@
 #     not resolve) is graded `capture_path_not_resolvable` ON THE PRIOR STEP —
 #     downstream cross-step checks on a never-populated key are not the place
 #     to surface that failure.
+#     Exception: collection_set_equals_context MUST FAIL on an absent
+#     context_key (fixture captures publish all-or-nothing; see "Collection
+#     fixture preparation").
 #
 #   Examples:
 #     # Round-trip: get_media_buys returns the id we just created.

@@ -98,13 +98,28 @@ value outside the accepted commercial terms.
 
 | State | Meaning | Terminal? |
 |-------|---------|-----------|
-| `pending_creatives` | Approved; no creatives assigned yet | No |
-| `pending_start` | Creatives assigned; waiting for flight date | No |
+| `pending_creatives` | Buyer action required: missing creative coverage or a blocking rejection needs correction or replacement. Independent of seller commitment (`confirmed_at`) | No |
+| `pending_start` | Waiting for the flight date, seller confirmation, or seller review of already assigned creatives. Inspect package `creative_approvals` for review state | No |
 | `active` | Delivering impressions | No |
 | `paused` | Temporarily halted | No |
 | `completed` | Flight ended, goal met, or budget exhausted | Yes |
 | `rejected` | Seller declined the buy | Yes |
 | `canceled` | Buyer or seller terminated before completion | Yes |
+
+<Note>
+**Status and commitment are separate axes.** `status` tells the buyer what is
+actionable next (supply creatives, wait for the flight, and so on). Whether the
+seller has committed to the buy is the independent `confirmed_at` field, which
+is `null` until the seller commits. A seller that reviews buys before
+committing returns a provisional buy: synchronous success, `media_buy_id`
+issued, `confirmed_at: null`, and the `status` the buy will have on
+confirmation. Commitment is keyed off `confirmed_at`, never off `status`, and a
+buy with `confirmed_at: null` is never `active`. While a buy is
+provisional, `get_media_buys` MAY carry an informational
+`expected_confirmation_at` estimate; it is absent once `confirmed_at` is set and
+never replaces `confirmed_at` as the commitment signal. See
+[provisional buys](/docs/media-buy/specification#provisional-buys-seller-review-hold).
+</Note>
 
 <Note>
 `submitted`, `working`, and `input-required` are **task-level** statuses. They
@@ -124,8 +139,9 @@ stateDiagram-v2
 
     pending_creatives --> pending_start : sync_creatives assignment
     pending_creatives --> paused : sync_creatives assignment\n(buy held)
-    pending_start --> active : flight date reached
-    pending_start --> paused : flight date reached\n(create held)
+    pending_start --> pending_creatives : blocking creative rejection
+    pending_start --> active : flight and creative review ready
+    pending_start --> paused : flight and creative review ready\n(create held)
 
     active --> paused : control_media_buy\n(paused: true)
     paused --> active : control_media_buy\n(paused: false)
@@ -252,8 +268,16 @@ facade mutation or compact purchase.
 
 When required formats lack creative coverage, the buy enters
 `pending_creatives`. After assignments cover the package's effective
-`format_options[]`, it moves to `pending_start` when the flight is in the future
-or `active` when delivery can begin. A direct `buy_products` call may set
+`format_options[]`, it moves to `pending_start` while seller review or the
+flight date blocks delivery, or `active` when an approved subset can serve.
+The [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review) defaults to serving eligible approved assignments;
+`start_requires_all_creatives_approved: true` holds a package's first release for serving
+until every current assignment has package approval (AdCP 3.3). Check
+`media_buy.features.creative_start_policy` before commitment, then set the
+package control through `control_media_buy` before assigning any creatives.
+Assign the complete launch set atomically or keep delivery paused throughout
+staged supply; the gate cannot anticipate creatives added in later calls.
+A direct `buy_products` call may set
 `paused: true`; resume it later with `control_media_buy` and the latest
 revision.
 

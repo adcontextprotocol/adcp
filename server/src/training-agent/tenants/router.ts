@@ -16,7 +16,11 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { AdcpCredential } from '@adcp/sdk/server';
 import { createLogger } from '../../logger.js';
 import { runWithAccountIdAliasScope, runWithSessionContext, flushDirtySessions } from '../state.js';
-import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { createRegistryHolder, pickStateStore, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { createIdentity33Runtime, type Identity33Runtime } from '../identity33/runtime.js';
+import { IDENTITY33_ROUTE, PROPOSAL_NEGOTIATION_PROFILE_PATHS } from '../lab-route-paths.js';
+import { getReplayStore } from '../request-signing.js';
+import { advertiseIdentity33Capabilities, requireIdentity33, signedRequestUrl } from '../identity33/route.js';
 import { getTrainingGovernanceIssuer } from '../canonical-base.js';
 import {
   GOVERNANCE_AGENT_CREDENTIAL_EXTRA_KEY,
@@ -49,9 +53,10 @@ import {
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
-import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
-import { getAgentUrl } from '../config.js';
+import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { getIdentityBaseUrl } from '../config.js';
 import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
+import { omitFieldsAddedAfterRelease, servedReleaseEnum } from '../served-release-fields.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -183,6 +188,7 @@ const SALES_THREE_ZERO_COMPLY_SCENARIOS = [
 const SALES_CURRENT_SCENARIOS = [
   ...SALES_LEGACY_CAPABILITY_SCENARIOS,
   'force_create_media_buy_arm',
+  'force_media_buy_confirmation',
   'force_get_products_arm',
   'force_task_completion',
   'force_creative_purge',
@@ -248,7 +254,7 @@ function salesComplyScenarios(
   servedVersion?: string,
 ): string[] {
   if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
-  const current = supportsReliableReporting(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withReporting = supportsReliableReporting(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...SALES_CURRENT_SCENARIOS]
     : SALES_CURRENT_SCENARIOS.filter(scenario => (
       scenario !== 'reporting_core_lifecycle_probe'
@@ -256,6 +262,11 @@ function salesComplyScenarios(
       && scenario !== 'reliable_reporting_managed_delivery_probe'
       && scenario !== 'reliable_reporting_reconciled_billing_probe'
     ));
+  // The hold scenario ships with `sales-fixed-rate`; older pins neither see
+  // the specialism nor the scenario that grades it.
+  const current = supportsSalesFixedRate(servedVersion)
+    ? withReporting
+    : withReporting.filter(scenario => scenario !== 'force_media_buy_confirmation');
   return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...current, 'expire_account_change_cursor']
     : current;
@@ -688,6 +699,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'reliable_reporting_managed_delivery_probe'
     && rawArgs.scenario !== 'reliable_reporting_reconciled_billing_probe'
     && rawArgs.scenario !== 'query_account_governance_binding'
+    && rawArgs.scenario !== 'force_media_buy_confirmation'
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
@@ -707,6 +719,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'reliable_reporting_managed_delivery_probe'
       || rawArgs.scenario === 'reliable_reporting_reconciled_billing_probe'
       || rawArgs.scenario === 'query_account_governance_binding'
+      || rawArgs.scenario === 'force_media_buy_confirmation'
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -1006,6 +1019,17 @@ function projectTenantCapabilities(
         ? structured.adcp_version
         : TRAINING_AGENT_DEFAULT_ADCP_VERSION);
     structured.adcp_version = servedVersion;
+    // `specialisms` is a closed enum in every release, so a consumer served an
+    // older release never sees an id added after it (DR-0024): the 3.3
+    // `sales-fixed-rate` below 3.3, the 3.2 `sales-dooh` below 3.2.
+    const allowedSpecialisms = Array.isArray(structured.specialisms)
+      ? servedReleaseEnum('enums/specialism.json', storyboardCompat?.version === '3.0' ? '3.0' : servedVersion)
+      : null;
+    if (allowedSpecialisms && Array.isArray(structured.specialisms)) {
+      structured.specialisms = structured.specialisms.filter(
+        (id): id is string => typeof id === 'string' && allowedSpecialisms.has(id),
+      );
+    }
     const adcp = structured.adcp && typeof structured.adcp === 'object'
       ? structured.adcp
       : {};
@@ -1319,6 +1343,15 @@ function projectTenantCapabilities(
       }
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
+    // Every tenant, last: withhold fields added after the served release
+    // (3.3 account.stable_account_id, governance.supports_budget_periods,
+    // the property-breakdown feature flags, ...), whichever projection above
+    // or SDK derivation contributed them.
+    parsed.result!.structuredContent = omitFieldsAddedAfterRelease(
+      structured,
+      'protocol/get-adcp-capabilities-response.json',
+      storyboardCompat?.version === '3.0' ? '3.0' : servedVersion,
+    );
     const firstText = parsed.result?.content?.[0];
     if (firstText?.type === 'text') {
       firstText.text = 'Capabilities retrieved successfully.';
@@ -1343,8 +1376,8 @@ function projectWholesaleCapabilities(
 ): void {
   const addBrandIdentity = (): void => {
     const brandJsonUrl = storyboardCompat?.version === '3.0'
-      ? `${getAgentUrl()}/.well-known/brand.json?compat=3.0`
-      : `${getAgentUrl()}/.well-known/brand.json`;
+      ? `${getIdentityBaseUrl()}/.well-known/brand.json?compat=3.0`
+      : `${getIdentityBaseUrl()}/.well-known/brand.json`;
     structured.identity = {
       ...(structured.identity ?? {}),
       brand_json_url: brandJsonUrl,
@@ -1436,13 +1469,22 @@ export interface TenantRouteMiddleware {
 }
 
 export const PROPOSAL_NEGOTIATION_PROFILE_ROUTES = [
-  { path: '/sales/profiles/typed-negotiation/mcp', profile: 'typed-negotiation' },
-  { path: '/sales/profiles/constrained-seller/mcp', profile: 'constrained-seller' },
-  { path: '/sales/profiles/finalization-failure/mcp', profile: 'finalization-failure' },
+  { path: PROPOSAL_NEGOTIATION_PROFILE_PATHS[0], profile: 'typed-negotiation' },
+  { path: PROPOSAL_NEGOTIATION_PROFILE_PATHS[1], profile: 'constrained-seller' },
+  { path: PROPOSAL_NEGOTIATION_PROFILE_PATHS[2], profile: 'finalization-failure' },
 ] as const satisfies ReadonlyArray<{
   path: string;
   profile: Exclude<NonNullable<TrainingContext['proposalNegotiationProfile']>, 'ask-only'>;
 }>;
+
+export { IDENTITY33_ROUTE };
+
+/** Production deployments opt in, as for the proposal-profile lab routes. */
+export function identity33RouteEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  const configured = env.ENABLE_ADCP_3_3_IDENTITY_ROUTE;
+  if (configured !== undefined) return configured === '1' || configured.toLowerCase() === 'true';
+  return env.NODE_ENV !== 'production';
+}
 
 /** Production deployments opt in so private installations do not expose public lab routes unintentionally. */
 export function proposalNegotiationProfilesEnabled(
@@ -1571,6 +1613,34 @@ export function mountTenantRoutes(
         });
       });
     }
+  }
+
+  if (tenantIds.includes('sales') && middleware.storyboardCompat?.version !== '3.0' && identity33RouteEnabled()) {
+    // Built on first use: routes mount before the database is initialized,
+    // and the shared replay store needs the pool (a boot-time call throws in
+    // production, as lazySigningAuth avoids for the RFC 9421 routes).
+    let built: Identity33Runtime | undefined;
+    const build = () => (built ??= createIdentity33Runtime({
+      stateStore: pickStateStore(),
+      replayStore: getReplayStore(),
+      getUrl: signedRequestUrl,
+    }));
+    const runtime: Identity33Runtime = {
+      authenticate: req => build().authenticate(req),
+      authorize: (ctx, tool, params) => build().authorize(ctx, tool, params),
+    };
+    const identityHolder = createRegistryHolder({ identity33: { authorize: runtime.authorize }, tenantIds: ['sales'] });
+    parent.options(IDENTITY33_ROUTE, (_req, res) => {
+      setCORSHeaders(res);
+      res.status(204).end();
+    });
+    parent.post(
+      IDENTITY33_ROUTE,
+      ...(middleware.rateLimit ? [middleware.rateLimit] : []),
+      requireIdentity33(runtime),
+      advertiseIdentity33Capabilities(),
+      tenantMcpHandler(identityHolder, 'sales', middleware.storyboardCompat),
+    );
   }
 
   // brand.json discovery is mounted at the parent training-agent router in

@@ -36,7 +36,7 @@
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account context for this acquisition. Used by the brand agent to resolve any governance agent previously bound for this brand+operator pair via sync_governance. When both an inline governance_context token and a bound governance agent are present, the token is verified against that resolved relationship. An agent advertising adcp.governance_enforcement for acquire_rights MUST resolve an account and returns ACCOUNT_REQUIRED when neither the request nor an existing resource supplies one; it MUST NOT infer that a missing token means ungoverned. Legacy non-claiming agents may continue to treat omission of both fields as ungoverned during 3.x. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts."
+      "description": "Account context for this acquisition. Used by the brand agent to resolve any governance agent previously bound for this brand+operator pair via sync_governance. When both an inline governance_context token and a bound governance agent are present, the token is verified against that resolved relationship. An agent advertising adcp.governance_enforcement for acquire_rights MUST resolve an account and returns ACCOUNT_REQUIRED when neither the request nor an existing resource supplies one; it MUST NOT infer that a missing token means ungoverned. Legacy non-claiming agents may continue to treat omission of both fields as ungoverned during 3.x. Pass the seller-assigned account_id from sync_accounts or list_accounts. During 3.x, a natural key (brand, operator, optional sandbox) that matches exactly one account also resolves."
     },
     "campaign": {
       "type": "object",
@@ -65,6 +65,7 @@
         "format_ids": {
           "type": "array",
           "deprecated": true,
+          "x-removed-in": "4.0.0",
           "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named formats that will be produced. Use `format_kinds` and optional `format_option_refs`.",
           "items": {
             "$ref": "/schemas/core/format-id.json"

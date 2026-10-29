@@ -96,6 +96,16 @@ Version Negotiation Flow:
 | `adcp_major_version` | integer | Optional. The AdCP major version the buyer's payloads conform to. When provided, the seller validates against its `major_versions` and returns [`VERSION_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-version-unsupported) if not in range. When omitted, the seller assumes the highest major version it supports. |
 | `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `brand`). If omitted, returns all supported protocols. |
 
+## Size bounds
+
+The response is bounded by structure. From 3.3 every array has a maximum item count, every string a maximum length, and every keyed map a maximum member count. A string constrained by `enum`, `const`, `format`, or an anchored `pattern` of bounded length, and a `uniqueItems` array of a closed `enum` or `const`, needs no keyword because the schema already bounds it. A field that is new in 3.3 or experimental enforces its limit with `maxItems`, `maxLength`, or `maxProperties`. A field that was stable before 3.3 carries the limit as `x-max-items-4.0`, `x-max-length-4.0`, or `x-max-properties-4.0`: producers SHOULD stay within it now, and 4.0 enforces it. [Response Size Bounds](/docs/building/by-layer/L1/security#response-size-bounds) lists the limits and the worst-case document they allow.
+
+The structural bounds are the protocol's limit on this response. Agents MUST NOT design to a byte figure. Nothing large belongs here: keys come from the signer's key directory, and property lists are passed by reference.
+
+Receivers commonly bound response size at the HTTP or gateway layer. A limit around 64 KiB (`MAX_CAPABILITIES_BYTES`) is a reasonable backstop against runaway or hostile documents. It is not a design target. This is deployment guidance for receivers, not a protocol rule on the response.
+
+One deprecated path reads this response under a byte budget. Key discovery in the RFC 9421 profile fetches capabilities under `MAX_CAPABILITIES_BYTES` (64 KiB), so an agent that signs under that profile keeps the document under 64 KiB or its signing keys stop resolving. 3.3 deprecates that profile and 4.0 removes it, budget included. The [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) finds keys through the origin's key directory and never fetches capabilities for keys. No signing path added after 3.3 reads keys, or a pointer to keys, from this response.
+
 ## Response Structure
 
 ### adcp
@@ -233,10 +243,11 @@ Declares support for authenticated caller-scoped connection configuration. This 
 | `supported` | boolean | Always `true` when the block is present. |
 | `sync_task` | string | Always `sync_principal`. |
 | `read_task` | string | Always `get_principal`. Side-effect-free read of caller-scoped state and version. |
-| `supported_sections` | string[] | Any of `notification_configs` and `reporting_destinations`. |
+| `supported_sections` | string[] | Any of `notification_configs`, `reporting_destinations`, `declarations`, and `reporting_subscriptions`. `reporting_subscriptions` (experimental, 3.3) requires `media_buy.reporting_delivery.subscriptions` and `media_buy.reporting_subscriptions` in `experimental_features`. |
 | `max_reporting_destinations` | integer | Required when reporting destinations are supported. Portable schema maximum is 64; a seller may advertise a lower limit. |
 | `reporting_destination_offerings` | object[] | Required when reporting destinations are supported. Objective per-pattern offering — transports, file formats, dataset-share access modes, and verification profiles — so buyers select compatible destinations without submit-and-reject probing. |
 | `suspension_interval_seconds` | integer | Required when reporting destinations are supported. Upper bound between a committed destination suspension or revocation and the halt of new deliveries to every generation of that destination. |
+| `caller_event_types` | string[] | Event types a caller-level subscriber may list. Include `account.status_changed` when supported: a subscriber with `all_authorized_accounts: true` then receives suspension, `payment_required`, and other status transitions for every authorized account from one registration. |
 | `optimistic_concurrency` | boolean | Whether the seller enforces `expected_configuration_version`. When `false`, a request carrying the fence is rejected rather than silently ignored. |
 
 Agents exposing this block MUST list `protocol.principal` in `experimental_features` and expose both declared tasks. Account authorization remains separate; a ready reusable destination does not grant access to any advertiser account.
@@ -464,16 +475,18 @@ Account and authentication capabilities. All sellers should declare this section
 |-------|------|-------------|
 | `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`, or `advertiser`. When the buyer calls `sync_accounts`, every entry must select one of these values. |
 | `supported_account_currency_modes` | string[] | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for 3.1 compatibility.** Models this seller supports: `fixed`, `per_media_buy`, or both. A buyer includes `currency` in `sync_accounts` for `fixed` and omits it for `per_media_buy`. When both are advertised, presence or absence selects the model. Absence means an older seller has not exposed currency-mode discovery; it does not imply support for either mode. |
-| `timezone` | object | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for compatibility.** `seller_fixed` advertises one `fixed_timezone` for every account. `account_fixed` declares whether each immutable account timezone is `seller_assigned` or `buyer_selected`; buyer-selected mode also publishes the exact `supported_timezones`. |
-| `require_operator_auth` | boolean | Default: `false`. Declares who holds the credential the seller authorizes: the buyer agent (`false`) or each operator separately (`true`). It is not about whether the operator named in a natural key authenticates — with `false`, no operator does. It declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
+| `timezone` | object | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for compatibility.** `seller_fixed` advertises one `fixed_timezone` for every account. `account_fixed` declares whether each account's timezone is `seller_assigned` or `buyer_selected`; buyer-selected mode also publishes the exact `supported_timezones`. |
+| `require_operator_auth` | boolean | Default: `false`. Declares who holds the credential the seller authorizes: the buyer agent (`false`) or each operator separately (`true`). It is not about whether the operator named in a natural key authenticates — with `false`, no operator does. It declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted: the buyer opens accounts with `brand` + `operator` and the account attributes, and calls use the returned `account_id`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts` and SHOULD expose `list_accounts` so account IDs can be recovered after a cold start. During 3.x they keep accepting a natural key that matches exactly one account. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
-| `stable_account_id` | boolean | Default: `false`. When `true`, the seller-assigned `account_id` is a durable `AccountRef` for every account the caller can operate, including buyer-declared accounts: the seller MUST return it on every non-failed `sync_accounts` provisioning result, MUST accept `{ "account_id": "..." }` wherever an `AccountRef` is accepted, and MUST NOT change it for the life of the account, including across identity reconciliation. Buyer-declared sellers still accept the natural key throughout 3.x. Buyers holding an `account_id` from such a seller SHOULD send it instead of the natural key. When absent or `false`, buyers MUST NOT assume a buyer-declared seller accepts its returned `account_id`. Account-id-namespace sellers whose IDs meet these rules SHOULD declare `true`. Natural-key references after provisioning are deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare it during 3.x. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere). |
+| `stable_account_id` | boolean | **Deprecated in 3.3**, planned for removal in 4.0. Every seller returns `account_id` from `sync_accounts` once the account is resolved, accepts it on every account-scoped task, and never changes it, so the guarantee this flag declared always holds. Sellers SHOULD declare `true` while the field exists; buyers send `account_id` without checking it. See [Account identity](/docs/accounts/overview#account-identity). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling [`get_products`](/docs/media-buy/task-reference/get_products). When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. Before an account is provisioned, the buyer omits `account` rather than sending a natural key that doesn't resolve yet; see [Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning). |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
-| `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
+| `identity_updates` | object | **Deprecated in 3.3**, planned for removal in 4.0. Optional capability gate for the deprecated `operator_identity` reconciliation through `sync_accounts` settings-update mode. Account attributes, `operator_unit` included, change through settings-update mode without a gate. |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `change_feed` | object | Optional, experimental (`account.change_feed`). Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
+| `requests` | object | Optional, experimental (`account.requests`). Declares [`request_account`](/docs/accounts/tasks/request_account), `list_accounts` request reads, and the caller-anchored `account_request.changed` webhook. See [account.requests](#account-requests). |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
+| `agent_onboarding` | object | Optional, experimental (`account.agent_onboarding`). How the seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. See [account.agent_onboarding](#accountagent_onboarding). |
 
 #### account.notifications
 
@@ -546,41 +559,136 @@ source status and freshness are returned by `list_account_changes`.
 
 See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
 
-#### account.timezone
+#### account.agent_onboarding
 
-Account timezone is an immutable operational default, not an assumption that every upstream clock is identical. A `seller_fixed` seller advertises one `fixed_timezone` and buyers omit `timezone` during provisioning. An `account_fixed` seller returns a timezone on every account; when `account_selection` is `buyer_selected`, buyers MUST provide one advertised value to `sync_accounts`, and that value participates in the natural account key. When it is `seller_assigned`, buyers omit the field and discover the value from `sync_accounts` or `list_accounts`.
+<Note>
+**Experimental (`account.agent_onboarding`).** A seller that declares this block lists `account.agent_onboarding` in `experimental_features`. Design: [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) R7 ([#8113](https://github.com/adcontextprotocol/adcp/issues/8113)).
+</Note>
 
-Calendar-day features inherit `Account.timezone` only when their capability says so. Product reporting continues to use `reporting_capabilities.timezone`, account financials use the timezone returned by `get_account_financials`, and daily caps use `budget_capping.timezone_basis`. This prevents a seller from claiming that distinct reporting, billing, and delivery clocks are aligned when the upstream platform does not align them.
-
-#### account.identity_updates
-
-Declares whether the seller accepts a complete desired `operator_identity` on an existing account through `sync_accounts` settings-update mode.
+AdCP leaves contract, credit, and credential issuance to the seller's own systems. This block tells a buyer agent, before its first authenticated call, whether the seller takes unsolicited buyer agents, what it requires of them, and where a human starts. A buyer can then sort sellers into "usable now", "needs a human", and "not available" in one unauthenticated pass, instead of searching each seller's website.
 
 ```json
 {
+  "experimental_features": ["account.agent_onboarding"],
   "account": {
     "supported_billing": ["operator", "agent"],
-    "identity_updates": {
-      "supported": true,
-      "supported_changes": ["operator_unit_name", "operator_unit", "operator"]
+    "sandbox": true,
+    "agent_onboarding": {
+      "sandbox": { "mode": "open", "url": "https://streamhaus.example/sandbox" },
+      "billing": {
+        "operator": { "mode": "open", "requirements": [{ "kind": "grant" }] },
+        "agent": {
+          "mode": "application",
+          "url": "https://streamhaus.example/partners/agent-billing",
+          "requirements": [{ "kind": "billing_entity" }, { "kind": "contract" }]
+        }
+      },
+      "url": "https://streamhaus.example/partners/buyer-agents",
+      "message": "Sandbox is open to any verified buying agent. Operator-billed accounts are open when your operator already bills with us and the advertiser has granted your operator."
     }
   }
 }
 ```
 
-`operator_unit_name` covers display-name-only changes within the current operator. `operator_unit` covers adding, removing, or changing the stable unit ID within the current operator and also implies name changes. `operator` covers an inter-entity operator-domain handoff and encompasses the complete replacement identity, including any simultaneous unit addition, removal, or change; a seller does not also need to advertise `operator_unit` for that cross-operator replacement. Operator-domain handoffs always require seller-mediated approval of the current account authority, verified brand authorization, destination-operator acceptance, and operator-scoped billing and grants. Sellers declaring support MUST return account `revision` from `sync_accounts` and `list_accounts`, require and atomically enforce a submitted revision, preserve account identity and account-scoped resources during rekeying, expose any pending or rejected transition as `identity_change`, and return `identity_change_preview` for `dry_run: true`. When the capability is absent or `supported: false`, buyers MUST NOT submit `operator_identity`; sellers reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
+| Field | Meaning |
+|---|---|
+| `sandbox` | Onboarding for sandbox accounts. Valid only when `account.sandbox` is `true`. |
+| `billing` | Onboarding per billing party, keyed by `operator`, `agent`, or `advertiser`. Keys MUST be a subset of `supported_billing`. |
+| `…mode` | `open`, `application`, or `invite_only`. An absent key means undeclared, never `invite_only`. |
+| `…url` | Optional page for that mode. Defaults to the top-level `url`. |
+| `…requirements` | What the buyer must satisfy for that mode. |
+| `url` | Where a human starts; it can also carry the seller's onboarding documentation. An untrusted link: surface it, never fetch or execute it. |
+| `message` | Human-readable summary. The fallback whenever a reader does not understand a requirement. |
 
-See [`sync_accounts` identity reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-operator-identity) for replacement, approval, collision, and stale-key semantics.
+**Modes.**
+- **`application`:** the buyer completes an out-of-band step at the mode's `url` before the seller recognizes it for that mode.
+- **`invite_only`:** the seller does not accept unsolicited buyer agents for that mode.
+- **`open`:** a buyer agent that meets every requirement may proceed without prior contact, but only when the seller can establish its identity from the agent's published keys (the [Web Bot Auth](/docs/building/by-layer/L1/security#web-bot-auth-identities) profile). A seller that only maps opaque, seller-issued credentials MUST NOT declare `open`.
+
+**`open` binds identity, not spend.** Under any `open` mode:
+- an account whose brand is outside the buyer's operator domain needs a grant, evaluated as [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) describes ([spec R6](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md); that section lands with [#8169](https://github.com/adcontextprotocol/adcp/pull/8169)). Without one, the request fails with [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) and `error.details.reason: "grant_absent"`;
+- spend-committing operations need an existing seller-side billing relationship with the billed party ([spec R7](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md));
+- sellers SHOULD count quotas and rate limits for automatic onboarding per operator domain, not per origin;
+- sellers SHOULD limit an origin whose registrable domain comes from the Public Suffix List's PRIVATE section, such as a hosting platform's tenant subdomain, to `sandbox`.
+
+So `open` delivers a verified identity, sandbox access, and joining a billing relationship that already exists. Agent-billed accounts and new commercial relationships still go through the seller's application.
+
+**Requirement kinds** (`enums/agent-onboarding-requirement-kind.json`, extensible). Each kind applies in one direction:
+
+| Kind | Direction | Meaning |
+|---|---|---|
+| `grant` | seller gating a buyer | A demand-side delegation chain authorizes the buyer agent to act for the account's brand, evaluated as [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) describes. |
+| `billing_entity` | seller gating a buyer | The buyer supplies a billing entity on `sync_accounts`. |
+| `contract` | seller gating a buyer | A signed agreement exists; details at `url`. |
+| `credit_application` | seller gating a buyer | A credit application completed at `url`, or later through `sync_accounts` `setup.url`. |
+| `aao_verified`, `storyboard`, `sandbox`, `experimental_feature` | buyer gating a seller | Used in a buyer's own posture (`core/buyer-onboarding-posture.json`), published only in the buyer's trust.json at `profiles.adcp.onboarding`, on its agent entry or as a record default, with the same three modes read from the buyer's side: a seller badge (`role`, optional `verification_modes`, `verified_specialisms`, `adcp_version`, the badge token's own claim names), a passed storyboard (`id`), `account.sandbox: true`, or a listed feature (`id`). |
+
+A kind used in the wrong direction is ignored. An unknown kind falls back to `message` and `url`.
+
+**Uniformity.**
+- The block is seller-wide and identical for every caller. It is served on the unauthenticated capability fetch and never appears in error payloads, so it cannot act as a per-agent onboarding oracle.
+- It changes no error code and no clamp in [error handling](/docs/building/by-layer/L3/error-handling).
+- Per-agent state, such as an application's progress, is returned only to the authenticated caller, through `get_principal`'s `relationship`.
+
+#### account.requests
+
+Declares whether the seller supports account requests: a buyer opens an
+account with [`request_account`](/docs/accounts/tasks/request_account) (the
+seller matches an existing account or creates one) or changes one by
+`account_id`, possibly after human review on either side. Requests are read back
+with [`list_accounts`](/docs/accounts/tasks/list_accounts) (`include_requests`) and
+announced with the caller-anchored `account_request.changed` webhook, which
+buyers register through the caller-scoped `notification_configs`.
+
+Account requests are [experimental](/docs/reference/experimental-status) in
+3.3 ([#8280](https://github.com/adcontextprotocol/adcp/issues/8280), [#8543](https://github.com/adcontextprotocol/adcp/issues/8543)). Sellers
+advertising `supported: true` MUST also list `account.requests` in
+`experimental_features`. Buyers SHOULD prefer `request_account` over
+`sync_accounts` provisioning when it is supported.
+
+```json
+{
+  "experimental_features": ["account.requests"],
+  "account": {
+    "requests": {
+      "supported": true,
+      "request_task": "request_account",
+      "read_task": "list_accounts",
+      "changeable_attributes": ["countries", "billing_entity", "payment_terms"],
+      "event_type": "account_request.changed",
+      "pending_action_kinds": ["review", "sign_up", "credit_application"]
+    }
+  }
+}
+```
+
+`event_type` is present only when the seller fires `account_request.changed`; a seller that declares it also declares `adcp.capability_changes.notifications.supported: true`, because buyers subscribe through the caller-scoped `notification_configs`. Without it, buyers poll `list_accounts` with `request_ids`.
+
+`changeable_attributes` lists the attributes the seller accepts in `request_account` change requests (`account_id` plus fields); absent or empty means the seller supports opening accounts only.
+
+`pending_action_kinds` is advisory: it lets buyers prepare the people who will
+act. Sellers may issue other kinds, and buyers handle unknown kinds through the
+pending action's `message` and `url`.
+
+#### account.timezone
+
+Account timezone is an account attribute and an operational default, not an assumption that every upstream clock is identical. A `seller_fixed` seller advertises one `fixed_timezone` and buyers omit `timezone` during provisioning. An `account_fixed` seller returns a timezone on every account; when `account_selection` is `buyer_selected`, buyers MUST provide one advertised value to `sync_accounts` when the account opens. When it is `seller_assigned`, buyers omit the field and discover the value from `sync_accounts` or `list_accounts`.
+
+Calendar-day features inherit `Account.timezone` only when their capability says so. Product reporting continues to use `reporting_capabilities.timezone`, account financials use the timezone returned by `get_account_financials`, and daily caps use `budget_capping.timezone_basis`. This prevents a seller from claiming that distinct reporting, billing, and delivery clocks are aligned when the upstream platform does not align them.
+
+#### account.identity_updates
+
+**Deprecated in 3.3**, planned for removal in 4.0. This block gated `operator_identity` reconciliation through `sync_accounts` settings-update mode. That reconciliation rekeyed the operator unit or operator domain and answered the former key with [`ACCOUNT_MOVED`](/docs/building/verification/compliance-catalog#error-code-account-moved). An account's identity is its `account_id`, so changing `operator_unit` or another account attribute is a settings update that needs no gate, and no former key exists. Sellers that implement the block keep it working through 3.x under the [3.2 `sync_accounts` rules](/dist/docs/3.2.6/accounts/tasks/sync_accounts#reconciling-operator-identity). Buyers don't need it; see [Updating account attributes](/docs/accounts/tasks/sync_accounts#updating-account-attributes).
 
 #### Auth models
 
-**Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, and account-scoped calls use that credential plus the advertiser natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`). `brand.countries[]` may qualify the commercial advertiser identity without targeting delivery. Most sellers expose `sync_accounts` so the buyer can declare the relationship and select billing or other settings before use. A seller MAY instead auto-provision on the first provisioning task, such as `create_media_buy`, when those settings are unambiguous from capabilities or onboarding defaults; in that mode it MUST expose `list_accounts` as the recovery read and MUST keep accepting the natural key. Discovery tasks never provision ([Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning)). Auto-provisioning is not conformant when buyer input is needed to resolve billing, timezone, terms, sandbox setup, notifications, or other account settings before the operation.
+**Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token and opens accounts with `brand` + `operator` and the account attributes. Account-scoped calls carry that credential and the returned `account_id`. `brand.countries[]` is an account attribute and does not target delivery. Most sellers expose `sync_accounts` so the buyer can declare the relationship and select billing or other settings before use. A seller MAY instead auto-provision on the first provisioning task, such as `create_media_buy`, when those settings are unambiguous from capabilities or onboarding defaults; in that mode it MUST expose `list_accounts` as the recovery read and MUST keep accepting a natural key that matches exactly one account. Discovery tasks never provision ([Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning)). Auto-provisioning is not conformant when buyer input is needed to resolve billing, timezone, terms, sandbox setup, notifications, or other account settings before the operation.
 
 **Account-id namespaces** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and passes seller-assigned `account_id` values on subsequent requests. OAuth is credential acquisition, not an account taxonomy axis. Two namespace patterns use the same wire reference: upstream-managed sellers expose `list_accounts`, making explicit account resolution mandatory before account-scoped calls; seller-defined namespaces without `list_accounts` provide account IDs out-of-band. SDKs SHOULD lazily call `list_accounts` when first needed, auto-select a singleton, cache it per credential/session, and still send explicit `AccountRef` values on required-account calls.
 
-In either model, a seller declaring `stable_account_id: true` lets the buyer switch to `{ "account_id": "..." }` once it holds the ID, so every call after onboarding looks the same regardless of auth model.
+In either model, every call after onboarding sends `{ "account_id": "..." }`, so calls look the same regardless of auth model.
 
-For sandbox, the path follows the account namespace: account-id namespaces discover pre-existing test accounts via `list_accounts` or out-of-band setup; buyer-declared accounts send `sandbox: true` through `sync_accounts` or, for a lazy-provisioning seller, in the natural-key account reference.
+For sandbox, the path follows the account namespace: account-id namespaces discover pre-existing test accounts via `list_accounts` or out-of-band setup; buyer-declared accounts open a sandbox account with `sandbox: true` through `sync_accounts` or, for a lazy-provisioning seller, in the natural-key account reference.
 
 See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/docs/building/by-layer/L2/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
 
@@ -643,6 +751,7 @@ When `lifecycle_tools` includes `refine_proposals`, `proposal_refinement` option
 `alternatives.count` has a protocol maximum of 10. `max_alternatives` may accompany `alternatives` to publish a lower pre-flight count ceiling and therefore cannot exceed 10. A request whose `alternatives.count` exceeds that declared ceiling MUST fail at task level with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error); `error.field` identifies the offending `refinements[i].alternatives.count`. Sellers MUST NOT silently clamp the count or reinterpret the ceiling as an `alternatives_unavailable` result.
 
 An explicit `supported_dimensions` list is authoritative, including an empty list meaning the seller supports `ask`-only refinement but no typed dimensions. Buyers SHOULD NOT send omitted dimensions, and sellers MUST reject them at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Such errors SHOULD carry the [`error-details/unsupported-refinement-dimension.json`](https://adcontextprotocol.org/schemas/3.2.1/error-details/unsupported-refinement-dimension.json) shape — `details.unsupported_dimension` and `details.supported_dimensions` — so an authorized buyer can remove or translate unsupported fields without another capability round trip. This task-level rejection applies to the complete request: no sibling refinement succeeds and no proposal is created, even when the unsupported dimension appears after otherwise supported entries. When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead. `proposal_refinement` is valid only when `lifecycle_tools` includes `refine_proposals`.
+
 
 `hold_extension` is experimental (`media_buy.hold_extension`). `true` declares that the seller accepts `action: "extend_hold"` on `refine_proposals`, which creates a committed successor with a later `expires_at` and transfers the hold to it. It is the agent-level gate for the action: buyers MUST NOT send `extend_hold` unless it is declared, and a seller that does not declare it fails the unknown `action` with `VALIDATION_ERROR`. `extend_hold` applies only to committed proposals that hold inventory; against a committed proposal with no hold (an entry whose effective policy is terms-only: `hold_policy.available: false`, or no `hold_policy` at a seller declaring `hold_semantics: "terms_only"`) the seller fails the request at task level with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). When the committed proposal carries [`hold_policy`](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental), `extendable` `false` or absent (it defaults to `false`) means the seller declines (`hold_unavailable`) and buyers SHOULD NOT send `extend_hold`, and the successor's `expires_at` MUST NOT exceed the original `hold_placed_at` plus `max_total_duration`; a request the seller cannot extend at all returns `hold_unavailable`. Absent `hold_policy` (a seller that does not list `media_buy.hold_policy`), limits remain seller policy expressed through `hold_unavailable`. See [Extend a hold](/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental).
 
@@ -820,6 +929,33 @@ re-bucketing. Optional `reliability_statistics[]` publish evidence-scoped
 on-time counts, publication latency, and post-official adjustment frequency,
 latency, and magnitude for exact offering IDs.
 
+**Where feeds are registered.** 3.3 clients use `configuration_tasks[]`, which
+lists every accepted registration task — `["sync_principal"]`, `["sync_accounts"]`,
+or both — and choose from it. Sellers that also serve `sync_accounts`
+registration list it; a seller may list `sync_principal` alone.
+`configuration_task` is always `"sync_accounts"` and is deprecated in 3.3. It is
+present when and only when `configuration_tasks` lists `sync_accounts` or is absent.
+Callers pinned below 3.3 know only `configuration_task`, so a seller MUST serve
+`sync_accounts` registration to them; a seller listing only `sync_principal` serves
+reporting registration to 3.3 callers only. A client that registers feeds through
+`sync_principal` can end its own old account-level configurations with a
+subscription's `replace_account_configs`.
+
+**Reporting subscriptions (experimental, 3.3).** `subscriptions` advertises
+principal-level [reporting subscriptions](/docs/protocol/sync_principal#reporting-subscriptions):
+one registration through `sync_principal` that covers every authorized account.
+A seller declaring it lists `media_buy.reporting_subscriptions` in
+`experimental_features`, `reporting_subscriptions` in
+`adcp.principal.supported_sections`, and `sync_principal` in
+`configuration_tasks`.
+
+| Field | Type | Description |
+|---|---|---|
+| `supported` | boolean | Always `true` when the block is present. |
+| `max_accounts` | integer | Optional. Most accounts one subscription serves. Accounts beyond it are excluded with reason `capacity`, deterministically, and reported. |
+| `backfill_on_regrant` | boolean | Whether periods missed while authority was revoked are delivered after re-grant. When `false` (the default) they appear as `gaps`. |
+| `dimensions` | string[] | Standard dimensions (`package`, `creative`, `country`, `region`, `metro`) the seller maps its report definitions onto for selector matching. |
+
 #### vendor_metric_optimization
 
 Seller-level rollup of the vendor-attested metrics the seller can optimize toward. Presence declares that at least one product supports `optimization_goals` with `kind: "vendor_metric"`. Product-level `vendor_metric_optimization.supported_metrics[]` remains authoritative for a specific package.
@@ -922,6 +1058,7 @@ Optional media-buy features. Boolean declarations are commitments when true. Str
 
 | Feature | Description |
 |---------|-------------|
+| `creative_start_policy` | Added in 3.3. Honors the package `start_requires_all_creatives_approved` initial-serving gate through compact package controls and any advertised compatibility facades. Check before booking; `false` or absent means opt-in is unsupported. See the [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review). |
 | `inline_creative_management` | Deprecated 3.x compatibility capability for inline creatives in `create_media_buy` and `update_media_buy`; compact lifecycle tools never accept them |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) for catalog feed management |
@@ -1101,7 +1238,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
 | `geo_places` | object | Named-place targeting keyed by collision-safe identifier system, with exact country/type support, catalog versions, and resolver metadata |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
-| `demographics` | object | Seller-wide discovery rollup for canonical demographic targeting. `supported: true` means at least one product supports the surface; inspect each product's `demographic_targeting` declaration for exact execution. |
+| `demographics` | object | Seller-wide discovery rollup. `supported: true` means at least one product supports demographic targeting. The 3.3 optional `gender.supported` flag signals core gender support on at least one product; omission makes no gender commitment. Inspect each product's `demographic_targeting` declaration for exact dimensions, executable values, modes, and unknown handling. |
 | `language` | boolean or object | Language-preference targeting. The structured form may declare `supported` and exact selectable BCP 47 ranges in `supported_languages`; the boolean is the legacy coarse declaration. |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
@@ -1307,6 +1444,10 @@ Seller-level conversion tracking capabilities. Declares what the seller supports
 | `supported_action_sources`     | string[] | Action sources this seller accepts events from.                                                                                                                                                                                             |
 | `attribution_windows`          | object[] | Available attribution windows. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via `attribution_window` on optimization goals.                                   |
 
+#### event_source_archive
+
+`media_buy.event_source_archive: true` declares that the seller supports the per-item `archived` field on [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources#archiving-an-event-source). A seller without it MUST reject a request that sends `archived` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than ignore it. When `false` or absent, buyers fall back to `delete_missing` or seller-side tooling.
+
 #### portfolio
 
 Inventory portfolio information. Media-buy sellers SHOULD declare both routing
@@ -1336,8 +1477,9 @@ the one field here a third party can write. Authorization flows from each
 publisher's `adagents.json`, published unilaterally by the domain owner with no
 consent from the agent it names — so a seller that mirrors "every publisher whose
 adagents.json names me" lets a stranger inflate its own capabilities document, and
-since the signing-key discovery path fetches that document unnarrowed under
-`MAX_CAPABILITIES_BYTES`, the cost is signature verification rather than discovery.
+since the deprecated RFC 9421 signing-key discovery path fetches that document
+unnarrowed under `MAX_CAPABILITIES_BYTES`, the cost for a seller that signs under
+that profile is signature verification rather than discovery.
 From 3.3 the
 [per-field byte budget](/docs/building/by-layer/L1/security#response-size-bounds)
 caps it at 8,192 bytes as served, and the structural bounds (100 unique entries,
@@ -1360,6 +1502,8 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 | `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. Counterparty-asserted and non-exhaustive, with the same bounds and the same cautions as [`media_buy.portfolio.publisher_domains`](#portfolio): ≤ 100 unique entries, each ≤ 253 chars, 8,192 bytes as served. Absence is not a denial. |
 | `data_provider_domains_complete` | boolean | Whether `data_provider_domains` is complete as served (default `true`). Set `false` when truncated |
 | `discovery_modes` | string[] | Discovery modes the agent supports on [`get_signals`](/docs/signals/tasks/get_signals). `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) for wholesale calls. Absent declaration is treated as `["brief"]`. |
+| `delivery_methods` | object[] | **Experimental** (`signals.delivery_methods` — MUST be listed in `experimental_features` when present; see [Experimental status](/docs/reference/experimental-status)). Rails the agent can use to deliver licensed segment membership to `type: "agent"` destinations on [`activate_signal`](/docs/signals/tasks/activate_signal#delivering-membership-to-agent-destinations-experimental), each a `pattern` (`sync_audiences`, `file_transfer`, `dataset_query`, `clean_room`, `platform_distribution`) with the `vendor` it operates on. Activation intersects this list with the destination's `audience_activation.methods` on pattern and vendor; no intersection fails that destination with `UNSUPPORTED_FEATURE`. Optional, and not required of agents that serve only platform destinations. `tmp_identity_match` is not a delivery pattern because no membership file moves. |
+| `features.signal_lifecycle` | boolean | **Experimental** (`x-status: experimental`). `true` means the agent builds segments on demand and may emit `signal_status` (`processing` or `failed`) and `source_audience_id` on [`get_signals`](/docs/signals/tasks/get_signals#custom-segments-built-from-a-seed-audience) results. Agents declaring it MUST list `signals.signal_lifecycle` in `experimental_features`. |
 | `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
 
 <Note>
@@ -1568,6 +1712,7 @@ Array of metrics this measurement agent computes.
 | Field                 | Type         | Description                                                                                                                                                                                                                                                                                                                                                      |
 | --------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `metric_id`           | string       | **Required.** Vendor-scoped identifier (`attention_units`, `gco2e_per_impression`, etc.) — matches the `metric_id` populated in `vendor_metric_values` on delivery. The full identity is the tuple `(vendor.domain, vendor.brand_id, metric_id)`. Each `metric_id` MUST be unique within a single agent's catalog.                                               |
+| `name`                | string       | Optional display name as the vendor names it (`Attention Score`, `Invalid Traffic Rate (GIVT)`), 1–100 characters, for titles, table cells, and labels where `description` is too long. Buyer agents and UIs SHOULD show `name` in place of `metric_id` when present and fall back to `metric_id` when absent. Not an identifier: consumers MUST NOT use it to join, key, or deduplicate metrics (text search over it is fine). SHOULD be unique within one agent's catalog. Added in 3.3; a single unlocalized string. |
 | `standard_reference`  | string (URI) | Optional URI pointing at the published standard this metric **implements** (IAB Attention Measurement Guidelines, MRC Viewable Impression Measurement, GARM emissions framework). Distinct from `accreditations` below — `standard_reference` is what the metric is built against; `accreditations` is third-party certification of conformance.                 |
 | `accreditations`      | object[]     | Optional list of third-party accreditations this metric holds (MRC, ARF, JIC bodies, ABC, BARB, AGOF, etc.). Each entry: `accrediting_body` (required), optional `certification_id`, `valid_until`, `evidence_url`. Buyers asking "is this MRC-accredited?" SHOULD check this array — implementing a standard is not the same as being independently accredited. |
 | `unit`                | string       | Unit of the value when reported in `vendor_metric_values.value` (`score`, `seconds`, `persons`, `gCO2e`, `lift_percent`, `USD`, etc.). Sellers populating `vendor_metric_values.unit` MUST match this declaration.                                                                                                                                               |
@@ -1583,6 +1728,7 @@ Array of metrics this measurement agent computes.
     "metrics": [
       {
         "metric_id": "attention_units",
+        "name": "Attention Units",
         "standard_reference": "https://iabtechlab.com/standards/attention-measurement",
         "accreditations": [
           {
@@ -1599,6 +1745,7 @@ Array of metrics this measurement agent computes.
       },
       {
         "metric_id": "engagement_seconds",
+        "name": "Engagement Seconds",
         "unit": "seconds",
         "description": "Active dwell time in seconds, measured via in-content telemetry."
       }
@@ -1619,7 +1766,7 @@ Compliance testing capabilities. The presence of this block declares that the ag
 
 | Field       | Type     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_rights_grant`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, `force_upstream_unavailable`, and `force_hold_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_media_buy_confirmation`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_rights_grant`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, `force_upstream_unavailable`, and `force_hold_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
 
 Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
@@ -1638,7 +1785,7 @@ Declares a seller's webhook-signing posture and maximum delivery-retry horizon. 
 | `supported`            | boolean  | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks.                                                                                                                                                   |
 | `profile`              | string   | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `algorithms`           | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/docs/building/by-layer/L1/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
-| `legacy_hmac_fallback` | boolean  | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, `sync_principal.configuration.notification_configs[].authentication.credentials`, `sync_agent_notification_configs.notification_configs[].authentication.credentials`, `reporting_webhook.authentication.credentials`, or `create_media_buy.artifact_webhook.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0.                                                                                                                                                                          |
+| `legacy_hmac_fallback` | boolean  | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, `sync_principal.configuration.notification_configs[].authentication.credentials`, `sync_agent_notification_configs.notification_configs[].authentication.credentials`, `reporting_webhook.authentication.credentials`, or `create_media_buy.artifact_webhook.authentication.credentials`. A buyer checks it before asking for legacy signing; the buyer's registration, not this flag, selects the mode. When `false`, the seller rejects a registration carrying `authentication` with `UNSUPPORTED_FEATURE`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0.                                                                                                                                                                          |
 | `delivery_retry_horizon_seconds` | integer | **Required when a 3.2 agent declares `supported: true`.** Maximum interval from the first attempt during which the seller may retry one delivery. Minimum `86400` (24h), maximum `604800` (7d). The seller retains the immutable delivery-key-to-payload binding for this interval and does not extend it on retry. A 3.x receiver retains its matching binding and terminal publication proof for at least the greater of 24h and this value. This delivery property is nested here because all conformant 3.2 webhook emitters declare the signing profile; a future non-9421 delivery profile will require a transport-neutral capability location. |
 
 **Example:**
@@ -1656,6 +1803,25 @@ Declares a seller's webhook-signing posture and maximum delivery-retry horizon. 
 ```
 
 The webhook-signing block is parallel to `request_signing` (inbound) and the two blocks cover the two signing directions between buyer and seller. Buyers SHOULD validate both at onboarding; a seller that signs one direction but not the other has a lopsided security posture that operators need to notice explicitly.
+
+### security_profiles
+
+Names the security profiles this endpoint commits to. Optional and **experimental** (`security.profiles`): an endpoint that advertises a profile also lists `security.profiles` in `experimental_features`. Absent or empty means no claim.
+
+| Field | Type | Description |
+|---|---|---|
+| `security_profiles` | string[] | Profile ids. Currently registered: `adcp-prod-security-3.3`. Consumers ignore ids they do not recognize and never treat one as satisfying a requirement. |
+
+```json
+{
+  "security_profiles": ["adcp-prod-security-3.3"],
+  "experimental_features": ["security.profiles"]
+}
+```
+
+The ids in `security_profiles` name security profiles. Signing-profile tags, such as `adcp/request-signing/v1` and `web-bot-auth`, live under `request_signing` and `webhook_signing` and are a different namespace.
+
+Advertising an id is a commitment to the profile's requirements on the advertiser's own endpoint. In 3.3, rejecting non-conforming counterparties is a SHOULD; in 4.0 it becomes a MUST. The claim covers the whole endpoint, every tenant, and every transport that serves its spend-committing operations. It is self-asserted until a registry verifies it. Only agents that verify inbound requests and serve this response can advertise a profile. A buyer that requires a profile and finds it absent refuses spend-committing calls instead of falling back to bearer-only. See the [production security profile](/docs/building/by-layer/L1/production-security-profile) for the admission preconditions, requirements, and downgrade rules.
 
 ### extensions_supported
 

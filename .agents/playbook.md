@@ -119,13 +119,16 @@ When running expert agents against documentation changes, test both:
 Conceptual reviews miss workflow gaps. Workflow reviews miss framing errors. Run both.
 
 ### Discriminated Union Error Handling
-Always check for errors before accessing success fields:
+Dispatch on the presence of the success payload, not on `errors`. Some
+success branches (for example `build_creative`) carry non-terminal advisory
+`errors[]` beside the payload, so `if (result.errors)` misreads them as failure:
 ```javascript
 const result = await agent.syncCreatives({...});
-if (result.errors) {
-  console.error('Failed:', result.errors);
-} else {
+if (result.creatives) {
   console.log(`Success: ${result.creatives.length} items`);
+  if (result.errors) console.warn('Advisories:', result.errors);
+} else {
+  console.error('Failed:', result.errors);
 }
 ```
 
@@ -506,8 +509,12 @@ Default flow when a fix is needed in both lines:
    - `package.json` / `package-lock.json` → preserve main's (main may carry structural changes and 3.2 prerelease metadata)
    - `.changeset/*.md` / `.changeset/pre.json` → preserve main's (independent pre-mode pool)
    - `static/schemas/source/index.json` / `static/schemas/source/registry/index.yaml` → preserve main's (branch-local package/version metadata must stay aligned with main)
-   - `CHANGELOG.md` → take 3.1.x's (main's next Version Packages cut prepends its own entries)
+   - `CHANGELOG.md` → main's file plus each 3.1.x release block it lacks, in semver order (taking 3.1.x's copy would delete main's own prerelease sections)
+   - `static/compliance/published-versions.json` → union of both lines' registered versions; each new one must have its compliance bundle in the merged tree
    - `dist/{schemas,compliance,protocol,docs}/*` → take 3.1.x's (immutable release artifacts; main only adds versions)
+   - `dist/schemas/index.json` / `latest.json` → regenerated from the merged release directories after every merge, clean or conflicted
+
+   `scripts/forward-merge-release-records.cjs` implements the CHANGELOG, manifest, and schema-discovery rules for the 3.0, 3.1 and 3.2 workflows.
 
    **Fails loud (everything else):** every other conflict is a real decision
    about whether the stable patch belongs on the 3.2 line. Never resolve a

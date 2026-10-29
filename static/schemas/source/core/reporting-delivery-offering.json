@@ -23,6 +23,24 @@
     "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
     "feed_purpose": { "$ref": "#/definitions/ReportingFeedPurpose" },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value." },
+    "standard_dimensions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/reporting-dimension.json" },
+      "maxItems": 16,
+      "uniqueItems": true,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.reporting_subscriptions). The offering's breakdown mapped onto the standard reporting dimension vocabulary, so a buyer can resolve a subscription selector's match from the wire. Empty for an offering that reports totals only. Sellers advertising media_buy.reporting_subscriptions MUST include it on every offering."
+    },
+    "unmapped_dimensions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "maxItems": 16,
+      "uniqueItems": true,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.reporting_subscriptions). Native report-definition dimensions with no standard mapping. Present when any exist. They count as distinct under match exact and never count toward finest."
+    },
     "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
     "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
     "reporting_profile": {
@@ -36,7 +54,7 @@
         "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value." },
         "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden." },
         "grain": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Stable description of what one logical row represents." },
-        "primary_keys": { "type": "array", "items": { "$ref": "/schemas/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey" }, "minItems": 1, "uniqueItems": true },
+        "primary_keys": { "type": "array", "items": { "$ref": "/schemas/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey" }, "minItems": 1, "uniqueItems": true, "maxItems": 32 },
         "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest." },
         "canonicalization_contract_version": { "type": "string", "const": "1.0" },
         "canonicalization_media_type": { "type": "string", "const": "application/vnd.adcp.reporting-canonicalization+json" },
@@ -57,14 +75,14 @@
         "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
         "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
         "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "producer_identity": {
           "type": "object",
           "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
           "properties": {
-            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
             "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
             "cloud": { "$ref": "/schemas/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud" },
             "region": { "type": "string", "minLength": 1, "maxLength": 128 }
@@ -73,7 +91,7 @@
           "dependencies": { "cloud": ["region"], "region": ["cloud"] },
           "additionalProperties": false
         },
-        "reader_compatibility": { "type": "array", "items": { "$ref": "/schemas/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true }
+        "reader_compatibility": { "type": "array", "items": { "$ref": "/schemas/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true, "maxItems": 32 }
       },
       "required": ["pattern", "transport", "orchestration", "destination_modes"],
       "allOf": [

@@ -15,7 +15,8 @@
     "id": {
       "type": "string",
       "pattern": "^[a-zA-Z0-9_-]+$",
-      "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+      "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant.",
+      "x-max-length-4.0": 128
     },
     "width": {
       "type": "integer",

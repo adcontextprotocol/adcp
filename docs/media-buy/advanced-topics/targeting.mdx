@@ -250,7 +250,7 @@ Inclusion and exclusion are independent product capabilities. Use concrete value
 
 ## Portable demographic targeting
 
-Use `targeting_overlay.demographics` when the buyer needs a demographic predicate to survive product discovery, purchase, seller compilation, and readback without being reinterpreted from prose. AdCP 3.2 standardizes age first:
+Use `targeting_overlay.demographics` when the buyer needs a demographic predicate to survive product discovery, purchase, seller compilation, and readback without being reinterpreted from prose. AdCP 3.2 standardizes age; the 3.3 development contract adds gender. Age-only targeting remains valid:
 
 ```json
 {
@@ -270,7 +270,145 @@ Use `targeting_overlay.demographics` when the buyer needs a demographic predicat
 
 This field is audience selection, not eligibility policy. Continue to use `age_restriction` for a legal minimum age and verification requirements such as alcohol or gambling controls.
 
-When both fields are present, they compose as an intersection; neither overrides the other. `demographics` selects the intended audience, then `age_restriction` applies the eligibility and verification floor. Unknown-age delivery cannot satisfy a minimum-age restriction, so the combined shape requires `include_unknown: false`. Sellers also reject an empty intersection, such as demographic ages 18–20 with `age_restriction.min: 21`. Package readback preserves both controls independently rather than folding the legal restriction into the applied demographic predicate.
+When age audience targeting and `age_restriction` are both present, they compose as an intersection; neither overrides the other. `demographics` selects the intended audience, then `age_restriction` applies the eligibility and verification floor. Unknown-age delivery cannot satisfy a minimum-age restriction, so the combined age shape requires `include_unknown: false`. Sellers also reject an empty intersection, such as demographic ages 18–20 with `age_restriction.min: 21`. Package readback preserves both controls independently rather than folding the legal restriction into the applied demographic predicate. Gender-only targeting does not create an age predicate or constrain unknown-gender membership through an age restriction.
+
+### Core gender targeting (3.3)
+
+**Experimental:** sellers implementing core gender targeting MUST declare `media_buy.gender_targeting` in `experimental_features`. AdCP 3.2 core remains age-only; buyers MUST NOT send core gender fields on a 3.2 contract. Age targeting remains stable. See [Experimental status](/docs/reference/experimental-status).
+
+Use `demographics.gender` with a nonempty, unique `values` set drawn from
+`female`, `male`, and `non_binary`, and an explicit `include_unknown` boolean.
+These are AdCP gender categories, distinct from sex recorded at birth and
+sexual orientation. They are a portable minimum, not an exhaustive identity
+vocabulary. [ABS](https://www.abs.gov.au/statistics/standards/standard-sex-gender-variations-sex-characteristics-and-sexual-orientation-variables/latest-release#gender)
+and [HL7](https://terminology.hl7.org/en/ValueSet-gender-identity.html)
+provide precedent for the three categories; AdCP does not adopt their codes,
+collection procedures, or verification guarantees. An external Other Gender
+category does not establish an exact `non_binary` mapping.
+
+For gender, `include_unknown` controls a single **unstated/unknown** group:
+people whose gender information is unavailable and people who explicitly
+choose not to state their gender (for example, "prefer not to say"). `true`
+includes this group; `false` excludes it. These cases share one group rather
+than separate gender categories. The wire field remains `include_unknown`.
+
+Values compose with OR; age and gender compose with AND. Unknown membership
+is independent for each dimension. A known unselected category, including a
+known identity outside this minimum vocabulary, MUST NOT be reclassified as
+unknown. Sellers MUST reject an unsupported value or incompatible unknown
+policy before mutation; they MUST NOT drop non-binary from a request.
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "demographics": {
+    "age": { "min": 18, "max": 55, "include_unknown": false },
+    "gender": { "values": ["female", "non_binary"], "include_unknown": true }
+  }
+}
+```
+
+Gender-only targeting contains just `demographics.gender`. It never requires
+a fabricated age range. Age determination bases, age-assurance methods, and
+legal age floors remain age-specific and do not prove a gender classification.
+
+Core support is negotiated through
+`media_buy.execution.targeting.demographics.gender.supported: true`; this is
+only a seller-wide discovery hint. Each selected Product MUST declare its
+supported subset, execution modes, and unknown policy:
+
+```json
+{
+  "$schema": "/schemas/core/demographic-targeting-capability.json",
+  "gender": {
+    "execution_modes": ["native", "signals"],
+    "values": ["female", "male", "non_binary"],
+    "unknown_handling": "selectable"
+  }
+}
+```
+
+`native` compiles directly into seller controls; `signals` requires
+authoritative `demographic_predicate` metadata. Any nonempty subset of
+advertised values is supported with compatible unknown handling, subject to
+policy and commercial checks. Missing gender capability makes no execution
+commitment. Products advertising native age and gender execution MUST support
+their intersection. Signal-backed combinations require proof of the complete
+predicate intersection, rather than an assumption that separate support
+implies joint availability.
+
+The existing task locations carry core gender through discovery and purchase:
+`get_products.targeting_overlay`, compact
+`list_products.criteria.targeting_overlay` and
+`request_proposals.criteria.targeting_overlay`, package create/update
+overlays, and `buy_products.purchases[].targeting_overlay`. Forecasts,
+proposals, accepted commercial terms, and configured-product inheritance MUST
+preserve the effective predicate. A disclosed discovery alternative replaces
+the whole gender predicate at `/demographics/gender` in the sparse
+`targeting_resolution.modifications` of a distinguishable configured product.
+A fresh create or update applies the accepted predicate exactly or rejects.
+
+Request mutations retain the existing **whole demographics dimension** rule.
+Omission inherits on create or preserves on update; `demographics: null`
+suppresses or clears both age and gender; a non-null `demographics` object
+replaces both together. To remove gender while keeping age, submit age only;
+to change gender while keeping age, resubmit age alongside it. Nested
+`age: null` and `gender: null` are invalid. Clearing cannot remove inherent
+product scope, bypass policy, or evade a required requote. Proposal refinement
+still replaces each supplied criteria field as a whole, so retain every
+constraint when resending `criteria.targeting_overlay`.
+
+AdCP 3.3 limitation: `demographic-reporting-capability.json` and canonical `by_demographic` delivery rows remain age-only. A gender-targeted package has exact targeting readback, but no canonical gendered delivery readback. Opaque measurement codes may still be reported; they do not establish gender alignment.
+
+Gender-only native readback uses `execution.type: "gender_values"`:
+
+```json
+{
+  "$schema": "/schemas/core/demographic-targeting-resolution.json",
+  "requested": { "gender": { "values": ["non_binary"], "include_unknown": false } },
+  "applied": { "gender": { "values": ["non_binary"], "include_unknown": false } },
+  "equivalent": true,
+  "execution": { "type": "gender_values" }
+}
+```
+
+Mixed execution uses `per_dimension` with both age and gender mechanisms:
+
+```json
+{
+  "$schema": "/schemas/core/demographic-targeting-resolution.json",
+  "requested": {
+    "age": { "min": 18, "max": 55, "include_unknown": false },
+    "gender": { "values": ["female", "non_binary"], "include_unknown": true }
+  },
+  "applied": {
+    "age": { "min": 18, "max": 55, "include_unknown": false },
+    "gender": { "values": ["non_binary", "female"], "include_unknown": true }
+  },
+  "equivalent": true,
+  "execution": {
+    "type": "per_dimension",
+    "age": { "type": "continuous_bounds" },
+    "gender": { "type": "gender_values" }
+  }
+}
+```
+
+Requested and applied dimension sets MUST match. Gender equality compares
+unordered value sets and unknown membership; age equality compares bounds
+and its separate unknown membership. Both MUST equal the effective package
+overlay. JSON Schema checks shape, not semantic equality or actual execution;
+`equivalent: true` alone is insufficient evidence. Age-only execution tags
+remain unchanged. `applied_bases` and `applied_verification_methods` continue
+to describe age only.
+
+These resolutions appear at `Package.targeting_resolution.demographics` in
+completed create/update responses, terminal async completion artifacts, and
+`get_media_buys`. Updates MUST refresh resolution atomically; cleared
+demographics and their resolution are omitted. Compact purchases return
+`purchase_bindings`; use their package IDs with `get_media_buys` for readback.
+The [gender targeting storyboard](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/protocols/media-buy/scenarios/gender_targeting.yaml)
+tests controlled product capabilities, exact readback, and rejection.
 
 ### Product-scoped execution
 
@@ -355,7 +493,7 @@ Execution accepts only user-level bases:
 
 ### Signal-backed execution
 
-A product can declare the `signals` execution mode when it resolves canonical age intent through catalogued signals. The signal's authoritative definition must carry `demographic_predicate`; its name is never evidence of its bounds. Age-annotated signals also declare `restricted_attributes: ["age"]` so governance checks remain structural.
+A product can declare the `signals` execution mode when it resolves canonical age or gender intent through catalogued signals. The signal's authoritative definition must carry `demographic_predicate`; its name is never evidence of membership. Age-annotated signals MUST declare `restricted_attributes` containing `age`; gender-annotated signals MUST include `sex_gender`; a joint predicate MUST include both. Projected listing metadata MUST preserve these declarations.
 
 ```json
 {
@@ -370,6 +508,14 @@ A product can declare the `signals` execution mode when it resolves canonical ag
 ```
 
 Multiple intervals or signals may be unioned only when their canonical predicates cover the request with no gap and no extra age. Implementations compare the represented predicate sets deterministically; an AI agent may propose a mapping, but names, inferred provider IDs, and approximate bucket choices never prove equivalence. For inferred or modeled signals, exactness means equality of the declared demographic predicate—not a claim that the provider knows every person's age perfectly. Methodology, modeling, and coverage metadata continue to describe population-level accuracy.
+
+For `per_dimension` execution, signal references in the age child MUST carry
+age-only predicates, and references in the gender child MUST carry gender-only
+predicates. Their unions compose with AND. A joint age-and-gender signal uses
+top-level `execution.type: "signals"`; its complete predicate participates in
+the union. Sellers MUST NOT project away correlated constraints: ages 18–35
+female OR ages 36–55 male is not ages 18–55 AND female-or-male. Gender signal
+exactness likewise concerns declared membership, not person-level certainty.
 
 ### Age determination basis on included signals
 
@@ -405,6 +551,17 @@ That listing passes the basis test for a request for ages 25–34 with `accepted
 ### Governance interaction
 
 Age is a registered restricted-attribute category because some campaign plans prohibit its use in regulated contexts. A direct `targeting_overlay.demographics.age` predicate and a signal carrying `demographic_predicate.age` are both age-based targeting for governance evaluation. They are blocked only when the applicable campaign plan lists `age` in `restricted_attributes`; the registry entry does not create a global prohibition on otherwise lawful demographic targeting.
+
+Core gender targeting and gender-bearing signals MUST be evaluated as
+`sex_gender` when the applicable campaign plan restricts that category. The
+evaluator checks effective targeting, including inherited/default product
+terms and predicates preserved by omission on update, before mutation. The
+registry creates no global prohibition or automatic change to existing policy
+category defaults. A core gender value does not imply sex life or sexual
+orientation. Existing signal restrictions MUST be retained; adding a gender
+predicate adds `sex_gender` without removing provider-declared categories.
+A required evaluator unable to interpret core gender returns
+`UNSUPPORTED_FEATURE`; a signature alone does not prove it was evaluated.
 
 ### Exact readback
 
@@ -659,8 +816,10 @@ Support guarantees selectability subject to disclosed limits, not inventory or
 a forecast for every possible value. A forecast returned without concrete metro
 values describes the product's discovery/default scope. Rediscover with the
 values in `targeting_overlay` for a metro-specific forecast. Fixed prices and
-floors remain binding uniformly for supported selections; price guidance is
-non-binding. If rates vary by value, the seller returns a configured product
+floors remain binding uniformly for supported selections, except for adjustments
+the selected fixed-price option declares in
+[`price_adjustments`](/docs/media-buy/advanced-topics/pricing-models#selection-dependent-price-adjustments);
+price guidance is non-binding. If other rates vary by value, the seller returns a configured product
 after concrete rediscovery, splits rate tiers into products, or exposes only
 non-binding guidance until concrete values are known. It never silently
 reinterprets a selected pricing option at a new price.
@@ -907,7 +1066,7 @@ Inclusion targeting works the same way for cases where you want to specify exact
 ## What NOT to Use Targeting Overlays For
 
 **Express these in briefs instead:**
-- **Demographic preferences** (age, gender, income) - "Target millennials" or "high-income households" in brief text
+- **Soft demographic preferences** - "Target millennials" or "high-income households" in brief text. Exact age constraints use `demographics.age`; exact gender constraints use experimental core `demographics.gender` in 3.3.
 - **Device preferences** - "Mobile users" or "CTV viewers" in brief text (use `device_platform` overlay only for technical compatibility)
 - **Content categories** - "Sports content" or "News sites" in brief text
 - **General audience preferences** - "Auto intenders" or "Luxury shoppers" in brief text. If the buyer wants specific named signals applied to this package, use `signal_targeting_groups`.
@@ -917,7 +1076,9 @@ Inclusion targeting works the same way for cases where you want to specify exact
 | Use Case | Overlay | Brief |
 |----------|---------|-------|
 | Age for compliance (alcohol, gambling) | ✅ `age_restriction` | |
-| Age for audience targeting | | ✅ "Target millennials" |
+| Exact age for audience targeting | ✅ `demographics.age` | |
+| Exact gender with experimental core support (3.3) | ✅ `demographics.gender` | |
+| Soft demographic preference | | ✅ "Target millennials" |
 | Device for app compatibility | ✅ `device_platform` | |
 | Device for audience preference | | ✅ "Mobile users" |
 | Language for creative localization | ✅ `language` | |
@@ -1122,6 +1283,7 @@ create-time substitute for any result above.
 - **Resolution model**: `signal_targeting_rules.resolution_model` tells buyers how the seller applies selected signals to inventory. `direct_targeting` means selected signals behave like package targeting predicates. `seller_planned` means selected signals are inputs to seller-managed planning against product-specific inventory, timing, availability, reach, or pacing constraints; buyers should not attempt to decompose the selected audience into lower-level inventory or schedule decisions.
 - **Selection groups**: When the product declares `signal_targeting_rules.selection_group_rules`, each child group MUST contain signals from exactly one `selection_group` and one targeting mode, and buyers MUST send at most one child group for each `(selection_group, targeting_mode)` pair. Sellers MUST reject duplicate, mixed, or collapsed child groups that combine distinct selection-group rules into the same `any` or `none` group. `selection_group` is a product-defined composability bucket, not a backend identity type: for example, a GAM-backed seller may expose both audience segments and key-values as ordinary `signal_ref` options, using one `selection_group` when they are freely OR-combinable and separate `selection_group`s when they must be trafficked as separate ANDed clauses.
 - **Pricing**: Include `pricing_option_id` when the selected product's `signal_targeting_options` entry has `pricing_options`; omit only when the signal is bundled into the product price or has no incremental cost. Product-scoped pricing in `signal_targeting_options` is authoritative for that product. If the product option has no product-specific price, sellers MAY use the default pricing exposed in `get_signals`.
+- **Pricing groups** (experimental, `signals.pricing_groups`): A signal MAY carry a seller-defined `pricing_group`, and `signal_pricing_group_rules[]` (on `signal_targeting_rules` and the `get_signals` response) declares `pricing_combination: "highest"` or `"each"` for a group. Buyers still send `pricing_option_id` for every priced signal; the seller applies the rule. See [Signal pricing groups](#signal-pricing-groups).
 - **Signal reference**: Use `signal_ref: { "scope": "product", "signal_id": "..." }` for a product-local signal option. Use `signal_ref: { "scope": "data_provider", "data_provider_domain": "...", "signal_id": "..." }` for a signal defined in a data provider's published adagents.json `signals[]`. `signal_ref` identifies the signal definition; `signal_agent_segment_id` identifies a resolved segment or execution handle when the product option exposes one. Echo an exposed `signal_agent_segment_id` verbatim on the package entry, and prefer it over reconstructing identity from categorical values because providers can namespace handles to distinguish definitions such as real-time rain versus forecast high-precipitation. If the product option has `activation_status: "requires_activation"`, it MUST include `signal_agent_segment_id`; activate the signal first, then include `activation_key` if the seller requires it.
 - **Provider-published signals**: For a provider-published signal, `signal_ref.data_provider_domain` identifies the upstream data provider and `signal_ref.signal_id` identifies the public signal definition. Buyers can verify the seller's right to offer the signal by checking the provider's `adagents.json` `authorized_agents` entry for the seller.
 - **Product gating**: Sellers SHOULD reject a signal entry when the product does not advertise that signal inline or through `get_signals`, `signal_targeting_allowed` is false for package-level selection, the signal violates the product's `signal_targeting_rules`, the signal's `allowed_targeting_modes` does not allow the requested child group operator, the signal is not active for the account, or the requested value is outside the signal definition. `allowed_targeting_modes: ["include"]` maps to `any` groups; `["exclude"]` maps to `none` groups. Binary package signal entries use `value: true`; use the parent `none` group for exclusion, not `value: false`. Signal targeting limits are product-scoped, not declared in seller-wide `get_adcp_capabilities`, because products may be backed by different ad servers or platforms. If `selection_mode` is `fixed`, buyers SHOULD omit edits to `signal_targeting_groups`; sellers apply the fixed/default selections and MUST echo them on the resulting package state.
@@ -1175,6 +1337,47 @@ For products where inventory and audience planning are inseparable, such as line
   ]
 }
 ```
+
+#### Signal pricing groups
+
+<Note>Experimental. Sellers and signal agents that implement `pricing_group` or `signal_pricing_group_rules` MUST list `signals.pricing_groups` in `experimental_features`. See [Experimental status](/docs/reference/experimental-status).</Note>
+
+Without a pricing group, every selected signal with a `pricing_option_id` is charged. A seller whose alternative segments price as one audience, such as age bands where each impression reaches one person, declares a `pricing_group` on those signals and a rule for the group:
+
+```json
+{
+  "signal_targeting_options": [
+    {
+      "signal_ref": { "scope": "product", "signal_id": "age_25_34" },
+      "name": "Adults 25-34",
+      "value_type": "binary",
+      "selection_group": "age",
+      "pricing_group": "age",
+      "pricing_options": [{ "pricing_option_id": "age_25_34_cpm", "model": "cpm", "cpm": 1.0, "currency": "EUR" }]
+    },
+    {
+      "signal_ref": { "scope": "product", "signal_id": "age_35_44" },
+      "name": "Adults 35-44",
+      "value_type": "binary",
+      "selection_group": "age",
+      "pricing_group": "age",
+      "pricing_options": [{ "pricing_option_id": "age_35_44_cpm", "model": "cpm", "cpm": 1.0, "currency": "EUR" }]
+    }
+  ],
+  "signal_targeting_rules": {
+    "signal_pricing_group_rules": [{ "pricing_group": "age", "pricing_combination": "highest" }]
+  }
+}
+```
+
+A buyer selecting both ranges pays one 1.00 EUR CPM data fee. Rules:
+
+- **Keys and precedence.** `pricing_group` is a publisher-defined key scoped to the listing surface the buyer selected from: the product's `signal_targeting_options`, or the responding signal agent's `get_signals` feed. Signals from different surfaces never share a group, even with the same key. A product-scoped `pricing_group` overrides the `get_signals` value; an option that omits it inherits the `get_signals` value. Product-scoped `signal_pricing_group_rules` override the `get_signals` rule for the same group, and a group the product does not list keeps the `get_signals` rule. A publisher MUST NOT declare more than one rule for the same `pricing_group`.
+- **Default is `each`.** A group with no rule charges every selected signal's fee, and an ungrouped signal is always charged on its own. A seller MUST publish a rule before any fee is waived, so a forgotten rule over-bills visibly instead of silently under-billing.
+- **`highest`** charges only the highest fee among the `cpm` pricing options the buyer selected (by `pricing_option_id`) for signals in the group, compared per thousand impressions. A signal selected without a `pricing_option_id` contributes no fee. Ties charge one fee, attributed to the first tied signal in package order. A signal is identified by `signal_ref`; selecting it more than once counts once.
+- **Not comparable.** `flat_fee`, `per_unit`, `custom` and `percent_of_media` options are always charged `each`, as are the selected `cpm` options of a group whose selected `cpm` options span more than one currency. In a mixed group the buyer pays the highest `cpm` fee plus each non-comparable fee, and a group with no comparable options bills `each` regardless of its rule. A `percent_of_media` fee has no CPM until the media price is known, so v1 defines no conversion.
+- **Scope.** Grouping applies across all of a package's selected signals, whatever child group (`any` or `none`) each appears in, and per package: the same group on two packages is charged on each. After `update_media_buy` the rule is re-applied to the resulting selection. Putting signals in a shared group is the seller's assertion that they are alternatives. `pricing_group` is independent of `selection_group`: a seller may price a whole B2B family as one group while exposing several selection groups.
+- **Buyer behavior.** Buyers send `pricing_option_id` for every priced signal they select, and the seller applies the rule. The v1 surface has no per-signal charge echo on package state, so buyers reconcile against the published rules. Pricing groups apply to package signal selection, not to direct `activate_signal` / `report_usage` billing.
 
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per entity. Two optional controls can be used independently or together.

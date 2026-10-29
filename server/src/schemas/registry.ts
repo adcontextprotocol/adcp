@@ -503,6 +503,10 @@ export const AgentCapabilitiesSchema = z
         metrics: z.array(
           z.object({
             metric_id: z.string(),
+            name: z.string().optional().openapi({
+              description:
+                "Vendor-authored display name of the metric. Show it in place of `metric_id` when present; never join, key, or deduplicate on it — `metric_id` is the identifier.",
+            }),
             standard_reference: z.string().optional(),
             accreditations: z
               .array(
@@ -1071,6 +1075,29 @@ export const AgentComplianceDetailSchema = z
       severity: z.string(),
       message: z.string(),
     })).optional().openapi({ description: "Public-safe advisory observations from the latest non-dry-run compliance run. Raw evidence is intentionally omitted; this array is not merged across runs, so cleared advisories disappear on the next fresh run." }),
+    v4_readiness: z.object({
+      registry_version: z.string(),
+      target_version: z.string(),
+      checks: z.array(z.object({
+        id: z.string().openapi({ description: "Stable check id from universal/v4-compatibility.yaml." }),
+        status: z.enum(["passed", "failing", "not_observable"]),
+        reason: z.enum([
+          "storyboard_not_run",
+          "step_not_run",
+          "step_skipped",
+          "not_graded",
+          "notice_absent",
+          "not_observed_by_suite",
+        ]).nullable().openapi({ description: "Why a not_observable check could not be graded. Null for passed and failing." }),
+        issue: z.number().int().nullable(),
+        change: z.string().nullable(),
+        detection: z.string(),
+        fix: z.string(),
+        guide_url: z.string().nullable().openapi({ description: "Migration guide anchor for the check." }),
+      }).openapi("V4ReadinessCheck")),
+    }).nullable().optional().openapi({
+      description: "Advisory AdCP 4.0 readiness from the latest non-dry-run compliance run, graded against universal/v4-compatibility.yaml. Does not affect 3.x verification or conformance. Null when the latest run predates the report.",
+    }),
     membership_tier: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's membership tier. Populated only when the authenticated viewer owns the agent; null otherwise. Field is always present so response shape doesn't reveal ownership." }),
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),

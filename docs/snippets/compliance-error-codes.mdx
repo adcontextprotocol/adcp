@@ -12,7 +12,8 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 
 | Code | Recovery | Suggested action |
 |------|----------|------------------|
-| `ACCOUNT_AMBIGUOUS` | correctable | pass explicit account_id or a more specific natural key |
+| `ACCOUNT_AMBIGUOUS` | correctable | pass the account_id of the intended account from error.details.candidates or list_accounts |
+| `ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT` | correctable | open a separate account for the change (request_account, or a sync_accounts provisioning entry), or resend the change with allow_separate_account: true; the named account is unchanged |
 | `ACCOUNT_IDENTITY_CONFLICT` | correctable | choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged |
 | `ACCOUNT_MOVED` | correctable | replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key |
 | `ACCOUNT_NOT_FOUND` | terminal | for a natural key, provision through sync_accounts or omit account for public discovery; for an account_id, verify via list_accounts or contact seller |
@@ -41,7 +42,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CAMPAIGN_SUSPENDED` | transient | wait for the escalation to resolve; contact the plan operator if the suspension persists |
 | `CATALOG_LIMIT_EXCEEDED` | correctable | remove unused catalogs, or contact the seller to raise the limit |
 | `COMMITTED_RESOURCE_PURGED` | terminal | do not automatically retry with the same or a fresh idempotency_key; reconcile through the resource read task and seller audit or operator records before deciding whether to initiate a new operation |
-| `COMPLIANCE_UNSATISFIED` | correctable | choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement |
+| `COMPLIANCE_UNSATISFIED` | correctable | choose a format that supports the required disclosure positions and persistence modes, remove the disclosure requirement, or revise the refinement instruction |
 | `CONFIGURATION_ERROR` | terminal | surface to a human at the seller — the buyer cannot resolve a seller-side deployment misconfiguration and MUST NOT auto-retry |
 | `CONFLICT` | transient | re-read the resource and retry with current state |
 | `CONFLICTING_SELECTORS` | correctable | emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison |
@@ -110,9 +111,9 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PROVENANCE_VERIFIER_NOT_ACCEPTED` | correctable | replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts |
 | `RATE_LIMITED` | transient | wait top-level error.retry_after seconds when present, then retry |
 | `READ_ONLY_SCOPE` | correctable | use a non-mutating alternative, or surface to the operator to request a scope that permits mutation |
-| `REFERENCE_DEFINITION_CHANGED` | correctable | refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal |
 | `REFERENCE_NOT_FOUND` | correctable | verify the referenced identifier exists and is accessible to the caller |
 | `REQUOTE_REQUIRED` | correctable | use error.details.decline_reason when present to inform recovery, then refine accepted_proposal_id and apply the amendment through accept_proposal, or keep control_media_buy inside the accepted envelope; some policies require a free-text ask or human negotiation, and 3.1 compatibility callers must adjust or rediscover |
+| `RIGHTS_CHANNEL_VIOLATION` | correctable | advisory — inspect error.details.rights_id and the requested channel against rights[].channels / excluded_channels; target a capability on a permitted channel, confirm the rights entry applies to this output, or have the holder grant the channel (a human or holder action) |
 | `SCOPE_INSUFFICIENT` | correctable | the agent cannot broaden its own scope - surface to the operator rather than auto-retry |
 | `SERVICE_UNAVAILABLE` | transient | retry with exponential backoff |
 | `SESSION_NOT_FOUND` | correctable | initiate a new session via si_initiate_session |
@@ -142,9 +143,18 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 
 <Accordion title="ACCOUNT_AMBIGUOUS — correctable">
 
-**Suggested action:** pass explicit account_id or a more specific natural key
+**Suggested action:** pass the account_id of the intended account from error.details.candidates or list_accounts
 
-Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).
+A natural-key reference matches more than one of the caller's accounts. error.details MAY list candidates[] (account_id, name), conforming to error-details/account-ambiguous.json, limited to accounts the caller is already granted. Recovery: correctable (pass the intended account_id).
+
+</Accordion>
+<a id="error-code-account-change-requires-new-account"></a>
+
+<Accordion title="ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT — correctable">
+
+**Suggested action:** open a separate account for the change (request_account, or a sync_accounts provisioning entry), or resend the change with allow_separate_account: true; the named account is unchanged
+
+The seller would accept a requested account change only as a separate account, for example because the new market needs its own contract, legal entity, invoicing entity, or currency, and the caller did not allow that. Returned for a request_account change request whose allow_separate_account is absent or false, and for a sync_accounts settings update, which has no such option. The named account is unchanged. error.details.reason MAY say what the separate account needs. Distinct from a plain refusal: the change is acceptable on a new account. Recovery: correctable (open a separate account with request_account or a sync_accounts provisioning entry, or resend the change with allow_separate_account: true, or keep the account as it is).
 
 </Accordion>
 <a id="error-code-account-identity-conflict"></a>
@@ -153,7 +163,7 @@ Natural key resolves to multiple accounts. Recovery: correctable (pass explicit 
 
 **Suggested action:** choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged
 
-The complete operator_identity requested through sync_accounts would rekey the account onto a natural key already owned by another account. The seller MUST reject the change atomically, MUST NOT merge the accounts, and MUST preserve both accounts and every account-scoped resource unchanged. Distinct from CONFLICT, which reports a transient stale revision or concurrent write. Recovery: correctable (choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged).
+**Deprecated in 3.3**, planned for removal in 4.0: an attribute update never changes identity, so it cannot collide. Sellers that still support the deprecated operator_identity rekey return it during 3.x. The complete operator_identity requested through sync_accounts would rekey the account onto a natural key already owned by another account. The seller MUST reject the change atomically, MUST NOT merge the accounts, and MUST preserve both accounts and every account-scoped resource unchanged. Distinct from CONFLICT, which reports a transient stale revision or concurrent write. Recovery: correctable (choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged).
 
 </Accordion>
 <a id="error-code-account-moved"></a>
@@ -162,7 +172,7 @@ The complete operator_identity requested through sync_accounts would rekey the a
 
 **Suggested action:** replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key
 
-An authorized caller used a former natural key that was tombstoned after the same account was rekeyed through sync_accounts. The seller MUST return the current canonical reference in error.details.current_account, conforming to error-details/account-moved.json, and MUST NOT provision or resolve a second account from the former key. Sellers retain the tombstone while the account or any account-scoped historical resources are retained. To avoid a cross-tenant existence oracle, sellers return ACCOUNT_MOVED only when the caller is authorized to resolve the current account; otherwise they return ACCOUNT_NOT_FOUND. Recovery: correctable (replace the stale account reference with details.current_account, refresh through list_accounts, and retry with a fresh idempotency key).
+**Deprecated in 3.3**, planned for removal in 4.0: account_id never changes, so no former reference exists. Sellers that still support the deprecated operator_identity rekey return it during 3.x. An authorized caller used a former natural key that was tombstoned after the same account was rekeyed through sync_accounts. The seller MUST return the current canonical reference in error.details.current_account, conforming to error-details/account-moved.json, and MUST NOT provision or resolve a second account from the former key. Sellers retain the tombstone while the account or any account-scoped historical resources are retained. To avoid a cross-tenant existence oracle, sellers return ACCOUNT_MOVED only when the caller is authorized to resolve the current account; otherwise they return ACCOUNT_NOT_FOUND. Recovery: correctable (replace the stale account reference with details.current_account, refresh through list_accounts, and retry with a fresh idempotency key).
 
 </Accordion>
 <a id="error-code-account-not-found"></a>
@@ -198,7 +208,7 @@ The service must resolve the commercial account before it can determine governan
 
 **Suggested action:** check details.setup for URL or instructions
 
-Natural key resolved but the account needs setup before use. Recovery: correctable (check details.setup for URL or instructions).
+The account reference resolved but the account needs setup before use. Recovery: correctable (check details.setup for URL or instructions).
 
 </Accordion>
 <a id="error-code-account-suspended"></a>
@@ -403,9 +413,9 @@ The requested mutation committed, but the affected resource was independently de
 
 <Accordion title="COMPLIANCE_UNSATISFIED — correctable">
 
-**Suggested action:** choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement
+**Suggested action:** choose a format that supports the required disclosure positions and persistence modes, remove the disclosure requirement, or revise the refinement instruction
 
-A required disclosure from the brief's compliance section cannot be satisfied by the target format — either the required position or the required persistence mode is not in the format's disclosure_capabilities. Recovery: correctable (choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement).
+A required disclosure from the brief's compliance section cannot be satisfied — either the target format's disclosure_capabilities do not include the required position or persistence mode, or (on a refinement) the request's message or config instructs removal or contradiction of a required disclosure or the use of a prohibited claim. Recovery: correctable (choose a format that supports the required disclosure positions and persistence modes, remove the disclosure requirement, or revise the refinement instruction).
 
 </Accordion>
 <a id="error-code-configuration-error"></a>
@@ -879,18 +889,19 @@ The authenticated caller is not authorized for the requested action, or a requir
 
 **Suggested action:** advisory — emitted alongside the v1 downgrade emission: SDK collapsed a pixel_tracker asset to v1 <code>{"{asset_type: url, url_type: tracker_pixel}"}</code> for a seller that doesn't support pixel_tracker natively. The URL still fires; what's lost is in <code>{"error.details.lost_fields"}</code> (event variant, method:js execution context, or custom event timing). Buyer decision: accept the loss (most counter pixels survive), or fail the buy and route to a 3.1-capable seller. Non-fatal — do not auto-retry
 
-Non-fatal advisory raised when a 3.1 buyer SDK downgrades a <code>{"pixel_tracker"}</code> asset to the v1 <code>{"{asset_type: url, url_type: tracker_pixel}"}</code> shape for a 3.0.x seller that doesn't recognize the new asset type. The URL is still emitted on the wire and the seller will fire it as a tracker pixel; what's lost is the event/method discrimination.
+Non-fatal advisory raised when a 3.1 buyer SDK downgrades a <code>{"pixel_tracker"}</code> asset to the v1 <code>{"{asset_type: url, url_type: tracker_pixel}"}</code> shape for a 3.0.x seller that doesn't recognize the new asset type. The URL is still emitted on the wire and the seller will fire it as a tracker pixel; what's lost is the event/method discrimination. The one exception is the playback events (<code>{"start"}</code>, quartiles, <code>{"complete"}</code>), which are dropped rather than emitted.
 
 Downgrade rules (normative):
 - <code>{"event: impression"}</code> + <code>{"method: img"}</code> → no loss; emit as <code>{"{asset_type: url, url_type: tracker_pixel, url, asset_id: impression_tracker}"}</code>
 - <code>{"event: viewable_mrc_50"}</code> / <code>{"viewable_mrc_100"}</code> / <code>{"viewable_video_50"}</code> / <code>{"audible_video_complete"}</code> → emit with <code>{"asset_id: viewability_tracker"}</code>; advisory <code>{"lost_event: <variant>"}</code> (specific viewability variant collapses to a single v1 slot)
+- <code>{"event: start"}</code> / <code>{"first_quartile"}</code> / <code>{"midpoint"}</code> / <code>{"third_quartile"}</code> / <code>{"complete"}</code> → **drop** the tracker (no v1 emission); advisory <code>{"lost_event: <variant>"}</code> and <code>{"lost_fields"}</code> covering the whole tracker. <code>{"event: custom"}</code> with <code>{"custom_event_name"}</code> equal to one of those five names (the 3.2 interim form) is dropped the same way, and this rule takes precedence over the <code>{"custom"}</code> and <code>{"method: js"}</code> rules; set <code>{"downgrade_target: \"dropped\""}</code> and <code>{"lost_fields: [\"event\", \"url\"]"}</code>. Never emit these as <code>{"impression_tracker"}</code>: a playback URL fired at impression time would count every impression as a quartile view
 - <code>{"event: click"}</code> → emit with <code>{"asset_id: click_tracker"}</code>; no meaningful loss
 - <code>{"event: custom, custom_event_name: X"}</code> → emit with <code>{"asset_id: impression_tracker"}</code> (default tracker_pixel fires on impression); advisory <code>{"lost_event: \"custom\""}</code>, <code>{"lost_custom_event_name: X"}</code> (custom event timing collapses to impression timing)
 - <code>{"method: js"}</code> → emit unchanged shape (url, url_type:tracker_pixel); advisory <code>{"lost_method: \"js\""}</code> (v1 seller will fire as HTTP GET; the URL is hit and any counter-based measurement increments, but the response body won't execute as JS — measurement that depends on JS execution, e.g., OMID-style verification, viewability observers, cross-domain cookie setters, won't work. Simple counter pixels still work.)
 
 Surface: SDK that performs the downgrade MUST augment the response's <code>{"errors[]"}</code> with <code>{"source: \"sdk\""}</code>, <code>{"sdk_id"}</code>, <code>{"code: \"PIXEL_TRACKER_LOSSY_DOWNGRADE\""}</code>, <code>{"field"}</code> pointing at the affected manifest asset path, and <code>{"error.details"}</code> SHOULD carry <code>{"{ asset_id, original_event, original_method, original_custom_event_name (if present), downgrade_target: \"url+tracker_pixel\", lost_fields: [<list>] }"}</code>. One advisory per downgraded asset; SDKs SHOULD NOT collapse multiple downgrades into a single advisory entry — per-asset details let the buyer's measurement-plan owner decide whether each loss is tolerable.
 
-Recovery: correctable — non-fatal advisory, do not auto-retry. Buyer-side decision: accept the loss (most simple counter pixels survive), or fail the buy and route to a 3.1-capable seller. Seller-side fix: upgrade to 3.1 and accept <code>{"pixel_tracker"}</code> natively.
+Recovery: correctable — non-fatal advisory, do not auto-retry. Buyer-side decision: accept the loss (most simple counter pixels survive; dropped playback trackers do not), or fail the buy and route to a 3.1-capable seller. Seller-side fix: upgrade to 3.1 and accept <code>{"pixel_tracker"}</code> natively.
 
 </Accordion>
 <a id="error-code-pixel-tracker-upgrade-inferred"></a>
@@ -1083,15 +1094,6 @@ Request rate exceeded. Sellers SHOULD populate top-level <code>{"error.retry_aft
 The caller's scope is read-only; the invoked task would mutate state and was rejected. Distinct from <code>{"SCOPE_INSUFFICIENT"}</code> (task not in scope at all) — the task is in some scopes this seller supports, just not this caller's. Recovery: correctable but not agent-autonomous — use a non-mutating alternative, or surface to the operator to request a scope that permits mutation.
 
 </Accordion>
-<a id="error-code-reference-definition-changed"></a>
-
-<Accordion title="REFERENCE_DEFINITION_CHANGED — correctable">
-
-**Suggested action:** refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal
-
-A third-party-published definition pinned in a proposal's commercial_terms.definition_pins[] (a publisher-catalog format option, publisher-catalog placement, adagents.json collection, or data-provider signal) no longer resolves to the pinned content_digest. Returned by accept_proposal, which re-verifies every pin before mutating any state, so no MediaBuy is created or amended. terms_digest can still verify because it covers the pin, not the definition the pin names. Error details SHOULD conform to error-details/reference-definition-changed.json: error.field names the failing pin (for example commercial_terms.definition_pins[2]) and details.current_content_digest carries the digest the definition resolves to now; one error is returned per drifted pin. Distinct from REFERENCE_NOT_FOUND (an identifier that does not exist or is inaccessible) and PROPOSAL_EXPIRED (the hold lapsed). The same drift found while finalizing is reported as an unable outcome with reason_code definition_changed and drifted_pins[] rather than as an error. A definition withdrawn from a successfully fetched document is drift and omits current_content_digest; a document that cannot be fetched or parsed is not drift and returns SERVICE_UNAVAILABLE instead. Because nothing was mutated, sellers SHOULD set error.mutation_outcome to not_applied. Recovery: correctable (re-run request_proposals or refine_proposals so the seller re-resolves the definitions and issues fresh pins, review the changed terms, and finalize again).
-
-</Accordion>
 <a id="error-code-reference-not-found"></a>
 
 <Accordion title="REFERENCE_NOT_FOUND — correctable">
@@ -1108,6 +1110,15 @@ Generic fallback for a referenced identifier, grant, session, or other resource 
 **Suggested action:** use error.details.decline_reason when present to inform recovery, then refine accepted_proposal_id and apply the amendment through accept_proposal, or keep control_media_buy inside the accepted envelope; some policies require a free-text ask or human negotiation, and 3.1 compatibility callers must adjust or rediscover
 
 A control_media_buy request, or the 3.x update_media_buy facade, would exceed the accepted commercial envelope. The seller is declining the requested shape at the current terms. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Error details SHOULD conform to error-details/requote-required.json: populate envelope_field with the field path(s) that breached the envelope, change_term_id when an accepted change term governed the request, and decline_reason when a structured seller-policy reason is available and safe to disclose. All producer-authored explanatory text, including message, suggestion, and extension detail values, MUST remain buyer-safe and MUST NOT contain vendor identifiers, internal object names, internal IDs, stack traces, or other producer-private implementation details. AdCP 3.2 callers refine the MediaBuy's accepted_proposal_id to obtain a typed amendment; legacy 3.1 callers adjust the update, rediscover terms, or create a separate buy.
+
+</Accordion>
+<a id="error-code-rights-channel-violation"></a>
+
+<Accordion title="RIGHTS_CHANNEL_VIOLATION — correctable">
+
+**Suggested action:** advisory — inspect error.details.rights_id and the requested channel against rights[].channels / excluded_channels; target a capability on a permitted channel, confirm the rights entry applies to this output, or have the holder grant the channel (a human or holder action)
+
+Advisory. A creative's rights[] channels / excluded_channels restriction (core/rights-constraint.json) does not permit the media channel of the requested output, so building it would produce a derivative the rights grant does not allow to run there. Creative agents SHOULD check rights[].channels against the channel each requested target capability serves (for example its applies_to_channels, where declared) before generating, and SHOULD surface this code rather than silently building; the restriction is advisory in 3.3, so a creative agent MAY proceed and attach this code as a non-terminal entry in errors[] on an otherwise-successful build, or MAY decline the affected output with a terminal error. error.field SHOULD point at the offending rights entry (e.g. creative_manifest.rights[0].excluded_channels, or creative_manifests[N].rights[i].channels for a multi-capability build) and error.details SHOULD include rights_id, the requested channel, and capability_id when the build named one. Distinct from CREATIVE_REJECTED (content-policy or brand-safety review) and from the governance plan channel check, which is a hard check by the governance agent. Recovery: correctable (target a capability whose channel the grant permits, confirm the rights entry applies to this output, or have the holder grant the channel; the last is a human or holder action, not an autonomous retry). Advisory in 3.3 and may tighten while the surface is experimental.
 
 </Accordion>
 <a id="error-code-scope-insufficient"></a>
@@ -1259,7 +1270,7 @@ The requested <code>{"time_granularity"}</code> on <code>{"get_media_buy_deliver
 
 **Suggested action:** re-issue with the entry shape the seller supports — <code>{"account: {account_id: ...}"}</code> for settings-update sellers with account-id namespaces, or <code>{"brand+operator+billing"}</code> for provisioning sellers; check seller documentation or capability declaration for which modes are implemented
 
-The seller does not support the <code>{"sync_accounts"}</code> mode the entry requested. Returned per-entry in the <code>{"sync_accounts"}</code> response when (a) an entry keyed by the natural-key trio (<code>{"brand"}</code> + <code>{"operator"}</code> + <code>{"billing"}</code>) is sent to a seller that does not provision accounts via AdCP — typical for account-id namespaces where accounts are pre-provisioned out of band or discovered via <code>{"list_accounts"}</code>; or (b) an entry keyed by <code>{"account"}</code> (AccountRef) is sent to a seller that has not implemented the settings-update mode. Distinct from <code>{"UNSUPPORTED_FEATURE"}</code> (generic capability mismatch) by being narrowly about which of the two <code>{"sync_accounts"}</code> modes the seller implements. The two modes are mutually exclusive per-entry — the seller MUST NOT silently downgrade or upgrade between them. Sellers MAY declare which modes they implement via <code>{"get_adcp_capabilities"}</code> (forward-looking — capability declaration shape is open). Recovery: correctable (re-issue with the entry shape the seller supports; for account-id namespaces that expose settings updates, that means <code>{"account: {account_id: ...}"}</code> entries; for sellers that only provision via natural key that means the flat <code>{"brand+operator+billing"}</code> shape). The <code>{"error.field"}</code> SHOULD point at the entry index where the unsupported shape was found.
+The seller does not support the <code>{"sync_accounts"}</code> mode the entry requested. Returned per-entry in the <code>{"sync_accounts"}</code> response when (a) an entry keyed by the natural-key trio (<code>{"brand"}</code> + <code>{"operator"}</code> + <code>{"billing"}</code>) is sent to a seller that does not provision accounts via AdCP — typical for account-id namespaces where accounts are pre-provisioned out of band or discovered via <code>{"list_accounts"}</code>; or (b) an entry keyed by <code>{"account"}</code> (AccountRef) is sent to an account-id-namespace seller that does not expose settings updates. A seller that opens buyer-declared accounts through <code>{"sync_accounts"}</code> accepts settings-update entries and declines an attribute change it cannot make with <code>{"UNSUPPORTED_FEATURE"}</code>. Distinct from <code>{"UNSUPPORTED_FEATURE"}</code> (generic capability mismatch) by being narrowly about which of the two <code>{"sync_accounts"}</code> modes the seller implements. The two modes are mutually exclusive per-entry — the seller MUST NOT silently downgrade or upgrade between them. Sellers MAY declare which modes they implement via <code>{"get_adcp_capabilities"}</code> (forward-looking — capability declaration shape is open). Recovery: correctable (re-issue with the entry shape the seller supports; for account-id namespaces that expose settings updates, that means <code>{"account: {account_id: ...}"}</code> entries; for sellers that only provision via natural key that means the flat <code>{"brand+operator+billing"}</code> shape). The <code>{"error.field"}</code> SHOULD point at the entry index where the unsupported shape was found.
 
 </Accordion>
 <a id="error-code-validation-error"></a>

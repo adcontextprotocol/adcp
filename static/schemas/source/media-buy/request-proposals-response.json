@@ -161,7 +161,8 @@
     },
     "later_proposals": {
       "$ref": "/schemas/core/later-proposals-state.json",
-      "description": "Experimental (media_buy.open_opportunities). Effective later-proposal consent for the request's opportunity, as the seller recorded it. Sellers that advertise media_buy.open_opportunities.later_proposals.supported MUST return it whenever the request carried opportunity.later_proposals. accepted false here means the seller will not send later proposals, whatever the request asked for."
+      "description": "Experimental (media_buy.open_opportunities). Effective later-proposal consent for the request's opportunity, as the seller recorded it. Sellers that advertise media_buy.open_opportunities.later_proposals.supported MUST return it whenever the request carried opportunity.later_proposals. accepted false here means the seller will not send later proposals, whatever the request asked for.",
+      "x-added-in": "3.3.0"
     },
     "status": { "type": "string", "enum": ["completed", "submitted"] },
     "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
@@ -260,8 +261,10 @@
       { "required": ["refinement_applied"] },
       { "required": ["pagination"] },
       { "required": ["unchanged"] },
-      { "required": ["wholesale_feed_version"] }
+      { "required": ["wholesale_feed_version"] },
+      { "required": ["feed_version"] },
+      { "required": ["pricing_version"] }
     ]
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

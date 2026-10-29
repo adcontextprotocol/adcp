@@ -151,7 +151,7 @@
     },
     "refinement_applied": {
       "type": "array",
-      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment.",
+      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment. In AdCP 3.3, when any refine entry carries package, this array is REQUIRED for the entire request. For each package entry, applied requires result_product_id, resolved_start_time, and resolved_end_time and confirms that the mapped returned product forecast uses exactly the resolved package inputs, including its goal; unable requires non-empty notes explaining why those exact inputs could not be forecast, and the product MUST NOT carry a substitute forecast. partial MUST NOT be used to imply exact package forecast support. Insufficient inventory is an applied forecast with availability_status unavailable, not an unable outcome.",
       "items": {
         "type": "object",
         "discriminator": {
@@ -196,6 +196,26 @@
                 "type": "string",
                 "description": "Echoes product_id from the corresponding refine entry."
               },
+              "result_product_id": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "product",
+                "x-added-in": "3.3.0",
+                "description": "Required for an applied structured package forecast. Identifies exactly one returned Product carrying this entry's exact forecast, even when its configured ID differs from the request product_id. The requested pricing_option_id and pricing terms MUST remain unchanged. Buyers use this ID at create."
+              },
+              "resolved_start_time": {
+                "type": "string",
+                "format": "date-time",
+                "not": { "const": "asap" },
+                "x-added-in": "3.3.0",
+                "description": "Required with result_product_id. Exact forecast flight start after resolving explicit package timestamps or date-filter defaults. Buyers materialize this timestamp on the package at create."
+              },
+              "resolved_end_time": {
+                "type": "string",
+                "format": "date-time",
+                "x-added-in": "3.3.0",
+                "description": "Required with result_product_id. Exact forecast flight end after resolving explicit package timestamps or date-filter defaults. Buyers materialize this timestamp on the package at create. MUST be after resolved_start_time."
+              },
               "status": {
                 "type": "string",
                 "enum": [
@@ -214,6 +234,21 @@
               "scope",
               "product_id",
               "status"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "anyOf": [
+                    { "required": ["result_product_id"] },
+                    { "required": ["resolved_start_time"] },
+                    { "required": ["resolved_end_time"] }
+                  ]
+                },
+                "then": {
+                  "properties": { "status": { "const": "applied" } },
+                  "required": ["result_product_id", "resolved_start_time", "resolved_end_time"]
+                }
+              }
             ],
             "additionalProperties": false
           },
@@ -394,6 +429,42 @@
     "pricing_version": {
       "type": "string",
       "description": "Opaque token representing the version of the pricing layer, including product pricing_options and nested signal_targeting_options pricing_options. When the seller supports independent pricing versioning, pricing_version changes when prices move but wholesale_feed_version changes only when structure/metadata moves. Same cache_scope keying as wholesale_feed_version. Sellers not separating these MAY omit pricing_version and use wholesale_feed_version for both."
+    },
+    "execution_readiness": {
+      "type": "object",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (`media_buy.execution_readiness`). Whether the request's `account` can satisfy the `execution_requirements[]` of the products on this response, keyed by `product_id`. Present only when the request set `include_execution_readiness: true` and carried an authorized `account`. Advisory: `create_media_buy` revalidates. Not part of the cache layer: it does not change `cache_scope`, `wholesale_feed_version`, or `pricing_version`, buyers key it by (account, `version`) and MUST NOT cache it under the public key, sellers MUST NOT put it in wholesale feed webhooks and MUST omit it on `unchanged: true` responses. Covers only this response's products; merge pages by `product_id`. See the media-buy specification, 'Per-account execution readiness'.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Opaque token for the account's readiness state, independent of `wholesale_feed_version` and `pricing_version`. Compare for equality only. Equal versions MUST imply identical entries for any product present in both responses."
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller read the account's resources. Readiness may be stale by then; `create_media_buy` is authoritative."
+        },
+        "products": {
+          "type": "object",
+          "description": "Readiness keyed by `product_id`, for returned products that declare `execution_requirements`. A missing entry means not evaluated, not ready.",
+          "propertyNames": {
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "/schemas/core/product-execution-readiness.json"
+          }
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "version",
+        "products"
+      ],
+      "additionalProperties": true
     },
     "cache_scope": {
       "type": "string",

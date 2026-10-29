@@ -20,11 +20,12 @@ For the full lifecycle from credentials through destination proof and readback, 
 
 Call it whenever you need current state rather than a change:
 
-- **Verify identity before configuration.** A `recognized` result exposes the seller-resolved `principal_kind` and existing `principal_id` before the first state-changing call.
+- **Verify identity before configuration.** A `recognized` result exposes the existing `principal_id` before the first state-changing call.
 - **Bootstrap the concurrency fence.** Read `configuration_version` before a guarded [`sync_principal`](/docs/protocol/sync_principal) replacement instead of writing blind.
 - **Recover after local-state loss.** A restarted service reads `principal_id`, `configuration_version`, every `destination_ref`, and each destination's setup state before deciding what to sync.
 - **Observe setup progress.** After a destination returns `action_required` or `validating`, poll here until it reaches `ready` — or subscribe to the `principal.changed` webhook and use this read as the repair path. Polling never disturbs the version fence.
 - **Read the negotiated async contract.** The `declarations` state carries both the declared set and the seller-computed accepted intersection that governs webhook payload versions and signing algorithms.
+- **Read reporting subscriptions (experimental, 3.3).** When the seller supports the `reporting_subscriptions` section, each subscription returns its `state` (`active`, `inactive`, or `action_required` with `issues`), `accepted_at` for the current `subscription_version` (coverage starts at the first boundary at or after the latest of it, each buy's `confirmed_at`, and the account's `authorized_at`), `prior_versions` with their `accepted_at` while retained, the bound `destination_ref`, and its configuration. Deactivated subscriptions stay listed as `inactive` with `deactivated_at` while their obligations are retained. `accounts_with_exceptions[]` lists each account with an open coverage exception and its reasons, so a caller need not poll every account. Accounts whose authority the caller lost appear under `accounts_unauthorized[]` with `unauthorized_at`, `last_owed_period_end`, and `withheld_period_count` (and optionally the withheld obligation IDs), with no current account data, until re-grant or for `status_retention_days`; after that a re-grant is a fresh coverage start. Changes to either list, and a subscription moving to `action_required`, fire `principal.changed` with reason `reporting_subscription_changed`. Per-account coverage and exclusions for authorized accounts are read through [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage).
 - **Audit generations.** Superseded generations appear in each destination's `prior_destination_refs`; revoked destinations appear in `retired_destinations`. Both remain resolvable for existing authorized account bindings and retained reporting history.
 
 Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) advertises `adcp.principal` with `read_task: "get_principal"`. Sellers advertising `principal` implement both the sync and read tasks.
@@ -37,14 +38,14 @@ For RFC 9421 signed callers, that stable identity is the canonical URL of the ex
 
 For Web Bot Auth signed callers (experimental), the stable identity is the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin), verified as [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) describes. An identity-established caller ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)) gets `unconfigured`. Key rotation within the origin's directory preserves the identity.
 
-`principal_kind` is resolved from authorization state, but the response exposes it only with a durable principal record: in `current` and `recognized` results. `principal_id` identifies that same record in both arms. A read never creates the record or mints the identifier; stable authentication without a materialized durable record returns `unconfigured`, which carries only `kind` and, when an application is in progress, `relationship`.
+The deprecated `principal_kind` is resolved from authorization state, but the response exposes it only with a durable principal record: in `current` and `recognized` results. `principal_id` identifies that same record in both arms. A read never creates the record or mints the identifier; stable authentication without a materialized durable record returns `unconfigured`, which carries only `kind` and, when an application is in progress, `relationship`.
 
 ## Results
 
 | `result.kind` | Meaning |
 |---|---|
-| `current` | The caller has standing configuration. Returns `principal_id`, the seller-resolved `principal_kind` (`buyer_agent` or `operator`), `configuration_version`, and complete credential-free configuration state. |
-| `recognized` | The caller maps to an existing durable principal record but has no standing configuration. Returns `principal_id` and seller-resolved `principal_kind`, with no configuration or version. |
+| `current` | The caller has standing configuration. Returns `principal_id`, the deprecated `principal_kind` (always `buyer_agent` for a bound agent), `configuration_version`, and complete credential-free configuration state. |
+| `recognized` | The caller maps to an existing durable principal record but has no standing configuration. Returns `principal_id` and the deprecated `principal_kind`, with no configuration or version. |
 | `unconfigured` | Stable authentication succeeded, but the caller has no durable principal record. Carries `kind`, and `relationship` when an application is in progress. |
 | `failed` | The read could not be served. Carries only structured errors, never identifiers or state. |
 
@@ -58,7 +59,7 @@ The response reveals only the authenticated caller's identity and state. It neve
 |---|---|
 | `status` | `enums/principal-relationship-status.json`: `pending_approval` (the seller is reviewing an application or approval, as in the [account status lifecycle](/docs/accounts/overview#account-status-lifecycle)), `active`, `suspended`, or `blocked`. While `suspended` or `blocked`, calls that need the relationship fail with [`AGENT_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-agent-suspended) or [`AGENT_BLOCKED`](/docs/building/verification/compliance-catalog#error-code-agent-blocked). |
 | `expires_at` | When the relationship lapses unless renewed. Absent means no scheduled expiry. |
-| `setup` | While `pending_approval`, the caller's next step: `{ url, message, expires_at }`, the same shape as [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `setup`. Treat `url` as untrusted: surface it, never fetch it. |
+| `setup` | While `pending_approval`, the caller's next step: `{ url, message, expires_at }`, the same shape as [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `setup`, plus the experimental `waiting_on` (`seller` or `buyer`) and `kind` from [account requests](/docs/accounts/tasks/request_account#lifecycle). Treat `url` as untrusted: surface it, never fetch it. |
 
 `relationship` is **omitted** when the seller has no relationship with the caller and no application in progress. That is the identity-established state ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). Because the field is returned only to the authenticated caller, it is not an onboarding oracle: it says nothing about any other agent.
 

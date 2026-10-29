@@ -111,8 +111,9 @@ boolean and array subset. Unrequested fields and numeric seller limits do not
 participate. Forecasts without concrete values describe the product's
 discovery/default scope; buyers rediscover with concrete `targeting_overlay`
 values for value-specific forecasts. Fixed prices and floors remain binding
-uniformly for supported selections, while price guidance remains non-binding.
-Sellers with value-dependent rates return a concretely targeted configured
+uniformly for supported selections, except for adjustments the selected fixed-price
+option declares in `price_adjustments`; price guidance remains non-binding.
+Sellers with other value-dependent rates return a concretely targeted configured
 product, split rate tiers into products, or withhold binding prices until
 concrete rediscovery; they never reuse a selected `pricing_option_id` at new
 terms.
@@ -368,16 +369,156 @@ Rules:
 - **Proposal execution.** Packages a seller derives from
   `create_media_buy.proposal_id` are not buyer-supplied, so the rejection rule
   above does not apply to them in 3.2. How a proposal carries these bindings is
-  tracked with per-account readiness for 3.3.
+  not yet specified; it is tracked in
+  [adcp#7763](https://github.com/adcontextprotocol/adcp/issues/7763).
 
-This surface does not report the caller's account state. When an account has
-several eligible event sources or catalogs, the buyer chooses one by binding it
-on the request. When it has several eligible connections, such as several
-connected pages, the seller applies its documented default. Per-account
-readiness — which resources the account already has, which one to pick, the
-binding for lead forms and messaging destinations, and proposal bindings — is
-tracked for AdCP 3.3 in
-[adcp#7763](https://github.com/adcontextprotocol/adcp/issues/7763).
+When the product declares `execution_requirements`, this surface does not
+report the caller's account state; [per-account execution readiness](#per-account-execution-readiness-experimental)
+does.
+
+### Per-account execution readiness (experimental)
+
+`execution_requirements` says what a product needs. Execution readiness says
+whether the caller's account has it and, when it has several, which to use. A
+seller using this experimental surface lists `media_buy.execution_readiness` in
+`experimental_features` on `get_adcp_capabilities`, and also lists
+`media_buy.execution_requirements`.
+
+A buyer sets `include_execution_readiness: true` on `get_products` together with
+an `account`. A seller that supports it returns a response-level
+`execution_readiness` map keyed by `product_id`:
+
+```json
+{
+  "cache_scope": "public",
+  "wholesale_feed_version": "wf_2026_10_06",
+  "execution_readiness": {
+    "version": "er_7f3a",
+    "evaluated_at": "2026-10-06T12:00:00Z",
+    "products": {
+      "social_app_installs": {
+        "readiness_status": "setup_required",
+        "requirements": [
+          {
+            "requirement": { "kind": "event_source", "event_types": ["app_install"] },
+            "readiness_status": "selection_required",
+            "binding_field": "packages[].optimization_goals[].event_sources[].event_source_id",
+            "candidates": [
+              { "resource_id": "es_app_main", "name": "Main app SDK" },
+              { "resource_id": "es_app_beta", "name": "Beta app SDK" }
+            ]
+          },
+          {
+            "requirement": { "kind": "catalog", "catalog_types": ["app"] },
+            "readiness_status": "ready",
+            "binding_field": "packages[].catalogs[]",
+            "resolved": { "resource_id": "cat_app_1", "name": "Acme app" }
+          },
+          {
+            "requirement": {
+              "kind": "downstream_connection",
+              "connection": { "connection_type": "publisher_identity", "scope": "identity", "required_for": ["create_media_buy"] }
+            },
+            "readiness_status": "setup_required",
+            "connection_state": {
+              "connection_type": "publisher_identity",
+              "provider": "social.example",
+              "scope": "identity",
+              "status": "missing",
+              "authorization_url": "https://social.example/connect/identity"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+The excerpt shows only the fields relevant here.
+
+Statuses, per requirement and rolled up per product:
+
+| Status | Meaning | Buyer action |
+|---|---|---|
+| `ready` | The account has exactly one suitable resource (for a connection, the one the seller would use is connected) | None beyond binding (below) |
+| `setup_required` | The account has none, or the connection is `missing`, `pending`, `expired`, or `revoked` | Create or restore it, for example with `sync_event_sources`, `sync_catalogs`, or `connection_state.authorization_url` |
+| `selection_required` | The account has several suitable resources | Choose one from `candidates[]` and bind it |
+| `input_required` | The seller cannot discover a suitable resource from the account | Supply one on the request, such as an inline catalog |
+| `unknown` | The seller could not read the account's resources | Depends on `unknown_reason`: `permission_denied` needs a human to fix the seller's grant on the account, `platform_unavailable` is worth retrying, `not_evaluated` means refetch fewer products. Meanwhile `create_media_buy` decides |
+
+Rules:
+
+- **One entry per declared requirement.** `requirement` echoes the product's
+  declared entry and MUST deep-equal an entry in its current
+  `execution_requirements[]`; a buyer whose cached product has no match holds a
+  stale feed and SHOULD refetch it. Only products that declare
+  `execution_requirements` get an entry. A missing entry means not evaluated,
+  not ready.
+- **Rollup.** A product's `readiness_status` is the first of `setup_required`,
+  `input_required`, `selection_required`, `unknown` that any requirement
+  reports, else `ready`: the most blocking state the seller could establish.
+  Buyers needing more MUST read `requirements[]`.
+- **Could not check is not lacking.** `unknown` carries `unknown_reason`
+  (`permission_denied`, `platform_unavailable`, or `not_evaluated`) and no
+  resources. A seller MUST NOT report `setup_required` for a resource it could
+  not read, and a buyer MUST NOT filter out or treat as not runnable a product
+  that is `unknown`. A seller MAY report products beyond its evaluation budget
+  as `unknown` with `not_evaluated`.
+- **`ready` does not waive binding.** For `event_source` and `catalog`, the
+  buyer still passes `resolved.resource_id` in `binding_field`; an unbound
+  requirement is `not_bound` per
+  [`execution-requirement-unmet.json`](https://adcontextprotocol.org/schemas/v3/error-details/execution-requirement-unmet.json).
+  `resolved` is required when such a requirement is `ready`.
+- **Candidates are directly usable.** A `resource_id` MUST be a value the
+  binding field accepts: the `event_source_id` returned by `sync_event_sources`
+  (including a seller-managed source) or a `catalog_id`. A seller whose
+  platform ID differs MUST return the AdCP-facing ID, never the raw platform ID.
+  `candidates[]` appears only when `readiness_status` is `selection_required`, lists
+  resources the seller has no evidence would fail the requirement (it MAY
+  include one whose event types it cannot verify, since some platforms do not
+  expose them), and never discloses another account's resources.
+- **Connections report one state.** A `downstream_connection` requirement
+  reports `connection_state`, the state of the connection the seller would use
+  (its documented default when several are connected), and its `readiness_status` derives
+  from `connection_state.status`: `connected` and `not_required` are `ready`; `missing`, `pending`,
+  `expired`, and `revoked` are `setup_required`; `unknown` is `unknown`. A
+  `missing`, `expired`, or `revoked` connection SHOULD include
+  `authorization_url` or `authorization_instructions`; `pending` MAY omit both. This
+  slice does not list several identities or let the buyer choose among them.
+  `selection_required` and `input_required` never apply to connections.
+- **Account-scoped and advisory.** The map appears only when the request set
+  `include_execution_readiness: true` and carried an `account` the caller is
+  authorized for; otherwise the seller omits it (an `account` that does not
+  resolve still returns `ACCOUNT_NOT_FOUND`). It covers only the products on the
+  response. `create_media_buy` still revalidates and rejects per
+  `execution-requirement-unmet.json` or `AUTHORIZATION_REQUIRED`, which echo the
+  same requirement.
+- **Seller cost.** Whether an account has a pixel, catalog, or connection is the
+  same answer for every product that needs it. Sellers SHOULD read it once per
+  account and requirement kind and stamp every product on the page.
+
+**Caching.** The map is not part of the `cache_scope` layer. It does not change
+`cache_scope`, `wholesale_feed_version`, or `pricing_version`, so a public
+wholesale catalog stays `cache_scope: "public"` when readiness is added.
+`execution_readiness.version` is an opaque token for the account's readiness,
+independent of both feed tokens. Buyers MUST NOT dedupe or cache the map under
+the public key; they key it by `(account, execution_readiness.version)`. Sellers
+MUST NOT put it in wholesale feed webhooks. It is omitted on `unchanged: true`
+responses, which carry no products, so refreshing readiness means refetching the
+page; conditional fetch of the map is not specified. `version` identifies the
+account's readiness state, not the page: equal versions MUST imply identical
+entries for any product present in both responses, and buyers merge pages by
+`product_id`.
+
+Not in this slice: `lead_form` and `messaging_destination` requirements and
+bindings (Meta and TikTok attach lead forms at the ad level, so placement on the
+creative is checked first), listing several identities and buyer choice among
+them (tracked with the identity model in
+[adcp#7782](https://github.com/adcontextprotocol/adcp/issues/7782)), how a
+proposal carries bindings, conditional fetch of the map, and readiness change
+notifications. Proposal-derived packages remain outside the `execution_requirements`
+rejection rule.
 
 ### Product identity absence and reach reporting (experimental)
 
@@ -424,7 +565,7 @@ AdCP is a protocol onto the seller's ad operations, not a shadow ledger beside t
 
 Concretely:
 
-- `get_media_buys` MUST return every media buy owned by the authenticated account — whether created via `create_media_buy`, via the seller's native APIs or UI, via manual trafficking, or via legacy/third-party systems — subject only to the declared `status_filter` and pagination.
+- `get_media_buys` MUST return every media buy owned by the authenticated account — whether created via `create_media_buy`, via the seller's native APIs or UI, via manual trafficking, or via legacy/third-party systems — subject only to the declared filters (`status_filter`, `predecessor_media_buy_id`, and the like) and pagination.
 - Any `media_buy_id` returned by `get_media_buys` MUST be a valid argument to `get_media_buy_delivery` and to `update_media_buy` for every action listed in its `valid_actions`.
 - A sales agent MUST NOT mark a buy read-only, hide it, or return `MEDIA_BUY_NOT_FOUND` on the basis that it was not originally booked through AdCP.
 - When a specific action is unavailable for business reasons (contractual obligations, platform constraints, policy), the sales agent expresses that by omitting the action from `valid_actions`, not by refusing the buy from account-scoped listings.
@@ -438,6 +579,23 @@ When a seller has a legitimate reason to keep a set of buys outside a caller's o
 - Within any account the caller *is* authorized on, return the full set of buys that account owns per the rules above.
 
 The account boundary is the AdCP primitive for access partitioning; `get_agent_capabilities` is the introspection surface for the scope granted on a given account. Callers can see what they can see; what they cannot see lives behind an account reference they do not hold. Within-account filtering — returning only a subset of an account's buys to a caller who is authorized on that account — reintroduces the shadow-ledger problem this rule forbids.
+
+### Media Buy Lineage
+
+A media buy MAY declare the earlier buy it succeeds — a renewal onto a new flight, a replacement, a migration, or a sunset into a successor — so buyers do not rebuild spend continuity, pacing baselines, and dispute context out of band. `history[]` records one buy's own revisions; lineage links two different buys.
+
+- **Forward-only.** The successor carries `predecessor_media_buy_id` and `lineage_reason`, set once at creation on [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), [`buy_products`](/docs/media-buy/task-reference/buy_products), or [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) (when acceptance creates a new MediaBuy). There is no field on the predecessor and no update action: the fields are not part of `update_media_buy`, and a seller MUST NOT apply them if sent there. Creating a successor MUST NOT change the predecessor's AdCP-visible state, including `status`, `revision`, `updated_at`, and `history[]`, and MUST NOT add a reverse pointer to it. Canceled and completed buys are never mutated. Creating the successor does not cancel or complete a live predecessor; the buyer does that separately, and this section does not limit how many buys name the same predecessor.
+- **Same seller, same account.** The value MUST be the `media_buy_id` of an existing buy owned by the same seller and the same account as the request. `media_buy_id` is seller-namespaced, so cross-seller lineage is not expressible. The predecessor MAY be in any status; it need not be terminal.
+- **Invalid links are rejected.** The seller MUST reject the request with [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) when no such buy is accessible to the caller in the request's account, and MUST NOT reveal whether the ID exists under another account. It MUST reject with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) when `predecessor_media_buy_id` and `lineage_reason` are not supplied together, or when an `accept_proposal` request carries them for a proposal whose `proposal_kind` is `media_buy_update` or `media_buy_cancellation`. A rejected request creates no media buy. Because the link is set once and must name an already-existing buy, a cycle cannot form; there is no depth limit and no lineage-specific error code.
+- **No silent drop.** A seller that receives a schema-valid link it cannot record MUST reject the request with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) and MUST NOT create an unlinked buy. Because these schemas allow additional properties, a seller that predates lineage may ignore the fields; a buyer therefore reads the echo on [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) after creation and treats its absence as "link not recorded".
+- **Closed reason.** `lineage_reason` is `renewal`, `terms_change`, `migration`, `sunset`, or `replacement`. `replacement` is the seller substituting a buy for one it could not fulfill as booked. Reasons outside the enum travel in `ext`; buyers branch only on the enum.
+- **Async and replay.** A seller SHOULD validate the link before returning a `submitted` envelope, and the link MUST appear on the completed buy. The fields are part of the request the idempotency key protects: an exact replay returns the stored outcome without re-validating the predecessor, and a changed link under the same key is an idempotency conflict.
+- **Read and reverse lookup.** `get_media_buys` echoes both fields on every buy created with them and accepts a `predecessor_media_buy_id` filter that returns the direct successors of a buy in every status. Chains are walked one hop at a time, and the predecessor of a returned buy MAY no longer be retrievable.
+- **No commercial effect.** Lineage is a record, not a contract: it carries no pricing, budget, delivery, or creative inheritance, the seller applies none of the predecessor's terms to the successor, and the fields are outside any proposal terms digest.
+
+**Experimental in AdCP 3.3** (`media_buy.lineage`). A seller that implements lineage MUST list `media_buy.lineage` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), and buyers send the fields only to sellers that do; a seller that does not list it MUST NOT record them, and rejects them with `UNSUPPORTED_FEATURE` as above. See [Experimental Status](/docs/reference/experimental-status).
+
+Buy-level lineage is distinct from spot-level `replaces_spot_id`, which links airings inside a delivery report (`media_buy.spot_lifecycle`). Seller-initiated replacement offers are a separate flow; lineage is the persistent link recorded once a replacement buy exists, whatever initiated it. Decision record: DR-0030.
 
 ### Asynchronous Operations
 
@@ -463,9 +621,11 @@ or partial update from that request.
 Request validation is not creative review. After valid creative input has been
 committed, a later content-policy, brand-safety, or accessibility rejection
 updates creative and assignment approval state but does not roll back the
-MediaBuy or a successful update. Before activation, a buy without sufficient
-approved coverage remains `pending_creatives` until the buyer supplies a
-correction or replacement. Rejection affecting an active buy follows the
+MediaBuy or a successful update. Before activation, a blocking rejection that
+requires buyer correction yields `pending_creatives`; waiting only on seller
+review of assigned creatives yields `pending_start`. An eligible approved
+subset may start under the [creative start policy](#starting-with-assigned-creatives-under-review).
+Rejection affecting an active buy follows the
 creative-impairment and serving rules instead of reversing commitment.
 
 The compact lifecycle separates commitment, operational control, and creative
@@ -482,176 +642,6 @@ targeting with assignment replacement, or when an inline-only seller has no
 creative library. A targeting change that would orphan an assignment MUST be
 validated with its complete assignment replacement in the same facade update;
 `control_media_buy` followed by `sync_creatives` cannot provide that guarantee.
-
-### Definition pins
-
-`terms_digest` covers `commercial_terms`, but `commercial_terms` names some
-definitions that a third party publishes and can change after the proposal is
-committed: a publisher's format option, a placement, a collection, a data
-provider's signal. A pin records what the seller resolved when it authored the
-terms, so a buyer or seller can detect that a referenced definition changed even
-though `terms_digest` still verifies.
-
-Pins are `commercial_terms.definition_pins[]` entries
-([`definition-pin.json`](https://adcontextprotocol.org/schemas/latest/core/definition-pin.json)).
-Each carries `ref_kind`, a closed canonical `reference` identity object, a
-lowercase-hex SHA-256 `content_digest`, and an optional informational
-`source_version`.
-
-#### Covered set
-
-A covered reference is one of these, found in `commercial_terms.purchases[]`:
-
-| `ref_kind` | Where it occurs | Reference | Published entry |
-| --- | --- | --- | --- |
-| `publisher_format_option` | `format_option_refs[]` items with `scope: publisher` | `{ publisher_domain, format_option_id }` | Top-level `formats[]` of the publisher's `adagents.json` |
-| `publisher_placement` | `targeting_overlay.placement_selection.placement_refs[]` when `mode` is `selected`, for a `placement-identity` of `kind: publisher_ref` or a legacy `{ publisher_domain, placement_id }` that resolves in the publisher's `placements[]` | `{ publisher_domain, placement_id }` | `placements[]` |
-| `publisher_collection` | `targeting_overlay.collection_selection.collections[]`, one pin per `collection_ids[]` entry | `{ publisher_domain, collection_id }` | `collections[]` |
-| `data_provider_signal` | `targeting_overlay.signal_targeting_groups` entries, and the deprecated `signal_targeting`, whose `signal_ref` has `scope: data_provider` | `{ data_provider_domain, signal_id }` | `signals[]` of the data provider's `adagents.json` |
-
-These are not pinned: property lists and collection lists (buyer-managed and
-designed to change during a flight, with `list_applications` receipts as the
-evaluation record), product-local format options, seller-inline placements,
-product-scoped and signal-source signals (a seller would only be hashing and
-checking its own data), and default-mode selections (`mode: default`). A pin
-covers the entry as published, not the entries it names by ID: a placement pin
-does not pin the catalog format options that placement lists, which are pinned
-only when a purchase references them itself.
-
-#### Authoring and verification
-
-- A seller MUST emit one pin for every distinct covered reference in
-  `purchases[]` on every `new_media_buy` and `media_buy_update` draft and
-  revision, and MUST NOT emit such terms without the pins. Entries are unique by
-  `(ref_kind, reference)`, with `reference` compared by its JCS bytes, and
-  ordered by `ref_kind`, then by the JCS bytes of `reference`, both compared as
-  UTF-8 bytes, so equal terms always produce equal `terms_digest` values. An
-  amendment is a new commitment over the whole resulting envelope, so its pins
-  are issued at the current definitions; the prior accepted snapshot is
-  immutable and keeps its own pins. A `media_buy_cancellation` proposal commits
-  no new reference and carries no pins. Sellers emit pins, and
-  `definition_changed`, only to callers negotiating AdCP 3.3 or later.
-- Only sellers author pins. The `request_proposals`, `refine_proposals`,
-  `accept_proposal`, and `buy_products` inputs reject `definition_pins` with
-  `INVALID_REQUEST`; `check_governance` is exempt because it carries the
-  seller-authored proposal. A direct `buy_products` creates the seller-authored
-  pins and the accepted snapshot atomically.
-- A revision re-resolves every covered definition and issues fresh pins. A
-  committed proposal is term-preserving, so `refine_proposals` `finalize`
-  re-resolves each existing pin and verifies every pin in the batch **before**
-  taking any hold. If any pin fails, no hold is taken and the entry is
-  `outcome: unable` with `reason_code: definition_changed` and a required
-  `drifted_pins[]` naming each failing pin and the digest the definition
-  resolves to now; its own `definition_changed` takes precedence over
-  `batch_aborted`, which the otherwise-eligible siblings return. Only
-  `commercial_terms` is frozen; `forecast` may differ between a draft and its
-  committed successor.
-- `accept_proposal` re-verifies every pin **before** mutating any state, after
-  the cheaper proposal ID, digest, expiry, and authorization checks. A failing
-  pin returns `REFERENCE_DEFINITION_CHANGED`, one error per drifted pin, with
-  `error.field` naming the pin (for example `commercial_terms.definition_pins[2]`)
-  and `details.current_content_digest`. An idempotent replay of an acceptance
-  that already completed returns the stored result without re-verifying pins.
-  The seller fetches and compares outside the commit, performs no network I/O
-  while holding a lock, and commits only if the proposal state is still the one
-  it verified. `finalize` likewise runs its authorization and expiry checks
-  before any fetch.
-- Resolution uses a copy of the publisher's document no older than its own HTTP
-  cache validity and in any case no older than 300 seconds: a verifier
-  revalidates an older copy with a conditional request, and the
-  serve-stale-on-error fallback does not apply to pin verification. A verifier
-  fetches each distinct domain once per verification under an aggregate
-  deadline and follows the `adagents.json` location, `authoritative_location`,
-  redirect, and size rules unchanged. A document that was fetched and validated but no longer
-  contains the entry means the definition was withdrawn: that is drift, with
-  `current_content_digest` omitted. A document that cannot be fetched or
-  parsed is transient, not drift: the seller returns `SERVICE_UNAVAILABLE`
-  at task level without taking a hold or mutating state, with an error message
-  that does not expose the fetch target, resolver detail, or internal addresses.
-  Duplicate IDs in the
-  source array make the definition unresolvable. Document-level context outside
-  the entry (`properties[]`, `authorized_agents`, tag maps) is outside the pin.
-- Accepted terms retain their pins as the historical record. Post-acceptance
-  drift and remedy policy, retention of pinned content, and signal-source
-  signals are not specified in this version.
-- Private-list credentials, including `auth_token`, never appear in a pin.
-  Keeping them out of accepted commercial terms is specified separately from
-  this version's pins. A readback of accepted terms shows pins as the record of
-  what was resolved at commitment and makes no ongoing integrity claim.
-  `check_governance` carries a buyer-submitted proposal, so a governance agent
-  treats its pins as unverified claims.
-
-#### Definition pin preimage
-
-The preimage rules cannot change without making existing pins unverifiable, so
-the normative form is data:
-[`test-vectors/definition-pins/vectors.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/definition-pins/vectors.json)
-`projection_rules`. The algorithm is:
-
-1. Take the published entry exactly as parsed from the publisher's
-   `adagents.json`, resolved from the same source the seller used for the
-   reference. Apply no schema defaults; an absent member and a `null` member are
-   different. Every own member is hashed, including one literally named
-   `__proto__`. An entry that is not I-JSON ([RFC 7493](https://www.rfc-editor.org/rfc/rfc7493)),
-   such as one with a lone surrogate, a duplicate member name, a number that is
-   not finite or not exactly representable as an IEEE 754 double, nesting deeper
-   than 64 levels, or an entry or nested element that is not an object, has no
-   JCS form; a verifier treats that definition as unresolvable, which is drift.
-   Pins are computed only from public, unauthenticated sources.
-2. Remove the top-level members named in the kind's exclusion list below.
-   Exclusion applies only to top-level members, and to top-level members of each
-   element of a nested array. Deeper members stay verbatim.
-3. For each named set array present, de-duplicate its elements by JCS bytes and
-   sort them ascending by the UTF-8 bytes of their JCS serialization. A nested
-   array is a set array whose elements are projected first, either with another
-   kind's rules or with element rules given inline for that array (an exclusion
-   list and named set arrays of the element's own).
-4. Serialize with [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JCS),
-   compute SHA-256 over the UTF-8 bytes, and encode as lowercase hex with no
-   algorithm prefix.
-
-| `ref_kind` | Excluded members | Named set arrays |
-| --- | --- | --- |
-| `publisher_format_option` | `display_name`, `ext`, `publisher_domain`, `reference_renderer`, `sample_render_url`, `seller_preference` | `applies_to_channels`, `applies_to_property_ids`, `applies_to_property_tags`, `v1_format_ref` |
-| `publisher_placement` | `description`, `ext`, `name`, `presentation_ref`, `preview_provider`, `publisher_domain`, `tags` | `audio_distribution_types`, `channels`, `collection_ids`, `identifiers`, `property_ids`, `property_tags`, `social_placement_surfaces`, `sponsored_placement_types`, `video_placement_types`; `format_options[]` elements are projected as `publisher_format_option` and then treated as a set |
-| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` | `genre`; `distribution[]` elements are projected with `followers` excluded and then treated as a set |
-| `data_provider_signal` | `criteria_url`, `description`, `ext`, `last_updated`, `name`, `tags` | `allowed_values`, `consent_basis`, `countries`, `data_sources`, `id_types`, `policy_categories`, `restricted_attributes` |
-
-The exclusions are display text, presentation pointers, collection-card media
-(`images`, `sample_content`, and the collection page `url`), extension data,
-freshness timestamps, cast, tags, and the origin-dependent `publisher_domain`.
-Only a top-level `ext` is excluded (and the top-level `ext` of each element
-projected with another kind's rules); an `ext` deeper in the entry, such as
-inside `params` or a `distribution` entry, stays verbatim.
-Excluding `tags` is deliberate: authorization scope is verified through supply
-path, not through pins. Everything else, including members the AdCP schemas do
-not name, is part of the preimage. A rename or a new card thumbnail is not drift; a change to
-`content_rating`, creative `params`, a collection's `status`, or a signal's
-`segmentation_criteria` is. A refreshed platform-reported follower count
-(`distribution[].followers`) is not drift; a change to any other member of a
-`distribution` entry, such as an identifier, is. Publishers keep non-material
-metadata in `ext`.
-Arrays that are not named set arrays keep their published order. The table is
-frozen for each `ref_kind`; changing a rule requires a new `ref_kind` value,
-because the pin carries no projection version. The pointer members
-`presentation_ref`, `preview_provider`, `reference_renderer`, and `criteria_url`
-are excluded because they name where to find presentation or disclosure
-material, not what is being bought; a verified pin does not vouch for what those
-pointers serve, so consumers apply the SSRF profile when fetching them. The digest does not bind
-`ref_kind` or `reference`: the pin's own fields and `terms_digest` bind identity,
-and a digest is only ever compared with the digest of the same pin.
-
-Re-resolving a pin is a fetch of the publisher's `adagents.json` and follows the
-same safeguards as every other counterparty-controlled fetch (HTTPS, reserved
-address rejection, bounded redirects, no credentials; see the
-[SSRF profile](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf)).
-The pin's domains are seller-chosen, so a buyer verifying pins applies those
-rules rather than trusting the host named in a pin. `source_version` is never
-dereferenced.
-
-The vectors include a collection-mutation case: the pinned collection's
-`content_rating` changes after commitment, `terms_digest` still verifies, and
-the pin fails.
 
 ### Media Buy State Transitions
 
@@ -675,7 +665,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 **Rules:**
 
 - Sales agents MAY return `active`, `paused`, `pending_creatives`, or `pending_start` from `create_media_buy` (seller's choice based on platform setup time and the buyer's create-time `paused` request)
-- Sales agents MUST transition media buys from `pending_start` to `active` when the flight date arrives. Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
+- Sales agents MUST transition committed media buys (`confirmed_at` non-null) from `pending_start` to `active` when the flight has begun and creative readiness permits delivery, unless the buyer has paused delivery. A buy waiting only on seller creative review stays `pending_start` even after its flight date arrives; approval automatically releases that blocker, while a blocking rejection requires buyer correction. See [Starting with assigned creatives under review](#starting-with-assigned-creatives-under-review). A provisional buy (`confirmed_at: null`) never auto-activates; see [Provisional buys](#provisional-buys-seller-review-hold). Status changes follow the observation rules below.
 - A successful committed `create_media_buy` response constitutes **order confirmation**. Sales agents MUST include `confirmed_at` in create/get responses; the value is the seller commitment timestamp, or `null` for a provisional buy that exists but is still waiting for seller commitment.
 - Sales agents MUST include `revision` in create, get, and update responses. The revision number MUST advance on every committed change to the state `get_media_buys` reports, whatever the change's origin; see [Revision and confirmation semantics](#revision-and-confirmation-semantics).
 - `active` ↔ `paused` transitions use `update_media_buy` with `paused: true` or `paused: false`
@@ -697,6 +687,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - **Creative review is independent of buy outcome.** Sales agents MUST NOT implicitly reject a creative because its containing buy was rejected; a creative rejection MUST be a deliberate review decision with its own `rejection_reason`. If the buy was rejected because a creative violated content policy, the sales agent MAY reject that creative — but only via the normal review path with its own `rejection_reason`; the buy's `rejected` status is not itself sufficient.
 - **Observability of released assignments.** The media-buy-level `canceled` or `rejected` transition, preserved in `get_media_buys` status and history, IS the audit record for all its released assignments; buyers MUST NOT rely on per-assignment diff observability. A negotiated implementation webhook extension may accelerate discovery but is not required by 3.x. Released assignments no longer appear in `get_media_buys` responses for that buy. Buyers confirming library reusability SHOULD call `list_creatives` to verify the creative is still in the library and observe its current status. Inline-only buyers should retain their submitted creative bodies because `get_media_buys` surfaces package-level approval state, not full creative-body retrieval. Package-scoped deadlines (`creative_deadline`) on the prior package have no bearing on a library creative's eligibility for a new buy.
 - **Retention.** Sales agents with creative libraries SHOULD retain released creatives in the library for at least 90 days after the last assignment is released. A normative retention floor is specified in the creative retention contract tracked under [#2260](https://github.com/adcontextprotocol/adcp/issues/2260); until that contract lands, buyers relying on long-horizon reuse SHOULD verify persistence via `list_creatives` before referencing a released creative on a new buy.
+- **Package retention (AdCP 3.3).** A returned `canceled` or `completed` buy MUST retain all known package records. On adoption, sellers preserve records already held and durably record packages subsequently created or observed. Individual package cancellation also preserves the package in readback. Platform deletion does not justify dropping known packages; persisted records reflect the latest recorded committed configuration regardless of origin. The parent status ends package serving without rewriting previously terminal package outcomes or cancellation metadata, and released creative assignments remain released. Irrecoverable pre-adoption or never-observed external history need not be reconstructed, but sellers MUST explicitly disclose incomplete history alongside all retained records. Responses served as AdCP 3.2 permit empty terminal package lists and offer no retention guarantee. See [terminal package retention](/docs/media-buy/task-reference/get_media_buys#terminal-package-retention) for status, identity, migration, and served-version requirements.
 
 #### Revision and confirmation semantics
 
@@ -741,6 +732,20 @@ it MUST NOT leave a stale accepted-proposal pointer.
 
 `confirmed_at` is the seller's commitment timestamp, not a delivery-status timestamp. Once populated, it remains stable through later pause, resume, cancellation, completion, and reporting transitions. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
+#### Provisional buys (seller review hold)
+
+A seller that reviews a non-guaranteed buy before committing to it MAY hold the buy by returning synchronous success with a `media_buy_id` and `confirmed_at: null`, as described above. This is the hold path for [`sales-fixed-rate`](/docs/building/verification/compliance-catalog#which-hold-path); guaranteed sellers that need an IO signature use the `submitted` task arm instead. While `confirmed_at` is `null`:
+
+- **Two independent axes.** `status` (`media_buy_status` on `create_media_buy`, `status` on `get_media_buys`) is the buyer-actionable readiness axis. `confirmed_at` is the seller-commitment axis. Commitment is keyed off `confirmed_at`, never off `status`. A provisional buy reports `pending_creatives` when missing coverage or a blocking rejection requires buyer action, and `pending_start` when waiting on seller confirmation, creative review, or the flight date. Neither value means the seller has accepted the buy, and `active` is not permitted.
+- **Confirmation is a state change.** When the seller commits, it sets `confirmed_at` exactly once and, as for every mutating state change, increments `revision`. The `status` after confirmation follows the ordinary lifecycle for the buy's creative readiness and flight.
+- **Idempotency replay.** An exact replay of the original `create_media_buy` returns the original response, including `confirmed_at: null` and the original `revision`, even after the seller has confirmed. Buyers read current state through `get_media_buys`; a replay never shows the confirmed state and never increments `revision`.
+- **Rejection and cancellation.** The seller MAY reject a held buy (`status: rejected`, with `rejection_reason`), and the buyer MAY cancel it with `update_media_buy` (`canceled: true`). In both cases `confirmed_at` stays `null`: a buy that was never committed does not acquire a commitment timestamp by ending.
+- **Pause and resume.** The `valid_actions` table lists `pause` for `pending_creatives` and `pending_start` regardless of commitment. A buyer `pause` on a held buy sets the same latent create-time hold described above and does not commit the seller or change `confirmed_at`. A seller that does not accept buyer `pause` or `resume` on a buy it is still reviewing SHOULD omit them from `valid_actions` and reject the request with `INVALID_STATE`.
+- **Flight start before confirmation.** Because a provisional buy MUST NOT be `active`, the `pending_start` to `active` transition does not occur for it. A held buy whose flight start passes stays `pending_start` until the seller either confirms it (after which it follows the ordinary lifecycle, so a confirmed buy whose flight has begun and whose creatives are ready is `active`) or rejects it. Sellers SHOULD confirm or reject before the flight start.
+- **Expected confirmation time.** A seller MAY expose an informational `expected_confirmation_at` on `get_media_buys` while `confirmed_at` is `null`, such as the end of a review window or the next ad-server read-back. It is absent once `confirmed_at` is set. It is not an SLA or an expiry, no seller or buyer behavior depends on it, and buyers MUST key commitment off `confirmed_at`, never off this field.
+- **Commitment waits on read-back.** A seller whose commitment waits on ad-server read-back keeps `confirmed_at: null` until the check passes, and the buy reports `pending_start` or `pending_creatives` meanwhile.
+- **Observation is by polling.** Confirmation, rejection, and seller cancellation are observable through `get_media_buys`. The media-buy wire defines no status-change webhook, so buyers cannot rely on one; a seller advertising the experimental `account.change_feed` capability with `media_buy` coverage MAY emit its generic invalidation, which the buyer repairs through `get_media_buys`.
+
 **Package-level lifecycle:**
 
 Packages follow the same pause/cancel pattern as media buys. Additionally:
@@ -748,6 +753,128 @@ Packages follow the same pause/cancel pattern as media buys. Additionally:
 - Package cancellation (`canceled: true` in a package update) is irreversible and independent of the media buy's status — a single package can be canceled while the media buy remains active. Creative assignments on the canceled package are released per the media-buy-level rule above; creatives assigned to other active packages on the same media buy are unaffected.
 - Sales agents MUST retain delivery data for canceled packages. When `include_snapshot` is true, sales agents SHOULD return a final snapshot reflecting delivery state at the time of cancellation.
 - When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Sellers that support mid-flight package additions advertise `add_packages` in `valid_actions` — the buyer can add new packages via `new_packages` in `update_media_buy`. Otherwise, the buyer SHOULD explicitly cancel the media buy. Sales agents SHOULD notify orchestrators (via `context.notes` in the update response) when the last active package is canceled. Sales agents MAY auto-transition the media buy to `canceled` after a seller-defined grace period if no new activity occurs.
+
+### Starting with assigned creatives under review
+
+In AdCP 3.3, assignment and approval are separate. A buyer MAY assign an
+existing library creative whose status is `pending_review` or `rejected`
+through package `creative_assignments`, `sync_creatives.assignments`, or
+`sync_creatives.assignment_operations`. Sellers MUST accept an otherwise valid
+assignment regardless of that review status and MUST retain it through review,
+rejection, and correction under the same `creative_id`. This does not waive
+reference, format, targeting, destination, tracker, or deadline validation.
+Inline creatives follow the same serving rules after valid ingestion.
+
+By default, the seller books the buy and starts each eligible assignment as it
+is approved, subject to the flight, buyer pause, seller commitment, and required
+format coverage. Sellers MUST NOT wait for every assigned creative to be
+approved. Pending-review and rejected assignments do not serve; they remain
+assigned and become eligible after approval without another assignment request.
+A resubmission under a new `creative_id` needs its own assignment.
+With the default policy, a `partially_approved` assignment may serve only its
+approved scopes; pending or rejected scopes remain ineligible.
+
+The package boolean `start_requires_all_creatives_approved` defaults to `false`.
+Buyers MAY set it to `true` on `create_media_buy.packages[]` or
+`update_media_buy.new_packages[]` when a sequential rotation, A/B split, or
+coordinated launch requires the whole creative set at first release for serving. The seller
+MUST still book the package and retain its existing inventory commitment, but MUST hold
+its initial delivery until **every current assignment** is approved for every
+scope where that assignment may serve. This includes assignments with zero
+weight; an empty assignment set never satisfies the gate. Library `status:
+"approved"` alone is insufficient: use package `creative_approvals[]`, including
+`approval_scopes[]` for a `partially_approved` assignment. Any pending or rejected
+applicable scope keeps this gate closed.
+
+This changes delivery readiness, not commercial guarantees: non-guaranteed
+inventory does not become reserved by setting the flag. For generative or
+conversational creatives, preview completion is not approval; the selected
+execution must pass the ordinary package and scope reviews. The gate guarantees
+initial eligibility only, not equal A/B exposure, uninterrupted sequential
+cycles, simultaneous roadblock impressions, or group atomicity after startup.
+
+The gate is package-scoped: it does not hold another ready package on the buy.
+The first release occurs when the seller first enables this package for serving
+after commitment, flight, pause, and creative-readiness conditions permit it.
+It does not depend on the first impression or the arrival of delivery reports.
+A buyer pause prevents release and does not consume the gate. The seller MUST
+persist this per-package boundary, advance the MediaBuy revision, and, when it
+returns history, record a `package_activated` entry with `package_id` and the
+appropriate `origin`. Aggregate buy status cannot stand in for this boundary
+when another package has already started.
+
+Before release, adding or removing assignments recomputes the gate over the
+resulting set. **The gate cannot anticipate future assignments.** Buyers MUST
+attach the complete intended launch set atomically, or keep delivery paused
+throughout staged assignment. Assigning approved A in one call and pending B in
+a later call without a pause can let A consume the gate before B is assigned.
+
+Buyers MAY change the boolean through `update_media_buy.packages[]` or
+`control_media_buy.packages[]`; omission preserves the policy and `false`
+clears the gate. This is an operational control under the structured
+`update_creative_start_policy` available action, outside accepted commercial
+terms and their digest. A supporting seller MUST expose that package-scoped
+action before release so the buyer can set or clear the policy. A seller MUST
+include `task: "control_media_buy"` and explicit `applicable_package_ids` naming
+exactly the packages where it currently permits startup-policy changes; it
+MUST omit commercial `change_term_id` and `terms_ref` on this action. Buyers
+use this seller-owned scope rather than infer package enablement from the
+aggregate buy status. A seller MUST reject a policy change after this package's first enablement with
+`INVALID_STATE`. Later assignment changes and re-review follow ordinary
+selection and impairment rules and do not re-arm the gate.
+
+Compact buyers check support before booking, commit through `buy_products` or
+`accept_proposal`, set the gate through `control_media_buy` using the returned
+package IDs and latest revision, then assign the complete set through one
+strict `sync_creatives.assignment_operations` batch. No creative assignment
+belongs in the purchase request. For staged supply, keep the buy or package
+paused until the intended set is assigned, then resume when review permits it.
+
+Sellers MUST echo the effective boolean, including a defaulted `false`, on
+created packages, `update_media_buy.affected_packages[]`, and
+`get_media_buys.packages[]`. Buyers MUST negotiate AdCP 3.3 or later and check
+`get_adcp_capabilities.media_buy.features.creative_start_policy: true` before
+opting in, including before committing a compact purchase. False or absent
+means the opt-in is unsupported. An unsupported seller MUST reject `true` with
+`UNSUPPORTED_FEATURE` before mutation; explicit `false` is the ordinary default.
+The new field MUST NOT be sent to older sellers.
+
+Before a buy has started, its status distinguishes the actor that can unblock
+delivery:
+
+| Condition when no package can start | MediaBuy status | Next step |
+|---|---|---|
+| Required creative coverage is missing | `pending_creatives` | Buyer supplies and assigns creatives |
+| Coverage is assigned, but seller review alone blocks delivery | `pending_start` | Seller completes review |
+| A rejection blocks required coverage or the all-creatives gate | `pending_creatives` | Buyer corrects, replaces, or removes the rejected assignment, or clears the optional gate |
+| Creatives permit delivery, but the flight or seller confirmation is pending | `pending_start` | Wait for the flight or seller commitment |
+
+A pending review is not a promise that the buy will start: it can end in
+rejection. Buyers inspect `get_media_buys.packages[].creative_approvals` for the
+decision and rejection reason, and library sellers also expose the creative's
+status through `list_creatives`. In AdCP 3.3, a blocking review rejection before
+activation permits `pending_start` → `pending_creatives`; implementations must
+update transition validation as well as their status descriptions. This does
+not permit `active` or `paused` buys to rewind to a pending status.
+If review blocks a never-enabled package while it is visibly paused, keep the
+pause and expose the blocking approvals. A resume that cannot enable any
+requested package because its initial gate is blocked MUST fail with
+`INVALID_STATE`, preserving the hold; the buyer can clear the optional gate or
+wait for approval. This does not prevent clearing a latent hold while the buy
+already reports a pending status. When all blockers clear, a committed buy
+whose flight has begun starts automatically, or enters `paused` if a buyer hold
+is set. A mixed-package buy can be `active` while another package awaits review.
+After activation, loss of creative eligibility follows the existing impairment
+rules instead of rewinding the buy's lifecycle.
+
+For example, assume one package has five assigned creatives: two approved, one
+rejected, and two in review. Required format coverage and other launch
+conditions are satisfied. With the default `false`, the two approved creatives
+serve and the others stay assigned. With `true`, the package is booked but
+cannot start; the blocking rejection requires `pending_creatives` and buyer
+correction. Once corrected and resubmitted under the same ID, it stays assigned
+and the buy reports `pending_start` while review finishes. Approval of the last
+assignment releases the gate automatically.
 
 ### Creative Approval on Packages
 
@@ -818,6 +945,7 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 - Sales agents SHOULD fulfill the `ask` on proposal entries with `action: "include"`
 - Sales agents SHOULD include `refinement_applied` in the response, with one entry per change request matched by position
 - Sales agents that return `refinement_applied` MUST echo `scope` on each entry and MUST echo `product_id` / `proposal_id` for product and proposal scopes, so orchestrators can cross-validate alignment
+- In AdCP 3.3, product-scoped `include` entries MAY carry `package` with create-package field types, required `pricing_option_id` and numeric `budget`, and `product_id` supplied by the enclosing entry. Other scopes and actions MUST NOT carry `package`. Sales agents MUST follow the [exact-package forecast contract](/docs/media-buy/product-discovery/refinement#check-an-exact-package-before-booking): resolve the goal, flight, and targeting without guessing; return a complete `refinement_applied` array and either `applied` with an exact availability forecast, `result_product_id` referencing exactly one returned Product with unchanged selected pricing terms, and `resolved_start_time`/`resolved_end_time` to copy to the package at create, or `unable` with non-empty explanatory notes and no substitute forecast; forecast entries independently without subtracting other proposed packages; and perform no booking, hold, reservation, creative upload, or assignment. Insufficient inventory is an `applied` forecast with `availability_status: "unavailable"`. No separate capability flag is defined, and omitted outcomes do not confirm support.
 - Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
 
 ### Canonical creative-format discovery
@@ -851,6 +979,7 @@ Create a media buy from selected packages or execute a proposal.
 **Requirements:**
 - Orchestrators MUST include either `packages` array or `proposal_id`
 - Orchestrators MUST include `start_time` and `end_time` for the campaign
+- Orchestrators MAY include `predecessor_media_buy_id` with `lineage_reason` to link the new buy to an earlier buy of the same seller and account; see [Media Buy Lineage](#media-buy-lineage)
 - Sales agents MUST return `media_buy_id` on successful creation
 - Sales agents MUST return `confirmed_at` on successful creation. The value is the seller commitment timestamp, or `null` when the response creates a provisional buy that is not yet committed.
 - Sales agents MUST return `revision` on successful creation
@@ -932,7 +1061,8 @@ Synchronize catalogs (products, inventory, stores, and vertical feeds) on a sell
 Retrieve operational media buy state, including package status, creative approvals, missing formats, and optional delivery snapshots.
 
 **Requirements:**
-- Orchestrators MAY filter by `account_id`, `media_buy_ids`, and `status_filter`
+- Orchestrators MAY filter by `account_id`, `media_buy_ids`, `status_filter`, and `predecessor_media_buy_id` (direct successors of a buy; see [Media Buy Lineage](#media-buy-lineage))
+- Sales agents MUST echo `predecessor_media_buy_id` and `lineage_reason` on every media buy created with them
 - Orchestrators SHOULD use cursor pagination (`pagination.max_results` / `pagination.cursor`) for broad scope queries
 - Sales agents MUST return every media buy owned by the authenticated account that matches the declared filter set, regardless of how the buy was created (AdCP, seller's native APIs/UI, manual trafficking, legacy systems). See [Account Ownership vs. Creation Surface](#account-ownership-vs-creation-surface).
 - Sales agents MUST return current media buy status and package-level operational state for each matched media buy
@@ -960,7 +1090,7 @@ For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-c
 - Sales agents SHOULD include creative approval outcomes and pending format requirements when available
 - If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
 - When `include_snapshot` is true and snapshots are returned, each snapshot MUST include `as_of` and `staleness_seconds`
-- Default `status_filter: ["active"]` applies only when `media_buy_ids` is omitted
+- Default `status_filter: ["active"]` applies only when both `media_buy_ids` and `predecessor_media_buy_id` are omitted
 
 #### Creative state freshness
 
@@ -1070,7 +1200,6 @@ Common error codes:
 - `BIDDING_PLACEMENT_CONFLICT`: Media-buy/package bidding scopes cannot be represented by the provider's native campaign, package, or shared-strategy placement. Sellers MUST reject before mutation and identify conflicting scopes where safe.
 - `AMBIGUOUS_BIDDING_POLICY`: Canonical `bidding` and legacy bidding fields are both present on the same effective package. Sellers reject rather than choosing precedence.
 - `REQUOTE_REQUIRED`: An `update_media_buy` request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The `pricing_option` remains locked; the seller is declining the requested shape at that price. Distinct from `TERMS_REJECTED` (measurement) and `POLICY_VIOLATION` (content). Details SHOULD follow [`error-details/requote-required.json`](https://adcontextprotocol.org/schemas/v3/error-details/requote-required.json): `envelope_field` names the breached paths, `change_term_id` identifies the governing accepted right when present, and `decline_reason` SHOULD classify a structured seller-policy reason when the coarse dimension is safe to disclose. AdCP 3.2 buyers use the reason to inform refinement of `accepted_proposal_id`; some policies still require the buyer-safe message, a free-text `ask`, or human negotiation. Legacy 3.1 callers adjust the update, rediscover products or terms, add packages when available, or create a separate media buy.
-- `REFERENCE_DEFINITION_CHANGED`: A third-party-published definition pinned in `commercial_terms.definition_pins[]` no longer resolves to the pinned `content_digest`. `accept_proposal` returns it before mutating state. Details SHOULD follow [`error-details/reference-definition-changed.json`](https://adcontextprotocol.org/schemas/latest/error-details/reference-definition-changed.json). Recovery: refine the proposal to obtain fresh pins, review the changed definition, and finalize again. See [Definition pins](#definition-pins).
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_MISSING`: No credentials were presented. Recovery: correctable.
 - `AUTH_INVALID`: Credentials were presented but rejected (expired / revoked / malformed). Recovery: terminal.
@@ -1114,7 +1243,6 @@ A conformant Media Buy Protocol sales agent MUST:
 8. Omit `targeting_resolution` for exact matches and disclose only modifications for configured alternatives
 9. Treat placement, property, and collection selection as targeting and return complete effective package targeting on readback
 10. Return dimension-specific execution details, including demographics, inside the generic package `targeting_resolution` envelope
-11. For callers negotiating AdCP 3.3 or later, pin every covered third-party-published definition in `commercial_terms.definition_pins[]`, verify the pins at `finalize` and before `accept_proposal` mutates state, and never accept request-authored pins
 
 See [Required tasks by protocol](/docs/protocol/required-tasks) for a consolidated view of required and optional tasks across all AdCP protocols.
 

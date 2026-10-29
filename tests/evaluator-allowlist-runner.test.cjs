@@ -228,6 +228,8 @@ for (const support of [false, 'absent']) {
 // Exercise actual SDK profiling, including its successful tool discovery plus
 // transient get-capabilities failure. An explicit storyboard run must not infer
 // evaluator support from an unknown profile, whatever the next response says.
+// Since SDK 16.5 (adcp-client#3392) failed discovery is terminal: the run fails
+// with `discovery_failed` before any optional gate, rather than skipping.
 for (const discoverySupport of [false, 'absent', true]) {
   test(`unknown preflight receives no evaluator coverage before later ${discoverySupport} discovery`, async () => {
     const { result, requests, trafficQueries, capabilityAttempts, steps } = await runEvaluatorBoundary({
@@ -235,14 +237,15 @@ for (const discoverySupport of [false, 'absent', true]) {
       discoverySupport,
     });
     assert.equal(capabilityAttempts, 1, 'normal profiling attempted capability discovery');
-    assert.equal(result.overall_passed, true, JSON.stringify(result));
-    assert.equal(result.failed_count, 0);
+    assert.equal(result.overall_passed, false, JSON.stringify(result));
+    assert.equal(result.failed_count, 1, 'failed discovery is a terminal grade, not an applicability skip');
     assert.equal(result.passed_count, 0, 'indeterminate applicability is not passing security coverage');
     assert.deepEqual(requests, []);
     assert.deepEqual(trafficQueries, []);
     assert.equal(steps.length, 1);
-    assert.equal(steps[0].skip.reason, 'not_applicable');
-    assert.match(steps[0].skip.detail, /raw capabilities unavailable/);
+    assert.equal(steps[0].step_id, 'discovery_failed');
+    assert.equal(steps[0].passed, false);
+    assert.match(steps[0].error, /cannot evaluate storyboard applicability from failed discovery evidence/);
   });
 }
 

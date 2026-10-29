@@ -57,6 +57,12 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp when the seller committed to this media buy. May be null until seller commitment occurs in deferred/manual approval flows. Once populated, remains stable through later pause, resume, activation, completion, cancellation, and reporting transitions."
     },
+    "expected_confirmation_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-added-in": "3.3.0",
+      "description": "Optional, informational estimate of when the seller expects to confirm this provisional buy (`confirmed_at: null`). A seller MAY set it when it knows a booking round, review window, or ad-server read-back that confirmation waits on. Absent once `confirmed_at` is set. It is not an SLA or an expiry, no behavior depends on it, and a passed timestamp is not a failure. Buyers MUST key commitment off `confirmed_at`, never off this field."
+    },
     "cancellation": {
       "type": "object",
       "description": "Cancellation metadata. Present only when status is 'canceled'.",
@@ -78,6 +84,12 @@
         }
       },
       "additionalProperties": false
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-added-in": "3.3.0",
+      "description": "When the seller moved the buy to completed; present when status is completed. Sellers advertising media_buy.reporting_subscriptions MUST populate it for completed buys, because a buy that completes before end_time stops being owed reporting at this instant."
     },
     "total_budget": {
       "type": "number",
@@ -131,6 +143,19 @@
       "$ref": "/schemas/core/context.json",
       "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST include persisted context on read surfaces such as get_media_buys when the media buy was created through AdCP with context, so buyers can reconcile seller-assigned media_buy_id values with their own tracking state. Sellers MAY omit context for media buys created outside AdCP or created without context. Sellers MUST NOT parse this object for business logic."
     },
+    "predecessor_media_buy_id": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "type": "string",
+      "x-entity": "media_buy",
+      "description": "Media buy this one succeeds, as set at creation. Same seller and account; the predecessor carries no reverse link and may no longer be retrievable. Sellers MUST echo it for buys created with it. Experimental in AdCP 3.3 (`media_buy.lineage`)."
+    },
+    "lineage_reason": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "$ref": "/schemas/enums/media-buy-lineage-reason.json",
+      "description": "Why this buy succeeds its predecessor. Present whenever `predecessor_media_buy_id` is."
+    },
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",
       "description": "Per-buy override for who receives the invoice. When provided, the seller invoices this entity instead of the account's default billing_entity. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
@@ -161,7 +186,9 @@
   },
   "dependencies": {
     "accepted_proposal_id": ["accepted_proposal_terms_digest"],
-    "accepted_proposal_terms_digest": ["accepted_proposal_id"]
+    "accepted_proposal_terms_digest": ["accepted_proposal_id"],
+    "predecessor_media_buy_id": ["lineage_reason"],
+    "lineage_reason": ["predecessor_media_buy_id"]
   },
   "allOf": [
     {

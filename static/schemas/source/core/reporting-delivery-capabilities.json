@@ -27,7 +27,45 @@
     },
     "configuration_task": {
       "type": "string",
-      "const": "sync_accounts"
+      "const": "sync_accounts",
+      "deprecated": true,
+      "description": "Deprecated in 3.3: 3.3 clients use configuration_tasks. Present when and only when configuration_tasks lists sync_accounts, or configuration_tasks is absent. Callers pinned below 3.3 know only this field, so a seller MUST serve sync_accounts registration to them; a seller listing only sync_principal serves reporting registration to 3.3 callers only."
+    },
+    "configuration_tasks": {
+      "type": "array",
+      "x-added-in": "3.3.0",
+      "items": { "type": "string", "enum": ["sync_principal", "sync_accounts"] },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Every task this seller accepts reporting registrations through. sync_principal means principal-level reporting_subscriptions; sync_accounts means account-level reporting_delivery_configs, listed by sellers that also serve that registration. A seller may list sync_principal alone. Buyers choose from the list."
+    },
+    "subscriptions": {
+      "type": "object",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Principal-level reporting subscriptions through the sync_principal reporting_subscriptions section (experimental): sellers advertising this block MUST list media_buy.reporting_subscriptions in experimental_features and sync_principal in configuration_tasks. Sellers supporting subscriptions MUST support per-account destinations through account-scoped subscriptions.",
+      "properties": {
+        "supported": { "type": "boolean", "const": true },
+        "max_accounts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Most accounts one subscription serves. Beyond it the seller excludes accounts with reason capacity, deterministically, and reports which. Absent means no declared limit."
+        },
+        "backfill_on_regrant": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether periods missed during a loss of authorization are delivered after re-grant. When true, no gap is recorded and every period in the revoked interval stays owed, due at the re-grant time plus the offering's delivery_sla. When false, the interval is recorded in subscription_coverage gaps with reason unauthorized and its periods are not owed."
+        },
+        "dimensions": {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/reporting-dimension.json" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Standard dimensions this seller maps its report definitions onto for selector matching."
+        }
+      },
+      "required": ["supported"],
+      "additionalProperties": false
     },
     "status_task": {
       "type": "string",
@@ -69,7 +107,8 @@
         "$ref": "/schemas/core/reporting-delivery-offering.json"
       },
       "minItems": 1,
-      "description": "Atomic supported feed/profile/schedule/finality/method combinations. offering_id values MUST be unique."
+      "description": "Atomic supported feed/profile/schedule/finality/method combinations. offering_id values MUST be unique.",
+      "maxItems": 64
     },
     "automated_recovery_window_seconds": {
       "type": "integer",
@@ -100,7 +139,8 @@
       "type": "array",
       "items": { "$ref": "/schemas/core/reporting-reliability-statistics.json" },
       "description": "Optional evidence-scoped observed performance for advertised offerings. offering_id values MUST be unique and name offerings in this capability block.",
-      "uniqueItems": true
+      "uniqueItems": true,
+      "maxItems": 64
     },
     "resource_retention_days": {
       "type": "integer",
@@ -119,13 +159,32 @@
   },
   "required": [
     "supported",
-    "configuration_task",
     "status_task",
     "offerings",
     "automated_recovery_window_seconds",
     "status_retention_days"
   ],
   "allOf": [
+    {
+      "if": { "not": { "required": ["configuration_tasks"] } },
+      "then": { "required": ["configuration_task"] }
+    },
+    {
+      "if": { "properties": { "configuration_tasks": { "contains": { "const": "sync_accounts" } } }, "required": ["configuration_tasks"] },
+      "then": { "required": ["configuration_task"] }
+    },
+    {
+      "if": { "properties": { "configuration_tasks": { "not": { "contains": { "const": "sync_accounts" } } } }, "required": ["configuration_tasks"] },
+      "then": { "not": { "required": ["configuration_task"] } }
+    },
+    {
+      "if": { "required": ["subscriptions"] },
+      "then": { "required": ["configuration_tasks"], "properties": { "configuration_tasks": { "contains": { "const": "sync_principal" } } } }
+    },
+    {
+      "if": { "properties": { "configuration_tasks": { "contains": { "const": "sync_principal" } } }, "required": ["configuration_tasks"] },
+      "then": { "required": ["subscriptions"] }
+    },
     {
       "if": { "required": ["consumer_status_task"] },
       "then": { "required": ["reliable_reporting_version", "revision_content_task"] }

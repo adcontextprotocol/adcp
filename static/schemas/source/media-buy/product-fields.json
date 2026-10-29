@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/product-fields.json",
   "title": "Product Response Fields",
-  "description": "Canonical product fields a buyer requests from list_products. Required product_id and name fields are always returned. list_applications also overrides projection whenever a property or collection list is in the effective targeting because it is the decision receipt for seller-specific list matching. targeting_resolution and expires_at override projection whenever the seller returns modifications, as does collection_targeting_allowed whenever returned overlay_support declares collection_list. Legacy named-format fields remain available only through get_products. A projection that omits collections also omits the response-level collections array.",
+  "description": "Canonical product fields a buyer requests from list_products. Required product_id and name fields are always returned. list_applications also overrides projection whenever a property or collection list is in the effective targeting because it is the decision receipt for seller-specific list matching. targeting_resolution and expires_at override projection whenever the seller returns modifications, as does collection_targeting_allowed whenever returned overlay_support declares collection_list or collection_lists. Legacy named-format fields remain available only through get_products. A projection that omits collections also omits the response-level collections array. On the canonical list_products path, requesting installments also returns collections, because a canonical installment names its collection and canonical-product.json requires the product to declare it. Legacy get_products shares this enum but not that rule: its installment keeps the deprecated single-namespace shorthand, so it can be returned without collections.",
   "type": "array",
   "minItems": 1,
   "uniqueItems": true,
@@ -34,6 +34,7 @@
       "overlay_support",
       "collections",
       "collection_targeting_allowed",
+      "installments",
       "media_buy_support",
       "audience_evidence",
       "audience_evidence_selections",
@@ -46,7 +47,8 @@
       "identity",
       "execution_requirements",
       "expires_at",
-      "allowed_actions"
+      "allowed_actions",
+      "creative_policy"
     ]
   }
 }

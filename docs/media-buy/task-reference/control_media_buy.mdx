@@ -13,6 +13,7 @@ Supported controls include:
 - total, aggregate-daily, and package budget controls;
 - budget allocation, pacing, bidding, and shared frequency capping;
 - package targeting, catalog references, keyword, impression, and optimization controls;
+- the package's initial creative-approval gate (AdCP 3.3);
 - MediaBuy display-name metadata; and
 - reporting-webhook configuration (include a buyer-supplied `operation_id`; see [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)).
 
@@ -30,6 +31,19 @@ before that sync is rejected with [`CONFLICT`](/docs/building/verification/compl
 `name` is revision-checked non-commercial metadata. Changing it updates the
 shared trafficking display label and increments MediaBuy revision, but does not
 change the accepted commercial terms or create an accepted-proposal successor.
+
+In AdCP 3.3, `packages[].start_requires_all_creatives_approved` is also
+operational state outside the accepted commercial terms. Check
+`media_buy.features.creative_start_policy: true` before booking if the launch
+requires it. After [`buy_products`](/docs/media-buy/task-reference/buy_products) or [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) returns package IDs, set
+this control before assigning any creatives. It uses the package-scoped
+`update_creative_start_policy` available action. Omission preserves the gate;
+`false` clears it before the package's first release for serving. An unsupported
+`true` fails atomically with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); changing the policy after
+the seller first enables this package for serving fails with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state).
+The boundary does not depend on measured impressions. See the
+[creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review)
+for review states, atomic assignment of the intended launch set, and paused staging.
 
 Consequently, a targeting patch that removes a placement used by an
 existing creative assignment cannot be performed as control followed by sync

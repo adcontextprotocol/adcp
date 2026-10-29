@@ -17,7 +17,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `product_id` (string, required): Opaque buyable identifier. Non-custom wholesale IDs remain stable for the same logical offer within seller and declared cache scope, including across reads and webhooks. Custom IDs remain stable only within their issuing discovery/refinement lineage.
 - `name` (string, required)
 - `description` (string, required)
-- `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
+- `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. A non-empty list is the complete roster; an empty list (`[]`) means the seller does not disclose it. See [Roster coverage](#roster-coverage) and [Property Targeting](#property-targeting).
 - `channels` (list[MediaChannel], optional in 3.x): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD explicitly declare at least one channel on every product. Products inherit from their properties' `supported_channels` but may narrow the scope; product channels SHOULD be a subset of the union of those property channels. See [Media channel taxonomy](/docs/reference/media-channel-taxonomy).
 - `video_placement_types` (list[string], optional): Declared video placement types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names: `instream`, `accompanying_content`, `interstitial`, and `standalone`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `audio_distribution_types` (list[string], optional): Declared audio distribution types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names: `music_streaming_service`, `fm_am_broadcast`, `podcast`, `catch_up_radio`, `web_radio`, `video_game`, and `text_to_speech`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
@@ -26,14 +26,14 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `format_options` (list[ProductFormatDeclaration], required for 3.2 authoring): Canonical format declarations accepted by this product. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats or `locale_policy` ranges the product does not accept. A declaration's optional `locale_policy.accepted_language_ranges` exposes seller-enforced creative-language eligibility before purchase. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
 - `format_ids` (list[FormatID], deprecated compatibility only): Optional projection for older 3.x peers. A 3.2 seller must not use this field as its only authored creative contract. When both fields are emitted, every legacy reference must resolve to the same underlying declaration in `format_options`. See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific public ad placements within this product. Each placement declares `kind` (`publisher_ref` or `seller_inline`) and `mode` (`targetable` or `included`); seller-private delivery objects are not exposed here. See [Placements](#placements).
-- `collections` (list[CollectionSelector], optional): Collections covered by this product, grouped by publisher. Each entry has `publisher_domain` and `collection_ids` referencing collections declared in that domain's `adagents.json` — which may be an external channel owner's domain, not the seller's. When the request sets `include_collections: true`, the response may also carry the full objects in a top-level `collections` array. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
-- `installments` (list[Installment], optional): Specific installments available within this product. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
+- `collections` (list[CollectionSelector], optional): Collections covered by this product, grouped by publisher. A non-empty list is the complete roster; an empty list (`[]`) means the seller does not disclose it, and an absent field makes no collection declaration. See [Roster coverage](#roster-coverage). Each entry has `publisher_domain` and `collection_ids` referencing collections declared in that domain's `adagents.json` — which may be an external channel owner's domain, not the seller's. When the request sets `include_collections: true`, the response may also carry the full objects in a top-level `collections` array. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
+- `installments` (list[Installment], optional): Specific installments available within this product. The canonical Product that the compact lifecycle reads carries the same field with a different, closed item shape — `CanonicalInstallment`, which requires `collection_ref` and drops the deprecated `collection_id` shorthand. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `exclusivity` (string, optional): Whether this product offers exclusive access. `"none"` (default when absent) — multiple advertisers can buy simultaneously. `"category"` — one advertiser per industry category. `"exclusive"` — sole sponsorship. Most relevant for guaranteed products tied to specific shows or placements.
-- `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. A binding option applies uniformly across later values permitted by `overlay_support`; a changed fixed price, floor, currency, model, or priced applicability receives a new `pricing_option_id`. Sellers with value-dependent rates use concretely targeted configured products, separate rate-tier products, or non-binding guidance. See [Pricing Models](#pricing-models).
+- `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. A binding option applies uniformly across later values permitted by `overlay_support`, except for [`price_adjustments`](/docs/media-buy/advanced-topics/pricing-models#selection-dependent-price-adjustments) the option itself declares; a changed fixed price, floor, currency, model, or priced applicability receives a new `pricing_option_id`. Sellers with value-dependent rates use concretely targeted configured products, separate rate-tier products, or non-binding guidance. See [Pricing Models](#pricing-models).
 - `delivery_measurement` (object, optional): Who measures ad delivery — the ad server and viewability vendor used to count impressions. New implementations populate `vendors` as a structured `BrandRef` array (e.g., `[{ "domain": "googleadmanager.com" }, { "domain": "integralads.com" }]`); the legacy `provider` string is deprecated. When absent, buyers should apply their own measurement defaults. See [Delivery Measurement](#delivery-measurement).
 - `outcome_measurement` (OutcomeMeasurement, **deprecated**): Legacy field for declaring business outcome measurement (lift, brand lift, foot traffic). New implementations declare outcome metrics via `reporting_capabilities.available_metrics` and pin attribution methodology + window via the `qualifier` slot on `committed_metrics`. Retained for one-minor backwards compatibility; removed at the next major. See [Commerce Media](/docs/media-buy/commerce-media) for the migration pattern.
-- `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
+- `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions, including the optional product-scoped `review_sla` for time to an approved or rejected decision. See [Service commitments](/docs/media-buy/service-commitments) for business calendars and critical-report SLAs.
 - `is_custom` (bool, optional): `true` for any request-specific configured offer, including exact structured targeting, disclosed targeting changes, or request-bound price, forecast, inventory, or terms.
 - `expires_at` (datetime, conditionally required): Required for a request-specific product issued through targeting-aware discovery and whenever `targeting_resolution` is present. Earlier custom products remain schema-valid when it is absent. After this time, a recognized expired ID issued to the authenticated account and lineage returns `PRODUCT_EXPIRED`; an ID whose tombstone is no longer retained or belongs to another account/lineage returns `PRODUCT_NOT_FOUND`, preventing cross-tenant existence disclosure.
 - `overlay_support` (TargetingOverlaySupport, optional): Product-scoped targeting dimensions whose values may be selected later. Required when requested through `required_overlay_support`. It guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every value.
@@ -70,7 +70,7 @@ The [4.0 proposal in #7869](https://github.com/adcontextprotocol/adcp/issues/786
 
 ## Property and collection list application receipts
 
-Property and collection lists are resolved outside the seller, but their inventory effect is product-specific. Whenever effective discovery targeting contains `property_list`, `property_list_exclude`, `collection_list`, or `collection_list_exclude`, the seller MUST return one `list_applications` receipt for each targeting reference on every returned product. This requirement overrides a narrow `fields` projection. An exclusion application returns a zero-match receipt; zero matches for any inclusion application leave no eligible inventory, so the seller MUST omit that product. If the same list is referenced for both inclusion and exclusion, those are separate applications and produce separate receipts on any product that remains eligible.
+Property and collection lists are resolved outside the seller, but their inventory effect is product-specific. Whenever effective discovery targeting contains `property_list`, `property_list_exclude`, `collection_list`, `collection_list_exclude`, `collection_lists`, or `collection_lists_exclude`, the seller MUST return one `list_applications` receipt for each targeting reference on every returned product. This requirement overrides a narrow `fields` projection. An exclusion application returns a zero-match receipt; zero matches for any inclusion application leave no eligible inventory, so the seller MUST omit that product. If the same list is referenced for both inclusion and exclusion, those are separate applications and produce separate receipts on any product that remains eligible. A product with an undisclosed roster follows [Targeting against an undisclosed roster](#targeting-against-an-undisclosed-roster): its receipt counts describe what the seller matched and are not evidence about the roster.
 
 ```json
 {
@@ -197,7 +197,9 @@ The three concepts remain separate:
 
 When a buyer supplies evidence requirements and evidence affects product inclusion or rank, the returned Product carries `audience_evidence_selections[]` with the exact matching snapshots and `decision_use` of `eligibility` or `recommendation`. This decision readback is mandatory even when the buyer's `fields` projection omitted `audience_evidence_selections`; projection may omit the optional full evidence payload, not the explanation of an applied policy.
 
-At buy time, a package can repeat `audience_evidence_requirements` and can carry `audience_evidence_pins[]` copied from discovery. Every pin includes `evidence_id`, `snapshot_id`, `version`, and `content_digest`; the seller rejects a missing or mutated snapshot instead of substituting current catalog content. The confirmed Package returns a matching `audience_evidence_selections[]` entry with `decision_use: "package_construction"` for every accepted pin and every snapshot used to satisfy package requirements, and preserves that readback on later package reads.
+Buyers can also name the audiences they want evidence for with the experimental `target_audiences[]`, a sibling of `audience_evidence_requirements` on `get_products` filters ([`get_products`](/docs/media-buy/task-reference/get_products#target-audiences-experimental), `media_buy.audience_evidence_targets`). A target is satisfied only by admissible evidence for exactly that audience, ranks or excludes products by `requirement_mode`, and is never a targeting predicate.
+
+At buy time, a package can repeat `audience_evidence_requirements` (and, experimentally, the sibling `target_audiences`) and can carry `audience_evidence_pins[]` copied from discovery. Every pin includes `evidence_id`, `snapshot_id`, `version`, and `content_digest`; the seller rejects a missing or mutated snapshot instead of substituting current catalog content. The confirmed Package returns a matching `audience_evidence_selections[]` entry with `decision_use: "package_construction"` for every accepted pin and every snapshot used to satisfy package requirements, and preserves that readback on later package reads.
 
 When an attestation affected either decision, readback preserves the exact reference and its `AttestationEvaluation` as one pair. That pair is valid only when the reference is published on the selected snapshot, its claim and issuer satisfy both buyer and seller policy, `reference_digest` covers that same reference, the outcome is `verified`, and both the subject digest and action-binding digest equal the evidence `content_digest`. An evaluation for one reference cannot verify a different reference. Sellers retain the full immutable snapshot and evaluations for at least as long as the package remains readable. Buyers should cache the evidence returned during discovery; AdCP 3.2 does not introduce a buyer-controlled snapshot fetch URL. Sellers may embed the full snapshot in readback, but need not duplicate it on every product or package.
 
@@ -700,9 +702,79 @@ Category exclusivity works for multi-collection bundles where the publisher sepa
 }
 ```
 
+### Roster coverage
+
+`publisher_properties` and `collections` are the product's rosters: the properties and collections it may deliver on. Most products can name all of them. Audience-network, exchange, and other run-of-network products often cannot: the roster belongs to third parties, changes faster than it can be published, or is not available to the seller. AdCP 3.3 adds no field for this. The array carries the answer:
+
+| Roster | Meaning |
+|--------|---------|
+| A non-empty list | **Complete.** The product delivers only on the listed properties or collections. Delivery outside the list is non-conformant. |
+| An empty list (`[]`) | **Undisclosed.** The seller does not disclose the roster. It is not a statement that the product has no properties or collections. |
+| Absent | Unchanged from before 3.3. `publisher_properties` is required on a Product, so a full Product always states one of the two cases above. `collections` is optional, and its absence means the product makes no collection declaration; it never means undisclosed. In a `list_products` projection that did not request either field, absence says nothing. |
+
+There is no partial state. A seller that can name some of its publishers sells those as one product with a complete list and the rest as a second product with an undisclosed roster. The two rules apply to each roster independently: a product can have a complete `publisher_properties` and an undisclosed `collections`, or the reverse.
+
+**Rules**
+
+1. **Complete means complete.** A non-empty roster is exhaustive. Sellers MUST NOT list a roster the product delivers outside of, and MUST NOT list a network or operator domain in place of third-party publisher properties. Third-party inventory stays publisher-owned and authorized through each publisher's `adagents.json`.
+2. **Undisclosed is opaque.** An empty roster bounds nothing. Consumers MUST branch on emptiness before testing whether a buyer's list contains a product's roster: every test over `[]` is vacuously true, and an empty roster is an unknown set, not an empty one. Buyers and brand-safety or governance logic SHOULD treat an undisclosed roster as opaque and MUST NOT infer suitability, authorization, or containment from it. Buyers MAY refuse such products. Sellers SHOULD offer complete rosters wherever they can.
+3. **Emission gate.** Releases before 3.3 require at least one entry, so a 3.2 buyer rejects an empty roster. On request-bound discovery (`get_products`, `list_products`, `request_proposals`), a seller serving a release below 3.3 MUST NOT return a product with an empty `publisher_properties` or an empty `collections`; it omits the product and returns the request's other products. This is the [served-release rule](/docs/reference/versioning#serving-an-older-pin) ([DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md)) applied to this shape: a seller can neither project an undisclosed roster to the earlier shape nor substitute a list. Wholesale feeds and webhooks carry no per-buyer pin, and this release leaves them undefined, as before.
+4. **Disclosure and targetability are separate.** `property_targeting_allowed`, `collection_targeting_allowed`, and `overlay_support` say what buyers may select. An undisclosed roster does not by itself forbid selection, and a complete roster may be untargetable.
+5. **Delivery is separate.** Discovery-time disclosure does not decide what delivery reporting later discloses, and delivery rows never turn an undisclosed roster into a complete one. A product that declares `supports_property_breakdown: true` reports delivered properties after the fact in `by_property`, undisclosed products included, subject to `by_property_suppressed` and `by_property_truncated`. A seller that does not disclose delivered properties omits `by_property`, and buyers MUST NOT infer containment from that absence.
+6. **Configured products.** A configured product (`is_custom: true`) whose targeting narrows an undisclosed product to a concrete roster MAY carry that roster as a complete list. It MUST carry its own configured `product_id`.
+
+#### Targeting against an undisclosed roster
+
+The buyer sees at discovery that a roster is undisclosed (an empty list), so buying such a product with a list is an informed choice. The two kinds of list differ in what the seller has to do.
+
+| Targeting | Fields | Seller behavior on an undisclosed roster |
+|-----------|--------|------------------------------------------|
+| **Allow list** | `property_list`, `collection_list`, `collection_lists` | The seller MAY accept. The package runs only on the properties or collections the seller matches, and the seller makes no promise to cover every listed item. The buyer gets the intersection of the list and what the product can deliver, which the seller does not enumerate. |
+| **Exclusion list** | `property_list_exclude`, `collection_list_exclude`, `collection_lists_exclude` | The seller MAY accept. If it accepts, it MUST apply the exclusion against its full internal roster, not only against what it can match from a disclosed list. A seller that cannot apply it, because it does not know every publisher or collection it may serve, MUST reject the targeting with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) (correctable: remove the exclusion or choose a product with a complete roster), and the error says it cannot apply the exclusion to an undisclosed roster. It MUST NOT accept an exclusion and ignore it. |
+
+A seller declares which lists it takes through the existing `overlay_support` entries on the product: it declares an exclusion entry on an undisclosed roster only if it can apply the exclusion as above.
+
+Whether an undisclosed roster is acceptable for an exclusion is the buyer's decision. A brand-safety exclusion is only as strong as the seller's internal roster, and the buyer cannot verify it from discovery. Buyers and brand-safety logic MAY refuse undisclosed products, or accept them for allow lists and refuse them for exclusions, or accept them with an exclusion and rely on post-delivery reporting (`by_property`, where the product supports it).
+
+- **Create and update.** A package whose `targeting_overlay` carries an exclusion list against an undisclosed roster the seller cannot apply fails with `UNSUPPORTED_FEATURE` before any mutation. The error names the targeting field and the product.
+- **Discovery.** When discovery targeting carries an exclusion list, a product with an undisclosed matching roster that the seller cannot apply it to cannot honor the request exactly, so the seller omits it. A product that cannot honor `targeting_overlay` exactly is omitted or returned with disclosed modifications, and a modification that drops an exclusion is not an honest one. The seller still returns the request's other products. A property exclusion is tested against `publisher_properties` and a collection exclusion against `collections`, so an undisclosed `collections` roster does not stop a property exclusion.
+- **Allow lists in discovery.** The existing rule holds: zero matches for an inclusion application make the product ineligible. On an undisclosed roster the seller evaluates the list against its own inventory.
+- **Receipts.** `list_applications` counts on an undisclosed roster describe what the seller matched against its own inventory. They are not evidence about the roster: a buyer MUST NOT read a count, or an `unmatched` of zero, as proof that the roster is complete or that unlisted items cannot deliver.
+
+**Fully opaque network product** (no disclosed roster; accepts an allow list, and an exclusion it can apply to its full internal roster):
+```json
+{
+  "product_id": "acme_network_run_of_network",
+  "name": "Acme Audience Network, Run of Network",
+  "description": "Mobile app inventory across the Acme audience network",
+  "publisher_properties": [],
+  "property_targeting_allowed": true,
+  "overlay_support": { "property_list": true, "property_list_exclude": true }
+}
+```
+
+**Undisclosed collection roster beside a complete property roster**:
+```json
+{
+  "product_id": "acme_podcast_network",
+  "name": "Acme Podcast Network, Run of Network",
+  "description": "Podcast inventory across the Acme network",
+  "publisher_properties": [
+    { "publisher_domain": "podcasts.acme.example", "selection_type": "all" }
+  ],
+  "collections": [],
+  "collection_targeting_allowed": true,
+  "overlay_support": { "collection_list": true }
+}
+```
+
+<Note>
+**Migrating SDKs.** `publisher_properties` and `collections` lose `minItems: 1`, so generated types change for every product: a TypeScript non-empty tuple becomes `T[]`, and a Pydantic `min_length` is dropped. SDKs MUST NOT assume `publisher_properties[0]` or `collections[0]` exists, and MUST check for an empty roster before using a list as a delivery boundary.
+</Note>
+
 ### Property Targeting
 
-The `property_targeting_allowed` flag indicates whether buyers can filter a product to a subset of its `publisher_properties` when using property list filtering via `get_products`.
+The `property_targeting_allowed` flag indicates whether buyers can filter a product to a subset of its `publisher_properties` when using property list filtering via `get_products`. The behavior below applies to products with a complete roster; for an empty `publisher_properties` see [Targeting against an undisclosed roster](#targeting-against-an-undisclosed-roster).
 
 #### Behavior
 

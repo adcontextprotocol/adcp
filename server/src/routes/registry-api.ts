@@ -1,3 +1,6 @@
+import { PreparedFixturesDeniedError } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from "../compliance/storyboard-cache.js";
+import { withHostedReportingBudget, runCatalogReportingStoryboardStep as runStoryboardStep } from '../compliance/catalog-reporting-runner.js';
 import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
 import { AgentService } from "../agent-service.js";
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
@@ -38,7 +41,7 @@ import {
   UnsupportedBuyingModeError,
   AccountRequiredError,
 } from "@adcp/sdk";
-import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
+import { getFirstStepPreview, testCapabilityDiscovery, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -68,7 +71,7 @@ import {
   redactForDiagnostics,
   isNonExecutableCoverageGapScenario,
   classifyCapabilityResolutionError,
-  complianceDirToleratingUnknownSpecialism,
+  resolveHostedStoryboardsForCapabilities,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
   derivePublicComplianceEligibility,
@@ -5128,7 +5131,13 @@ registry.registerPath({
     },
     400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    403: {
+      description: "Not authorized. Prepared fixture denials disclose only machine codes.",
+      content: { "application/json": { schema: z.union([
+        ErrorSchema,
+        z.object({ code: z.literal("PREPARED_FIXTURES_DENIED"), refusal_code: z.string() }),
+      ]) } },
+    },
     404: { description: "Storyboard not found", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -7222,6 +7231,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         () => complianceDb.getLatestDeclaredSpecialisms(agentUrl),
         () => complianceDb.getLatestNotices(agentUrl, status.last_run_id),
         () => complianceDb.getLatestObservations(agentUrl, status.last_run_id),
+        () => complianceDb.getLatestV4Readiness(agentUrl, status.last_run_id),
         () =>
           complianceDb.getStoryboardStatuses(agentUrl, {
             requireRowsForLatestRun: true,
@@ -7264,6 +7274,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         declaredSpecialismsResult,
         noticesResult,
         observationsResult,
+        v4ReadinessResult,
         storyboardStatusesResult,
         ownerMembershipResult,
       ] = supplementalResults;
@@ -7305,6 +7316,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : [];
       if (observationsResult.status === 'rejected') {
         logger.warn({ err: observationsResult.reason, agentUrl }, "Latest observations query failed");
+      }
+      // Advisory 4.0 readiness from the same run. Null for runs ingested
+      // before the report existed; never synthesized here.
+      const v4Readiness = v4ReadinessResult.status === 'fulfilled' ? v4ReadinessResult.value : null;
+      if (v4ReadinessResult.status === 'rejected') {
+        logger.warn({ err: v4ReadinessResult.reason, agentUrl }, "Latest 4.0 readiness query failed (column may not exist yet)");
       }
 
       // Per-specialism status — the dashboard renders pass/fail/untested
@@ -7668,6 +7685,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         // remain verbatim, while private and oversized fields are excluded.
         notices,
         observations,
+        // Advisory AdCP 4.0 readiness (universal/v4-compatibility.yaml). Does
+        // not affect 3.x verification. Null when the latest run predates it.
+        v4_readiness: v4Readiness,
         // Owner-scoped: content is null/false for anonymous and cross-org
         // viewers, populated only when the authenticated viewer owns the
         // agent. Keys are always present so non-owners can't detect
@@ -9918,7 +9938,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : hostedComplianceOptions(runTarget);
       const storyboard = runTarget === complianceTarget
         ? getStoryboard(req.params.id)
-        : getComplianceStoryboardById(req.params.id, storyboardOptions);
+        : getCachedComplianceStoryboardById(req.params.id, storyboardOptions);
       if (!storyboard) {
         return res.status(404).json({ error: "Storyboard not found" });
       }
@@ -10012,25 +10032,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         runTarget.version,
         specialisms,
       );
-      let resolved: ReturnType<typeof resolveStoryboardsForCapabilities> | undefined;
+      let resolved: Awaited<ReturnType<typeof resolveHostedStoryboardsForCapabilities>> | undefined;
       let resolveErr: unknown;
       try {
-        resolved = resolveStoryboardsForCapabilities(caps, runOptions);
+        resolved = await resolveHostedStoryboardsForCapabilities(caps, runTarget);
       } catch (initialErr) {
         resolveErr = initialErr;
-        // A specialism AdCP introduced after this target's release has nothing
-        // to list, but it must not 422 the whole listing (#8269). Re-resolve
-        // against the overlay that treats it as not applicable; any other
-        // resolution fault still falls through to the fail-closed response.
-        const overlayDir = await complianceDirToleratingUnknownSpecialism(initialErr, runTarget);
-        if (overlayDir) {
-          try {
-            resolved = resolveStoryboardsForCapabilities(caps, { ...runOptions, complianceDir: overlayDir });
-            resolveErr = undefined;
-          } catch (overlayErr) {
-            resolveErr = overlayErr;
-          }
-        }
       }
 
       if (!resolved) {
@@ -10169,7 +10176,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           'canonical',
         );
         const runOptions = hostedComplianceOptions(runTarget);
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, runOptions);
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, runOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -10204,11 +10211,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           agentUrl,
           storyboard,
           req.params.stepId,
-          withSdkSafeTransport(withHostedStoryboardRunOptions({
+          withSdkSafeTransport(withHostedReportingBudget(storyboard, withHostedStoryboardRunOptions({
+            signal: AbortSignal.timeout(90_000),
             ...(declaredTestKit && { test_kit: declaredTestKit }),
             ...(sdkAuth && { auth: sdkAuth }),
             ...(context && { context }),
-          }, runTarget, authProbeTask)),
+          }, runTarget, authProbeTask))),
         );
 
         if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
@@ -10229,6 +10237,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           ...result,
         });
       } catch (error) {
+        if (error instanceof PreparedFixturesDeniedError) {
+          return res.status(403).json({ code: error.code, refusal_code: error.refusalCode });
+        }
         logger.error({ err: error, path: req.path }, "Failed to run storyboard step");
         res.status(500).json({ error: "Failed to run storyboard step" });
       }
@@ -10241,7 +10252,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     async (req, res) => {
       try {
         const runTarget = targetFromRequestValue(req.query.compliance_target);
-        const storyboard = getComplianceStoryboardById(
+        const storyboard = getCachedComplianceStoryboardById(
           req.params.storyboardId,
           runTarget === complianceTarget ? complianceOptions : hostedComplianceOptions(runTarget),
         );
@@ -10325,7 +10336,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
         const runTarget = runTargetSelection.target;
         const storyboardOptions = hostedComplianceOptions(runTarget);
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, storyboardOptions);
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, storyboardOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -10490,7 +10501,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           ...(sdkAuth && { auth: sdkAuth }),
         };
         const runTarget = await selectComplianceTargetForAgent(agentUrl, userComplyOptions, complianceTarget, 'canonical');
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }

@@ -35,7 +35,7 @@ describe('product discovery MCP schema parity', () => {
       const source = sourceSchema(fileName);
       expect(runtime.required ?? []).toEqual(source.required ?? []);
       expect(runtime.dependencies ?? {}).toEqual(source.dependencies ?? {});
-      expect(runtime.additionalProperties).toBe(false);
+      expect(runtime.additionalProperties).toBe(source.additionalProperties);
       expect(Object.keys(runtime.properties).sort()).toEqual(Object.keys(source.properties).sort());
       if (source.properties.idempotency_key) {
         expect(runtime.properties.idempotency_key).toMatchObject({
@@ -64,7 +64,7 @@ describe('product discovery MCP schema parity', () => {
     expect(runtimeRefinement).toMatchObject({
       type: sourceRefinement.type,
       required: sourceRefinement.required,
-      additionalProperties: false,
+      additionalProperties: sourceRefinement.additionalProperties,
     });
 
     // Repository-local refs must be bundled because MCP consumers do not have
@@ -78,11 +78,12 @@ describe('product discovery MCP schema parity', () => {
       uniqueItems: true,
       items: { enum: expect.arrayContaining(['product_id', 'format_options', 'pricing_options']) },
     });
-    expect(resolveLocalRef(list, list.properties.criteria)).toMatchObject({ additionalProperties: false });
+    expect(resolveLocalRef(list, list.properties.criteria))
+      .toMatchObject({ additionalProperties: sourceSchema('product-discovery-criteria').additionalProperties });
     expect(resolveLocalRef(refineTool, refineTool.properties.refinements.items))
       .toMatchObject({
         required: ['proposal_id'],
-        additionalProperties: false,
+        additionalProperties: sourceRefinement.additionalProperties,
         // Definition annotations are intentionally stripped from tools/list;
         // dispatch still applies the source-schema default semantics.
         properties: { action: { enum: ['revise', 'finalize', 'extend_hold'] } },
@@ -140,7 +141,14 @@ describe('product discovery MCP schema parity', () => {
     // reaches request_proposals and decline_proposals, and decline_proposals
     // gains the empty-declines-with-opportunity rule (+1,302 bytes on the
     // pre-merge budget; 161,843 bytes / 158.05 KiB measured), bounded at 159 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(159 * 1024);
+    // Experimental collection_lists / collection_lists_exclude add two short
+    // array properties and their requirement keys to the shared targeting
+    // graph; with open opportunities on main, 163,607 bytes / 159.77 KiB
+    // measured, bounded at 160 KiB.
+    // Core gender adds its shared predicate and overlay support; merged
+    // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
+    // without relaxing standalone-schema parity.
+    expect(totalBytes).toBeLessThanOrEqual(162 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

@@ -144,6 +144,9 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
+          # The SDK's sync-version generator handles 3.3 beta/rc candidates
+          # natively (exact preview aliases only, 3.2.x GA as stable peers),
+          # so the checkout is used as-is.
           printf '%s\n' "${bundle_version}" > sdk/ADCP_VERSION
           # This is a disposable candidate checkout: align the SDK's AdCP
           # metadata without bumping its own package release number.
@@ -252,6 +255,14 @@ jobs:
                           continue
                       index = next((i for i, line in enumerate(lines) if old in line), None)
                       if index is None:
+                          # Current SDK sdists package the tracked cache and
+                          # deliberately prune generated package copies.
+                          if (
+                              filename == "sdk/MANIFEST.in"
+                              and old.startswith("recursive-include src/adcp/_schemas/")
+                              and any(line.strip() == "prune src/adcp/_schemas" for line in lines)
+                          ):
+                              continue
                           raise SystemExit(f"{filename} does not package the pinned SDK schema {old}")
                       lines.insert(index + 1, lines[index].replace(old, new))
                   path.write_text("".join(lines))

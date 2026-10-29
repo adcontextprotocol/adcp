@@ -35,14 +35,16 @@
       "description": "Exact supported max_impressions.window intervals, one entry per duration unit.",
       "items": { "$ref": "/schemas/core/frequency-cap-interval-constraints.json" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 32
     },
     "suppression_constraints": {
       "type": "array",
       "description": "Exact supported suppress cooldown intervals, one entry per duration unit.",
       "items": { "$ref": "/schemas/core/frequency-cap-interval-constraints.json" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 32
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

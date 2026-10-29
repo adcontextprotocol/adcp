@@ -17,18 +17,18 @@ import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import type { Socket } from 'node:net';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import YAML from 'yaml';
 import {
   listAllComplianceStoryboards,
   loadComplianceIndex,
   resolveStoryboardsForCapabilities,
-  runStoryboard,
   testCapabilityDiscovery,
   getComplianceCacheDir,
   withExternalSchemaRoot,
 } from '@adcp/sdk/testing';
+import { runCatalogReportingStoryboard as runStoryboard } from '../../src/compliance/catalog-reporting-runner.js';
 import type { AgentProfile, StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/sdk/testing';
 import {
   StaticJwksResolver,
@@ -42,8 +42,7 @@ import {
   testKitOptionsFromKit,
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
-import { formatFailureDetailSnippet, formatStepFailureDetail } from './storyboard-report-format.js';
-import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
+import { formatFailureDetailSnippet, formatFailedValidationSummary, formatStepFailureDetail, storyboardStepStatus, type StoryboardStepForSummary } from './storyboard-report-format.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -57,16 +56,6 @@ if (!process.env.NODE_ENV) process.env.NODE_ENV = 'test';
 // Silence pino logger noise so the progress table stays readable. Set
 // LOG_STORYBOARDS=1 to get full log output for diagnosis.
 if (!process.env.LOG_STORYBOARDS) process.env.LOG_LEVEL = 'silent';
-
-const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
-const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
-const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
-const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
-  '../../src/training-agent/comply-test-controller.js'
-);
-const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
-const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
-const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
@@ -121,6 +110,9 @@ const isCurrentSourceRun = releasedComplianceVersion === undefined
   );
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
 if (candidateVersionMode) {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=1 requires NODE_ENV=test');
+  }
   const packageVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version as unknown;
   if (!isCurrentSourceRun || releasedComplianceVersion === undefined) {
     throw new Error(
@@ -132,17 +124,69 @@ if (candidateVersionMode) {
       'ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=1 requires the compliance bundle version to match package.json',
     );
   }
+  // Set the trusted, process-local wire contract before importing runtime
+  // modules. Source 3.3 cannot be graded by aliasing it to released 3.2.
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = releasedComplianceVersion.replace(
+    /^(\d+\.\d+)\.\d+((?:-(?:beta|rc)\.\d+)?)$/,
+    '$1$2',
+  );
 }
+const { TRAINING_AGENT_CURRENT_ADCP_VERSION } = await import('../../src/training-agent/types.js');
+const { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } = await import('../../src/training-agent/candidate-version.js');
+const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
+const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
+const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
+const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
+  '../../src/training-agent/comply-test-controller.js'
+);
+const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
+const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
+const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
+const { TRAINING_AGENT_URL: TRAINING_AGENT_PUBLIC_URL } = await import('../../src/training-agent/config.js');
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
 // version for schema selection and override only the request envelope. Source
 // runs also pin the current wire release: capability discovery must describe
 // the surface being graded instead of falling back to the agent's legacy 3.0
 // unpinned default.
+// A source candidate can serve a newer minor line while explicit requests
+// still select the training agent's stable line. Keep the published stable
+// schemas available alongside the candidate root for those requests.
+const candidateOpensNewerLine = (() => {
+  if (!candidateVersionMode || releasedComplianceVersion === undefined) return false;
+  const candidate = /^(\d+)\.(\d+)\.\d+-(?:beta|rc)\.\d+$/.exec(releasedComplianceVersion);
+  const served = /^(\d+)\.(\d+)/.exec(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+  if (!candidate || !served) return false;
+  const [cMajor, cMinor, sMajor, sMinor] = [candidate[1], candidate[2], served[1], served[2]].map(Number);
+  return cMajor > sMajor || (cMajor === sMajor && cMinor > sMinor);
+})();
+// The candidate root covers the actual candidate wire contract. Register a
+// separate published stable root for explicit stable requests; this does not
+// change the candidate's advertised versions, wire version, or schema root.
+const servedLineSchemaRoot = (() => {
+  if (!candidateOpensNewerLine) return undefined;
+  const line = /^(\d+\.\d+)/.exec(TRAINING_AGENT_CURRENT_ADCP_VERSION)?.[1];
+  if (!line) return undefined;
+  const schemasDir = resolve('dist', 'schemas');
+  const released = readdirSync(schemasDir)
+    .filter(name => new RegExp(`^${line.replace('.', '\\.')}\\.\\d+$`).test(name))
+    .filter(name => existsSync(join(schemasDir, name, 'index.json')))
+    .sort((a, b) => Number(a.split('.')[2]) - Number(b.split('.')[2]));
+  const newest = released.at(-1);
+  if (!newest) {
+    throw new Error(`No published dist/schemas/${line}.x bundle for the served wire line`);
+  }
+  return join(schemasDir, newest);
+})();
+function inServedLineScope<T>(fn: () => Promise<T>): Promise<T> {
+  return servedLineSchemaRoot
+    ? withExternalSchemaRoot(TRAINING_AGENT_CURRENT_ADCP_VERSION, servedLineSchemaRoot, fn)
+    : fn();
+}
 const wireAdcpVersion = isThreeZeroCompatRun
   ? '3.0'
   : isCurrentSourceRun
-    ? TRAINING_AGENT_CURRENT_ADCP_VERSION
+    ? TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION
     : undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -278,6 +322,10 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
     'governance_delivery_monitor/check_governance_drift',
     'The runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
+  ],
+  [
+    'media_buy_seller/canonical_formats/create_media_buy_with_equivalent_direct_legacy_emission',
+    'Since @adcp/sdk 17.0.0-beta.2 (adcp-client#3454) the runner grades the direct route of this dual-emission request on its own and calls its omitted max_file_size_kb under-specified, before the seller answers. The spec requires a selector to declare only fixed size and duration. Remove when adcontextprotocol/adcp-client#3470 is resolved.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
@@ -649,12 +697,12 @@ async function selectStoryboardsForTenant(
   agentUrl: string,
   everything: Storyboard[],
 ): Promise<StoryboardSelection> {
-  const discover = () => testCapabilityDiscovery(agentUrl, {
+  const discover = () => inServedLineScope(() => testCapabilityDiscovery(agentUrl, {
     auth: { type: 'bearer', token: AUTH_TOKEN },
     allow_http: true,
     ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
     ...(wireAdcpVersion && { wireAdcpVersion }),
-  });
+  }));
   // A Version Packages PR creates the next schema bundle before any published
   // SDK can embed it. Register that candidate root around capability discovery
   // just as runStoryboard does around execution; otherwise SDK construction
@@ -683,12 +731,6 @@ async function selectStoryboardsForTenant(
     supported_versions: profile.adcp_supported_versions,
   }, {
     ...complianceOptions,
-    // Version Packages builds the next exact schema/compliance bundle before
-    // the training agent's published SDK can advertise it. Keep ordinary
-    // local and hosted runs strict; release-candidate validation opts in to a
-    // resolver-scoped same-line alias while execution continues to speak the
-    // training agent's real wire version.
-    ...(candidateVersionMode && { hostedStableLineAlias: TRAINING_AGENT_CURRENT_ADCP_VERSION }),
   });
   const inDeclaredScope = new Set(resolved.storyboards.map(sb => sb.id));
   const versionExcluded = new Set(resolved.not_applicable.map(entry => entry.storyboard_id));
@@ -787,26 +829,12 @@ function applyStepSkipList(storyboardId: string, result: StoryboardResult): void
   }
 }
 
-function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; skip_reason?: string; skip?: { detail?: string }; validations?: Array<{ passed: boolean }>; error?: string; response?: { accepted?: unknown; errors?: Array<{ code?: unknown }> } }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
+function stepStatus(s: StoryboardStepForSummary & { skip_reason?: string; skip?: { detail?: string } }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
   if (verbose && s.skipped) {
     // eslint-disable-next-line no-console
     console.log(`    [skip] ${(s as { id?: string }).id ?? '?'} — ${s.skip_reason ?? '(no reason)'} :: ${s.skip?.detail ?? '(no detail)'}`);
   }
-  if (s.not_applicable) return 'not_applicable';
-  if (s.skipped) return 'skipped';
-  const validations = s.validations ?? [];
-  if (
-    (s.passed === false || s.error)
-    && s.response?.accepted === 0
-    && s.response.errors?.some(error => error.code === 'BILLING_OUT_OF_BAND')
-    && validations.length > 0
-    && validations.every(v => v.passed)
-  ) {
-    return 'passed';
-  }
-  if (s.passed === false || s.error) return 'failed';
-  if (validations.some(v => !v.passed)) return 'failed';
-  return 'passed';
+  return storyboardStepStatus(s);
 }
 
 function summarize(sb: Storyboard, result: StoryboardResult | { error: string }): Summary {
@@ -817,6 +845,11 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
   }
   for (const phase of result.phases ?? []) {
     for (const step of phase.steps ?? []) {
+      const advisories = (step.validations ?? []).filter(validation => !validation.passed && validation.severity === 'advisory');
+      if (advisories.length) {
+        const stepId = step.id ?? (step as { step_id?: string }).step_id ?? '(unknown step)';
+        console.warn(`  [advisory] ${sb.id}/${stepId}: ${formatFailedValidationSummary(advisories, { includeActual: true })}`);
+      }
       const status = stepStatus(step as Parameters<typeof stepStatus>[0]);
       base[status] += 1;
       if (status === 'failed') {
@@ -980,6 +1013,16 @@ async function main() {
     if (swapsCanonicalBase) {
       process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
     }
+    // Multi-agent runs never fetch brand.json, but the http loopback would
+    // make the advertised identity.brand_json_url schema-invalid (3.2+ needs
+    // https), and SDK 16.5+ fails discovery for capability-gated storyboards on
+    // invalid capabilities. Advertise the public https identity, as runs
+    // without the swap already do. webhook_emission keeps the loopback identity
+    // because it resolves the agent's webhook keys through it.
+    const previousIdentityUrl = process.env.TRAINING_AGENT_IDENTITY_URL;
+    if (routesMultiAgent) {
+      process.env.TRAINING_AGENT_IDENTITY_URL = TRAINING_AGENT_PUBLIC_URL;
+    }
 
     if (storyboard.id === 'signed_requests') {
       // Run the signed_requests storyboard once per strict route variant.
@@ -1050,7 +1093,7 @@ async function main() {
         const variantLabel = `${storyboard.id}${variant.routeSuffix.replace('/mcp', '')}`;
         try {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
-          const result = await runStoryboard(targetUrl, storyboard, {
+          const result = await inServedLineScope(() => runStoryboard(targetUrl, storyboard, {
             ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
             ...(wireAdcpVersion && { wireAdcpVersion }),
             ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
@@ -1075,7 +1118,11 @@ async function main() {
             },
             ...(brand && { brand }),
             ...(testKit && { test_kit: testKit }),
-          });
+          }));
+          for (const gap of result.coverage_gaps ?? []) {
+            // Keep unexercised native support visible without changing floor counts.
+            console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
+          }
           applyStepSkipList(storyboard.id, result);
           const summary = { ...summarize(storyboard, result), id: variantLabel };
           results.push(summary);
@@ -1110,7 +1157,7 @@ async function main() {
           console.log(`    [multi-agent] ${storyboard.id} routes ${Object.entries(routing.agents)
             .map(([key, entry]) => `${key}=${entry.url}`).join(', ')} (default_agent=${routing.default_agent}; context ${JSON.stringify(routing.context)})`);
         }
-        const result = await runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
+        const result = await inServedLineScope(() => runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           ...(wireAdcpVersion && { wireAdcpVersion }),
           ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
@@ -1130,7 +1177,12 @@ async function main() {
             default_agent: routing.default_agent,
             context: routing.context,
           }),
-        });
+        }));
+        for (const gap of result.coverage_gaps ?? []) {
+          // Keep unexercised native support visible even when prepared-state
+          // reuse produces no authored step rows. Do not change floor counts.
+          console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
+        }
         applyStepSkipList(storyboard.id, result);
         const summary = summarize(storyboard, result);
         results.push(summary);
@@ -1151,6 +1203,13 @@ async function main() {
         delete process.env.TRAINING_AGENT_URL;
       } else {
         process.env.TRAINING_AGENT_URL = previousTrainingAgentUrl;
+      }
+    }
+    if (routesMultiAgent) {
+      if (previousIdentityUrl === undefined) {
+        delete process.env.TRAINING_AGENT_IDENTITY_URL;
+      } else {
+        process.env.TRAINING_AGENT_IDENTITY_URL = previousIdentityUrl;
       }
     }
   }
@@ -1250,7 +1309,12 @@ async function main() {
   process.exit(exitCode);
 }
 
-main().catch(err => {
+// Tenant registries initialize eagerly when mounted. Keep the candidate root
+// registered for their construction as well as discovery and storyboard calls.
+const run = complianceOptions.schemaRoot && releasedComplianceVersion
+  ? () => withExternalSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot!, main)
+  : main;
+run().catch(err => {
   // eslint-disable-next-line no-console
   console.error('Fatal:', err);
   process.exit(1);

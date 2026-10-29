@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Pool } from 'pg';
 import { Storage } from '@google-cloud/storage';
-import { SingleAgentClient, canonicalize, closeMCPConnections } from '@adcp/sdk';
-import { createGcsReportingResourceReaderV1, createGcsReportingReferenceResolverV1 } from '@adcp/sdk/reporting/gcs';
+import { LIBRARY_VERSION, SingleAgentClient, canonicalize, closeMCPConnections } from '@adcp/sdk';
+import { createGcsReportingResourceReaderV1, createGcsReportingReferenceResolverV1 } from '@adcp/reporting-storage/gcs';
 import { createPostgresReportingConsumerRuntimeV1, reconcileReporting } from '@adcp/sdk/reporting/consumer';
 import { openBuyerAuthFile, createBuyerOAuthSession } from './training-buyer-auth.mjs';
 
@@ -133,7 +133,7 @@ async function main() {
     if (values.init) { await pool.query('CREATE SCHEMA IF NOT EXISTS training_reporting_buyer'); for (const sql of persistence.migrations.all) await pool.query(sql); }
     await persistence.probe();
     const result = await verifyTrainingGcsBuyer({ grant, expected, storage, client, persistence, consumerScope: `${base}:${grant.principal_id}`, authorize });
-    const evidence = { sdk: '15.9.5', protocol: 'mcp', checked_at: new Date().toISOString(), grant,
+    const evidence = { sdk: LIBRARY_VERSION, protocol: 'mcp', checked_at: new Date().toISOString(), grant,
       definitive: result.definitive, receipt_batches: receiptBatches, status_batches: statusBatches,
       receipts: result.submittedReceipts, materializations: result.ledger.materializations,
       obligations: result.obligations, failed_consumer_statuses: result.failedConsumerStatuses };

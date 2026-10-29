@@ -43,7 +43,7 @@
     "include_collections": {
       "type": "boolean",
       "default": false,
-      "description": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection referenced by the collections selectors of products on the page. Sellers MUST NOT return collections unless this is true, and when it is true they SHOULD include every referenced collection. This request rejects unknown fields, so a seller validating against an earlier schema may reject the flag; send it only to a seller that lists media_buy.collection_cards in experimental_features. Part of the feed_version scope: without it collection copies are outside the version, and with it the version also changes when any returned collection copy changes. Buyers detect omitted collections by comparing product selectors with the returned array and resolve those from the publisher's adagents.json.",
+      "description": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection referenced by the collections selectors of products on the page. Sellers MUST NOT return collections unless this is true, and when it is true they SHOULD include every referenced collection. The 3.2 schema of this request rejects unknown fields, so a seller validating against it rejects the flag; send it only to a seller that lists media_buy.collection_cards in experimental_features. Part of the feed_version scope: without it collection copies are outside the version, and with it the version also changes when any returned collection copy changes. Buyers detect omitted collections by comparing product selectors with the returned array and resolve those from the publisher's adagents.json.",
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },
@@ -89,5 +89,5 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

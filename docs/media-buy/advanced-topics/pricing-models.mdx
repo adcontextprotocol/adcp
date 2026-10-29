@@ -107,6 +107,29 @@ Each entry in the `performance_standards` array specifies:
 - **`threshold`** — Rate as a decimal (0-1). Whether this is a floor or ceiling depends on the metric: viewability, completion_rate, brand_safety, attention_score are floors (must exceed); ivt is a ceiling (must not exceed).
 - **`standard`** — Required for viewability (`"mrc"` or `"groupm"`). Omit for other metrics.
 - **`vendor`** — Who measures it, identified by domain. When agreed on a confirmed package, creatives MUST include tracker assets from specified vendors.
+- **`metric_id`** — Optional. Which of the vendor's metrics carries the value judged against `threshold`, in the vendor's own vocabulary (the `metric_id` in its `measurement.metrics[]` catalog and in delivery's `vendor_metric_values[]`). Allowed only for `ivt`, `brand_safety`, and `attention_score`. `viewability` and `completion_rate` are judged against their delivery scalars (`viewability` under `standard`; a vendor-attested completion rate carries `completion_source: vendor_attested`).
+
+Verification vendors usually report several metrics per category: general, sophisticated, and combined invalid traffic rates, or several brand-safety rates. `metric_id` says which one the standard means:
+
+```json
+{
+  "metric": "ivt",
+  "threshold": 0.03,
+  "vendor": { "domain": "verification-vendor.example" },
+  "metric_id": "givt_rate"
+}
+```
+
+When `metric_id` is present:
+
+- **Evidence.** The standard is judged only against `vendor_metric_values[]` entries from the same vendor (equal `domain` and `brand_id`) with the same `metric_id`. Values for the vendor's other metrics are not evidence for it. If several rows match because their `qualifier`s differ, only the row whose qualifier matches the package's vendor-scope `committed_metrics` entry counts; if that does not leave exactly one row, the standard is not judged.
+- **Scale.** `metric_id` MUST name a metric the vendor reports as a 0–1 fraction, on the same scale as `threshold`. A reported value outside 0–1 is not evidence and MUST NOT be converted (for example from a percent).
+- **Direction.** `metric_id` MUST name a metric that runs the same way as `metric`: for `ivt`, the share of invalid traffic (judged as a ceiling); for `brand_safety`, the share of safe impressions; for `attention_score`, higher is better (both judged as floors). An inverted metric such as an unsafe-impression rate cannot carry a `brand_safety` standard.
+- **Denominator.** The judged value is the vendor's reported value as-is. The denominators in the `performance-standard-metric` enum descriptions do not apply.
+- **Reporting.** A package whose standard carries `metric_id` SHOULD also carry a matching vendor-scope `committed_metrics` entry, so `missing_metrics` audits the value.
+- **Versions.** The field is new in 3.3. Senders MUST omit `metric_id` toward counterparties pinned below 3.3: canonical 3.2 shapes reject it, and legacy shapes ignore it, so a standard sent that way does not bind the metric.
+
+When `metric_id` is absent on an `ivt`, `brand_safety`, or `attention_score` standard, nothing says which vendor metric carries it. Parties MUST NOT infer one from the vendor's catalog or metric naming, and treat the standard as not judged from `vendor_metric_values`.
 
 **Negotiation flow:**
 
@@ -597,13 +620,13 @@ When buyer and seller have negotiated discounts and commissions, the `price_brea
 
 - `list_price` — the rate card or base price before any adjustments
 - `adjustments` — ordered list of adjustments, each categorized by `kind`
-- `fixed_price` (on the parent pricing option) — must equal the result of applying all `fee` and `discount` adjustments sequentially to `list_price`
+- `fixed_price` (on the parent pricing option) — must equal the result of applying all `fee` and `discount` adjustments sequentially to `list_price`. A breakdown from the operator's buying platform also applies `operator_fee` adjustments; see [Operator fees](#operator-fees)
 
-Implementations should ignore unrecognized fields in `price_breakdown` and its adjustments to support forward compatibility.
+Implementations should ignore unrecognized fields in `price_breakdown` and its adjustments to support forward compatibility. A reader that meets an unrecognized adjustment `kind` SHOULD skip the invariant check rather than report a mismatch.
 
 ### Adjustment Kinds
 
-Adjustments fall into four kinds based on their economic effect:
+Adjustments fall into five kinds based on their economic effect:
 
 | Kind | Effect on buyer price | Effect on publisher revenue | When applied |
 |------|----------------------|----------------------------|--------------|
@@ -611,14 +634,17 @@ Adjustments fall into four kinds based on their economic effect:
 | `discount` | Reduces it | Reduces it | Before quoting — walks `list_price` down toward `fixed_price` |
 | `commission` | None — budget includes it | Reduces it (revenue split) | Revenue allocation between intermediary and publisher |
 | `settlement` | None — post-invoice | Reduces actual payment | At invoicing or payment time |
+| `operator_fee` | Increases it | None — the operator keeps it | Buyer-side only — walks the seller's price up to what the advertiser pays |
 
 **Fees** increase what the buyer pays. Ad serving fees, data/targeting surcharges, and brand safety verification costs are additive to the base price. Without fee adjustments, these would be opaque within `list_price`.
 
 **Discounts** reduce what the buyer pays. Volume discounts, negotiated rates, and early booking discounts all lower both the buyer's cost and the publisher's revenue.
 
-**Commissions** are revenue splits. The buyer's price and budget don't change — commission determines how the payment is divided between the intermediary (e.g., agency) and the publisher. Budgets are always managed inclusive of commissions. Multiple commission adjustments compound sequentially, like discounts — e.g., a 15% agency commission followed by a 5% trading desk fee means the publisher receives `budget × 0.85 × 0.95`.
+**Commissions** are revenue splits. The buyer's price and budget don't change — commission determines how the payment is divided between the intermediary (e.g., agency) and the publisher. Budgets are always managed inclusive of commissions. Multiple commission adjustments compound sequentially, like discounts — e.g., a 15% agency commission followed by a 5% trading desk fee means the publisher receives `budget × 0.85 × 0.95`. Use `commission` only when the seller has agreed to fund the split; a fee the advertiser pays on top of the seller's price is an [operator fee](#operator-fees).
 
 **Settlement adjustments** are applied at invoicing or payment time (e.g., a cash discount for early payment). They don't affect the committed price or budget. Retroactive rebates and performance incentives are out of scope for `price_breakdown` and would be handled through reconciliation workflows.
+
+**Operator fees** are kept by the account's `operator` out of the advertiser's budget — for example, an agency's 2% insurance fee on every media buy. The advertiser pays it, the operator keeps it, and the seller never sees it. See [Operator fees](#operator-fees).
 
 ### Beneficiary
 
@@ -631,13 +657,15 @@ Each adjustment may include an optional `beneficiary` field identifying who rece
 
 The value can be a sellers.json domain, an AdCP account ID, or a human-readable party name.
 
+For `operator_fee`, `beneficiary` defaults to the account's `operator`. Set it only when another party receives the fee.
+
 ### Invariant
 
-The invariant is: `list_price` with all `fee` and `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no fee or discount adjustments are present, `fixed_price` must equal `list_price`.
+The invariant is: `list_price` with all `fee`, `discount`, and `operator_fee` adjustments applied sequentially equals the buyer's effective price — `fixed_price` when the parent object carries it. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no fee, discount, or operator fee adjustments are present, `fixed_price` must equal `list_price`.
 
 This invariant applies only when `fixed_price` is present on the parent object. For auction-based packages, `price_breakdown` is informational — see [On Confirmed Packages](#on-confirmed-packages).
 
-Fee and discount adjustments compound in array order using these formulas:
+Fee, discount, and operator fee adjustments compound in array order using these formulas:
 
 ```
 For rate-based fees:        running = running × (1 + rate)
@@ -646,7 +674,9 @@ For rate-based discounts:   running = running × (1 − rate)
 For amount-based discounts: running = running − amount
 ```
 
-All monetary values are rounded to the precision of the currency (e.g., 2 decimal places for EUR/USD) at each step. The invariant holds after rounding.
+Operator fees use the fee formulas.
+
+All monetary values are rounded to the precision of the currency (e.g., 2 decimal places for EUR/USD) at each step, or, for an option that declares [`price_adjustments`](#selection-dependent-price-adjustments), to that option's price precision, which can be finer. The invariant holds after rounding.
 
 Example with mixed adjustments:
 
@@ -673,13 +703,13 @@ Each adjustment must include exactly one of `rate` or `amount`:
 
 ### Budgets and Commission
 
-Budgets are always denominated at the `fixed_price` level, inclusive of commissions. If a buyer commits €10,000 at an €11.90 CPM, that €10,000 is the buyer's cost. The agency takes their commission from that amount; the publisher receives the remainder.
+Budgets are always denominated at the `fixed_price` level, inclusive of commissions. A buying platform's budget toward the advertiser also includes operator fees; see [Operator fees](#operator-fees). If a buyer commits €10,000 at an €11.90 CPM, that €10,000 is the buyer's cost. The agency takes their commission from that amount; the publisher receives the remainder.
 
 This means a buyer agent comparing rates across sellers can use `fixed_price` directly — it's the actual cost per unit, regardless of the underlying commission structure.
 
 ### On Confirmed Packages
 
-The `price_breakdown` field also appears on the package response (confirmed line item). It is seller-populated — buyer agents should treat it as read-only.
+The `price_breakdown` field also appears on the package response (confirmed line item). On a seller's response it is seller-populated, and buyer agents should treat it as read-only. A buying platform reporting the package to the advertiser may append `operator_fee` adjustments; see [Operator fees](#operator-fees).
 
 **Fixed-price packages** echo the pricing option's breakdown:
 
@@ -720,11 +750,162 @@ The `price_breakdown` field also appears on the package response (confirmed line
 }
 ```
 
+### Operator fees
+
+An account's `operator`, typically an agency buying for a brand, often keeps a fee out of the advertiser's budget on every media buy. Neither `fee` nor `commission` fits: a `fee` is paid to the seller, and a `commission` does not change the buyer's price. An `operator_fee` raises the price the advertiser pays and leaves the seller's revenue unchanged. A buying platform's or trading desk's own fee that the advertiser pays on top of the seller's price is also an `operator_fee`, with `beneficiary` naming the platform.
+
+**Who adds it.** Operator fees appear only in breakdowns the operator's buying platform returns to the operator and the advertiser it buys for. The seller never sees them, so sellers MUST NOT include `operator_fee` in a breakdown or `eligible_adjustments` they author.
+
+**Order and the seller's price.** `operator_fee` adjustments MUST follow every `fee` and `discount` adjustment. The running price just before the first `operator_fee` is the seller's price. Commission and settlement adjustments in the same breakdown apply to the seller's price and budget, not the advertiser's. Several operator fees compound in array order.
+
+**Rate basis.** Like a `fee`, an operator fee's `rate` is a markup on the running price. A contract that sets the fee as a share `g` of the advertiser's gross spend converts to `rate = g / (1 − g)` (2% of gross is a rate of about 0.0204), or uses `amount`.
+
+A buying platform reporting a package to the advertiser echoes the seller's breakdown and appends the operator fee:
+
+```json
+{
+  "package_id": "pkg_24680",
+  "product_id": "run_of_site_display",
+  "pricing_option_id": "cpm_eur_ros",
+  "budget": 10200,
+  "price_breakdown": {
+    "list_price": 10.00,
+    "adjustments": [
+      { "kind": "discount", "name": "volume", "rate": 0.15, "description": "12x frequency discount" },
+      { "kind": "operator_fee", "name": "insurance", "rate": 0.02, "description": "Agency insurance fee" }
+    ]
+  }
+}
+```
+
+```
+list_price: 10.00
+  discount, rate: 0.15       → 10.00 × 0.85 = 8.50   (seller's price)
+  operator_fee, rate: 0.02   → 8.50 × 1.02 = 8.67    (advertiser's price)
+```
+
+The platform states `budget` at the advertiser's price. The advertiser's €10,200 funds a €10,000 media buy at the seller's €8.50 (seller budget = advertiser budget × seller price ÷ advertiser price), and the operator keeps €200. The platform SHOULD report delivered spend to the advertiser on the same basis. `beneficiary` is omitted because the fee goes to the account's operator. A brand operating its own account has no operator fee to declare.
+
+A flat per-campaign fee or retainer is not a per-unit adjustment and is out of scope. Whether the advertiser sees the operator fee is a matter for the platform's permission model and the operator's contract with the advertiser, not the protocol.
+
+---
+
+## Selection-dependent price adjustments
+
+<Note>
+Experimental (`media_buy.price_adjustments`): sellers that implement `price_adjustments` declare the feature id in `experimental_features`, and the shape may change in 3.x with the notice described in [Experimental status](/docs/reference/experimental-status). The rule that a seller MUST NOT return a table to callers below 3.3 applies in addition.
+</Note>
+
+### Two supported paths
+
+A seller can quote a price in either of two equally supported ways:
+
+- **A fully priced offer.** The seller returns a pricing option, or a configured product or proposal, whose `fixed_price` is the price for what was quoted. It publishes no table. The price applies only to that quote: the buyer cannot derive the price of a different selection, date range, or volume from it and re-discovers or refines to learn it.
+- **A fixed price plus an adjustment table.** A fixed-price `cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`, `cpp`, or `flat_rate` option declares an ordered `price_adjustments` table, so the buyer can compute the price locally for the selections and dates the table covers.
+
+Declaring a table is optional and a fully priced offer is not a fallback. Whether a table is present tells the buyer whether it can compute the price itself. Many sellers, broadcast included, price the combination of property, dates, and format against avails and their own yield rules, and a seller managing yield this way SHOULD NOT be expected to publish a table or the method behind its prices. A table suits sellers whose rate really is a base rate with coefficients: Dutch linear TV rate cards multiply a net base price by month, spot-length, target-audience, and market indices.
+
+### Rows and composition
+
+`fixed_price` stays the **base rate**: it is what the buyer pays when no row applies, and it is already net of any negotiated discount in the option's own `price_breakdown`. This is distinct from `eligible_adjustments` (which kinds of adjustment are possible) and from `price_breakdown` (how a negotiated price was derived): `price_adjustments` is the seller's declared, binding function from selections and dates to price.
+
+Every row is a `fee` (adds) or a `discount` (subtracts), carrying exactly one of:
+
+- a **`rate`**: a proportion of the running total at that step. A fee `rate` can be 1 or more, so an index of 2.5 is a fee `rate` of 1.5;
+- an **`amount`**: a fixed amount in the option's currency per pricing unit.
+
+There is no separate index row kind. A Dutch index card factor `f` is a fee `rate` of `f − 1` when `f > 1`, a discount `rate` of `1 − f` when `f < 1`, and no row when `f = 1`. The rate form needs no second kind, one rule covers percentage fees, discounts, and index cards, and a row means the same thing wherever it sits in the table.
+
+Each row has a `dimension`. `format_option` and `placement_selection` rows match values the buyer selects; `always` rows need no selection and apply whenever their window allows (month, market, and audience indices).
+
+```json
+{
+  "pricing_option_id": "oranje_grp_eur_2026",
+  "pricing_model": "cpp",
+  "currency": "EUR",
+  "fixed_price": 1000.00,
+  "parameters": { "demographic": "A25-54" },
+  "price_adjustments": [
+    { "dimension": "always", "kind": "fee", "name": "month_index_nov", "rate": 0.10,
+      "valid_from": "2026-11-01T00:00:00+01:00", "valid_until": "2026-12-01T00:00:00+01:00" },
+    { "dimension": "always", "kind": "discount", "name": "market_index_nov", "rate": 0.05,
+      "valid_from": "2026-11-01T00:00:00+01:00", "valid_until": "2026-12-01T00:00:00+01:00" },
+    { "dimension": "format_option", "format_option_ref": { "scope": "product", "format_option_id": "spot_20s" },
+      "kind": "discount", "name": "spot_length_20s", "rate": 0.20 },
+    { "dimension": "always", "kind": "fee", "name": "target_audience_a25_54", "rate": 0.25 },
+    { "dimension": "placement_selection",
+      "placement_ref": { "publisher_domain": "oranjetv.example", "placement_id": "first_in_break" },
+      "kind": "fee", "name": "first_in_break_premium", "rate": 0.20 }
+  ]
+}
+```
+
+A buyer booking a 20-second spot in first position for a flight in the second half of November pays, applying each row to the running total in declared order: `1000.00 → 1100.00` (month index 1.10) `→ 1045.00` (market index 0.95) `→ 836.00` (20-second index 0.80) `→ 1045.00` (audience index 1.25) `→ 1254.00` (first-in-break fee of 20% of the running total, `209.00`). The accepted `price_breakdown` lists the five rows in that order: fee `0.10`, discount `0.05`, discount `0.20`, fee `0.25`, fee `0.20`.
+
+Rate-side spot-length indexing is expressible through [`price_adjustments`](#selection-dependent-price-adjustments) (a row keyed to the spot's format option). Impression-side :30 equivalization and demo-bound CPM remain open and are tracked for 3.4 in [#8001](https://github.com/adcontextprotocol/adcp/issues/8001).
+
+### Eligible dimensions
+
+Selection rows price only values that come from a seller-published catalog on the same product, so the seller can enumerate them in advance. The dimensions in this version are placement and format option (which carries spot length):
+
+| `dimension` | Row selector | Matches when |
+|---|---|---|
+| `format_option` | `format_option_ref` | The purchase's `format_option_refs` includes the reference. It MUST resolve to a format option the product declares. |
+| `placement_selection` | `placement_ref` | A `mode: "selected"` `placement_selection` includes the placement. It MUST resolve to a targetable placement of the product, and the product MUST declare `overlay_support.placement_selection`. |
+| `always` | none | Always, subject to the row's window. |
+
+Matching is full-identity equality after resolving both sides to the product's declared entry: a legacy placement ref and a placement identity for the same placement match, a seller-inline placement's `seller_agent.agent_url` compares under the [URL canonicalization rules](/docs/reference/url-canonicalization) rather than byte equality, and the same format option ID under a different `scope` does not. Only values the buyer actually selects match a selection row. Omitting the selection, or choosing the product default, matches no row.
+
+**Property and collection are out of this version.** `property_list` and `collection_list` are buyer-owned references (`agent_url` plus `list_id`): the buyer creates and changes the list, so the seller has no catalog entry to anchor a row to and cannot publish a price for a value it cannot enumerate. A row keyed to a list would be priced by the buyer's own list contents. A seller that prices property or collection differently quotes them as a fully priced offer for the properties or collections the buyer names, or sells them as separately priced products. A later minor version can add property by seller-side id, or collection by `collection_id`, once a row can name a value the seller publishes.
+
+Position in break is modelled as a seller-published placement (the example above prices `first_in_break` that way) until the booking half of [#8009](https://github.com/adcontextprotocol/adcp/issues/8009) lands; the reporting side is a separate contract ([Position pricing is outside this reporting contract](/docs/media-buy/media-buys/optimization-reporting)). Activation method, measurement vendor, and reporting tier have no selectable anchor yet; an unknown `dimension` is a schema error and later minor versions add values as anchors appear.
+
+### Validity windows
+
+A row may carry `valid_from` (inclusive) and `valid_until` (exclusive), both date-times with an offset, so a seller whose month and market indices change monthly publishes one row per window. A row without them always applies. The window is evaluated at the purchase's `start_time`.
+
+A purchase resolves to **one** price, so a flight whose `[start_time, end_time)` crosses a `valid_from` or `valid_until` of a row that would otherwise apply is rejected with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming the flight. The buyer splits the flight into one purchase per window. A flight may end exactly on a `valid_until`. Resolving each installment or each day of one purchase at its own rate would need a price per installment in the accepted snapshot, which this version does not define.
+
+Row windows are separate from quote expiry below: a window says when a rate is in force, expiry says how long the seller holds the quote.
+
+### Resolution
+
+Sellers and buyers MUST resolve a purchase's price in this order:
+
+1. **Select rows.** A row applies when its window contains the purchase's `start_time` and its selector matches. Among rows of one selection dimension, only the first applicable row in declared order fires, so a seller can list the same value once per window and the matching window wins. `always` rows each fire. Sellers who want multi-select purchases priced at the highest applicable row list it first; summing the matched values of one dimension is a recorded limit of 3.3, not supported in this version.
+2. **Apply in declared order to one running total.** Start the running total at `fixed_price`. For each firing row, in the order the seller declared it, a `rate` row adds (`fee`) or subtracts (`discount`) `round(running × rate)` and an `amount` row adds or subtracts its `amount`; the result is the new running total. Because each row applies to the running total, a 10% fee followed by a 10% fee gives `× 1.21`, not `× 1.20`; a fixed amount followed by a rate is scaled by the rate; and the same rows declared in another order can resolve to a different price. The seller's declared order is part of the quote.
+3. **Precision.** The option's **price precision** is the greatest of the currency's ISO 4217 minor-unit exponent; 4 for `cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`, and `cpp` options; and the fewest decimal places that exactly represent `fixed_price` and each row `amount`. Precision is a property of the numeric values, not of how they were written: `0.0100` and `0.01` are the same value. Every step rounds half away from zero to price precision, so the resolved price is the exact running total and is not rounded again; rounding to currency minor units belongs to later spend and invoice calculation. Implementations MUST use exact decimal or integer arithmetic.
+4. **Never negative.** The total MUST NOT fall below zero at the end. Sellers MUST verify at publication that no permitted selection resolves below zero; a purchase that would is rejected with `INVALID_REQUEST`, never clamped.
+
+This replaces the draft's earlier model, which applied index factors multiplicatively and then added percentage premiums to the indexed price without compounding them. The two give the same price for a table that declares its index rows before at most one percentage row and its `amount` rows last, which covers the Dutch example above; they differ when two percentage rows both apply, and when an `amount` row is declared before a rate row.
+
+Two consequences follow from one-row-per-dimension. A multi-select purchase pays the first applicable row's rate on all of its volume, so a seller that wants each selected value priced separately sells separate packages or publishes fully resolved per-selection options. And a row that prices a placement already in the product's default set would make choosing it explicitly cost more than the default, so sellers should price only values that add to the default.
+
+### Quotes stay bound to their terms
+
+A price, whether a fully priced offer or resolved from a table, is bound to what it was quoted for: its scope, applicable dates, buyer commitments, delivery terms, and the account it was quoted to. For a table:
+
+- **Account.** A table applies only to the account it was returned for. A buyer MUST NOT apply a table returned for one account to another account. A response with `cache_scope: "public"` was returned for every account that prices off the public rate card.
+- **Expiry.** A table expires with the quote it came in: the proposal's or offer's `expires_at`, or, for a reusable product, the validity of the discovery response it was returned in (see `pricing_version` and `cache_scope` on `get_products`). After expiry the buyer re-discovers and uses the new table; it MUST NOT price a new purchase from the expired one.
+- **Without a table.** A fully priced offer carries the same bounds. Its price applies only to what was quoted, and the buyer MUST NOT extrapolate it to other selections or dates.
+
+### Resolved price and accepted terms
+
+- When `pricing` is omitted from a purchase, the seller computes the resolved price. When the buyer supplies `pricing`, the seller MUST reject any `fixed_price` or `price_breakdown` that differs from the resolved result with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming the pricing field, and SHOULD carry the resolved value and breakdown as [`error-details/price-adjustments-mismatch.json`](https://adcontextprotocol.org/schemas/v3/error-details/price-adjustments-mismatch.json) (`details.resolved_fixed_price`, `details.resolved_price_breakdown`), so the buyer can see which row it disagrees on. It MUST NOT silently reprice the request.
+- In the accepted purchase `pricing`, the seller MUST return `fixed_price` as the resolved rate. When any row fired, the seller MUST also return `price_breakdown`: its `list_price` is the declared option's `list_price` when the option declares a `price_breakdown`, and otherwise the option's declared `fixed_price`; its `adjustments` are the declared breakdown's adjustments followed by one entry per fired row, in declared order. A rate row is recorded with its `rate` when that rate is below 1, and as its currency delta in `amount` otherwise (a fee rate of 1 or more); an amount row is recorded as its `amount`; a row whose delta rounds to zero contributes nothing and is omitted. `list_price` folded through `adjustments` equals `fixed_price`, so the invariant above covers selection-dependent pricing. A verifier re-resolves the table of the accepted `pricing_option_id` over the purchase's selections and flight and compares.
+- **The accepted `pricing_option_id` pins the table.** Any change to the table, or to which selections or dates it matches, is a change to binding price and mints a new `pricing_option_id`. So the accepted `pricing_option_id`, which `commercial_terms.terms_digest` covers, identifies exactly one immutable table, unfired rows and rows for other windows included. Changes the agreement already permits (a different format option or placement within the accepted `change_terms[]`) are priced from the table of the accepted `pricing_option_id` without a re-quote. Both parties retain that table from discovery, and the seller MUST price from it, not from a later table the option's successor carries. Quote expiry does not apply once the option is accepted: the accepted ID still names the table.
+- **The table grants no change rights.** Pinning the table does not make any selection or date change allowed. Which changes the buyer may make come only from the accepted `change_terms[]` ([DR-0016](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0016-proposal-bound-buyer-change-rights.md)): a change they do not permit returns `ACTION_NOT_ALLOWED` whatever the table would price it at, and a change that exceeds the accepted commercial envelope returns `REQUOTE_REQUIRED`. A seller MUST NOT read a row for an unused value as consent to that change, and a buyer MUST NOT read it as an entitlement.
+- **The table is not embedded in the accepted snapshot.** The canonical schemas that carry accepted terms (`canonical-pricing-option.json`, `product-purchase.json`, and the commercial terms that contain them) are closed, and a minor release does not add properties to closed schemas. Embedding the table in the snapshot, so the terms are self-contained without the retained discovery copy, is a 4.0 item tracked with [#8501](https://github.com/adcontextprotocol/adcp/issues/8501).
+
+A seller MUST NOT return an option carrying `price_adjustments` to a caller whose `adcp_version` is below 3.3, because an older buyer would read `fixed_price` as the whole price and be repriced at create; for those callers it publishes fully priced per-selection options or omits the option. A consumer that does not recognize a row's `dimension` treats the option as unpurchasable. The `fixed_price` is net of the option's declared discounts. Auction floors (`floor_price`) do not take adjustments, and `price_adjustments` requires `fixed_price`. Availability and forecasts stay seller-computed: the price resolves locally but feasibility does not.
+
+A seller can instead publish a fully priced pricing option per selection combination, or split the inventory into separately priced products. Both remain valid with equal standing; `price_adjustments` is for sellers whose dimensions are orthogonal enough that a combination catalog would explode and who are willing to publish the coefficients.
+
 ---
 
 ## Eligible Adjustments
 
-Publishers can declare which adjustment kinds apply to a pricing option using `eligible_adjustments`. This tells buyer agents upfront whether discounts, commissions, or settlement terms are available — before any negotiation begins.
+Publishers can declare which adjustment kinds apply to a pricing option using `eligible_adjustments`. This tells buyer agents upfront whether discounts, commissions, or settlement terms are available — before any negotiation begins. Sellers never declare `operator_fee`, which only a buying platform applies.
 
 ```json
 {

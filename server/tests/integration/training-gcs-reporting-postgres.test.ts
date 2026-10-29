@@ -7,7 +7,8 @@ import { Pool } from 'pg';
 import type { Storage } from '@google-cloud/storage';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ReportingSourceSliceRequestV1Schema, reportingCoverageDenominatorFingerprintV1, parseVerifiedReportingSourceManifestV1, validateReportingSourceExecutionV1 } from '@adcp/sdk/reporting/source';
-import { PostgresReportingLedgerStore, PostgresReportingManagedDeliveryStore, REPORTING_OBJECT_WRITE_AUTHORITY_MIGRATION } from '@adcp/sdk/reporting/ledger';
+import { PostgresReportingLedgerStore, REPORTING_OBJECT_WRITE_AUTHORITY_MIGRATION } from '@adcp/reporting-storage';
+import { PostgresReportingManagedDeliveryStore } from '@adcp/reporting-storage/managed';
 import { createPostgresReportingConsumerRuntimeV1 } from '@adcp/sdk/reporting/consumer';
 import { verifyTrainingGcsBuyer, probeRevokedTrainingGenerations } from '../../../scripts/training-gcs-buyer.mjs';
 import { committedTrainingSourceExecutor, sha256, trainingConstituents, trainingGcsAdapter } from '../../src/training-agent/gcs-reporting-source.js';
@@ -83,9 +84,11 @@ describe.skipIf(!testUrl)('training GCS reporting against disposable PostgreSQL'
       await client.query('BEGIN');
       await client.query(`DROP SCHEMA IF EXISTS ${TRAINING_REPORTING_SCHEMA} CASCADE`);
       await client.query(`CREATE SCHEMA ${TRAINING_REPORTING_SCHEMA}`);
-      for (const migration of ['620_training_gcs_reporting.sql', '621_training_gcs_reporting_obligation_tombstones.sql', '624_training_gcs_reporting_destination_contract.sql']) {
+      for (const migration of ['620_training_gcs_reporting.sql', '621_training_gcs_reporting_obligation_tombstones.sql', '624_training_gcs_reporting_destination_contract.sql', '630_training_gcs_reporting_history_start.sql']) {
         await client.query(await readFile(new URL(`../../src/db/migrations/${migration}`, import.meta.url), 'utf8'));
       }
+      // Replay the upgrade to verify it is safe when history_start already exists.
+      await client.query(await readFile(new URL('../../src/db/migrations/630_training_gcs_reporting_history_start.sql', import.meta.url), 'utf8'));
       const legacy = await readFile(new URL('../../src/db/migrations/575_reporting_reliability_curriculum.sql', import.meta.url), 'utf8');
       await client.query('SET LOCAL search_path=public,pg_catalog');
       await client.query(legacy.slice(0, legacy.indexOf('UPDATE certification_modules')));

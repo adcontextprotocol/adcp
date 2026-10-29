@@ -33,6 +33,7 @@ import {
 } from '@adcp/sdk/server';
 import { createLogger } from '../logger.js';
 import { mountTenantRoutes } from './tenants/router.js';
+import { mountCreative33Sandbox } from './creative33/router.js';
 import { toolsForTenant } from './tenants/tool-catalog.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { runWithSessionContext, flushDirtySessions, startSessionCleanup } from './state.js';
@@ -279,7 +280,7 @@ const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-buil
  *  `_training_agent_tenants` discovery extension. Mirrors the per-tenant
  *  config builders in `tenants/<id>.ts`. */
 const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> = {
-  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', 'sales-dooh'],
+  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', 'sales-dooh', 'sales-fixed-rate'],
   signals: ['signal-marketplace', 'signal-owned'],
   governance: [
     'governance-spend-authority',
@@ -325,9 +326,12 @@ export function createTrainingAgentRouter(options: {
 } = {}): Router {
   const router = Router();
   const buyerOAuth = trainingBuyerOAuthConfig();
-  const requireSalesAuth = buyerOAuth ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault) : requireTokenDefault;
+  const buyerOAuthOptions = { rateLimit: !options.disableRateLimit };
+  const requireSalesAuth = buyerOAuth
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'sandbox', buyerOAuthOptions)
+    : requireTokenDefault;
   const requireReportingAuth = buyerOAuth
-    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'private-reporting')
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'private-reporting', buyerOAuthOptions)
     : requireTokenDefault;
   if (buyerOAuth) router.get(TRAINING_BUYER_METADATA_PATH, (_req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -375,6 +379,13 @@ export function createTrainingAgentRouter(options: {
     requireGovernanceAuth: requireTokenGovernance,
     storyboardCompat: options.storyboardCompat,
   });
+
+  if (options.storyboardCompat?.version !== '3.0') {
+    mountCreative33Sandbox(router, {
+      ...(!options.disableRateLimit && { rateLimit: mcpRateLimiter }),
+      requireAuth: requireTokenDefault,
+    });
+  }
 
   // Legacy single-URL `/mcp` route — preserved as a back-compat alias for
   // existing AAO entries, Sage/Addie configs, docs, and external storyboard

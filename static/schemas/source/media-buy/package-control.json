@@ -39,6 +39,25 @@
         { "type": "null" }
       ]
     },
+    "start_requires_all_creatives_approved": {
+      "type": "boolean",
+      "description": "AdCP 3.3 initial-start policy. False (default) serves eligible approved assignments. True MUST retain booking and inventory commitment but block first enablement for serving until every current assignment is approved in all applicable package scopes; an empty set or library approval alone is insufficient. Retain pending-review/rejected assignments; same-creative_id resubmission needs no reassignment. Flight, pause, format-coverage and commitment constraints still apply. After first enablement, ordinary serving and impairment rules apply. Opt-in requires media_buy.features.creative_start_policy: true; otherwise buyers MUST NOT send true and sellers MUST reject true with UNSUPPORTED_FEATURE before mutation. Stage the full initial set atomically or while paused; the gate cannot anticipate future assignments. Omission preserves the stored policy; false clears the gate before first enablement for serving. A change to this policy after the package has first been enabled for serving MUST be rejected with INVALID_STATE. Operational control on control_media_buy, authorized by update_creative_start_policy in available_actions; it does not change accepted commercial terms.",
+      "x-added-in": "3.3.0",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "creative_start_policy": {
+            "default": "serve_approved_subset",
+            "true_gate": "all_current_assignments_approved_in_all_applicable_scopes",
+            "empty_assignments": "gate_unsatisfied",
+            "evaluation_window": "before_first_package_enablement",
+            "review_rejection": "retain_assignment",
+            "readback": "echo_effective_policy",
+            "unsupported_true": "UNSUPPORTED_FEATURE"
+          }
+        },
+        "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+      }
+    },
     "paused": {
       "type": "boolean"
     },
@@ -101,6 +120,7 @@
     { "required": ["impressions"] },
     { "required": ["pacing"] },
     { "required": ["bidding"] },
+    { "required": ["start_requires_all_creatives_approved"] },
     { "required": ["paused"] },
     { "required": ["canceled"] },
     { "required": ["targeting_overlay"] },
@@ -140,6 +160,7 @@
             { "required": ["impressions"] },
             { "required": ["pacing"] },
             { "required": ["bidding"] },
+            { "required": ["start_requires_all_creatives_approved"] },
             { "required": ["paused"] },
             { "required": ["targeting_overlay"] },
             { "required": ["catalog_ids"] },
@@ -162,7 +183,7 @@
       }
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "not": {
     "anyOf": [
       { "required": ["creatives"] },

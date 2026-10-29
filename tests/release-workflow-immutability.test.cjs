@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const crypto = require('crypto');
+const os = require('os');
+const { spawnSync } = require('child_process');
 const YAML = require('yaml');
 
 const repoRoot = path.join(__dirname, '..');
@@ -100,6 +102,14 @@ assert(
   !typescriptCandidateStep.includes('sync-version -- --auto-update'),
   'Candidate validation must not bump the TypeScript SDK package release number.'
 );
+// The SDK's own sync-version generator owns candidate compatibility: since
+// adcp-client 56d45712c it keeps 3.2.x GA as stable peers and adds only exact
+// 3.3 preview aliases. Candidate validation must not rewrite it.
+assert(
+  !typescriptCandidateStep.includes('NODE_CANDIDATE_VERSION') &&
+    !typescriptCandidateStep.includes('sdk/scripts/sync-version.ts'),
+  'Candidate validation must use the SDK compatibility generator unmodified.'
+);
 const typescriptProtocolCheckout = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
   step => step.uses?.startsWith('actions/checkout@') && step.with?.path === 'protocol'
 );
@@ -144,6 +154,51 @@ assert(
     pythonCandidateStep.includes('f"recursive-include schemas/cache/{new_key} *.json"'),
   'Python candidate validation must key the wheel and both sdist schema allowlist syntaxes with the SDK bundle key.'
 );
+const pythonPackageBridge = pythonCandidateStep.match(
+  /SDK_VERSION="\$\{sdk_version\}" BUNDLE_VERSION="\$\{bundle_version\}" python - <<'PY'\n([\s\S]*?)\nPY/
+)?.[1];
+assert(pythonPackageBridge, 'Python candidate package-data bridge must remain executable.');
+const packageBridgeTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-sdk-candidate-'));
+try {
+  const sdkDir = path.join(packageBridgeTemp, 'sdk');
+  fs.mkdirSync(sdkDir);
+  const importStub = `import sys, types
+module = types.ModuleType("adcp.validation.version")
+module.resolve_bundle_key = lambda value: value if "-" in value else ".".join(value.split(".")[:2])
+sys.modules["adcp.validation.version"] = module
+`;
+  for (const manifest of [
+    'prune src/adcp/_schemas\nrecursive-include schemas/cache/3.2 *.json\n',
+    'recursive-include src/adcp/_schemas/3.2 *.json\nrecursive-include schemas/cache/3.2 *.json\n',
+  ]) {
+    fs.writeFileSync(path.join(sdkDir, 'pyproject.toml'), 'adcp = ["_schemas/3.2/**/*.json"]\n');
+    fs.writeFileSync(path.join(sdkDir, 'MANIFEST.in'), manifest);
+    const result = spawnSync('python3', ['-c', importStub + pythonPackageBridge], {
+      cwd: packageBridgeTemp,
+      env: { ...process.env, SDK_VERSION: '3.2.5', BUNDLE_VERSION: '3.3.0-beta.0' },
+      encoding: 'utf8',
+    });
+    assert.strictEqual(result.status, 0, result.stderr);
+    const updated = fs.readFileSync(path.join(sdkDir, 'MANIFEST.in'), 'utf8');
+    assert(updated.includes('recursive-include schemas/cache/3.3.0-beta.0 *.json'));
+    assert.strictEqual(updated.includes('recursive-include src/adcp/_schemas/3.3.0-beta.0 *.json'),
+      !manifest.startsWith('prune'), 'A pruned generated copy must stay excluded from sdists.');
+    assert(fs.readFileSync(path.join(sdkDir, 'pyproject.toml'), 'utf8').includes('"_schemas/3.3.0-beta.0/**/*.json"'));
+  }
+  for (const manifest of ['prune src/adcp/_schemas\n', 'recursive-include schemas/cache/3.2 *.json\n']) {
+    fs.writeFileSync(path.join(sdkDir, 'pyproject.toml'), 'adcp = ["_schemas/3.2/**/*.json"]\n');
+    fs.writeFileSync(path.join(sdkDir, 'MANIFEST.in'), manifest);
+    const result = spawnSync('python3', ['-c', importStub + pythonPackageBridge], {
+      cwd: packageBridgeTemp,
+      env: { ...process.env, SDK_VERSION: '3.2.5', BUNDLE_VERSION: '3.3.0-beta.0' },
+      encoding: 'utf8',
+    });
+    assert.notStrictEqual(result.status, 0, 'Missing package-data authority must fail closed.');
+    assert.match(result.stderr, /does not package the pinned SDK schema/);
+  }
+} finally {
+  fs.rmSync(packageBridgeTemp, { recursive: true, force: true });
+}
 
 const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(
   step => step.name === 'Run storyboards against /${{ matrix.tenant }}'
@@ -264,9 +319,117 @@ assert.strictEqual(
 
 assert.deepStrictEqual(
   verificationJob.permissions,
-  { contents: 'read' },
-  'The verification job must not receive release mutation or signing permissions.'
+  { contents: 'read', actions: 'read', 'pull-requests': 'read' },
+  'The verification job must not receive release mutation or signing permissions; it reads only the release PR and its storyboard run.'
 );
+
+// Strict exact-head freshness guards every step that can lead to Changesets
+// generation. Only steps publishing the already-committed release relax it.
+const fenceModes = (source) =>
+  [...source.matchAll(/check-release-state\.cjs"? ([a-z-]+)/g)].map(match => match[1]);
+const stepRun = (job, name) => {
+  const found = workflowConfig.jobs[job].steps.find(step => step.name === name);
+  assert(found, `Missing ${job} step: ${name}`);
+  return found.run;
+};
+assert.deepStrictEqual(fenceModes(stepRun('verify-release', 'Require current release branch')), ['current']);
+assert.deepStrictEqual(fenceModes(stepRun('release', 'Require current release branch')), ['current']);
+assert.deepStrictEqual(
+  fenceModes(stepRun('release', 'Recheck current release branch after installation')),
+  ['current']
+);
+assert.deepStrictEqual(
+  fenceModes(artifactDetection),
+  ['recovery', 'current'],
+  'Release artifact detection precedes the Changesets path and must keep the strict fence.'
+);
+assert(
+  workflow.includes(`printf '#!/bin/sh\\nnode "$RUNNER_TEMP/release-hooks/check.cjs" current\\n'`),
+  'The Changesets pre-push hook must keep the strict exact-head fence.'
+);
+assert(
+  fenceModes(uploadStep).length > 0 &&
+    fenceModes(uploadStep).every(mode => ['publication-current', 'published', 'committed', 'approval'].includes(mode)) &&
+    !fenceModes(uploadStep).includes('current'),
+  'GitHub Release staging publishes the committed release and must use publication-scoped freshness.'
+);
+assert.match(
+  stepRun('verify-release', 'Detect stranded committed release'),
+  /check-release-state\.cjs pending/,
+  'Stranded-release detection keeps the strict pending fence.'
+);
+
+const verifiedMergeStep = verificationJob.steps.find(
+  step => step.name === 'Detect provenance-verified release merge'
+);
+assert(verifiedMergeStep, 'verify-release must try to prove a verified release merge.');
+assert.strictEqual(verifiedMergeStep.id, 'verified-merge');
+assert.strictEqual(verifiedMergeStep['continue-on-error'], true, 'Failure to prove verification must not fail the job.');
+assert.match(verifiedMergeStep.if, /github\.event_name == 'push'/);
+assert(
+  verificationJob.steps.indexOf(verifiedMergeStep) <
+    verificationJob.steps.findIndex(step => step.name === 'Install Dependencies'),
+  'Release merge verification must be decided before installing dependencies.'
+);
+assert(
+  verifiedMergeStep.run.includes('grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "$changed_files"') &&
+    verifiedMergeStep.run.includes('git show --first-parent --format= --name-only --no-renames "$GITHUB_SHA"') &&
+    /if node scripts\/check-release-state\.cjs verified-merge; then\n\s*echo "verified=true" >> "\$GITHUB_OUTPUT"/.test(verifiedMergeStep.run),
+  'Only a Version Packages merge proven by verified-merge may set verified=true.'
+);
+assert.match(
+  verifiedMergeStep.if,
+  /github\.ref_name == 'main'/,
+  'verified-merge is main-only: maintenance PR runs use a different candidate-version mode.'
+);
+assert.strictEqual(
+  verificationJob.steps.find(step => step.name === 'Checkout Repo').with['persist-credentials'],
+  false,
+  'verify-release reads the public repository anonymously and must not persist a token.'
+);
+
+// verified-merge requires every job the storyboard matrix produces. Expand
+// the workflow's matrix (product, exclude, include) and compare.
+{
+  const { storyboardJobs } = require(path.join(repoRoot, 'scripts/check-release-state.cjs'));
+  const jobs = trainingAgentWorkflowConfig.jobs;
+  const matrix = jobs.storyboards.strategy.matrix;
+  const keys = ['surface', 'tenant'];
+  let combos = matrix.surface.flatMap(surface => matrix.tenant.map(tenant => ({ surface, tenant })));
+  combos = combos.filter(combo => !matrix.exclude.some(ex => keys.every(key => ex[key] === combo[key])));
+  for (const extra of matrix.include) {
+    if (!combos.some(combo => keys.every(key => combo[key] === extra[key])))
+      combos.push({ surface: extra.surface, tenant: extra.tenant });
+  }
+  const orchestrators = jobs.sales_storyboard_orchestrators.strategy.matrix.orchestrator;
+  const expected = [
+    ...combos.map(({ surface, tenant }) =>
+      jobs.storyboards.name.replace('${{ matrix.surface }}', surface).replace('${{ matrix.tenant }}', tenant)
+    ),
+    ...orchestrators.map(n =>
+      jobs.sales_storyboard_orchestrators.name.replace('${{ matrix.orchestrator }}', String(n))
+    ),
+    jobs.sales_storyboards.name,
+  ];
+  assert.deepStrictEqual(
+    Object.keys(jobs).sort(),
+    ['sales_storyboard_orchestrators', 'sales_storyboards', 'storyboards'],
+    'A new storyboard job must be added to check-release-state.cjs storyboardJobs.'
+  );
+  assert.deepStrictEqual(
+    [...storyboardJobs].sort(),
+    expected.sort(),
+    'check-release-state.cjs storyboardJobs must equal the full training-agent-storyboards.yml matrix.'
+  );
+}
+
+for (const name of ['Verify current storyboard coverage', 'Verify 3.0 storyboard compatibility']) {
+  const gate = verificationJob.steps.find(step => step.name === name);
+  assert(
+    gate.if.includes("steps.release-relevance.outputs.relevant == 'true' && steps.verified-merge.outputs.verified != 'true'"),
+    `${name} must run unless the exact approved head is provenance-verified.`
+  );
+}
 
 assert.strictEqual(
   releaseJob.permissions['id-token'],
@@ -472,3 +635,64 @@ for (const { line, source } of forwardMergeWorkflows) {
 }
 
 console.log('Release and forward-merge workflow checks passed.');
+
+const { test } = require('node:test');
+const documentationSnapshotStep = releaseDocsWorkflowConfig.jobs['snapshot-docs'].steps.find(step => step.name === 'Create docs snapshot');
+
+function createDocsSnapshotFixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-docs-source-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    assert.strictEqual(result.status, 0, result.stderr);
+  };
+  git('init', '--quiet');
+  git('config', 'user.name', 'Release fixture');
+  git('config', 'user.email', 'release-fixture@example.test');
+  fs.mkdirSync(path.join(root, 'docs'));
+  fs.writeFileSync(path.join(root, 'docs/stable.md'), 'Tagged release content\n');
+  fs.writeFileSync(path.join(root, 'docs/.hidden.md'), 'Tagged hidden page\n');
+  git('add', 'docs');
+  git('commit', '--quiet', '-m', 'Tagged documentation');
+  git('tag', 'v9.9.9');
+  fs.writeFileSync(path.join(root, 'docs/stable.md'), 'Current main content\n');
+  fs.writeFileSync(path.join(root, 'docs/future-only.md'), 'Future protocol guide\n');
+  return root;
+}
+
+function runDocsSnapshotFixture(root, version, event) {
+  const script = documentationSnapshotStep.run
+    .replaceAll('${{ steps.version.outputs.version }}', version)
+    .replaceAll('${{ github.event_name }}', event)
+    .replaceAll('${{ github.ref_name }}', `v${version}`);
+  assert.ok(!script.includes('${{'), 'all workflow expressions must be resolved');
+  return spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, GITHUB_EVENT_NAME: event },
+  });
+}
+
+test('release and manual snapshots contain only the tagged tree and preserve live docs', t => {
+  const root = createDocsSnapshotFixture(t);
+  const output = path.join(root, 'dist/docs/9.9.9');
+  for (const event of ['release', 'workflow_dispatch']) {
+    const result = runDocsSnapshotFixture(root, '9.9.9', event);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.deepStrictEqual(fs.readdirSync(output).sort(), ['.hidden.md', 'stable.md']);
+    assert.strictEqual(fs.readFileSync(path.join(output, 'stable.md'), 'utf8'), 'Tagged release content\n');
+    assert.strictEqual(fs.readFileSync(path.join(output, '.hidden.md'), 'utf8'), 'Tagged hidden page\n');
+    assert.strictEqual(fs.readFileSync(path.join(root, 'docs/stable.md'), 'utf8'), 'Current main content\n');
+    assert.strictEqual(fs.readFileSync(path.join(root, 'docs/future-only.md'), 'utf8'), 'Future protocol guide\n');
+    fs.writeFileSync(path.join(output, 'stale.md'), 'An obsolete candidate file\n');
+  }
+});
+
+test('an invalid source tag fails without moving or overwriting live documentation', t => {
+  const root = createDocsSnapshotFixture(t);
+  const result = runDocsSnapshotFixture(root, '9.9.8', 'workflow_dispatch');
+  assert.notStrictEqual(result.status, 0);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'docs/stable.md'), 'utf8'), 'Current main content\n');
+  assert.strictEqual(fs.readFileSync(path.join(root, 'docs/future-only.md'), 'utf8'), 'Future protocol guide\n');
+  assert.deepStrictEqual(fs.readdirSync(path.join(root, 'dist/docs/9.9.8')), []);
+});
