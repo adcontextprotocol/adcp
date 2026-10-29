@@ -106,6 +106,12 @@ function requiredClientScope(sessionId: string | undefined): string {
   return scope;
 }
 
+/** Trusted tenant/caller namespace established by the transport router.
+ * This accessor never accepts a caller-supplied session or scope override. */
+export function getTrainingCallerScope(): string {
+  return requiredClientScope(undefined);
+}
+
 /** Resolve the backing store only when the first task operation runs. Route
  * construction precedes database initialization in production. */
 export function getTrainingTaskStore(): TrainingTaskStore {

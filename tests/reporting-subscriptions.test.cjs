@@ -212,8 +212,9 @@ test('coverage readback lists exceptions only, each with its interval', () => {
 });
 
 // Reference computation of the documented rule for a daily schedule at a fixed offset.
-// Owed periods start on or after the first boundary at or after
-// max(accepted_at, confirmed_at, authorized_at) and overlap the flight [start_time, stop),
+// Owed periods start on or after the first boundary at or after max(accepted_at, authorized_at),
+// end after confirmed_at (the period in which the buy is confirmed is owed in full), and overlap
+// the flight [start_time, stop) (an empty flight overlaps nothing),
 // stop = min(end_time, canceled_at, completed_at). Flight values are those in force at each
 // period's scope_resolved_at (here: period end), given as a history of { asOf, ...flight }.
 // Exceptions remove periods whose start is in [from, until). Never clipped.
@@ -221,7 +222,8 @@ const DAY = 86_400_000;
 function expectedPeriods({ acceptedAt, confirmedAt, authorizedAt, startTime, endTime, canceledAt, completedAt, history, offsetHours, exceptions = [] }) {
   const origin = -offsetHours * 3_600_000; // local midnight expressed in UTC ms
   const t = v => (v ? Date.parse(v) : -Infinity);
-  const later = Math.max(t(acceptedAt), t(confirmedAt), t(authorizedAt));
+  const later = Math.max(t(acceptedAt), t(authorizedAt));
+  const confirmed = t(confirmedAt);
   const flightAt = when => {
     const base = { startTime, endTime, canceledAt, completedAt };
     for (const h of history || []) if (Date.parse(h.asOf) <= when) Object.assign(base, h);
@@ -232,16 +234,18 @@ function expectedPeriods({ acceptedAt, confirmedAt, authorizedAt, startTime, end
   for (let start = origin + Math.ceil((later - origin) / DAY) * DAY; start < horizon; start += DAY) {
     const f = flightAt(start + DAY); // scope_resolved_at at period end
     const stop = Math.min(...[f.endTime, f.canceledAt, f.completedAt].filter(Boolean).map(Date.parse));
-    if (start < stop && start + DAY > Date.parse(f.startTime)) out.push(start);
+    const flightStart = Date.parse(f.startTime);
+    if (start + DAY > confirmed && flightStart < stop && start < stop && start + DAY > flightStart) out.push(start);
   }
   return out
     .filter(p => !exceptions.some(e => p >= Date.parse(e.from) && (!e.until || p < Date.parse(e.until))))
     .map(p => new Date(p).toISOString());
 }
 
-test('the buyer computes the first owed period from accepted_at, confirmed_at, authorized_at, and the flight', () => {
+test('the buyer computes the first owed period from accepted_at, authorized_at, confirmed_at, and the flight', () => {
   const rule = read('core/reporting-subscription.json')['x-adcp-validation'].coverage;
-  assert.match(rule, /latest of this version's accepted_at, the buy's confirmed_at, and the account's authorization\.authorized_at/);
+  assert.match(rule, /later of this version's accepted_at and the account's authorization\.authorized_at, that end after the buy's confirmed_at/);
+  assert.match(rule, /The period in which the buy is confirmed is owed in full/);
   assert.match(rule, /overlap the buy's flight from start_time/);
   assert.match(rule, /each removing periods; none adds one/);
   assert.match(rule, /lists get_reporting_status in allowed_tasks/);
@@ -254,10 +258,11 @@ test('the buyer computes the first owed period from accepted_at, confirmed_at, a
   // Account in UTC-5: local midnight is 05:00Z. Buy confirmed mid-day after the subscription was accepted.
   const base = { acceptedAt: '2026-11-01T12:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', startTime: '2026-11-02T14:20:00Z', endTime: '2026-11-06T05:00:00Z', offsetHours: -5 };
   const owed = expectedPeriods(base);
-  assert.deepEqual(owed, ['2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-05T05:00:00.000Z'], 'mid-period confirmation starts at the next boundary');
+  assert.deepEqual(owed, ['2026-11-02T05:00:00.000Z', '2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-05T05:00:00.000Z'], 'the period in which the buy is confirmed is owed in full');
   assert.equal(expectedPeriods({ ...base, acceptedAt: '2026-11-04T01:00:00Z' })[0], '2026-11-04T05:00:00.000Z', 'a later acceptance moves the start');
   assert.equal(expectedPeriods({ ...base, authorizedAt: '2026-11-04T07:00:00Z' })[0], '2026-11-05T05:00:00.000Z', 'a later grant moves the start');
-  assert.equal(expectedPeriods({ ...base, confirmedAt: '2026-11-03T05:00:00Z' })[0], '2026-11-03T05:00:00.000Z', 'a start on a boundary is owed');
+  assert.equal(expectedPeriods({ ...base, confirmedAt: '2026-11-03T05:00:00Z', startTime: '2026-11-03T05:00:00Z' })[0], '2026-11-03T05:00:00.000Z', 'a confirmation on a boundary owes from that boundary');
+  assert.deepEqual(expectedPeriods({ ...base, canceledAt: '2026-11-02T10:00:00Z', startTime: '2026-11-02T14:20:00Z' }), [], 'a buy canceled before its flight starts owes nothing');
 
   // Flight: confirmed Nov 1, starts Dec 1: nothing before Dec 1.
   const future = expectedPeriods({ acceptedAt: '2026-10-01T00:00:00Z', confirmedAt: '2026-11-01T10:00:00Z', startTime: '2026-12-01T05:00:00Z', endTime: '2026-12-03T05:00:00Z', offsetHours: -5 });
@@ -265,7 +270,7 @@ test('the buyer computes the first owed period from accepted_at, confirmed_at, a
 
   // Exceptions only subtract, by period start in [from, until).
   const minus = expectedPeriods({ ...base, exceptions: [{ from: '2026-11-04T05:00:00Z', until: '2026-11-05T05:00:00Z' }] });
-  assert.deepEqual(minus, ['2026-11-03T05:00:00.000Z', '2026-11-05T05:00:00.000Z']);
+  assert.deepEqual(minus, ['2026-11-02T05:00:00.000Z', '2026-11-03T05:00:00.000Z', '2026-11-05T05:00:00.000Z']);
   assert.ok(minus.every(p => owed.includes(p)), 'no exception adds a period');
   assert.match(read('core/reporting-subscription-coverage.json').description, /removes the periods whose start falls in the half-open interval \[from, until\)/);
 });
@@ -275,7 +280,8 @@ test('a buy stops being owed at the earliest of end_time, canceled_at, and compl
   assert.match(rule, /the earliest of end_time, cancellation\.canceled_at, and completed_at/);
   assert.match(rule, /evaluated at each period's scope_resolved_at/);
   assert.match(rule, /an elapsed period never becomes owed retroactively/);
-  assert.match(rule, /The period containing the stop time is owed in full/);
+  assert.match(rule, /so is the period containing the stop time/);
+  assert.match(rule, /overlaps no period and owes nothing/);
   for (const [file, keys] of [['core/media-buy.json', ['properties', 'completed_at']], ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']]]) {
     const field = keys.reduce((o, k) => o[k], read(file));
     assert.equal(field['x-added-in'], '3.3.0', file);
@@ -284,12 +290,12 @@ test('a buy stops being owed at the earliest of end_time, canceled_at, and compl
   assert.ok(!read('core/media-buy.json').required.includes('completed_at'), 'completed_at stays optional');
 
   const base = { acceptedAt: '2026-11-01T00:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', startTime: '2026-11-02T14:20:00Z', endTime: '2026-11-06T05:00:00Z', offsetHours: -5 };
-  const days = n => Array.from({ length: n }, (_, i) => new Date(Date.parse('2026-11-03T05:00:00Z') + i * DAY).toISOString());
-  assert.deepEqual(expectedPeriods(base), days(3));
-  assert.deepEqual(expectedPeriods({ ...base, canceledAt: '2026-11-04T18:00:00Z' }), days(2), 'canceled mid-period: that period owed in full, the next not');
-  assert.deepEqual(expectedPeriods({ ...base, endTime: '2026-11-09T05:00:00Z' }), days(6), 'an end_time extension adds periods');
-  assert.deepEqual(expectedPeriods({ ...base, completedAt: '2026-11-04T05:00:00Z' }), days(1), 'completion before end_time stops at completed_at');
-  assert.deepEqual(expectedPeriods({ ...base, endTime: '2026-11-04T09:00:00Z' }), days(2), 'a mid-period end_time owes the period containing it');
+  const days = n => Array.from({ length: n }, (_, i) => new Date(Date.parse('2026-11-02T05:00:00Z') + i * DAY).toISOString());
+  assert.deepEqual(expectedPeriods(base), days(4));
+  assert.deepEqual(expectedPeriods({ ...base, canceledAt: '2026-11-04T18:00:00Z' }), days(3), 'canceled mid-period: that period owed in full, the next not');
+  assert.deepEqual(expectedPeriods({ ...base, endTime: '2026-11-09T05:00:00Z' }), days(7), 'an end_time extension adds periods');
+  assert.deepEqual(expectedPeriods({ ...base, completedAt: '2026-11-04T05:00:00Z' }), days(2), 'completion before end_time stops at completed_at');
+  assert.deepEqual(expectedPeriods({ ...base, endTime: '2026-11-04T09:00:00Z' }), days(3), 'a mid-period end_time owes the period containing it');
 
   // Canceled Nov 4 18:00, then reinstated and extended on Nov 8: Nov 5-7 elapsed and stay unowed.
   const reinstated = expectedPeriods({
@@ -299,7 +305,7 @@ test('a buy stops being owed at the earliest of end_time, canceled_at, and compl
       { asOf: '2026-11-08T12:00:00Z', canceledAt: undefined, endTime: '2026-11-10T05:00:00Z' },
     ],
   });
-  assert.deepEqual(reinstated, ['2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-08T05:00:00.000Z', '2026-11-09T05:00:00.000Z'], 'reinstating never makes elapsed periods owed');
+  assert.deepEqual(reinstated, ['2026-11-02T05:00:00.000Z', '2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-08T05:00:00.000Z', '2026-11-09T05:00:00.000Z'], 'reinstating never makes elapsed periods owed');
 });
 
 // Reference resolver for the documented match modes.
