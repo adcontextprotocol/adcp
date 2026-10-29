@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-subscription-state.json",
+  "title": "Reporting Subscription State",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Seller readback for one principal-level reporting subscription (experimental, media_buy.reporting_subscriptions). Per-account coverage and exclusions are read through get_reporting_status subscription_coverage while the caller is authorized; accounts whose authority the caller lost are reported here in accounts_unauthorized, because get_reporting_status treats them as unknown.",
+  "type": "object",
+  "properties": {
+    "subscription_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_subscription"
+    },
+    "subscription_version": { "type": "integer", "minimum": 1 },
+    "state": {
+      "type": "string",
+      "enum": ["active", "inactive", "action_required"],
+      "description": "active: accepted and resolving per account. inactive: the caller set active false. action_required: the subscription cannot deliver anywhere until the caller acts, for example because its destination is suspended or not ready; issues names the cause. Moving to action_required fires principal.changed with reason reporting_subscription_changed."
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller accepted the current subscription_version. Immutable for that version. Coverage starts at the first boundary at or after the latest of this instant, the buy's confirmed_at, and the account's authorized_at."
+    },
+    "prior_versions": {
+      "type": "array",
+      "description": "Earlier versions, newest first, retained while any obligation of that version is retained, so a buyer can recompute their expected periods after local-state loss.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "subscription_version": { "type": "integer", "minimum": 1 },
+          "accepted_at": { "type": "string", "format": "date-time" },
+          "superseded_at": { "type": "string", "format": "date-time", "description": "The next version's accepted_at, the cutover instant: this version owes its periods that start before it, in full." }
+        },
+        "required": ["subscription_version", "accepted_at", "superseded_at"],
+        "additionalProperties": false
+      }
+    },
+    "deactivated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When active false was applied. Present when and only when state is inactive."
+    },
+    "inactive_intervals": {
+      "type": "array",
+      "maxItems": 64,
+      "description": "Intervals during which the subscription was inactive, oldest first, retained while any obligation they affect is retained, so a buyer can recompute expected periods after local-state loss. Reactivation is a fresh start: nothing that starts during an interval is owed, and coverage resumes at the first boundary at or after reactivated_at. The current interval, while the subscription is inactive, has no reactivated_at.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "deactivated_at": { "type": "string", "format": "date-time", "description": "When active false was applied." },
+          "reactivated_at": { "type": "string", "format": "date-time", "description": "When active true was applied again. Absent for the current interval while the subscription is inactive." }
+        },
+        "required": ["deactivated_at"],
+        "additionalProperties": false
+      }
+    },
+    "destination_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "reporting_destination",
+      "description": "Destination generation currently bound. Present when and only when the configuration names a destination."
+    },
+    "configuration": {
+      "$ref": "/schemas/core/reporting-subscription.json",
+      "description": "Desired configuration currently associated with this subscription."
+    },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" },
+      "maxItems": 16,
+      "description": "Structured issues. Messages are untrusted display data."
+    },
+    "accounts_with_exceptions": {
+      "type": "array",
+      "description": "Accounts where this subscription has an open get_reporting_status exception, so a caller need not poll every account. Changes fire principal.changed with reason reporting_subscription_changed.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
+          "reasons": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["offering_unsupported", "capacity", "overridden", "excluded_by_buyer", "action_required"] },
+            "minItems": 1,
+            "uniqueItems": true,
+            "description": "Reasons of the open exceptions, account- or buy-level."
+          }
+        },
+        "required": ["account_id", "reasons"],
+        "additionalProperties": false
+      },
+      "maxItems": 1000
+    },
+    "accounts_unauthorized": {
+      "type": "array",
+      "description": "Accounts this subscription covered whose authority the caller has since lost, so a revoked grant reads differently from a seller that stopped publishing. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at; after that it drops, and a later re-grant is a fresh coverage start from authorized_at with no gap claimed. Every addition or removal fires principal.changed with reason reporting_subscription_changed.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
+          "unauthorized_at": { "type": "string", "format": "date-time", "description": "When the caller's authority for the account ended. Nothing is delivered for periods ending after it, including on retries." },
+          "last_owed_period_end": { "type": "string", "format": "date-time", "description": "Last period boundary at or before unauthorized_at: the end of the last period owed before authority ended." },
+          "withheld_period_count": { "type": "integer", "minimum": 0, "description": "Owed periods that ended at or before unauthorized_at but were not delivered by then. They are withheld, not missing, and never count as seller delay. If authority returns, they are owed again, due at the re-grant time plus the offering's delivery_sla." },
+          "withheld_reporting_obligation_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
+            "maxItems": 1000,
+            "uniqueItems": true,
+            "description": "Obligations of the withheld periods, when the seller lists them."
+          }
+        },
+        "required": ["account_id", "unauthorized_at", "withheld_period_count"],
+        "additionalProperties": false
+      },
+      "maxItems": 1000
+    }
+  },
+  "required": ["subscription_id", "subscription_version", "state", "accepted_at", "configuration"],
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "action_required" } }, "required": ["state"] },
+      "then": { "required": ["issues"], "properties": { "issues": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "inactive" } }, "required": ["state"] },
+      "then": { "required": ["deactivated_at"] },
+      "else": { "not": { "required": ["deactivated_at"] } }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -2477,7 +2477,7 @@ export class ComplianceDatabase {
              AND ($5::bigint IS NULL OR COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
-             ), 0) = $5::bigint
+             ), 0) = $5::bigint)
              AND ($6::bigint IS NULL OR COALESCE((
                SELECT revision FROM agent_grading_profiles
                WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
@@ -2744,7 +2744,7 @@ export class ComplianceDatabase {
              AND ($4::bigint IS NULL OR COALESCE((
                SELECT badge_requalification_generation
                FROM agent_registry_metadata WHERE agent_url = $1
-             ), 0) = $4::bigint
+             ), 0) = $4::bigint)
              AND ($5::bigint IS NULL OR COALESCE((
                SELECT revision FROM agent_grading_profiles
                WHERE agent_url = $1 AND role = $2 AND adcp_version = $3

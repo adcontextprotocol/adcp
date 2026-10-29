@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string"
+    },
+    "adcp_major_version": {
+      "type": "integer"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "$defs": {
+    "external:core/context.json": {
+      "type": "object"
+    }
+  }
+}

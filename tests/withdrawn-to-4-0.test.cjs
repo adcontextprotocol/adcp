@@ -87,9 +87,10 @@ test('the release story says what was withdrawn, from which beta, and why', () =
     assert.match(page, /installment selection/i, `${name} names installment selection`);
     assert.match(page, /4\.0/, `${name} says the features are planned for 4.0`);
   }
-  assert.match(migration, /`3\.3\.0-beta\.0` published seller-authored `commercial_terms\.definition_pins\[\]`/);
-  assert.match(notes, /published in `3\.3\.0-beta\.0` and removed in `3\.3\.0-beta\.1`/);
-  assert.match(beta, /^## Withdrawn from beta\.1$/m);
+  assert.match(migration, /### Purchase rights \(published in beta\.1, removed after beta\.1\)/);
+  assert.match(notes, /published in `3\.3\.0-beta\.0` and `3\.3\.0-beta\.1`, removed after beta\.1/);
+  assert.match(notes, /Purchase rights \(#8101\), published in `3\.3\.0-beta\.1`/);
+  assert.match(beta, /^## Withdrawn after beta\.1$/m);
 });
 
 test('the 4.0 registry and migration page keep the designs', () => {

@@ -82,7 +82,7 @@ test('error-code prose recovery tags agree with the machine-readable authority',
 
 test('request-signing prose codes have one machine-readable recovery authority', () => {
   const documentedCodes = new Set(
-    [...securityGuide.matchAll(/`((?:request_(?:signature|body|target)_[a-z_]+|webhook_hmac_not_supported))`/g)]
+    [...securityGuide.matchAll(/`(request_(?:signature|body|target)_[a-z_]+)`/g)]
       .map(match => match[1]),
   );
   const schemaCodes = new Set(requestSigningErrorCodes.enum);
@@ -91,7 +91,7 @@ test('request-signing prose codes have one machine-readable recovery authority',
   for (const code of schemaCodes) {
     const description = requestSigningErrorCodes.enumDescriptions[code];
     const metadata = requestSigningErrorCodes.enumMetadata[code];
-    assert.match(code, /^(?:request_(?:signature|body|target)_[a-z_]+|webhook_hmac_not_supported)$/);
+    assert.match(code, /^request_(?:signature|body|target)_[a-z_]+$/);
     assert.equal(typeof description, 'string');
     assert.ok(RECOVERY_VALUES.has(metadata?.recovery));
     assert.equal(typeof metadata?.suggestion, 'string');

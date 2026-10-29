@@ -15,13 +15,13 @@
     "description": { "type": "string" },
     "publisher_properties": {
       "type": "array",
+      "description": "A non-empty array is the complete roster. `[]` means undisclosed, not no properties. MUST NOT be `[]` below 3.3.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/publisher-property-selector.json" },
           { "not": { "required": ["publisher_domains"] } }
         ]
-      },
-      "minItems": 1
+      }
     },
     "channels": { "type": "array", "items": { "$ref": "/schemas/enums/channels.json" }, "uniqueItems": true },
     "video_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/video-placement-type.json" }, "minItems": 1, "uniqueItems": true },
@@ -32,14 +32,13 @@
     "placements": { "type": "array", "items": { "$ref": "/schemas/core/canonical-placement.json" } },
     "collections": {
       "type": "array",
-      "description": "Collections available in this product, each referencing collections declared in an adagents.json by domain and explicit collection_ids. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
+      "description": "A non-empty array is the complete roster. `[]` means undisclosed. MUST NOT be `[]` below 3.3. Each entry references collections declared in an adagents.json by domain and explicit collection_ids. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/collection-selector.json" },
           { "required": ["collection_ids"] }
         ]
-      },
-      "minItems": 1
+      }
     },
     "collection_targeting_allowed": {
       "type": "boolean",
@@ -231,5 +230,28 @@
       }
     }
   ],
-  "additionalProperties": false
+  "not": {
+    "anyOf": [
+      { "required": ["audience_activation"] },
+      { "required": ["cancellation_policy"] },
+      { "required": ["conversion_tracking"] },
+      { "required": ["data_provider_signals"] },
+      { "required": ["delivery_measurement"] },
+      { "required": ["enforced_policies"] },
+      { "required": ["format_ids"] },
+      { "required": ["included_signals"] },
+      { "required": ["is_custom"] },
+      { "required": ["material_submission"] },
+      { "required": ["measurement_readiness"] },
+      { "required": ["metric_optimization"] },
+      { "required": ["outcome_measurement"] },
+      { "required": ["product_card"] },
+      { "required": ["product_card_detailed"] },
+      { "required": ["property_targeting_allowed"] },
+      { "required": ["signal_targeting_options"] },
+      { "required": ["trusted_match"] },
+      { "required": ["vendor_metric_optimization"] }
+    ]
+  },
+  "additionalProperties": true
 }

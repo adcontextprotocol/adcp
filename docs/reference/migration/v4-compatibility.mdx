@@ -140,14 +140,14 @@ In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_
 
 The three checks below record 3.3 features that are withdrawn and planned for 4.0. All three add terms to `commercial_terms`. The `commercial-terms` schema is closed on purpose: a buyer must not be bound by terms it cannot read, and `terms_digest` signs exactly those terms. If the object were open, a 3.2 buyer could accept a 3.3 term it silently ignored. A minor release never changes a closed schema ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so these features wait for 4.0, where `commercial_terms` gets a declared extension point with must-understand. The decision and its reasoning are in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501). The [3.3 migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) says what changed between `3.3.0-beta.0` and `3.3.0-beta.1`.
 
-Nothing here is graded. A 3.3 beta.1 peer has no wire form for any of it, so a run cannot observe it. The designs are preserved at the merge commits named below, so the 4.0 work starts from them instead of from a blank page: `git show <commit>:<path>` prints any file.
+Nothing here is graded. 3.3 has no wire form for any of it after beta.1, so a run cannot observe it. The designs are preserved at the merge commits named below, so the 4.0 work starts from them instead of from a blank page: `git show <commit>:<path>` prints any file.
 
 <a id="definition_pins_required_in_4_0"></a>
 ### Definition pins
 
 **Check id:** `definition_pins_required_in_4_0` · **Change:** new requirement · **Issue:** [#7660](https://github.com/adcontextprotocol/adcp/issues/7660)
 
-**What it was:** seller-authored `commercial_terms.definition_pins[]`, so a third-party-published definition referenced by a proposal cannot change after commitment while `terms_digest` still verifies. It shipped in `3.3.0-beta.0` ([#7960](https://github.com/adcontextprotocol/adcp/pull/7960)) and is removed in `3.3.0-beta.1`.
+**What it was:** seller-authored `commercial_terms.definition_pins[]`, so a third-party-published definition referenced by a proposal cannot change after commitment while `terms_digest` still verifies. It shipped in `3.3.0-beta.0` and `3.3.0-beta.1` ([#7960](https://github.com/adcontextprotocol/adcp/pull/7960)) and is removed after beta.1.
 
 **Design to keep:**
 
@@ -157,7 +157,7 @@ Nothing here is graded. A 3.3 beta.1 peer has no wire form for any of it, so a r
 - Not covered: property and collection lists, product-local format options, seller-inline placements, product and signal-source signals, and default-mode selections.
 - The per-kind exclusion lists cannot change later without a new `ref_kind`, so settle them again against `adagents.json` before 4.0 freezes them.
 
-**Where it is preserved:** commit `9632c4a73` (#7960) carries `core/definition-pin.json`, `enums/definition-pin-ref-kind.json`, `error-details/reference-definition-changed.json`, the normative text in `docs/media-buy/specification.mdx#definition-pins`, the vectors in `static/compliance/source/test-vectors/definition-pins/` with their reference implementation `tests/helpers/reference-definition-pin.cjs` and replay test, and the `definition_pin_drift` storyboard. The released `3.3.0-beta.0` bundle under `dist/` keeps the same files.
+**Where it is preserved:** commit `9632c4a73` (#7960) carries `core/definition-pin.json`, `enums/definition-pin-ref-kind.json`, `error-details/reference-definition-changed.json`, the normative text in `docs/media-buy/specification.mdx#definition-pins`, the vectors in `static/compliance/source/test-vectors/definition-pins/` with their reference implementation `tests/helpers/reference-definition-pin.cjs` and replay test, and the `definition_pin_drift` storyboard. The released `3.3.0-beta.0` and `3.3.0-beta.1` bundles under `dist/` keep the same files.
 
 **What 4.0 needs:** the declared `commercial_terms` extension point, and a rule for a buyer that does not understand a pin: it must refuse the terms, not ignore the pin.
 
@@ -166,7 +166,7 @@ Nothing here is graded. A 3.3 beta.1 peer has no wire form for any of it, so a r
 
 **Check id:** `purchase_rights_required_in_4_0` · **Change:** new requirement · **Issue:** [#8090](https://github.com/adcontextprotocol/adcp/issues/8090)
 
-**What it was:** experimental `media_buy.purchase_rights`, an optional `rights[]` array on `purchases[]` so `accept_proposal` and `terms_digest` bind usage, paid-amplification, and exclusivity rights alongside price ([#8101](https://github.com/adcontextprotocol/adcp/pull/8101), merged 2026-10-24, never in a published beta). It is removed before `3.3.0-beta.1`.
+**What it was:** experimental `media_buy.purchase_rights`, an optional `rights[]` array on `purchases[]` so `accept_proposal` and `terms_digest` bind usage, paid-amplification, and exclusivity rights alongside price ([#8101](https://github.com/adcontextprotocol/adcp/pull/8101), merged 2026-10-24 and published in `3.3.0-beta.1`). It is removed after beta.1.
 
 **Design to keep:**
 
@@ -184,7 +184,7 @@ Nothing here is graded. A 3.3 beta.1 peer has no wire form for any of it, so a r
 
 **Check id:** `installment_selection_required_in_4_0` · **Change:** new requirement · **Issue:** [#8230](https://github.com/adcontextprotocol/adcp/issues/8230)
 
-**What it was:** experimental `media_buy.installment_selection`: `purchases[].installments[]` named the exact slots a purchase buys, and `refine_proposals` gained `installment_changes` with `unsatisfied_installment_changes` to drop or swap one ([#8246](https://github.com/adcontextprotocol/adcp/pull/8246), merged 2026-10-24, never in a published beta).
+**What it was:** experimental `media_buy.installment_selection`: `purchases[].installments[]` named the exact slots a purchase buys, and `refine_proposals` gained `installment_changes` with `unsatisfied_installment_changes` to drop or swap one ([#8246](https://github.com/adcontextprotocol/adcp/pull/8246), merged 2026-10-24 and published in `3.3.0-beta.1`). It is removed after beta.1.
 
 **What stays in 3.3:** `installments[]` on the canonical product (`core/canonical-installment.json`), the `installments` entry in `list_products` `fields`, and installment hold readback (`holds[]`). A purchase buys the product as offered, which is the product's complete installment set when it declares one.
 

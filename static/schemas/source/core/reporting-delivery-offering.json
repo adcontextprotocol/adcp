@@ -23,6 +23,24 @@
     "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
     "feed_purpose": { "$ref": "#/definitions/ReportingFeedPurpose" },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value." },
+    "standard_dimensions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/reporting-dimension.json" },
+      "maxItems": 16,
+      "uniqueItems": true,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.reporting_subscriptions). The offering's breakdown mapped onto the standard reporting dimension vocabulary, so a buyer can resolve a subscription selector's match from the wire. Empty for an offering that reports totals only. Sellers advertising media_buy.reporting_subscriptions MUST include it on every offering."
+    },
+    "unmapped_dimensions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "maxItems": 16,
+      "uniqueItems": true,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.reporting_subscriptions). Native report-definition dimensions with no standard mapping. Present when any exist. They count as distinct under match exact and never count toward finest."
+    },
     "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
     "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
     "reporting_profile": {

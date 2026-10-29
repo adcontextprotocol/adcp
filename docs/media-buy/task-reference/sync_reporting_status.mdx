@@ -233,6 +233,12 @@ or changes the seller's production SLA. A seller counts a missed deadline in
 [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status)
 and does nothing else with it: silence raises no issue and changes no health.
 
+After the buyer loses authority for an account, the seller still accepts statuses
+naming a revision the buyer read before `unauthorized_at`, until
+`status_retention_days` after it; the per-item result discloses nothing further.
+Every other status for that account fails exactly like an unknown identifier. See
+[when authorization ends](/docs/media-buy/task-reference/get_reporting_status#when-authorization-ends).
+
 ## Relationship to billing receipts
 
 [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
