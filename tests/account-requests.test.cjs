@@ -238,13 +238,13 @@ test('a change request can resolve to a separate or existing account, leaving th
   const v = validate('/schemas/core/account-request-record.json');
   const change = {
     request_id: 'areq_change_2',
-    requested: { account_id: 'acc_hema_global', brand: { domain: 'hema.example', countries: ['NL'] } },
+    requested: { account_id: 'acc_nova_europe', brand: { domain: 'nova-athletics.example', countries: ['NL'] } },
     created_at: '2026-10-29T09:00:00Z',
     updated_at: '2026-10-29T09:00:00Z',
   };
-  const separate = { account_id: 'acc_hema_nl_2', name: 'Hema NL', status: 'active', revision: 1 };
-  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_hema_nl_2', resolution: 'created', account: separate }), JSON.stringify(v.errors));
-  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_hema_nl', resolution: 'matched' }), JSON.stringify(v.errors));
+  const separate = { account_id: 'acc_nova_nl_2', name: 'Nova Athletics NL', status: 'active', revision: 1 };
+  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl_2', resolution: 'created', account: separate }), JSON.stringify(v.errors));
+  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl', resolution: 'matched' }), JSON.stringify(v.errors));
 });
 
 test('a sync_accounts settings-update row under review carries the request_id', () => {

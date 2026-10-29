@@ -41,7 +41,7 @@
     },
     "account_id": {
       "type": "string",
-      "description": "Present when state is resolved. The account to use on every account-scoped task. Never changes for the life of the account. On a change request that resolves as created or matched, this is a different account from requested.account_id, and the named account is unchanged.",
+      "description": "Present when state is resolved: the account this request resolved to. Never changes for the life of the account. For an open request, it is the account to reference from now on. On a change request that resolves as updated, it equals requested.account_id. On a change request that resolves as created or matched, it is a different account from requested.account_id; the named account is unchanged and stays usable, and whether to use the resolved account for new buys is the buyer's choice. Existing account-scoped calls are not redirected to it.",
       "x-entity": "account"
     },
     "account": {
