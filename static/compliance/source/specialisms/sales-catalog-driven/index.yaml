@@ -196,7 +196,7 @@ phases:
           catalog-specific asset slots (product_image, product_title, price, description).
 
         sample_request:
-          channels: ["display", "native"]
+          channels: ["display"]
 
           context:
             correlation_id: "sales_catalog_driven--discover_catalog_formats"

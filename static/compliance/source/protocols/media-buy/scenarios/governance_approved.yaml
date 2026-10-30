@@ -61,7 +61,7 @@ fixtures:
         - id: "display_300x250"
     - product_id: "outdoor_video_q2"
       delivery_type: "guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_15s"
   pricing_options:

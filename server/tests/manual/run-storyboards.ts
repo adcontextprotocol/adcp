@@ -16,12 +16,10 @@ import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import YAML from 'yaml';
-import {
-  listAllComplianceStoryboards,
-  loadComplianceIndex,
-  runStoryboard,
-  getComplianceCacheDir,
-} from '@adcp/sdk/testing';
+// The maintenance server remains on SDK 9.6.2; only this manual compliance
+// harness uses the private modern runner and its isolated peer dependencies.
+import fixtureTestSdk from '@adcp-protocol/fixture-test-sdk/testing';
+const { listAllComplianceStoryboards, loadComplianceIndex, runStoryboard, getComplianceCacheDir } = fixtureTestSdk;
 import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/sdk/testing';
 import {
   StaticJwksResolver,
@@ -66,7 +64,10 @@ const complianceOptions = process.env.ADCP_COMPLIANCE_DIR
       complianceDir: process.env.ADCP_COMPLIANCE_DIR,
       ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
     }
-  : undefined;
+  : {
+      complianceDir: join(process.cwd(), 'dist', 'compliance', 'latest'),
+      schemaRoot: process.env.ADCP_SCHEMA_ROOT ?? join(process.cwd(), 'dist', 'schemas', JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version),
+    };
 const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
   ? loadComplianceIndex(complianceOptions).adcp_version
   : undefined;

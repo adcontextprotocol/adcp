@@ -91,7 +91,7 @@ fixtures:
   products:
     - product_id: "reach_ctv_q2"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_30s"
       metric_optimization:

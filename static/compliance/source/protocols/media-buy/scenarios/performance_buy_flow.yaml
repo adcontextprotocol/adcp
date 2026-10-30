@@ -95,7 +95,7 @@ fixtures:
   products:
     - product_id: "performance_native_q2"
       delivery_type: "non_guaranteed"
-      channels: ["display", "native"]
+      channels: ["display"]
       format_ids:
         - id: "native_feed_1x1"
         - id: "display_300x250"

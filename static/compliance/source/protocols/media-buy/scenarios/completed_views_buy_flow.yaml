@@ -90,7 +90,7 @@ fixtures:
   products:
     - product_id: "cpcv_video_q2"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_30s"
   pricing_options:

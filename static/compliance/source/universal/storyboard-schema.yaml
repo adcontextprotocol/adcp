@@ -148,7 +148,7 @@
 #   coverage totals of agents that never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent (forward-compat:
+#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | webhook_receiver | multi_agent (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
 #   Default when absent: [real_wire] — untagged storyboards run unchanged.
@@ -158,6 +158,12 @@
 #   behavior, or omit the field entirely."
 #
 #   Values and availability:
+#
+#     collect_product_pages_runner — intrinsic support for the opt-in wholesale
+#                    product-page collector. No operator configuration is needed.
+#                    A storyboard using collect_product_pages MUST declare this
+#                    requirement so older runners report requirement_unmet before
+#                    fixture mutation instead of silently checking only one page.
 #
 #     controller   — gate on agent advertising comply_test_controller.
 #                    Available when the agent's get_adcp_capabilities response
@@ -567,9 +573,9 @@
 #     2. THIS field (storyboard-root `context:` block, fixed at run start)
 #     3. Test-kit substitutions where explicitly scoped into context
 #
-#   Values MUST be scalars (strings, numbers, booleans — JSON scalar types).
-#   Object and array values are not supported here — capture structured values
-#   from step responses via `context_outputs:` instead.
+#   Values MAY be JSON scalars, objects, or arrays. Step context_outputs can
+#   replace defaults with response-derived structured values. Domain objects
+#   placed here are runner defaults, not additional protocol request fields.
 #
 #   See "Context accumulator and substitution" below for the full precedence
 #   contract, runner substitution rules, and unresolved-substitution grading.)
@@ -2360,3 +2366,58 @@
 #      step as failed with `unresolved_substitution`.
 #
 # Neither path may ship a literal `$context.*` or `{{...}}` token on the wire.
+
+# Discover-before-seed fixture applicability (maintenance harness addition)
+# ---------------------------------------------------------------------
+# These additive harness declarations never change 3.1 task schemas. Runners
+# must support discover-before-seed fixture resolution and the intrinsic
+# collect_product_pages_runner requirement. This maintenance line tests them
+# with SDK 17.0.0-beta.7 using the immutable 3.1 schemas and wire compatibility.
+#
+# requires_all_capabilities: two or more capability predicates AND-composed
+# before runtime requirements and fixture setup. Predicates use the existing
+# path + exactly one equals/contains/present matcher. Missing capabilities
+# cannot be inferred from tool advertisement. A failed predicate selects no
+# execution and is reported not_applicable rather than a seller failure.
+#
+# fixture_resolution.products: an array of {handle, strategies, match} entries.
+# handle names a fixtures.products product_id. strategies: [discover] selects
+# a native product through fully paginated wholesale discovery in the resolved
+# sandbox account. Match clauses use JSON Pointers and equals, present,
+# contains_all, or any_match (the latter has nested where clauses).
+# A valid no-match is a fixture_unsatisfied coverage gap, never proof of general
+# nonsupport or a conformance pass. Malformed, rejected, failed, or incomplete
+# discovery remains a failure. Only after native support resolves do phases
+# manually seed the optional feature. Unresolved feature fixtures must not be
+# seeded as a fallback. The resolved handle is independent of synthetic IDs.
+#
+# all_fields_in_context_array validates each terminal value of a wildcard
+# response path against a context array captured by a prior step. Empty results
+# are valid for filters. A missing context comparand is an explicit unavailable
+# observation; authors must validate/capture the comparand in a prerequisite
+# step to establish coverage. Scope the capture to each independent phase so
+# absent optional modes never suppress supported sibling coverage.
+
+# collect_product_pages: true (optional; omit to read one page). Only valid for a
+#   get_products step with sample_request.buying_mode: wholesale and the
+#   storyboard requirement collect_product_pages_runner. The runner walks the
+#   complete, stable enumeration using the actual authored account, filters,
+#   fields, credentials, context, and page size. Every physical response must
+#   satisfy the Product schema, including its required fields when fields is
+#   supplied; collection does not relax validation for fields projections.
+#   Collected reads MUST omit idempotency_key: each cursor changes the request
+#   body and must execute a fresh read rather than replay a prior page.
+#   The initial request MUST NOT
+#   contain a cursor or if_wholesale_feed_version/if_pricing_version token.
+#   Negative-auth, parallel-dispatch, and response-applicability probe paths
+#   cannot be combined with collection.
+#
+#   Each physical page is schema-validated and observed by the step's enabled
+#   invariants, including pages later discarded after a feed restart or omitted
+#   from bounded receipt retention. Broken cursors, rejected/malformed pages,
+#   duplicate identities, unstable feeds, and exhausted budgets never yield a
+#   partial successful catalog. Authored field checks and context captures use
+#   the separately labelled logical_response only after enumeration completes.
+#   Actual wire receipts remain actual pages; see runner-output-contract.yaml >
+#   product_page_collection_output for evidence and JSON Pointer requirements.
+#

@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.6.0"
+version: "2.14.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -62,6 +62,7 @@ authored_check_kinds:
   - a2a_context_continuity
   - field_less_than
   - field_equals_context
+  - all_fields_in_context_array
   - upstream_traffic
   - canonical_format_satisfaction
 
@@ -97,6 +98,49 @@ cross_response_check_kinds:
 # the storyboard's step.validations array, plus any transport-level check
 # the runner performs (e.g., extraction path).
 
+# Runtime-only collection diagnostic; never a storyboard-authored check.
+product_page_collection_synthesized_check_kinds:
+  - product_page_collection
+
+product_page_collection_output:
+  description: |
+    An opt-in collected wholesale get_products step records a complete logical
+    catalog separately from its physical transport exchanges. A logical aggregate
+    MUST NOT be presented as a response the seller sent in one exchange.
+  fields:
+    complete: boolean
+    page_count: integer
+    restart_count: integer
+    pages: |
+      Bounded array of physical-page observations. Each includes page_index,
+      restart_count, exact redacted request and response records, extraction,
+      and schema_validated. Page schema and enabled invariant checks MUST run
+      before restart/discard or evidence-retention limits can remove a receipt.
+    logical_response: |
+      Optional, separately labelled extracted-domain aggregate available only
+      after stable enumeration completes. Incomplete enumeration MUST NOT
+      publish a partial logical_response or capture values from a partial feed.
+      Products and advisory errors aggregate across the stable enumeration;
+      other envelope metadata represents the first stable page, not a generic
+      merge of every response field.
+  interpretation: |
+    complete means enumeration completed, not that its contents passed checks.
+    A complete catalog with a failed page invariant still fails the step.
+    step.request/response and response_record remain actual first stable-page
+    or failure exchanges. Authored field checks and captures may consume the
+    logical_response; their JSON Pointers MUST be rooted under
+    /product_page_collection/logical_response and extraction.note MUST identify
+    that source. Physical-page failures retain the actual page's request,
+    response, schema identity, and page-local JSON Pointer. Successful and failed
+    physical schema verdicts remain observable as response_schema validations;
+    the runner MUST NOT fabricate an aggregate wire-schema verdict.
+  failure_check: |
+    product_page_collection reports cursor, feed-identity, duplicate, budget,
+    or authoring failures. It is a runtime discriminator, not an authored
+    validation kind. Malformed physical pages use response_schema and failed
+    page invariants retain their assertion results. All existing diagnostic,
+    redaction, account-scope, and coverage-gap requirements continue to apply.
+
 step_result:
   description: |
     Runners MUST emit one step result per executed step. Skipped steps MUST
@@ -119,6 +163,8 @@ step_result:
     - error                   # transport-level error (no validations attempted)
     - request                 # exact request the runner sent (see request block)
     - response                # exact response observed (see response block)
+    - product_page_collection # bounded physical-page receipts and a separately
+                              # labelled complete logical catalog; see above
     - notices                 # array of notice objects attached to this step's
                               # result — informational signals that MUST NOT
                               # change `passed`. See the notice block below for

@@ -177,6 +177,7 @@ function placeholderFor(schema, depth = 0) {
     if (resolved.format === 'email') return 'placeholder@example.com';
     if (Array.isArray(resolved.enum) && resolved.enum.length > 0) return resolved.enum[0];
     if (typeof resolved.const !== 'undefined') return resolved.const;
+    if (resolved.pattern === '^[A-Z]{3}$') return 'USD';
     // Object variant nested inside a oneOf/anyOf at a location where the
     // author's substitution will resolve to that shape at runtime. Synthesize
     // the concrete shape instead of returning a string that fails required.
@@ -189,7 +190,10 @@ function placeholderFor(schema, depth = 0) {
   if (types.includes('integer')) return resolved.minimum ?? 1;
   if (types.includes('number')) return resolved.minimum ?? 0;
   if (types.includes('boolean')) return true;
-  if (types.includes('array')) return [];
+  if (types.includes('array')) {
+    if (depth > 4) return [];
+    return Array.from({ length: resolved.minItems ?? 0 }, () => placeholderFor(resolved.items, depth + 1));
+  }
   if (types.includes('object')) {
     // A discriminated union written as `{ type: "object", discriminator, oneOf }`
     // (core/format-option-ref.json) declares no top-level `properties`, so

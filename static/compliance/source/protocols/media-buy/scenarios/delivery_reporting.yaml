@@ -40,7 +40,7 @@ prerequisites:
   controller_seeding: true
 
 # Fixtures use non_guaranteed so sales-non-guaranteed-only sellers can run this
-# scenario (#7765). Fixed-price, so the creates need no bid.
+# scenario (#7765). Auction CPM avoids requiring fixed-rate support.
 fixtures:
   products:
     - product_id: "outdoor_display_q2"
@@ -50,12 +50,12 @@ fixtures:
         - id: "display_300x250"
     - product_id: "outdoor_video_q2"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_15s"
     - product_id: "video_viewability_q2"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_15s"
       metric_optimization:
@@ -65,17 +65,17 @@ fixtures:
       pricing_option_id: "cpm_standard"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 8.0
+      floor_price: 8.0
     - product_id: "outdoor_video_q2"
       pricing_option_id: "cpm_standard"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 12.0
+      floor_price: 12.0
     - product_id: "video_viewability_q2"
-      pricing_option_id: "vcpm_standard"
-      pricing_model: "vcpm"
+      pricing_option_id: "cpm_viewability"
+      pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 14.0
+      floor_price: 14.0
 
 phases:
   - id: setup
@@ -235,6 +235,9 @@ phases:
 
   - id: viewability_delivery
     title: "Delivery reporting surfaces viewability.viewed_seconds for viewability-capable products"
+    requires_capability:
+      path: media_buy.supported_optimization_metrics
+      contains: "viewed_seconds"
     narrative: |
       3.1 adds `viewability.viewed_seconds` to delivery-metrics — the
       average in-view duration per measurable impression in seconds. It
@@ -244,7 +247,7 @@ phases:
       against a `viewed_seconds` optimization goal MUST populate this field.
 
       This phase creates a separate media buy for a viewability-capable
-      vCPM video product, injects simulated delivery with a full viewability
+      CPM video product, injects simulated delivery with a full viewability
       block (measurable_impressions, viewable_impressions, viewable_rate,
       viewed_seconds, standard), and verifies that get_media_buy_delivery
       returns the viewed_seconds field inside the viewability block.

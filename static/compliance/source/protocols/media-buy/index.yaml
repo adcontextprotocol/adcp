@@ -8,6 +8,7 @@ required_tools:
   - get_products
   - create_media_buy
 requires_scenarios:
+  - media_buy_seller/product_filter_behavior
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
@@ -74,7 +75,7 @@ fixtures:
   products:
     - product_id: "sports_preroll_q2"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_30s"
     - product_id: "lifestyle_display_q2"
