@@ -252,6 +252,7 @@ phases:
             - product_id: "audience_display_q2"
               budget: 15000
               pricing_option_id: "auction_cpm"
+              bid_price: 3
               targeting_overlay:
                 audience_include:
                   - "acmeoutdoor-loyal-customers"
@@ -301,6 +302,7 @@ phases:
             - product_id: "audience_display_q2"
               budget: 5000
               pricing_option_id: "auction_cpm"
+              bid_price: 3
               targeting_overlay:
                 audience_include:
                   - "does_not_exist_phantom_audience"

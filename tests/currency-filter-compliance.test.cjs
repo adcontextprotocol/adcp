@@ -13,8 +13,8 @@ const SEED_SCENARIOS = ['seed_account', 'seed_product', 'seed_pricing_option'];
 
 function scenario() {
   const storyboard = loadStoryboardFile(SCENARIO);
-  // Baseline and scope checks isolate seller pricing and controller setup.
-  // Collected final reads always validate every physical response schema.
+  // Scope checks isolate seller pricing and controller setup. Collected
+  // baseline and final reads always validate every physical response schema.
   for (const phase of storyboard.phases) {
     for (const step of phase.steps) {
       step.validations = step.validations.filter(validation => validation.check !== 'response_schema');
@@ -23,7 +23,7 @@ function scenario() {
   return storyboard;
 }
 
-function seller({ accountCurrency, convertMandatory = false, reorder = false, duplicatePrice = false, paginate = false, defect } = {}) {
+function seller({ accountCurrency, convertMandatory = false, reorder = false, duplicatePrice = false, paginate = false, baselinePagination, defect } = {}) {
   const calls = [];
   const products = new Map();
   const client = {
@@ -108,12 +108,27 @@ function seller({ accountCurrency, convertMandatory = false, reorder = false, du
       const context = structuredClone(request.context);
       if (defect === 'widened_context' && context?.accepted_pricing_currencies) context.accepted_pricing_currencies.push('EUR');
       const offset = Number(request.pagination?.cursor ?? 0);
-      const page = paginate && filteredReads >= 2 ? catalog.slice(offset, offset + 1) : catalog;
+      let page = paginate && filteredReads >= 2 ? catalog.slice(offset, offset + 1) : catalog;
       const hasMore = paginate && filteredReads >= 2 && offset + 1 < catalog.length;
+      let pagination = paginate && filteredReads >= 2
+        ? { has_more: hasMore, ...(hasMore ? { cursor: String(offset + 1) } : {}) }
+        : undefined;
+      if (baselinePagination && !requested) {
+        if (offset === 0) {
+          page = [];
+          pagination = { has_more: true, cursor: '1' };
+        } else if (offset === 1) {
+          const hasInvalidPage = baselinePagination === 'invalid_after_product';
+          pagination = { has_more: hasInvalidPage, ...(hasInvalidPage ? { cursor: '2' } : {}) };
+        } else {
+          page = 'invalid-products-array';
+          pagination = { has_more: false };
+        }
+      }
       return { success: true, data: {
         status: 'completed', products: page, context,
         cache_scope: 'account', wholesale_feed_version: 'currency-test-v1',
-        ...(paginate && filteredReads >= 2 ? { pagination: { has_more: hasMore, ...(hasMore ? { cursor: String(offset + 1) } : {}) } } : {}),
+        ...(pagination ? { pagination } : {}),
       } };
     },
     async getProducts(request) {
@@ -210,6 +225,38 @@ test('currency filtering validates matching prices across all catalog pages', as
   assert.equal(final.product_page_collection.page_count, 2);
   assert.equal(final.response.products.length, 1);
   assert.equal(final.product_page_collection.logical_response.products.length, 2);
+});
+
+test('currency baseline follows an empty first page before capturing the effective currency', async () => {
+  const { result, reads } = await run({ baselinePagination: 'empty_first' });
+  assert.equal(result.overall_passed, true, JSON.stringify(failedChecks(result)));
+  assert.equal(result.context.pricing_filter_currency, 'USD');
+  const baseline = result.phases.flatMap(phase => phase.steps)
+    .find(step => step.step_id === 'get_products_currency_baseline');
+  assert.equal(baseline.product_page_collection.complete, true);
+  assert.equal(baseline.product_page_collection.page_count, 2);
+  assert.deepEqual(baseline.response.products, [], 'the first physical response remains an empty page');
+  assert.equal(baseline.product_page_collection.logical_response.products.length, 2);
+  const baselineReads = reads.filter(call => !call.request.filters);
+  assert.equal(baselineReads.length, 2);
+  assert.ok(baselineReads.every(call => call.request.idempotency_key === undefined),
+    'collected baseline pages are fresh reads');
+  assert.deepEqual(baselineReads[1].request.pagination, { cursor: '1' });
+});
+
+test('an invalid later baseline page fails before any partial currency capture', async () => {
+  const { result, reads } = await run({ baselinePagination: 'invalid_after_product' });
+  assert.equal(result.overall_passed, false);
+  assert.equal(result.context.pricing_filter_currency, undefined,
+    'a valid middle page cannot supply context before the complete catalog validates');
+  const baseline = result.phases.flatMap(phase => phase.steps)
+    .find(step => step.step_id === 'get_products_currency_baseline');
+  assert.equal(baseline.passed, false);
+  assert.equal(baseline.product_page_collection.complete, false);
+  assert.equal(baseline.product_page_collection.page_count, 3);
+  assert.equal(reads.filter(call => !call.request.filters).length, 3);
+  assert.ok(baseline.validations.some(validation => validation.check === 'response_schema'
+    && validation.passed === false), JSON.stringify(baseline.validations));
 });
 
 test('currency filtering rejects an incompatible price on a later catalog page', async () => {

@@ -14,7 +14,7 @@ only matches `test_kit.*`; any other expression is ignored and the phase runs
 anyway. That runner therefore cannot execute this storyboard at all, so the
 regression tests cannot be written against it.
 
-This package pins a published `@adcp/sdk` **17.0.0-beta.3** so
+This package pins a published `@adcp/sdk` **17.0.0-beta.7** so
 `tests/cli-scenario-fixtures.test.cjs` can evaluate those guards and the auction-only
 seller regressions can enrich valid semantic rejection probes. Its conflicting peers (`@a2a-js/sdk` 1.x vs the root's 0.3.x) nest under
 `tests/sdk-runner/node_modules`, so **root production resolution is unchanged**:
@@ -31,11 +31,17 @@ This is not a new floor for the branch: `billing_out_of_band`, `evaluator_auth`
 and `refine_finalize_exclusivity` already ship context-reading `skip_if` on
 3.1.x.
 
+The seller fixture-discovery and complete product-feed checks are verified
+against the pinned 17.0.0-beta.7 runner. Collected reads declare
+`collect_product_pages_runner`; older runners report that slice as unavailable
+instead of treating a partial feed as a complete result.
+
 ## Rules
 
-- **Never import this from `server/`.** Runtime code uses `@adcp/sdk`, which
+- **Never import this from `server/src/`.** Production runtime code uses `@adcp/sdk`, which
   stays 9.6.2. This package is a `devDependency` (`file:tests/sdk-runner`) and
   is absent from a production install.
-- Only `./testing` is forwarded, because that is all the regression tests need.
+- Only `./testing` is forwarded. The current-source seller manual cohort also uses
+  this runner; unrelated cohorts and frozen 3.0 compatibility keep SDK 9.6.2.
   Do not add forwarders speculatively.
 - Bumping the pin here has no effect on the server or on any published artifact.

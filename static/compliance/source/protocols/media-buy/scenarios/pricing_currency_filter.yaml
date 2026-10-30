@@ -135,16 +135,17 @@ phases:
       - id: get_products_currency_baseline
         title: Read account-scoped product pricing
         task: get_products
+        collect_product_pages: true
         schema_ref: media-buy/get-products-request.json
         response_schema_ref: media-buy/get-products-response.json
         doc_ref: /media-buy/task-reference/get_products
         stateful: true
         expected: |
-          Return at least one selectable product pricing option in the account's
-          effective currency. Product IDs, rate-card IDs, ordering, and currency
-          conversion are seller-defined.
+          Read every catalog page and return at least one selectable product
+          pricing option in the account's effective currency. An empty first
+          page with a continuation cursor is valid. Product IDs, rate-card IDs,
+          ordering, and currency conversion are seller-defined.
         sample_request:
-          idempotency_key: $generate:uuid_v4#pricing_currency_filter_baseline
           buying_mode: wholesale
           account:
             brand:

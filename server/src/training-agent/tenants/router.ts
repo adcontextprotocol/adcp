@@ -18,7 +18,7 @@ import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type Registr
 import { buildSignedRevocationList } from '../governance-revocations.js';
 import { salesCapabilityProjection } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
-import { adcpError, resolveServedAdcpVersion, supportedCanonicalFormatsCapability } from '../task-handlers.js';
+import { adcpError, resolveServedAdcpVersion, supportedCanonicalFormatsCapability, SUPPORTED_RELEASE_VERSIONS } from '../task-handlers.js';
 import type { TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { withControllerPrincipal } from './comply.js';
@@ -62,7 +62,6 @@ const SALES_CURRENT_SCENARIOS = [
   'evaluate_distributed_brand_resolution',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'] as const;
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 
 function bearerToken(req: Request): string | undefined {
@@ -558,7 +557,7 @@ function projectSalesCapabilities(
       ...adcp,
       supported_versions: Array.isArray(adcp.supported_versions)
         ? adcp.supported_versions
-        : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
+        : [...SUPPORTED_RELEASE_VERSIONS],
     };
     if ((tenantId === 'creative' || tenantId === 'creative-builder') && storyboardCompat?.version !== '3.0') {
       const creative = structured.creative && typeof structured.creative === 'object'
