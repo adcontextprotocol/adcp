@@ -79,7 +79,7 @@
           "type": "array",
           "description": "Filter by specific task IDs",
           "items": {
-            "$ref": "/schemas/core/task-id.json"
+            "type": "string"
           },
           "minItems": 1,
           "maxItems": 100

@@ -31,7 +31,6 @@ async function compile(schemaId) {
 }
 
 const completedPreview = {
-  status: 'completed',
   response_type: 'single',
   previews: [{
     preview_id: 'prev_async_001',
@@ -56,19 +55,10 @@ describe('preview_creative opt-in async contract', () => {
   it('adds one submitted task arm without changing build_creative', () => {
     const submitted = response.oneOf.find((arm) => arm.title === 'PreviewCreativeSubmitted');
     assert.ok(submitted);
-    // core/task-submitted.json carries status: submitted and the required
-    // task_id; the arm keeps only its response_type discriminator.
-    assert.deepEqual(submitted.required, ['response_type']);
+    assert.deepEqual(submitted.required, ['response_type', 'status', 'task_id']);
     assert.equal(submitted.properties.response_type.const, 'submitted');
-    assert.ok(submitted.allOf.some((member) => member.$ref === '/schemas/core/task-submitted.json'));
-    assert.equal(submitted.properties.status, undefined);
-    assert.equal(submitted.properties.task_id, undefined);
-    assert.ok(response.allOf.some((member) => member.$ref === '/schemas/core/protocol-envelope.json'));
-    const envelope = JSON.parse(fs.readFileSync(path.join(schemaRoot, 'core', 'protocol-envelope.json'), 'utf8'));
-    assert.equal(envelope.then, undefined, 'the envelope states no conditional task_id rule');
-    const taskSubmitted = JSON.parse(fs.readFileSync(path.join(schemaRoot, 'core', 'task-submitted.json'), 'utf8'));
-    assert.deepEqual(taskSubmitted.required, ['status', 'task_id']);
-    assert.equal(envelope.properties.task_id.$ref, '/schemas/core/task-id.json');
+    assert.equal(submitted.properties.status.const, 'submitted');
+    assert.equal(submitted.properties.task_id['x-entity'], 'task');
     assert.equal(response.oneOf.length, 4);
   });
 

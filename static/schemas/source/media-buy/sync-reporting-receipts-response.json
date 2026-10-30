@@ -6,6 +6,7 @@
   "description": "Per-receipt durable recording results for revisions and post-official adjustments. Successful readback lets a consumer prove the seller recorded its reconciliation outcome; failed results expose no cross-caller or cross-account resource metadata.",
   "type": "object",
   "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
     { "$ref": "/schemas/core/protocol-envelope.json" }
   ],
   "properties": {

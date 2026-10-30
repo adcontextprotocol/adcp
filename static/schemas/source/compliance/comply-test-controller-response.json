@@ -6,6 +6,9 @@
   "type": "object",
   "allOf": [
     {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
       "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
@@ -90,6 +93,10 @@
           "type": "string",
           "description": "State after this transition"
         },
+        "message": {
+          "type": "string",
+          "description": "Human-readable description of the transition"
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -156,6 +163,9 @@
           "type": "object",
           "description": "Running totals across all simulation calls (simulate_delivery only)",
           "additionalProperties": true
+        },
+        "message": {
+          "type": "string"
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -228,9 +238,10 @@
               "description": "Arm the seller will emit on the next forced operation response."
             },
             "task_id": {
-              "allOf": [{ "$ref": "/schemas/core/task-id.json" }],
+              "type": "string",
               "maxLength": 128,
-              "description": "Echo of the registered task_id. Present only when arm is 'submitted' (the arm that emits a task envelope)."
+              "description": "Echo of the registered task_id. Present only when arm is 'submitted' (the arm that emits a task envelope).",
+              "x-entity": "task"
             },
             "evaluation_id": {
               "type": "string",
@@ -308,6 +319,10 @@
             }
           ]
         },
+        "message": {
+          "type": "string",
+          "description": "Human-readable acknowledgement."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -363,6 +378,10 @@
         "success": {
           "type": "boolean",
           "const": true
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable acknowledgement."
         },
         "context": {
           "$ref": "/schemas/core/context.json"

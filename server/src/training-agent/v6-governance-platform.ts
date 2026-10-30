@@ -53,7 +53,6 @@ import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { governanceAgentCredentialFromExtra } from './governance-agent-credentials.js';
 import type { ToolArgs, TrainingContext } from './types.js';
-import { projectTaskOutcomeForRelease } from './served-outcome-status.js';
 
 interface TrainingGovernanceMeta {
   brand_domain?: string;
@@ -75,14 +74,10 @@ function buildGovernanceTrainingCtx(ctx: {
   account?: { authInfo?: { principal?: string } };
   agent?: { agent_url: string };
   authInfo?: { extra?: Record<string, unknown> };
-  servedAdcpVersion?: string;
 } | undefined): TrainingContext {
   const governanceAgentCredential = governanceAgentCredentialFromExtra(ctx?.authInfo?.extra);
   return {
     ...buildTrainingCtx(ctx?.account),
-    // The release the SDK negotiated for this request. Response shapes that
-    // changed between releases follow it.
-    ...(ctx?.servedAdcpVersion && { servedAdcpVersion: ctx.servedAdcpVersion }),
     // Resolved by BuyerAgentRegistry from the authenticated credential.
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
     // Seller-scoped sandbox credential; the handlers restrict what it may
@@ -187,11 +182,11 @@ export class TrainingGovernancePlatform
     },
     checkGovernance: async (req, ctx) => {
       const result = await handleCheckGovernance(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
-      return translateV5Result(projectTaskOutcomeForRelease('check_governance', result, ctx?.servedAdcpVersion));
+      return translateV5Result(result);
     },
     reportPlanOutcome: async (req, ctx) => {
       const result = await handleReportPlanOutcome(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
-      return translateV5Result(projectTaskOutcomeForRelease('report_plan_outcome', result, ctx?.servedAdcpVersion));
+      return translateV5Result(result);
     },
     getPlanAuditLogs: async (req, ctx) => {
       const result = await handleGetPlanAuditLogs(req as ToolArgs, buildGovernanceTrainingCtx(ctx));

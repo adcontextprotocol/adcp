@@ -5,6 +5,7 @@
   "description": "Response payload for list_transformers — account-scoped transformer descriptors matching the query, with optional per-param enumerated option values (when expanded) and per-account pricing (when requested).",
   "type": "object",
   "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
     { "$ref": "/schemas/core/protocol-envelope.json" }
   ],
   "properties": {

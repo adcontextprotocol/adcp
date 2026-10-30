@@ -4,10 +4,6 @@
   "title": "Get Products - Input Required",
   "description": "Payload when search is paused waiting for user clarification.",
   "type": "object",
-  "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" },
-    { "$ref": "/schemas/core/task-input-required.json" }
-  ],
   "properties": {
     "reason": {
       "type": "string",

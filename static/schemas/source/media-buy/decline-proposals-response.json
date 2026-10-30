@@ -4,14 +4,15 @@
   "title": "Decline Proposals Response",
   "description": "One ordered terminal result for each requested proposal decline.",
   "type": "object",
-  "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
-  ],
   "anyOf": [
     {
-      "properties": { "status": { "type": "string", "const": "completed" } },
       "required": ["results"],
-      "not": { "required": ["task_id"] }
+      "not": {
+        "anyOf": [
+          { "required": ["status"] },
+          { "required": ["task_id"] }
+        ]
+      }
     },
     {
       "$ref": "/schemas/core/compact-task-submitted.json"
@@ -55,10 +56,13 @@
         "additionalProperties": false
       }
     },
-    "status": { "type": "string", "enum": ["completed", "submitted"] },
+    "status": { "type": "string", "const": "submitted" },
+    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
+    "message": { "type": "string", "maxLength": 2000 },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
-    "ext": { "$ref": "/schemas/core/ext.json" }
+    "ext": { "$ref": "/schemas/core/ext.json" },
+    "replayed": { "type": "boolean", "const": true }
   },
   "additionalProperties": true
 }

@@ -6,6 +6,7 @@
   "description": "Per-statement durable recording results. Successful readback proves that the seller recorded the authenticated consumer's status without treating it as seller-authored reporting evidence.",
   "type": "object",
   "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
     { "$ref": "/schemas/core/protocol-envelope.json" }
   ],
   "properties": {

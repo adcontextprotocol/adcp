@@ -6,6 +6,9 @@
   "type": "object",
   "allOf": [
     {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
       "$ref": "/schemas/core/protocol-envelope.json"
     },
     {
@@ -31,6 +34,11 @@
     }
   ],
   "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for this task",
+      "x-entity": "task"
+    },
     "task_type": {
       "$ref": "/schemas/enums/task-type.json",
       "description": "Type of AdCP operation"
@@ -38,6 +46,10 @@
     "protocol": {
       "$ref": "/schemas/enums/adcp-protocol.json",
       "description": "AdCP protocol this task belongs to"
+    },
+    "status": {
+      "$ref": "/schemas/enums/task-status.json",
+      "description": "Current task status"
     },
     "created_at": {
       "type": "string",

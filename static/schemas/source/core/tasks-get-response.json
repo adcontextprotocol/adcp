@@ -6,6 +6,9 @@
   "type": "object",
   "allOf": [
     {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
       "$ref": "/schemas/core/protocol-envelope.json"
     },
     {
@@ -32,8 +35,9 @@
   ],
   "properties": {
     "task_id": {
-      "$ref": "/schemas/core/task-id.json",
-      "description": "Unique identifier for this task"
+      "type": "string",
+      "description": "Unique identifier for this task",
+      "x-entity": "task"
     },
     "task_type": {
       "$ref": "/schemas/enums/task-type.json",

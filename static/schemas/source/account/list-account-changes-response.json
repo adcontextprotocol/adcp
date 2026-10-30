@@ -6,6 +6,7 @@
   "description": "Durable account change feed page. cursor is always present, including for an empty page at the tail; ordinary pagination-response semantics do not apply. Experimental in 3.2 (RFC #6810): sellers returning this response MUST list account.change_feed in experimental_features.",
   "type": "object",
   "allOf": [
+    {"$ref": "/schemas/core/version-envelope.json"},
     {"$ref": "/schemas/core/protocol-envelope.json"}
   ],
   "discriminator": {
