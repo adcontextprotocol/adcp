@@ -839,12 +839,18 @@ data.
 - **Periods already owed.** Periods that ended at or before `unauthorized_at` but were
   not yet delivered are withheld and counted in `withheld_period_count`. They are
   never missing and never count as `delayed` or `action_required` against the seller.
-- **Receipts.** Receipts carry no seller data, and billing reconciliation needs them.
-  For `status_retention_days` after `unauthorized_at`, the seller still accepts
+- **Receipts and statuses.** Access means access. After `unauthorized_at`, the
+  account is unavailable to every task, including
   [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
-  receipts and [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status)
-  statuses for revisions the caller read before `unauthorized_at`. Every other
-  reference to the account is unavailable.
+  and [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
+- **Winding down instead of revoking.** A seller that wants a buyer to finish
+  reconciling after a relationship ends, for example after an agency change, keeps
+  a reduced grant instead of revoking: an `authorization` whose `allowed_tasks`
+  lists only the reconciliation tasks it permits, such as `get_reporting_status`,
+  `sync_reporting_receipts`, and `sync_reporting_status`, with `read_only: false`.
+  The account stays in coverage while that grant lists `get_reporting_status`, so
+  the buyer keeps receiving final revisions and adjustments for its buys. Revocation,
+  as in a fraud or compromise response, stops everything.
 - **Re-grant.** The account leaves `accounts_unauthorized[]` and is readable here
   again. The re-grant continues the earlier authorization chain, so
   `authorization.authorized_at` keeps its original value. Withheld periods are owed again, due at the re-grant time plus the offering's
