@@ -99,6 +99,24 @@
     {
       "if": {
         "properties": {
+          "creative": {
+            "required": ["live_updates"]
+          }
+        },
+        "required": ["creative"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "creative.live_updates" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "adcp": {
             "required": ["principal"]
           }
@@ -3205,6 +3223,22 @@
           "default": false,
           "x-added-in": "3.3.0"
         },
+        "live_updates": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Which kinds of change this agent applies in place to a live creative through sync_creatives under the same creative_id, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. This declaration is a floor: every listed kind is accepted on every live creative in the listed serving mode or a less disruptive one (uninterrupted < staged < paused_for_review). An unlisted kind may still be accepted for some creatives; a sync_creatives dry_run returns the exact outcome of one change. A declaring agent MUST refuse a change it does not apply in place with CREATIVE_LIVE_UPDATE_UNSUPPORTED (not INVALID_STATE), and MUST always accept changes to name and tags. Requires has_creative_library: true. Omitted: the agent makes no claim about live creatives.",
+          "allOf": [
+            { "$ref": "/schemas/core/live-update-policy.json" }
+          ],
+          "properties": {
+            "max_propagation_seconds": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Upper bound, in seconds, between the moment an in-place change is applied or a staged update is promoted and the moment no assignment serves the prior version anywhere (ad-server, CDN, SSAI, and exchange caches). Omitted: the agent makes no bound claim, and buyers SHOULD assume the prior version may serve briefly."
+            }
+          }
+        },
         "supports_assignment_trackers": {
           "type": "boolean",
           "description": "When true, this agent accepts trackers on creative assignments in create_media_buy, update_media_buy, and sync_creatives, fires them in addition to the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits, and returns the assignment-scoped tracker list in list_creatives and get_media_buys readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
@@ -3516,6 +3550,17 @@
               "supports_assignment_trackers": { "const": true }
             },
             "required": ["supports_assignment_trackers"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "required": ["live_updates"]
           },
           "then": {
             "properties": {

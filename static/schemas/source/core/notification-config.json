@@ -27,6 +27,7 @@
           "creative.assignment_changed",
           "indicators.changed",
           "creative.purged",
+          "creative.staged_update_changed",
           "account.status_changed",
           "account.change_recorded",
           "product.created",

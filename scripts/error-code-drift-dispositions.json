@@ -6,6 +6,11 @@
       "target_version": "3.3",
       "note": "request_account and sync_accounts settings updates return this when the seller would accept the change only as a separate account and the caller did not allow one. New 3.3 account wire code \u2014 held for 3.3."
     },
+    "CREATIVE_LIVE_UPDATE_UNSUPPORTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.3",
+      "note": "sync_creatives refuses a change to a live creative that a seller declaring creative.live_updates does not apply in place. New 3.3 creative wire code \u2014 held for 3.3."
+    },
     "CREATIVE_MERGE_REJECTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.3",

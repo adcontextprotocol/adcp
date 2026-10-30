@@ -85,6 +85,12 @@
               "spec": "docs/creative/task-reference/list_creatives.mdx#per-creative-fields"
             }
           },
+          "staged_update": {
+            "$ref": "/schemas/core/creative-staged-update.json",
+            "description": "A change accepted in staged mode and not yet promoted. While present, assets, revision_id, and status describe the version that serves; the staged content is the buyer's last synced content. Removed on promotion (the staged content and revision become current) and on withdrawal. Stays with status rejected under on_rejection keeps_prior until the buyer supersedes or withdraws it.",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0"
+          },
           "seller_revision": {
             "type": ["integer", "string"],
             "description": "Seller-maintained change token for this creative, distinct from the buyer-assigned revision_id. Sellers MUST use a positive integer or a string of 1 to 255 characters; the schema does not encode these bounds because JSON Schema bounds on an integer-or-string type break SDK code generation. The seller advances it on every committed change to state this read reports, whatever its origin: an AdCP task, a seller operator, seller automation, another authorized principal, or a connected platform. An externally observed change advances it when the seller ingests it. Reads, validation-only calls, and exact idempotency replays do not advance it. Sellers MUST NOT reuse a value for a different state of the same creative or move it backward. Buyers MUST treat the value as opaque: equal values mean the same state as the seller has observed and a different value means the state changed. Integer values also order numerically. A change record's resource_revision is the value immediately after that change, in the same JSON type; a read that returns a different value reflects later changes. Sellers MUST NOT use it as the buyer revision_id, and a buyer revision_id never substitutes for it. Optional; a seller that does not maintain it omits it.",
@@ -566,7 +572,7 @@
           },
           "webhook_activity": {
             "type": "array",
-            "description": "Recent webhook fires scoped to this creative — creative.status_changed, creative.purged, creative.assignment_changed, and assignment-level indicators.changed deliveries. Present only when include_webhook_activity is true. Account-anchored records include subscriber_id; the parent creative_id disambiguates the record. Retention: 30 days from completed_at. See snapshot-and-log.mdx § Webhook activity log pattern.",
+            "description": "Recent webhook fires scoped to this creative — creative.status_changed, creative.staged_update_changed, creative.purged, creative.assignment_changed, and assignment-level indicators.changed deliveries. Present only when include_webhook_activity is true. Account-anchored records include subscriber_id; the parent creative_id disambiguates the record. Retention: 30 days from completed_at. See snapshot-and-log.mdx § Webhook activity log pattern.",
             "items": {
               "$ref": "/schemas/core/webhook-activity-record.json"
             },

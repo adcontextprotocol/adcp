@@ -48,6 +48,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CONFLICTING_SELECTORS` | correctable | emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison |
 | `CREATIVE_DEADLINE_EXCEEDED` | correctable | check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller |
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
+| `CREATIVE_LIVE_UPDATE_UNSUPPORTED` | correctable | sync the change as a new creative_id and swap it in on each live package with an assignment_operations replace; send the change with dry_run to see the exact outcome without applying it |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
 | `CREATIVE_MERGE_REJECTED` | correctable | confirm the pairing via list_creatives, or use a replace assignment operation to traffic creative_id as a new serving object |
 | `CREATIVE_MISSING_CLICK_URL` | correctable | add the required destination URL and resubmit the creative |
@@ -461,6 +462,15 @@ Creative change submitted after the package's creative_deadline. Distinct from C
 **Suggested action:** verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit
 
 A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed creative review). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).
+
+</Accordion>
+<a id="error-code-creative-live-update-unsupported"></a>
+
+<Accordion title="CREATIVE_LIVE_UPDATE_UNSUPPORTED — correctable">
+
+**Suggested action:** sync the change as a new creative_id and swap it in on each live package with an assignment_operations replace; send the change with dry_run to see the exact outcome without applying it
+
+A sync_creatives item changed a live creative in a way the seller does not apply in place under the same creative_id. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. Returned only by sellers that declare creative.live_updates (others keep returning INVALID_STATE). The seller MUST fail only that item, MUST leave the creative, its review state, and its serving unchanged, SHOULD set error.field to the item, and SHOULD return details conforming to error-details/creative-live-update-unsupported.json naming the refused change kinds and the live packages. A dry_run returns the same refusal. Recovery: correctable (sync the change as a new creative_id, then swap it in on each live package with an assignment_operations replace).
 
 </Accordion>
 <a id="error-code-creative-locale-not-accepted"></a>
