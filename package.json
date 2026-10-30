@@ -134,7 +134,7 @@
     "dev:docs": "node scripts/dev-docs.mjs",
     "docs:example-coverage": "node scripts/docs-example-coverage.cjs",
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs",
-    "test:auction-only-compliance": "node --test --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs tests/currency-filter-compliance.test.cjs tests/optional-seller-capabilities.test.cjs tests/canonical-compatibility-slices.test.cjs tests/product-filter-auction-compliance.test.cjs tests/governance-recovery-pricing-scope.test.cjs"
+    "test:auction-only-compliance": "node --test --test-concurrency=1 --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs tests/currency-filter-compliance.test.cjs tests/optional-seller-capabilities.test.cjs tests/canonical-compatibility-slices.test.cjs tests/product-filter-auction-compliance.test.cjs tests/governance-recovery-pricing-scope.test.cjs"
   },
   "dependencies": {
     "@adcp/sdk": "9.6.2",
