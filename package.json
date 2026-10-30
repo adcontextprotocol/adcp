@@ -209,7 +209,7 @@
     "eval:addie-gemini-direct-ablation": "tsx --import dotenv/config server/tests/manual/gemini-direct-ablation-eval.ts",
     "eval:addie-matched-v4-plan": "tsx server/tests/manual/matched-v4-evaluation-plan.ts",
     "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts",
-    "test:auction-only-compliance": "node --test --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs tests/currency-filter-compliance.test.cjs tests/optional-seller-capabilities.test.cjs tests/product-filter-auction-compliance.test.cjs tests/canonical-compatibility-slices.test.cjs tests/governance-recovery-pricing-scope.test.cjs"
+    "test:auction-only-compliance": "node --test --test-concurrency=1 --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs tests/currency-filter-compliance.test.cjs tests/optional-seller-capabilities.test.cjs tests/product-filter-auction-compliance.test.cjs tests/canonical-compatibility-slices.test.cjs tests/governance-recovery-pricing-scope.test.cjs tests/literal-auction-bid-compliance.test.cjs"
   },
   "dependencies": {
     "@adcp/reporting-storage": "0.3.0-beta.1",
