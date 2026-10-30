@@ -18,9 +18,6 @@
       "type": "string",
       "description": "Read-only bearer credential shareable with receivers to call get_property_list for this list_id, including all pages, in place of normal agent credentials. MUST NOT authorize other lists or mutations. Store this; it is only returned at creation time."
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

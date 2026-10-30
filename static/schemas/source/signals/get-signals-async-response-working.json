@@ -27,9 +27,6 @@
       "type": "integer",
       "description": "Current step number (1-indexed)."
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

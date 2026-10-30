@@ -165,7 +165,7 @@ phases:
         title: "Request proposals for purchases at a 50 USD cap on a 10,000 USD budget"
         task: request_proposals
         schema_ref: "media-buy/request-proposals-request.json"
-        response_schema_ref: "media-buy/request-proposals-response.json"
+        response_schema_ref: "media-buy/request-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/request_proposals"
         stateful: true
         expected: |

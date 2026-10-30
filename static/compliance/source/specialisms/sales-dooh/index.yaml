@@ -350,7 +350,7 @@ phases:
         task: get_products
         requires_tool: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: full_sales_flow
         stateful: false
@@ -407,7 +407,7 @@ phases:
         title: "Reject a frequency cap the DOOH product cannot enforce"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: identity_absence_rejection
         expect_error: true
@@ -522,7 +522,7 @@ phases:
         title: "Push the portrait screen asset"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_sync
         stateful: true
@@ -580,7 +580,7 @@ phases:
         title: "Buy the DOOH product"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         stateful: true

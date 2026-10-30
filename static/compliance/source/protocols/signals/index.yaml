@@ -131,7 +131,7 @@ phases:
           evaluate the signal.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: signals_flow
         stateful: false

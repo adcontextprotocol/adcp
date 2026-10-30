@@ -3,7 +3,7 @@
   "$id": "/schemas/protocol/sync-principal-response.json",
   "title": "Sync Principal Response",
   "x-status": "experimental",
-  "description": "Result of synchronizing selected sections of the principal's standing configuration. Applied responses return the complete current credential-free configuration. Validated dry-run responses report the would-be action without issuing durable identifiers. Failed responses deliberately cannot carry principal identifiers, versions, or configuration state.",
+  "description": "Result of synchronizing selected sections of the principal's standing configuration. Applied responses return the complete current credential-free configuration. Validated dry-run responses report the would-be action without issuing durable identifiers. A failed result, which only the failed and rejected bodies carry, deliberately cannot carry principal identifiers, versions, or configuration state.",
   "type": "object",
   "allOf": [
     {
@@ -88,31 +88,8 @@
           },
           "required": ["kind", "action", "dry_run"],
           "additionalProperties": false
-        },
-        {
-          "title": "Failed principal sync",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "failed"
-            },
-            "errors": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/core/error.json"
-              },
-              "minItems": 1,
-              "maxItems": 16
-            }
-          },
-          "required": ["kind", "errors"],
-          "additionalProperties": false
         }
       ]
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -120,24 +97,6 @@
   },
   "required": ["result"],
   "additionalProperties": true,
-  "if": {
-    "properties": {
-      "result": {
-        "properties": {
-          "kind": { "const": "failed" }
-        },
-        "required": ["kind"]
-      }
-    },
-    "required": ["result"]
-  },
-  "then": {
-    "properties": {
-      "status": {
-        "enum": ["failed", "rejected"]
-      }
-    }
-  },
   "examples": [
     {
       "description": "Principal configuration updated",

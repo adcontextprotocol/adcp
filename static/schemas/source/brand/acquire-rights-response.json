@@ -81,9 +81,6 @@
           ],
           "description": "Pre-built rights constraint for embedding in creative manifests. Populated from the agreed terms — the buyer does not need to construct it manually."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -135,9 +132,6 @@
           "type": "string",
           "description": "Expected time for approval decision (e.g., '48h', '3 business days')"
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -181,9 +175,6 @@
             "type": "string"
           }
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -201,37 +192,6 @@
         ]
       }
     },
-    {
-      "title": "AcquireRightsError",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "rights_status"
-            ]
-          }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/brand/acquire-rights-failed.json" }
+  ]
 }

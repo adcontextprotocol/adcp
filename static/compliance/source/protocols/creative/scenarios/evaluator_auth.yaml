@@ -234,7 +234,7 @@ phases:
         task: build_creative
         requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: true
@@ -301,7 +301,7 @@ phases:
         task: build_creative
         requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: true
@@ -376,7 +376,7 @@ phases:
         task: build_creative
         requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: true
@@ -466,7 +466,7 @@ phases:
         task: build_creative
         requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: true
@@ -599,7 +599,7 @@ phases:
         task: build_creative
         requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         requires_tool: comply_test_controller

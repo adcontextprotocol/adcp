@@ -419,7 +419,9 @@ export function validateProductDiscoverySourceResponse(
   response: Record<string, unknown>,
   request?: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
-  const validator = sourceValidator(`media-buy/${fileName}.json`);
+  // A tool response validates against the tool's generated wire response, the
+  // union of its status bodies.
+  const validator = sourceValidator(`media-buy/${fileName.replace(/-response$/, '-wire-response')}.json`);
   if (!validator(response)) {
     const error = validator.errors?.[0];
     const field = error && errorField(error);

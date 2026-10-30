@@ -1307,9 +1307,6 @@
       "type": "boolean",
       "description": "When true, this response contains simulated data from sandbox mode."
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

@@ -51,7 +51,6 @@
       "required": ["accounting_mode", "gross_committed", "adjustments_reported", "adjustments_verified", "net_cost", "headroom_restored", "ledger_committed", "net_committed", "budget_remaining"],
       "additionalProperties": false
     },
-    "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["adjustment_id", "adjustment_state", "adjustment_type", "amount", "headroom_restored", "plan_summary"],

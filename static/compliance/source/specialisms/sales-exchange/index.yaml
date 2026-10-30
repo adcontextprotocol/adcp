@@ -225,7 +225,7 @@ phases:
           competitive bid ranges, and multi-publisher audience reach.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
@@ -286,7 +286,7 @@ phases:
           The exchange validates bids and begins auction-based delivery.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
@@ -359,7 +359,7 @@ phases:
           floor prices and applies the change to future auctions.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         stateful: true
         expected: |

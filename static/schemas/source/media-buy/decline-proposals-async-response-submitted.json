@@ -5,5 +5,10 @@
   "description": "Bounded submitted task envelope for decline_proposals.",
   "allOf": [
     { "$ref": "/schemas/core/compact-task-submitted.json" }
-  ]
+  ],
+  "properties": {
+    "results": {
+      "$ref": "/schemas/media-buy/decline-proposals-response.json#/properties/results"
+    }
+  }
 }

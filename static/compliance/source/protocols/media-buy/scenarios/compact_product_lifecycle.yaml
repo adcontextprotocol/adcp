@@ -201,7 +201,7 @@ phases:
         title: "Create a draft proposal"
         task: request_proposals
         schema_ref: "media-buy/request-proposals-request.json"
-        response_schema_ref: "media-buy/request-proposals-response.json"
+        response_schema_ref: "media-buy/request-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/request_proposals"
         stateful: true
         sample_request:
@@ -283,7 +283,7 @@ phases:
         title: "Create a committed proposal"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         sample_request:
@@ -331,7 +331,7 @@ phases:
         title: "Create the MediaBuy"
         task: accept_proposal
         schema_ref: "media-buy/accept-proposal-request.json"
-        response_schema_ref: "media-buy/accept-proposal-response.json"
+        response_schema_ref: "media-buy/accept-proposal-wire-response.json"
         doc_ref: "/media-buy/task-reference/accept_proposal"
         stateful: true
         sample_request:
@@ -404,7 +404,7 @@ phases:
         title: "Apply a bounded total-budget decrease"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         stateful: true
         sample_request:

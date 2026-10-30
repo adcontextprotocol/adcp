@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/get-products-failed.json",
+  "title": "Get Products - Failed",
+  "description": "Body of a failed get_products response: errors, with the completed body's fields declared by reference. A wholesale unchanged response carries the feed version and cache scope instead of errors.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "products": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/products"
+    },
+    "collections": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/collections"
+    },
+    "targeting_resolution": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/targeting_resolution"
+    },
+    "extensions": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/extensions"
+    },
+    "proposals": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/proposals"
+    },
+    "errors": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/errors"
+    },
+    "property_list_applied": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/property_list_applied"
+    },
+    "catalog_applied": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/catalog_applied"
+    },
+    "refinement_applied": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/refinement_applied"
+    },
+    "incomplete": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/incomplete"
+    },
+    "filter_diagnostics": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/filter_diagnostics"
+    },
+    "pagination": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/pagination"
+    },
+    "wholesale_feed_version": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/wholesale_feed_version"
+    },
+    "pricing_version": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/pricing_version"
+    },
+    "execution_readiness": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/execution_readiness"
+    },
+    "cache_scope": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/cache_scope"
+    },
+    "unchanged": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/unchanged"
+    },
+    "sandbox": {
+      "$ref": "/schemas/media-buy/get-products-response.json#/properties/sandbox"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "dependencies": {
+    "collections": [
+      "products"
+    ]
+  },
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "reason"
+        ]
+      },
+      {
+        "required": [
+          "suggestions"
+        ]
+      }
+    ]
+  },
+  "if": {
+    "properties": {
+      "unchanged": {
+        "const": true
+      }
+    },
+    "required": [
+      "unchanged"
+    ]
+  },
+  "then": {
+    "description": "Wholesale-feed unchanged response: products MUST be omitted; wholesale_feed_version and cache_scope MUST be present (echoed from the cached version).",
+    "required": [
+      "wholesale_feed_version",
+      "cache_scope"
+    ],
+    "not": {
+      "required": [
+        "products"
+      ]
+    }
+  },
+  "else": {
+    "description": "Failed response: errors[] carries the terminal failure details; products[] and cache_scope are not required because no product result was produced.",
+    "required": [
+      "errors"
+    ]
+  },
+  "additionalProperties": true
+}

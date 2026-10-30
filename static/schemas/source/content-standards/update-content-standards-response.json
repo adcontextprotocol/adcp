@@ -22,9 +22,6 @@
           "type": "string",
           "description": "ID of the updated standards configuration"
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -35,40 +32,6 @@
       ],
       "additionalProperties": true
     },
-    {
-      "title": "UpdateContentStandardsError",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean",
-          "const": false,
-          "description": "Indicates the update failed"
-        },
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "description": "Errors that occurred during the update",
-          "minItems": 1
-        },
-        "conflicting_standards_id": {
-          "type": "string",
-          "description": "If scope change conflicts with another configuration, the ID of the conflicting standards"
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "success",
-        "errors"
-      ],
-      "additionalProperties": true
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/content-standards/update-content-standards-failed.json" }
+  ]
 }

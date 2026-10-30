@@ -159,7 +159,7 @@ phases:
         title: "Discover products supporting per-creative conversion attribution"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
@@ -242,7 +242,7 @@ phases:
         title: "Push two distinct display creatives"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -294,7 +294,7 @@ phases:
         title: "Create media buy assigning both creatives to one package with a CPA goal"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |

@@ -149,7 +149,7 @@ phases:
           storyboard exists to catch.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: get_signals_pagination_integrity
         stateful: true
@@ -208,7 +208,7 @@ phases:
           pagination-integrity.yaml`.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: get_signals_pagination_integrity
         stateful: true

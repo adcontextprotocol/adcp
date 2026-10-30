@@ -7,16 +7,8 @@
   "allOf": [
     { "$ref": "/schemas/core/protocol-envelope.json" }
   ],
-  "anyOf": [
-    {
-      "properties": { "status": { "type": "string", "const": "completed" } },
-      "required": ["results"],
-      "not": { "required": ["task_id"] }
-    },
-    {
-      "$ref": "/schemas/core/compact-task-submitted.json"
-    }
-  ],
+  "required": ["results"],
+  "not": { "required": ["task_id"] },
   "properties": {
     "results": {
       "type": "array",
@@ -57,7 +49,6 @@
       }
     },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
-    "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "additionalProperties": true

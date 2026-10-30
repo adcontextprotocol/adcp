@@ -18,8 +18,11 @@ function load(relativePath) {
   );
 }
 
+// A response schema is the completed body: its properties are the success
+// properties. A body with several success shapes names them in oneOf.
 function successProperties(relativePath, title) {
   const schema = load(relativePath);
+  if (!schema.oneOf) return schema.properties;
   return schema.oneOf.find((branch) => branch.title === title).properties;
 }
 

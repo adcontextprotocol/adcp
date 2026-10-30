@@ -256,7 +256,7 @@ phases:
           returns match rates and segment status.
         task: sync_audiences
         schema_ref: "media-buy/sync-audiences-request.json"
-        response_schema_ref: "media-buy/sync-audiences-response.json"
+        response_schema_ref: "media-buy/sync-audiences-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_audiences"
         comply_scenario: sync_audiences
         stateful: true
@@ -327,7 +327,7 @@ phases:
           each creative against its format requirements and returns per-creative status.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_sync
         stateful: true
@@ -403,7 +403,7 @@ phases:
           returns per-item approval status.
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         expected: |
@@ -474,7 +474,7 @@ phases:
           substitution validation is tracked under #2638.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_sync
         stateful: true
@@ -554,7 +554,7 @@ phases:
           output must percent-encode each value into tracker URLs.
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         expected: |
@@ -622,7 +622,7 @@ phases:
           values into URL contexts at preview time.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_sync
         stateful: true
@@ -674,7 +674,7 @@ phases:
           rendered at least once so the observer can match every binding.
         task: preview_creative
         schema_ref: "creative/preview-creative-request.json"
-        response_schema_ref: "creative/preview-creative-response.json"
+        response_schema_ref: "creative/preview-creative-wire-response.json"
         doc_ref: "/creative/task-reference/preview_creative"
         stateful: true
         expected: |

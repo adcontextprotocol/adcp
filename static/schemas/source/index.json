@@ -2100,6 +2100,10 @@
           "$ref": "/schemas/media-buy/get-products-rejected.json",
           "description": "Terminal business rejection arm for a well-formed get_products brief or refinement"
         },
+        "get-products-shared-properties": {
+          "$ref": "/schemas/media-buy/get-products-shared-properties.json",
+          "description": "get_products response field declarations shared by the completed and rejected bodies"
+        },
         "package-request": {
           "$ref": "/schemas/media-buy/package-request.json",
           "description": "Package configuration for media buy creation - used within create_media_buy request"

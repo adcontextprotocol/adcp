@@ -111,7 +111,7 @@ phases:
         title: "Read the obligation before a revision exists"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reporting_core_lifecycle_probe
         stateful: true
@@ -192,7 +192,7 @@ phases:
         title: "Observe clock-derived delayed health"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reporting_core_lifecycle_probe
         stateful: true
@@ -258,7 +258,7 @@ phases:
         title: "Observe escalation after automated recovery closes"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reporting_core_lifecycle_probe
         stateful: true
@@ -322,7 +322,7 @@ phases:
         title: "Read the satisfied zero-row obligation"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reporting_core_lifecycle_probe
         stateful: true
@@ -366,7 +366,7 @@ phases:
         title: "Project the active schedule beyond the complete evaluated scope"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reporting_core_lifecycle_probe
         stateful: true
@@ -525,7 +525,7 @@ phases:
         title: "Read the revision metadata from the status ledger"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reporting_core_lifecycle_probe
         stateful: true
@@ -867,7 +867,7 @@ phases:
         title: "Persist the pre-publication checkpoint"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reliable_reporting_core_integrity_probe
         stateful: true
@@ -943,7 +943,7 @@ phases:
         title: "Converge from the saved checkpoint"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reliable_reporting_core_integrity_probe
         stateful: true

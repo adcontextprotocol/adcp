@@ -132,7 +132,7 @@ phases:
         title: "Read provenance_requirements and accepted_verifiers from creative_policy"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
@@ -198,7 +198,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -267,7 +267,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -339,7 +339,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -428,7 +428,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -501,7 +501,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
