@@ -43,6 +43,7 @@ import {
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
 import { formatFailureDetailSnippet, formatFailedValidationSummary, formatStepFailureDetail, storyboardStepStatus, type StoryboardStepForSummary } from './storyboard-report-format.js';
+import { registerStoryboardCandidateSchemaRoot } from './storyboard-candidate-schema-root.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -124,6 +125,7 @@ if (candidateVersionMode) {
       'ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=1 requires the compliance bundle version to match package.json',
     );
   }
+  registerStoryboardCandidateSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot);
   // Set the trusted, process-local wire contract before importing runtime
   // modules. Source 3.3 cannot be graded by aliasing it to released 3.2.
   process.env.ADCP_TRAINING_CANDIDATE_VERSION = releasedComplianceVersion.replace(
