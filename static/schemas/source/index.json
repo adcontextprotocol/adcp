@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.3.0-beta.0",
+  "adcp_version": "3.3.0-beta.2",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -99,7 +99,7 @@
         },
         "canonical-account-ref": {
           "$ref": "/schemas/core/canonical-account-ref.json",
-          "description": "Compact account identity without inline brand documents"
+          "description": "Compact account reference without inline brand documents"
         },
         "canonical-budget-allocation": {
           "$ref": "/schemas/core/canonical-budget-allocation.json",
@@ -183,15 +183,18 @@
         },
         "operator-identity": {
           "$ref": "/schemas/core/operator-identity.json",
-          "description": "Complete buyer-desired operator domain and optional operator-owned unit for an advertiser account"
+          "deprecated": true,
+          "description": "Deprecated in 3.3. Complete buyer-desired operator domain and optional operator-owned unit for an advertiser account"
         },
         "account-identity-change": {
           "$ref": "/schemas/core/account-identity-change.json",
-          "description": "Pending or rejected operator-identity transition on an existing account"
+          "deprecated": true,
+          "description": "Deprecated in 3.3. Pending or rejected operator-identity transition on an existing account"
         },
         "account-identity-change-preview": {
           "$ref": "/schemas/core/account-identity-change-preview.json",
-          "description": "Non-persisted impact and disposition preview for a dry-run account identity transition"
+          "deprecated": true,
+          "description": "Deprecated in 3.3. Non-persisted impact and disposition preview for a dry-run account identity transition"
         },
         "account-with-authorization": {
           "$ref": "/schemas/core/account-with-authorization.json",
@@ -276,10 +279,6 @@
         "audience-evidence-target": {
           "$ref": "/schemas/core/audience-evidence-target.json",
           "description": "Experimental. Buyer-named audience and minimum evidence value inside audience-evidence requirements"
-        },
-        "definition-pin": {
-          "$ref": "/schemas/core/definition-pin.json",
-          "description": "Seller-authored integrity pin over one third-party-published definition referenced by commercial terms"
         },
         "audience-size": {
           "$ref": "/schemas/core/audience-size.json",
@@ -373,10 +372,6 @@
         "installment-deadlines": {
           "$ref": "/schemas/core/installment-deadlines.json",
           "description": "Booking, cancellation, and material submission deadlines for an installment"
-        },
-        "installment-change-set": {
-          "$ref": "/schemas/core/installment-change-set.json",
-          "description": "Installment-level include and omit actions for a proposal refinement"
         },
         "material-deadline": {
           "$ref": "/schemas/core/material-deadline.json",
@@ -890,6 +885,18 @@
           "$ref": "/schemas/core/agent-reporting-destination-state.json",
           "description": "Seller-issued destination reference and setup state for a reusable reporting destination"
         },
+        "reporting-subscription": {
+          "$ref": "/schemas/core/reporting-subscription.json",
+          "description": "Experimental: principal-level reporting subscription registered through sync_principal"
+        },
+        "reporting-subscription-state": {
+          "$ref": "/schemas/core/reporting-subscription-state.json",
+          "description": "Experimental: seller readback for a principal-level reporting subscription"
+        },
+        "reporting-subscription-coverage": {
+          "$ref": "/schemas/core/reporting-subscription-coverage.json",
+          "description": "Experimental: how one reporting subscription covers, excludes, or withholds one account's media buys"
+        },
         "delivery-provider": {
           "$ref": "/schemas/core/delivery-provider.json",
           "description": "Non-secret provider namespace for an external delivery service"
@@ -965,6 +972,10 @@
         "indicators-changed-webhook": {
           "$ref": "/schemas/core/indicators-changed-webhook.json",
           "description": "Account-level invalidation payload for a semantic indicator snapshot change"
+        },
+        "proposal-offered-webhook": {
+          "$ref": "/schemas/core/proposal-offered-webhook.json",
+          "description": "Account-level invalidation payload for a seller offer against an accepted media buy. Experimental."
         },
         "warning": {
           "$ref": "/schemas/core/warning.json",
@@ -1191,6 +1202,10 @@
           "$ref": "/schemas/core/optimization-goal.json",
           "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
         },
+        "vendor-metric-provenance": {
+          "$ref": "/schemas/core/vendor-metric-provenance.json",
+          "description": "Experimental collection-mechanism provenance for one vendor_metric_values row, joined on (vendor, metric_id, qualifier)"
+        },
         "vendor-metric-optimization": {
           "$ref": "/schemas/core/vendor-metric-optimization.json",
           "description": "Product-level capability declaration for vendor-attested metric optimization (attention, brand lift, emissions, retail-media partner metrics)"
@@ -1205,7 +1220,7 @@
         },
         "account-ref": {
           "$ref": "/schemas/core/account-ref.json",
-          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator, optional sandbox)"
+          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator, optional attribute filters)"
         },
         "provenance": {
           "$ref": "/schemas/core/provenance.json",
@@ -1323,6 +1338,10 @@
           "$ref": "/schemas/enums/pending-action-kind.json",
           "description": "Experimental: what a pending account request needs next (extensible)"
         },
+        "reporting-dimension": {
+          "$ref": "/schemas/enums/reporting-dimension.json",
+          "description": "Experimental: standard breakdown vocabulary for reporting subscription selectors (extensible)"
+        },
         "pricing-model": {
           "$ref": "/schemas/enums/pricing-model.json",
           "description": "Supported pricing models for advertising products"
@@ -1351,6 +1370,14 @@
           "$ref": "/schemas/enums/later-proposal-reason.json",
           "description": "Why the seller created a later proposal (experimental)"
         },
+        "proposal-initiator": {
+          "$ref": "/schemas/enums/proposal-initiator.json",
+          "description": "Which party originated a proposal (buyer or seller). Experimental."
+        },
+        "offer-reason": {
+          "$ref": "/schemas/enums/offer-reason.json",
+          "description": "Why a seller offered a change to an accepted media buy. Experimental."
+        },
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
           "description": "Machine-readable terminal proposal feedback"
@@ -1358,10 +1385,6 @@
         "seller-policy-decline-reason": {
           "$ref": "/schemas/enums/seller-policy-decline-reason.json",
           "description": "Machine-readable seller-policy reason for declining a MediaBuy control shape"
-        },
-        "definition-pin-ref-kind": {
-          "$ref": "/schemas/enums/definition-pin-ref-kind.json",
-          "description": "Kinds of third-party-published definition a definition pin can cover"
         },
         "proposal-refinement-reason": {
           "$ref": "/schemas/enums/proposal-refinement-reason.json",
@@ -1902,16 +1925,6 @@
     "account": {
       "description": "Account management task request/response schemas",
       "tasks": {
-        "get-account-requests": {
-          "request": {
-            "$ref": "/schemas/account/get-account-requests-request.json",
-            "description": "Experimental: request parameters for reading the caller's account requests"
-          },
-          "response": {
-            "$ref": "/schemas/account/get-account-requests-response.json",
-            "description": "Experimental: the caller's account requests and their current state"
-          }
-        },
         "list-account-changes": {
           "request": {
             "$ref": "/schemas/account/list-account-changes-request.json",
@@ -3004,10 +3017,6 @@
           "$ref": "/schemas/brand/rights-pricing-option.json",
           "description": "Pricing option for licensable rights"
         },
-        "rights-scope": {
-          "$ref": "/schemas/brand/rights-scope.json",
-          "description": "What a rights grant covers — uses, grant window, and exclusivity — shared by rights-terms and media-buy purchases"
-        },
         "rights-terms": {
           "$ref": "/schemas/brand/rights-terms.json",
           "description": "Terms returned with a rights grant — coverage, restrictions, revocation, and credentials"
@@ -3149,5 +3158,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.3.0-beta.0"
+  "published_version": "3.3.0-beta.2"
 }

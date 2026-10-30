@@ -96,7 +96,7 @@ fixtures:
         - pricing_option_id: retention_cpm
           pricing_model: cpm
           currency: USD
-          fixed_price: 10
+          floor_price: 10
   media_buys:
     - media_buy_id: mb_terminal_package_retention
       account: *account
@@ -118,12 +118,14 @@ fixtures:
         - package_id: pkg_retention_first
           product_id: retention_display
           pricing_option_id: retention_cpm
+          bid_price: 15
           budget: 5000
           context:
             buyer_ref: retention_line_01
         - package_id: pkg_retention_second
           product_id: retention_display
           pricing_option_id: retention_cpm
+          bid_price: 15
           budget: 5000
           context:
             buyer_ref: retention_line_02

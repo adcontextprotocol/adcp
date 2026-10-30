@@ -94,7 +94,7 @@ Sellers keep a snapshot readable while it is `available` and for at least 30 day
 | `request` | Returned by [`request_proposals`](/docs/media-buy/task-reference/request_proposals). |
 | `refinement` | Created by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals). |
 | `later` | Created by the seller after the creating task completed, under `later_proposals` consent. Always a `draft` `new_media_buy` with `opportunity_id` and `expires_at`, and carries `later_reason`. |
-| `seller_offer` | A seller offer against an accepted media buy, defined under `media_buy.seller_offers`. Requires `proposal_initiator: "seller"` on the snapshot, a `media_buy_update` or `media_buy_cancellation` kind, and `proposal_status` `committed` (`accepted` once the buyer accepts it). Never carries `later_reason`. |
+| `seller_offer` | A seller offer against an accepted media buy, defined under `media_buy.seller_offers`. Requires `proposal_initiator: "seller"` on the snapshot and an `offer_reason` on the row, a `media_buy_update` or `media_buy_cancellation` kind, and `proposal_status` `committed` (`accepted` once the buyer accepts it). Never carries `later_reason`. |
 
 A snapshot with `proposal_initiator: "seller"` is always listed with `origin: "seller_offer"`.
 

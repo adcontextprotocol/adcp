@@ -33,7 +33,7 @@ narrative: |
 
   The stale-cache forcing phases require comply_test_controller with the
   force_upstream_unavailable scenario. Steps requiring the controller grade not_applicable for
-  agents that do not advertise it. The non-emission guard (Phase 3) runs for all agents.
+  agents that do not advertise it. The healthy non-emission guard runs before outage forcing.
 
 agent:
   interaction_model: media_buy_seller
@@ -49,8 +49,8 @@ caller:
 prerequisites:
   controller_seeding: true
   description: |
-    Phase 2 (stale-cache forcing) requires comply_test_controller with
-    force_upstream_unavailable support. Phase 3 (non-emission guard) runs for all agents.
+    The stale-cache forcing phase requires comply_test_controller with
+    force_upstream_unavailable support. The healthy non-emission guard runs before outage forcing.
   test_kit: "test-kits/acme-outdoor.yaml"
 
 fixtures:
@@ -114,7 +114,70 @@ phases:
             value: "stale_response_advisory--get_capabilities"
             description: "Context correlation_id returned unchanged"
 
+  - id: non_emission_guard
+    title: "No STALE_RESPONSE on healthy upstream response"
+    narrative: |
+      STALE_RESPONSE MUST NOT be emitted when the upstream is healthy. Per the normative
+      error-code description, sellers MUST NOT emit STALE_RESPONSE when the cache hit is
+      within freshness target or when no cached payload exists — the correct code for a
+      completely unavailable upstream with no cache is SERVICE_UNAVAILABLE.
+
+      Run this healthy request before forcing any outage. It also warms the cache for
+      the same brief and account used by the subsequent stale-cache probe.
+
+    steps:
+      - id: no_stale_on_healthy_upstream
+        title: "STALE_RESPONSE absent on healthy upstream response"
+        narrative: |
+          A normal get_products request against a healthy upstream MUST NOT emit
+          STALE_RESPONSE. Sellers that unconditionally emit STALE_RESPONSE on every
+          get_products response are non-conformant — the code is only valid when a
+          specific cache-fallback condition is active.
+
+          NOTE: No machine-enforced absence check for STALE_RESPONSE exists today — the
+          `field_absent` primitive rejects errors[] entirely, but other error codes are
+          valid. The schema and correlation_id checks below prove conformance for
+          non-STALE_RESPONSE flows; a dedicated `error_code_absent` check kind would
+          close this gap. TODO: add check primitive when runner contract supports it.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: stale_response_non_emission
+        stateful: false
+        expected: |
+          Return products normally. errors[] may be absent or present with codes other
+          than STALE_RESPONSE. STALE_RESPONSE MUST NOT appear unless the seller is
+          actively serving from a stale cache entry past its freshness target.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#stale_response_advisory_non_emission_guard_no_stale_on_healthy_upstream"
+          buying_mode: "brief"
+          brief: "Display advertising"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-stale_response_advisory-cfb1001d"
+            sandbox: true
+          context:
+            correlation_id: "stale_response_advisory--no_stale_on_healthy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema on healthy upstream"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "stale_response_advisory--no_stale_on_healthy"
+            description: "Context correlation_id returned unchanged"
+
   - id: stale_response_forcing
+    requires_capability:
+      path: compliance_testing.scenarios
+      contains: force_upstream_unavailable
     title: "Force stale-cache condition and verify advisory-success wire placement"
     narrative: |
       The test controller forces an upstream dependency unavailable while a stale cache entry
@@ -155,6 +218,11 @@ phases:
             upstream_name: "inventory-service"
             cache_age_seconds: 60
           account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-stale_response_advisory-cfb1001d"
             sandbox: true
           context:
             correlation_id: "stale_response_advisory--force_upstream_unavailable"
@@ -222,13 +290,13 @@ phases:
             description: "Response matches get-products-response.json schema even under stale cache"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted — remove permanent_advisory and severity fields. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted — remove permanent_advisory and severity fields. See issue #4934."
           - check: field_present
             path: "errors"
             description: "errors[] is present on a stale-cache response"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
           - check: field_contains
             path: "errors[*]"
             value:
@@ -239,83 +307,23 @@ phases:
             description: "One STALE_RESPONSE entry carries the correlated deterministic stale-cache details"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
           - check: field_present
             path: "context"
             description: "Response echoes back the context object on stale-cache advisory"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
           - check: field_value
             path: "context.correlation_id"
             value: "stale_response_advisory--stale_response_wire_placement"
             description: "Context correlation_id returned unchanged"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."
           - check: field_present
             path: "products[0]"
             description: "Response payload is non-empty (products[] has at least one entry from stale cache)"
             severity: advisory
             permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
-
-  - id: non_emission_guard
-    title: "No STALE_RESPONSE on healthy upstream response"
-    narrative: |
-      STALE_RESPONSE MUST NOT be emitted when the upstream is healthy. Per the normative
-      error-code description, sellers MUST NOT emit STALE_RESPONSE when the cache hit is
-      within freshness target or when no cached payload exists — the correct code for a
-      completely unavailable upstream with no cache is SERVICE_UNAVAILABLE.
-
-      This phase sends a normal get_products request and verifies no STALE_RESPONSE appears.
-      Runs for all agents — no controller required.
-
-    steps:
-      - id: no_stale_on_healthy_upstream
-        title: "STALE_RESPONSE absent on healthy upstream response"
-        narrative: |
-          A normal get_products request against a healthy upstream MUST NOT emit
-          STALE_RESPONSE. Sellers that unconditionally emit STALE_RESPONSE on every
-          get_products response are non-conformant — the code is only valid when a
-          specific cache-fallback condition is active.
-
-          NOTE: No machine-enforced absence check for STALE_RESPONSE exists today — the
-          `field_absent` primitive rejects errors[] entirely, but other error codes are
-          valid. The schema and correlation_id checks below prove conformance for
-          non-STALE_RESPONSE flows; a dedicated `error_code_absent` check kind would
-          close this gap. TODO: add check primitive when runner contract supports it.
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
-        comply_scenario: stale_response_non_emission
-        stateful: false
-        expected: |
-          Return products normally. errors[] may be absent or present with codes other
-          than STALE_RESPONSE. STALE_RESPONSE MUST NOT appear unless the seller is
-          actively serving from a stale cache entry past its freshness target.
-
-        sample_request:
-          idempotency_key: "$generate:uuid_v4#stale_response_advisory_non_emission_guard_no_stale_on_healthy_upstream"
-          buying_mode: "brief"
-          brief: "Display advertising for outdoor lifestyle campaign"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            operator_unit:
-              id: "compliance-stale_response_advisory-cfb1001d"
-            sandbox: true
-          context:
-            correlation_id: "stale_response_advisory--no_stale_on_healthy"
-        validations:
-          - check: response_schema
-            description: "Response matches get-products-response.json schema on healthy upstream"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "stale_response_advisory--no_stale_on_healthy"
-            description: "Context correlation_id returned unchanged"
+              reason: "Gated on force_upstream_unavailable being advertised in the seller's comply_test_controller scenarios. Promote to required when widely adopted. See issue #4934."

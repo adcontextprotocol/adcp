@@ -125,6 +125,20 @@ export function atLeastAdcpVersion(servedVersion: string | undefined, minimumVer
   return actual.prerelease >= minimum.prerelease;
 }
 
+/**
+ * Whether a response served at `servedVersion` belongs to a release line
+ * older than `major.minor` (prerelease qualifiers ignored: `3.1-rc.4` is on
+ * the 3.1 line). In-process callers without a served version speak the
+ * current line, so they are never older.
+ */
+export function servesReleaseBefore(servedVersion: string | undefined, major: number, minor: number): boolean {
+  const match = servedVersion?.match(/^(\d+)\.(\d+)/);
+  if (!match) return false;
+  const servedMajor = Number.parseInt(match[1], 10);
+  const servedMinor = Number.parseInt(match[2], 10);
+  return servedMajor < major || (servedMajor === major && servedMinor < minor);
+}
+
 export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, GET_PRODUCTS_REJECTED_ADCP_VERSION);
 }

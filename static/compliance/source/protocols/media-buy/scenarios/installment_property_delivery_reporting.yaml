@@ -81,7 +81,7 @@ fixtures:
       pricing_option_id: "installment_property_reporting_ctv_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 10.0
+      floor_price: 10.0
 
 phases:
   - id: setup
@@ -128,6 +128,7 @@ phases:
           packages:
             - product_id: "installment_property_reporting_ctv"
               pricing_option_id: "installment_property_reporting_ctv_cpm"
+              bid_price: 15
               budget: 1000
           idempotency_key: "$generate:uuid_v4#installment_property_delivery_reporting_create_buy"
         context_outputs:

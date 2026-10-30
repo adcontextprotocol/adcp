@@ -54,8 +54,8 @@ fixtures:
   products:
     - product_id: "billing_finality_video_q3"
       # Non-guaranteed so sales-non-guaranteed-only sellers can run this scenario
-      # (#7754). Fixed-price so the create needs no bid. is_guarantee_basis and
-      # the create's measurement_terms are not conditioned on delivery_type.
+      # (#7754). Auction CPM avoids requiring fixed-rate support. Measurement
+      # windows and terms remain independent of the pricing structure.
       delivery_type: "non_guaranteed"
       channels: ["olv"]
       format_options:
@@ -84,7 +84,7 @@ fixtures:
       pricing_option_id: "cpm_billing_finality"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 18.0
+      floor_price: 18.0
 
 phases:
   - id: setup
@@ -139,6 +139,7 @@ phases:
             - product_id: "billing_finality_video_q3"
               budget: 30000
               pricing_option_id: "cpm_billing_finality"
+              bid_price: 27
               measurement_terms:
                 billing_measurement:
                   vendor:

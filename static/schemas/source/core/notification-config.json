@@ -45,7 +45,8 @@
           "reporting.delivery_ready",
           "reporting.status_changed",
           "reporting.ledger_changed",
-          "proposal.created"
+          "proposal.created",
+          "proposal.offered"
         ]
       },
       "minItems": 1,
@@ -54,14 +55,13 @@
     "product_payload_view": {
       "type": "string",
       "enum": ["canonical", "legacy"],
-      "default": "legacy",
-      "description": "Product webhook representation selected by this subscriber. Use canonical with lifecycle_tools.list_products; legacy is the default for 3.x get_products consumers. Sellers emit exactly canonical_product/canonical_pricing_options or product/pricing_options accordingly. Valid only when event_types includes a product.* event."
+      "description": "Product webhook representation selected by this subscriber. Use canonical with lifecycle_tools.list_products; legacy is for 3.x get_products consumers. When absent, sellers emit the legacy representation. Sellers emit exactly canonical_product/canonical_pricing_options or product/pricing_options accordingly. Valid only when event_types includes a product.* event. The default is stated here rather than as a schema default so serializers that materialize defaults do not add the field to configs without a product.* event. Sellers echoing configs on sync_accounts or list_accounts MUST NOT add product_payload_view to a config whose event_types includes no product.* event."
     },
     "authentication": {
       "type": "object",
       "deprecated": true,
       "x-removed-in": "4.0.0",
-      "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` — `legacy_hmac_fallback` and the onboarding record select the mode; this block only delivers the credential. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
+      "description": "Legacy authentication selector. Same semantics as `push-notification-config.authentication`: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the entry as a per-account validation failure with `UNSUPPORTED_FEATURE` and `error.field` pointing at it. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
       "properties": {
         "schemes": {
           "type": "array",

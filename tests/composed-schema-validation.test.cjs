@@ -3691,18 +3691,57 @@ async function runTests() {
         billing: 'operator'
       }]
     },
-    'sync_accounts provisions currency and timezone qualifiers in the natural key'
+    'sync_accounts provisions currency and timezone account attributes'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-attribute-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 7,
+        brand: { domain: 'nova-athletics.example', countries: ['BE', 'DE', 'NL'] },
+        operator_unit: { id: 'east-coast', name: 'East Coast' },
+        currency: 'EUR',
+        timezone: 'Europe/Amsterdam'
+      }]
+    },
+    'sync_accounts settings-update mode updates account attributes, countries included, by account_id'
   );
   await testSchemaRejection(
     '/schemas/account/sync-accounts-request.json',
     {
-      idempotency_key: 'sync-accounts-timezone-update-0001',
+      idempotency_key: 'sync-accounts-operator-update-0001',
       accounts: [{
         account: { account_id: 'seller-account-123' },
-        timezone: 'Europe/Amsterdam'
+        operator: 'new-operator.example'
       }]
     },
-    'sync_accounts rejects immutable timezone changes in settings-update mode'
+    'sync_accounts settings-update mode rejects an operator, which names a party rather than an attribute'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-billing-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        billing: 'agent'
+      }]
+    },
+    'sync_accounts settings-update mode accepts a billing change, an account attribute'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        action: 'unchanged',
+        status: 'pending_approval',
+        setup: { message: 'Adding BE requires a market review.' }
+      }]
+    },
+    'sync_accounts reports a countries change under seller review as pending_approval on the settings-update row'
   );
   await testSchemaValidation(
     '/schemas/account/sync-accounts-request.json',
@@ -5037,7 +5076,7 @@ async function runTests() {
     commercial_terms: laterDraft.commercial_terms,
     terms_digest: `sha256:${'A'.repeat(43)}`
   };
-  const offerEntry = { proposal: sellerOffer, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'seller_offer' };
+  const offerEntry = { proposal: sellerOffer, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'seller_offer', offer_reason: 'installment_postponed' };
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
     { outcome: 'listed', proposals: [offerEntry], opportunities: [] },

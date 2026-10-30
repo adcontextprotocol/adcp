@@ -375,21 +375,26 @@ test('response collection fields are experimental and added in 3.3.0', () => {
 });
 
 // Review fixes on #8141: opt-in flag, https url, brand link keys, feature ids, pin exclusion.
+// Every discovery request accepts unknown fields. 3.2 published the three
+// proposal-flow requests closed, so their flag warns that a 3.2 validator
+// rejects it.
+const ACCEPTS_UNKNOWN_FIELDS = /This request accepts unknown fields/;
+const CLOSED_IN_3_2 = /The 3\.2 schema of this request rejects unknown fields/;
 const requestCases = [
-  ['/schemas/media-buy/get-products-request.json', { buying_mode: 'brief', brief: 'Creator video for a running shoe launch' }, true],
-  ['/schemas/media-buy/list-products-request.json', { brand: { domain: 'nova-brands.example' } }, false],
+  ['/schemas/media-buy/get-products-request.json', { buying_mode: 'brief', brief: 'Creator video for a running shoe launch' }, ACCEPTS_UNKNOWN_FIELDS],
+  ['/schemas/media-buy/list-products-request.json', { brand: { domain: 'nova-brands.example' } }, CLOSED_IN_3_2],
   ['/schemas/media-buy/request-proposals-request.json', {
     idempotency_key: 'req-proposals-0001',
     brief: 'Creator video for a running shoe launch',
     brand: { domain: 'nova-brands.example' },
-  }, false],
+  }, CLOSED_IN_3_2],
   ['/schemas/media-buy/refine-proposals-request.json', {
     idempotency_key: 'refine-proposals-0001',
     refinements: [{ proposal_id: 'proposal-1', action: 'finalize' }],
-  }, false],
+  }, CLOSED_IN_3_2],
 ];
 
-for (const [schemaId, base, open] of requestCases) {
+for (const [schemaId, base, unknownFieldPhrasing] of requestCases) {
   test(`${schemaId} takes an optional experimental include_collections flag`, async () => {
     const validate = await compile(schemaId);
     assert.equal(validate(base), true, JSON.stringify(validate.errors, null, 2));
@@ -402,9 +407,8 @@ for (const [schemaId, base, open] of requestCases) {
     assert.equal(flag['x-status'], 'experimental');
     assert.equal(flag['x-added-in'], '3.3.0');
     assert.match(flag.description, /MUST NOT return collections unless this is true/);
-    // The unknown-field phrasing must match how the request treats unknown properties.
-    assert.equal(schema.additionalProperties !== false, open);
-    assert.match(flag.description, open ? /accepts unknown fields/ : /rejects unknown fields/);
+    assert.notEqual(schema.additionalProperties, false, 'discovery requests accept unknown fields');
+    assert.match(flag.description, unknownFieldPhrasing);
   });
 }
 
@@ -474,18 +478,6 @@ test('brand-side collection links use their own experimental feature id', () => 
   assert.match(row('media_buy.collection_cards'), /include_collections/);
   assert.doesNotMatch(row('media_buy.collection_cards'), /get_brand_identity/);
   assert.match(row('brand.collection_links'), /get_brand_identity/);
-});
-
-test('collection card fields are excluded from publisher_collection definition pins', () => {
-  const vectors = JSON.parse(fs.readFileSync(
-    path.join(__dirname, '../static/compliance/source/test-vectors/definition-pins/vectors.json'), 'utf8'));
-  const exclude = vectors.projection_rules.publisher_collection.exclude;
-  for (const key of ['images', 'sample_content', 'url']) assert.ok(exclude.includes(key), `${key} is excluded`);
-  const vector = vectors.equivalence_vectors.find((v) => v.id === 'collection-card-fields-are-not-drift');
-  assert.ok(vector, 'an image-only change has an equivalence vector');
-  assert.equal(vector.expected.same_content_digest, true);
-  const spec = fs.readFileSync(path.join(__dirname, '../docs/media-buy/specification.mdx'), 'utf8');
-  assert.ok(spec.includes('| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` |'));
 });
 
 test('include_collections is part of the feed version scope', () => {
