@@ -72,7 +72,7 @@ function main(argv) {
       }
     }
   }
-  const previous = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : null;
+  const previous = readPrevious();
   const wanted = requested.length > 0 ? requested : previous ? [...Object.keys(previous.links), ...Object.keys(previous.zones)] : [];
   const out = {
     $comment:
@@ -108,6 +108,16 @@ function main(argv) {
   fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + '\n');
   console.log(`wrote ${path.relative(process.cwd(), OUT)}: tzdata ${version}, ${Object.keys(out.zones).length} zones`);
   return 0;
+}
+
+/** The current tzdata.json, or null when there is none yet. */
+function readPrevious() {
+  try {
+    return JSON.parse(fs.readFileSync(OUT, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
 }
 
 const ZIC_RANGE = [1970, 2041];
