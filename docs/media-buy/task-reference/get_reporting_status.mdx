@@ -761,8 +761,10 @@ reads *when* each is due from the obligation.
 ### Exceptions
 
 Summary and periods responses add `subscription_coverage[]`: one entry per caller
-subscription whose scope includes the account, including inactive subscriptions whose
-obligations are still retained. The revision view never carries it. When the account's
+subscription whose scope includes the account. A deactivated subscription stays listed
+only while it still has retained obligations for the account, with `status: "inactive"`
+and its `deactivated_at`: periods that started before then stay owed, and no later ones
+are. After that its entry is omitted. The revision view never carries it. When the account's
 offerings have different period boundaries, `excluded[]`, `gaps[]`, and
 `timezone_cutovers[]` entries can carry an `offering_id`, each with that offering's
 cutover instants; an entry without one applies to every offering.
