@@ -2,8 +2,8 @@
 import { createHash } from 'node:crypto';
 import { getAgentUrl } from '../config.js';
 
-export const CREATIVE33_WIRE_VERSION = '3.3-beta.0';
-export const CREATIVE33_SCHEMA_VERSION = '3.3.0-beta.0';
+export const CREATIVE33_WIRE_VERSION = '3.3-beta.1';
+export const CREATIVE33_SCHEMA_VERSION = '3.3.0-beta.1';
 export const CREATIVE33_ROUTE = '/beta/3.3/creative';
 export const CREATIVE33_SIZES = [{ width: 300, height: 250 }, { width: 728, height: 90 }];
 export const CREATIVE33_RESPONSIVE_HTML = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%}body{display:grid;place-items:center;background:#163c31;color:white;font:18px sans-serif}</style></head><body>Acme outdoor — deterministic sandbox fixture</body></html>';

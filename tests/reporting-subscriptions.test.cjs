@@ -637,3 +637,9 @@ test('sub-daily local periods restart at each local midnight, not at 1970 offset
   assert.match(rule, /counted afresh each local day/);
   assert.match(rule, /a 23-hour DST day has 23 hourly periods and a 25-hour day 25/);
 });
+
+test('exceptions can be per offering when boundaries differ', () => {
+  const excluded = read('core/reporting-subscription-coverage.json').properties.excluded;
+  assert.ok(excluded.items.properties.offering_id, 'excluded[].offering_id');
+  assert.match(excluded.description, /one entry per offering_id/);
+});

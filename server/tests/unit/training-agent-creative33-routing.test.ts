@@ -11,7 +11,7 @@ import {
 } from '../../src/training-agent/creative33/router.js';
 
 const PATH = '/beta/3.3/creative/mcp';
-const VERSION = '3.3-beta.0';
+const VERSION = '3.3-beta.1';
 const ACCOUNT = { account_id: 'creative33_sandbox' };
 const PRINCIPALS: Record<string, string> = {
   'buyer-a': 'test:creative33:buyer-a',
@@ -276,7 +276,7 @@ describe('creative 3.3 beta route security boundaries', () => {
     }
   });
 
-  it.each(['3.2', '3.3', '3.3-beta.1', '3.3.0-beta.0', '../latest'])('refuses version %s without persisting', async version => {
+  it.each(['3.2', '3.3', '3.3-beta.0', '3.3.0-beta.1', '../latest'])('refuses version %s without persisting', async version => {
     const app = boot();
     const id = `wrong_version_${randomUUID()}`;
     const response = await sync(app, creative(id), 'buyer-a', randomUUID(), { adcp_version: version });
