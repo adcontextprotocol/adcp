@@ -644,3 +644,12 @@ test('exceptions can be per offering when boundaries differ', () => {
   assert.ok(excluded.items.properties.offering_id, 'excluded[].offering_id');
   assert.match(excluded.description, /one entry per offering_id/);
 });
+
+test('a deactivated subscription reads inactive in coverage, never active', () => {
+  const v = validate('/schemas/core/reporting-subscription-coverage.json');
+  const base = { subscription_id: 'sub_1', subscription_version: 2, excluded: [] };
+  assert.ok(v({ ...base, status: 'inactive', deactivated_at: '2026-11-10T00:00:00Z' }), JSON.stringify(v.errors));
+  assert.equal(v({ ...base, status: 'inactive' }), false, 'inactive requires deactivated_at');
+  assert.equal(v({ ...base, status: 'active', deactivated_at: '2026-11-10T00:00:00Z' }), false, 'deactivated_at only when inactive');
+  assert.match(read('core/reporting-subscription-coverage.json').properties.status.description, /its entry is omitted/);
+});

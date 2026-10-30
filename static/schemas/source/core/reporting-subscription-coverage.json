@@ -26,9 +26,10 @@
     "subscription_version": { "type": "integer", "minimum": 1 },
     "status": {
       "type": "string",
-      "enum": ["active", "excluded", "action_required"],
-      "description": "Current account-level state. active: no account-level exclusion is in effect; individual buys may still be excluded. excluded: an open account-level entry is in effect and none has reason action_required. action_required: an open account-level entry with reason action_required is in effect and pending_action says what must happen."
+      "enum": ["active", "excluded", "action_required", "inactive"],
+      "description": "Current account-level state. active: no account-level exclusion is in effect; individual buys may still be excluded. excluded: an open account-level entry is in effect and none has reason action_required. action_required: an open account-level entry with reason action_required is in effect and pending_action says what must happen. inactive: the subscription is deactivated (active false or omitted); periods that started before deactivated_at stay owed, and no later periods are. Takes precedence over the other values. An inactive subscription appears only while it still has retained obligations for this account; after that its entry is omitted."
     },
+    "deactivated_at": { "type": "string", "format": "date-time", "description": "When the subscription was deactivated. Present when and only when status is inactive." },
     "pending_action": {
       "$ref": "/schemas/core/pending-action.json",
       "description": "What must happen before the seller serves this account. Present when and only when status is action_required."
@@ -137,7 +138,8 @@
     {
       "if": { "properties": { "status": { "const": "active" } }, "required": ["status"] },
       "then": { "properties": { "excluded": { "not": { "contains": { "not": { "anyOf": [{ "required": ["media_buy_id"] }, { "required": ["until"] }] } } } } } }
-    }
+    },
+    { "if": { "properties": { "status": { "const": "inactive" } }, "required": ["status"] }, "then": { "required": ["deactivated_at"] }, "else": { "not": { "required": ["deactivated_at"] } } }
   ],
   "additionalProperties": false,
   "examples": [

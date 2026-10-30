@@ -111,7 +111,7 @@
     "revision": { "$ref": "/schemas/core/reporting-revision.json" },
     "materializations": { "type": "array", "items": { "$ref": "/schemas/core/reporting-materialization.json" } },
     "receipts": { "type": "array", "items": { "$ref": "/schemas/core/reporting-receipt.json" }, "description": "Authenticated caller's durable reconciliation receipts. Receipts from another consumer principal are never disclosed." },
-    "subscription_coverage": { "type": "array", "x-status": "experimental", "x-added-in": "3.3.0", "items": { "$ref": "/schemas/core/reporting-subscription-coverage.json" }, "description": "Summary and periods views (experimental, media_buy.reporting_subscriptions): coverage exceptions, one entry per caller reporting subscription whose scope includes this account, including inactive subscriptions with retained obligations. Omitted when the seller does not advertise subscriptions." },
+    "subscription_coverage": { "type": "array", "x-status": "experimental", "x-added-in": "3.3.0", "items": { "$ref": "/schemas/core/reporting-subscription-coverage.json" }, "description": "Summary and periods views (experimental, media_buy.reporting_subscriptions): coverage exceptions, one entry per caller reporting subscription whose scope includes this account, including inactive subscriptions with retained obligations, which carry status inactive. Omitted when the seller does not advertise subscriptions." },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
