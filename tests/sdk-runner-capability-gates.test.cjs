@@ -7,6 +7,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const YAML = require('yaml');
+const http = require('node:http');
+const { z } = require('zod');
+const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 
 const {
   parseStoryboard,
@@ -1706,3 +1710,100 @@ test('marketplace activation errors execute both negatives and cap the real bund
     assert.equal(missing.calls.length, 0);
   }
 });
+
+const universalProtocolCases = [
+  ['error-compliance', 'media_buy', 'signals'],
+  ['schema-validation', 'media_buy', 'signals'],
+  ['error-compliance-signals', 'signals', 'media_buy'],
+  ['schema-validation-signals', 'signals', 'media_buy'],
+];
+
+function loadUniversalProtocolStoryboard(name, root = 'static/compliance/source') {
+  return YAML.parse(fs.readFileSync(path.join(__dirname, '..', root, 'universal', `${name}.yaml`), 'utf8'));
+}
+
+function universalProtocolOptions(protocols, tools = ['get_adcp_capabilities']) {
+  return {
+    adcpVersion: '3.2.7',
+    agentTools: tools,
+    _profile: { tools, raw_capabilities: { supported_protocols: protocols } },
+  };
+}
+
+async function withInvalidCapabilityResponse(callback) {
+  const connections = [];
+  const server = http.createServer(async (req, res) => {
+    const mcp = new McpServer({ name: 'Invalid capability fixture', version: '1.0.0' });
+    mcp.registerTool('get_adcp_capabilities', { inputSchema: z.object({}).passthrough() }, async params => {
+      const data = { status: 'completed', context: params.context };
+      return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data };
+    });
+    connections.push(mcp);
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await mcp.connect(transport);
+    await transport.handleRequest(req, res);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    return await callback(`http://127.0.0.1:${server.address().port}/mcp`);
+  } finally {
+    await Promise.all(connections.map(connection => connection.close()));
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
+for (const [name, claimed, unrelated] of universalProtocolCases) {
+  test(`${name}: unrelated protocol reaches applicability before controller or tool requirements`, async () => {
+    const board = loadUniversalProtocolStoryboard(name);
+    const result = await runStoryboard('https://agent.example/mcp', board, universalProtocolOptions([unrelated]));
+    assert.equal(result.passed_count, 0);
+    assert.equal(result.failed_count, 0);
+    assert.equal(result.skipped_count, 1);
+    assert.equal(result.phases[0].phase_id, 'capability_unsupported');
+    assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
+    assert.match(result.phases[0].steps[0].skip.detail, /supported_protocols/);
+  });
+
+  test(`${name}: protocol claim keeps missing controller evidence incomplete`, async () => {
+    const board = loadUniversalProtocolStoryboard(name);
+    for (const protocols of [[claimed], [claimed, unrelated]]) {
+      const result = await runStoryboard('https://agent.example/mcp', board, universalProtocolOptions(protocols));
+      const steps = result.phases.flatMap(phase => phase.steps);
+      assert.equal(result.passed_count, 0);
+      assert.ok(steps.length > 0);
+      assert.equal(result.phases[0].phase_id, 'requirement_unmet');
+      assert.ok(steps.some(step => step.skip?.requirement === 'controller'));
+      assert.ok(steps.every(step => step.skip_reason !== 'capability_unsupported'));
+    }
+  });
+
+  test(`${name}: a real capability assertion failure remains blocking`, async () => {
+    const board = loadUniversalProtocolStoryboard(name);
+    // Exercise the source's actual discovery assertions independently of
+    // fixture/runtime setup. A dual-protocol claim must not neutralize either
+    // family's checks; the returned response omits required capability data.
+    const discoveryOnly = {
+      ...board,
+      requires: undefined,
+      prerequisites: undefined,
+      fixtures: undefined,
+      phases: [board.phases[0]],
+    };
+    const result = await withInvalidCapabilityResponse(url => runStoryboard(url, discoveryOnly, {
+      ...universalProtocolOptions([claimed, unrelated], ['get_adcp_capabilities', ...board.required_tools]),
+      protocol: 'mcp',
+      allow_http: true,
+      transport: { allowPrivateIp: true },
+    }));
+    assert.equal(result.overall_passed, false);
+    assert.ok(result.failed_count > 0);
+    assert.ok(result.phases.flatMap(phase => phase.steps).some(step => step.validations.some(check => !check.passed)));
+  });
+
+  test(`${name}: published 3.2.7 remains unchanged and carries no inferred protocol gate`, () => {
+    const released = loadUniversalProtocolStoryboard(name, 'dist/compliance/3.2.7');
+    assert.equal(released.requires_capability, undefined);
+    assert.equal(released.requires_all_capabilities, undefined);
+  });
+}
