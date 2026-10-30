@@ -1,0 +1,266 @@
+id: media_buy_seller/collection_default_materialization_readback
+version: 1.0.0
+introduced_in: "3.3"
+title: Seller persists the materialized default catalog collection set
+category: media_buy_seller
+summary: Independently catalog-qualifies persisted collection readback when get_media_buys is advertised.
+track: media_buy
+requires:
+  - controller
+required_tools:
+  - get_media_buys
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
+narrative: >-
+  Applicability comes only from fully paginated, schema-valid wholesale sandbox discovery. Select
+  one seller-owned non-guaranteed product and a fixed-price CPM option from that SAME product. No
+  collection product or price is seeded. A completed valid no-match is fixture_unsatisfied: feature
+  not tested, not a pass or proof of nonsupport. Discovery, pagination, schema, capture and
+  selected-path failures remain failures.
+
+
+  This scope resolves independently of the other collection scopes. One-pair default and
+  fixed-restatement coverage do not require a two-pair subset fixture. Fixed targeting accepts
+  either literal false or omission of collection_targeting_allowed. Pair identity includes both
+  publisher_domain and collection_id; grouping, order and legal catalog redundancy do not change the
+  set.
+
+
+  This companion grades creation followed by persisted readback under its own advertised
+  get_media_buys root gate; the six core scopes remain independent of this optional reader. Required arrays, exact buy/package identities and concrete echoes
+  remain graded.
+  Seeded-only, brief-only, guaranteed and auction-priced collection support is outside this catalog
+  slice. A controller without seed_account yields fixture_seed_unsupported; an absent controller
+  yields missing_test_controller.
+
+
+  This readback companion requires only get_media_buys in its root tool gate. A missing reader is a
+  genuine native storyboard-level coverage gate, not a relabeled authored failure. An advertised
+  reader must preserve the committed set. Callers of individual steps must honor the same root gate;
+  the repository caller returns the unchanged native root-gate step before preparation when the
+  reader is absent. Standalone reads need trusted prior buy, package and committed-selector context;
+  they requalify the current native catalog and do not provide durable cross-request prepared-state
+  authority.
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - A seller offering native collection-bearing sandbox products
+caller:
+  role: buyer_agent
+  example: Pinnacle Agency (buyer)
+prerequisites:
+  description:
+    Establish one isolated sandbox account, then discover the native product and its scoped
+    price. The repository catalog fixture caller prepares this graph once for full or standalone
+    execution, derives a valid budget from its whole selected price snapshot, and projects canonical
+    full selectors from the protected declaration. Null caller-derived context defaults are
+    unprepared sentinels, never fabricated selectors. Direct SDK callers must perform the same
+    preparation and projection before consuming this storyboard.
+  test_kit: test-kits/acme-outdoor.yaml
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: sandbox_collection_default_materialization_readback
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: pinnacle-agency.example
+        operator_unit:
+          id: compliance-media_buy_seller_collection_default_-c806cfbc
+        sandbox: true
+        billing: operator
+        status: active
+  products:
+    - product_id: catalog_collection_product
+  pricing_options:
+    - product_id: catalog_collection_product
+      pricing_option_id: catalog_collection_fixed_cpm
+fixture_resolution:
+  products:
+    - handle: catalog_collection_product
+      strategies:
+        - discover
+      match:
+        - path: ""
+          operator: collection_selection_satisfies
+          value:
+            collection_targeting: any
+            minimum_pairs: 1
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /pricing_options
+          operator: any_match
+          where:
+            - path: /pricing_model
+              operator: equals
+              value: cpm
+            - path: /fixed_price
+              operator: present
+      context_outputs:
+        - key: __adcp_fixture_collection_declared
+          witness: declared_selectors
+        - key: __adcp_fixture_collection_product_id
+          path: product_id
+  pricing_options:
+    - handle: catalog_collection_fixed_cpm
+      product_handle: catalog_collection_product
+      strategies:
+        - discover
+      match:
+        - path: /pricing_model
+          operator: equals
+          value: cpm
+        - path: /fixed_price
+          operator: present
+      context_outputs:
+        - key: __adcp_fixture_collection_price
+          snapshot: selected_entity
+context:
+  catalog_collection_budget: 1000
+  catalog_collection_full_selectors: null
+  brand:
+    domain: acmeoutdoor.example
+  account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_collection_default_-c806cfbc
+    sandbox: true
+  sandbox_account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_collection_default_-c806cfbc
+    sandbox: true
+  sandbox_brand:
+    domain: acmeoutdoor.example
+phases:
+  - id: commit_selection
+    title: Commit and validate the selection before readback
+    steps:
+      - id: create_selection
+        title: Purchase the complete default bundle
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        sample_request:
+          brand: $context.sandbox_brand
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_collection_default_-c806cfbc
+            sandbox: true
+          idempotency_key: $generate:uuid_v4#collection_default_materialization_readback_create_selection
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: catalog_collection_product
+              pricing_option_id: catalog_collection_fixed_cpm
+              budget: $context.catalog_collection_budget
+              targeting_overlay:
+                collection_selection:
+                  mode: default
+        expected:
+          Accept the selection on the discovered product. Echo exactly the committed concrete
+          domain-qualified set in selected mode; default materializes the complete catalog
+          composition.
+        validations:
+          - check: response_schema
+            description: The response matches the canonical create-media-buy schema
+          - check: field_present
+            path: media_buy_id
+            description: The seller assigns the committed buy identity
+          - check: field_equals_context
+            path: packages[0].product_id
+            context_key: __adcp_fixture_collection_product_id
+            description: The response echoes the explicit SAME selected product identity
+          - check: array_length
+            path: packages
+            value: 1
+            description: The one-package request produces exactly one committed package
+          - check: field_value
+            path: packages[0].targeting_overlay.collection_selection.mode
+            value: selected
+            description: Package readback materializes concrete selected-form collection selectors
+          - check: collection_set_equals_context
+            path: packages[0].targeting_overlay.collection_selection.collections
+            context_key: __adcp_fixture_collection_declared
+            description:
+              The committed set exactly matches the selected product witness, preserving publisher
+              namespaces without widening
+        context_outputs:
+          - name: collection_media_buy_id
+            path: media_buy_id
+          - name: collection_package_id
+            path: packages[0].package_id
+          - name: collection_committed_product_id
+            path: packages[0].product_id
+          - name: collection_committed_selectors
+            path: packages[0].targeting_overlay.collection_selection.collections
+  - id: persisted_readback
+    title: Grade the persisted committed set
+    steps:
+      - id: read_selection
+        title: Read the persisted exact collection selection when the seller offers readback
+        task: get_media_buys
+        requires_tool: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_collection_default_-c806cfbc
+            sandbox: true
+          media_buy_ids:
+            - $context.collection_media_buy_id
+        expected:
+          Return exactly the requested buy and its committed package. Preserve the complete
+          domain-qualified collection set; an advertised broken readback remains a failure.
+        validations:
+          - check: response_schema
+            description: Readback matches the canonical get-media-buys schema
+          - check: array_length
+            path: media_buys
+            value: 1
+            description: Only the requested buy is returned
+          - check: field_equals_context
+            path: media_buys[0].media_buy_id
+            context_key: collection_media_buy_id
+            description: Readback belongs to the actual committed buy
+          - check: field_equals_context
+            path: media_buys[0].packages[0].product_id
+            context_key: collection_committed_product_id
+            description: Readback echoes the explicit committed product identity
+          - check: array_length
+            path: media_buys[0].packages
+            value: 1
+            description: The buy preserves exactly its one committed package
+          - check: field_equals_context
+            path: media_buys[0].packages[0].package_id
+            context_key: collection_package_id
+            description: Readback belongs to the actual committed package
+          - check: field_value
+            path: media_buys[0].packages[0].targeting_overlay.collection_selection.mode
+            value: selected
+            description: Readback contains concrete selected-form selectors, including materialized defaults
+          - check: collection_set_equals_context
+            path: media_buys[0].packages[0].targeting_overlay.collection_selection.collections
+            context_key: collection_committed_selectors
+            description:
+              Persisted selectors equal the committed set from the preceding successful create; a failed
+              create blocks full-run readback, and grouping or ordering may vary
