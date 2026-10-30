@@ -4,7 +4,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const YAML = require('yaml');
 const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
 
 const SCENARIOS = path.join(__dirname, '../static/compliance/source/protocols/media-buy/scenarios');

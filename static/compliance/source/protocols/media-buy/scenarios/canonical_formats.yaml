@@ -2,11 +2,11 @@ id: media_buy_seller/canonical_formats
 version: 1.1.1
 title: Canonical formats and deprecated named-format compatibility
 category: media_buy_seller
-summary: Validates canonical product formats and the optional, explicitly deprecated named-format
-  compatibility projection.
+summary: Validates canonical product formats and the optional, explicitly deprecated named-format compatibility projection.
 track: products
 requires:
   - controller
+  - collect_product_pages_runner
 introduced_in: "3.1"
 required_tools:
   - get_products
@@ -46,18 +46,12 @@ agent:
     - sells_media
     - exposes_canonical_formats
   examples:
-    - Any media-buy seller that voluntarily supports deprecated named-format compatibility alongside
-      canonical declarations
+    - Any media-buy seller that voluntarily supports deprecated named-format compatibility alongside canonical declarations
 caller:
   role: buyer_agent
   example: Compliance test harness
 prerequisites:
-  description: This optional compatibility slice requires wholesale catalog evidence of canonical
-    image declarations and a named-format projection. A valid no-match produces a
-    fixture_unsatisfied coverage gap before feature seeding. Custom and experimental format families
-    have independent scenarios and do not gate this base slice. This optional compatibility slice does not
-    relax canonical requirements in AdCP 3.2 and later.
-    The controller must advertise seed_product and accept supported deterministic fixtures.
+  description: This optional compatibility slice requires wholesale catalog evidence of canonical image declarations and a named-format projection. A valid no-match produces a fixture_unsatisfied coverage gap before feature seeding. Custom and experimental format families have independent scenarios and do not gate this base slice. This optional compatibility slice does not relax canonical requirements in AdCP 3.2 and later. The controller must advertise seed_product and accept supported deterministic fixtures.
   test_kit: test-kits/acme-outdoor.yaml
   controller_seeding: true
 fixtures:
@@ -77,10 +71,7 @@ fixtures:
 phases:
   - id: seed_supported_canonical_fixtures
     title: Prepare supported canonical compatibility fixtures
-    narrative: Native catalog discovery established both canonical image declarations and named-format
-      compatibility before these deterministic fixtures are seeded. Custom and experimental
-      declarations are exercised in independent scenarios. A valid no-match is a fixture_unsatisfied
-      coverage gap; failed discovery and failed accepted seed operations remain failures.
+    narrative: Native catalog discovery established both canonical image declarations and named-format compatibility before these deterministic fixtures are seeded. Custom and experimental declarations are exercised in independent scenarios. A valid no-match is a fixture_unsatisfied coverage gap; failed discovery and failed accepted seed operations remain failures.
     steps:
       - id: seed_canonical_formats_mrec_display
         title: Seed canonical_formats_mrec_display
@@ -367,7 +358,6 @@ phases:
           - v1_format_ref[] linking the image declaration back to that fallback
           - params.width = 300 and params.height = 250
         sample_request:
-          idempotency_key: $generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_canonical_product
           buying_mode: wholesale
           filters:
             channels:
@@ -409,6 +399,7 @@ phases:
                     width: 300
                     height: 250
             description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true
       - id: get_seeded_v1_only_product
         title: Read v1-only format declarations
         narrative: |
@@ -428,7 +419,6 @@ phases:
           v1 fallback format_id. No producer-side `format_options[]` projection
           is required for v1-only products.
         sample_request:
-          idempotency_key: $generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_v1_only_product
           buying_mode: wholesale
           filters:
             channels:
@@ -454,6 +444,7 @@ phases:
                 - agent_url: https://creative.adcontextprotocol.org/
                   id: display_728x90_image
             description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true
       - id: get_seeded_v2_only_product
         title: Read v2-only format declarations
         narrative: |
@@ -470,7 +461,6 @@ phases:
           Return the seeded canonical_formats_options_only_display product with
           an image canonical declaration and no format_ids fallback.
         sample_request:
-          idempotency_key: $generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_v2_only_product
           buying_mode: wholesale
           filters:
             channels:
@@ -499,6 +489,7 @@ phases:
                     width: 728
                     height: 90
             description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true
       - id: provision_test_kit_account
         title: Provision the account for the test-kit credential
         narrative: |
@@ -557,7 +548,6 @@ phases:
           flag the divergent declarations with a non-fatal
           FORMAT_DECLARATION_DIVERGENT advisory in `errors[]`.
         sample_request:
-          idempotency_key: $generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_divergent_product
           buying_mode: wholesale
           filters:
             channels:
@@ -586,6 +576,7 @@ phases:
               code: FORMAT_DECLARATION_DIVERGENT
               source: producer
             description: Divergent declarations emit the producer advisory regardless of advisory ordering
+        collect_product_pages: true
   - id: canonical_create_satisfaction
     title: Canonical create-time format satisfaction
     narrative: |
@@ -613,7 +604,6 @@ phases:
           validations can compare package format selectors against the product's
           canonical format_options[] declaration.
         sample_request:
-          idempotency_key: $generate:uuid_v4#media_buy_seller_canonical_formats_canonical_create_satisfaction_get_canonical_product_for_create_satisfaction
           buying_mode: wholesale
           filters:
             channels:
@@ -640,6 +630,7 @@ phases:
                     width: 300
                     height: 250
             description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true
       - id: create_media_buy_with_canonical_format_option
         title: Accept canonical-only format option selector
         task: create_media_buy
@@ -774,8 +765,7 @@ phases:
             description: Accepted create allocates a media_buy_id
           - check: canonical_format_satisfaction
             value: true
-            description: Legacy display_300x250_image selector satisfies the fixed canonical image declaration
-              after normalization
+            description: Legacy display_300x250_image selector satisfies the fixed canonical image declaration after normalization
       - id: create_media_buy_with_equivalent_dual_emission
         title: Accept equivalent legacy dual emission
         task: create_media_buy
@@ -918,8 +908,7 @@ phases:
             description: Seller rejects disagreeing canonical and legacy selector projections
           - check: canonical_format_satisfaction
             value: false
-            description: The registry-backed 728x90 legacy projection does not select the same product contract
-              as the 300x250 canonical route
+            description: The registry-backed 728x90 legacy projection does not select the same product contract as the 300x250 canonical route
       - id: reject_conflicting_canonical_routes
         title: Reject conflicting canonical selector routes
         task: create_media_buy
@@ -1059,8 +1048,7 @@ phases:
             description: Seller rejects an under-specified format selector as unsupported for the product
           - check: canonical_format_satisfaction
             value: false
-            description: Bare canonical image selector lacks the dimensions required by the fixed canonical
-              image declaration
+            description: Bare canonical image selector lacks the dimensions required by the fixed canonical image declaration
       - id: reject_image_width_without_height
         title: Reject fixed-size image width without height
         task: create_media_buy

@@ -2,12 +2,12 @@ id: media_buy_seller/canonical_experimental_formats
 version: 1.0.0
 title: Seller preserves experimental canonical image formats
 category: media_buy_seller
-summary: Verifies a seeded experimental canonical image formats declaration only after native
-  catalog discovery establishes that optional format family.
+summary: Verifies a seeded experimental canonical image formats declaration only after native catalog discovery establishes that optional format family.
 track: products
 introduced_in: "3.1"
 requires:
   - controller
+  - collect_product_pages_runner
 requires_all_capabilities:
   - path: media_buy.buying_modes
     contains: wholesale
@@ -16,11 +16,7 @@ requires_all_capabilities:
 required_tools:
   - get_products
   - comply_test_controller
-narrative: This optional experimental canonical image formats slice discovers a matching native
-  declaration before seeding its deterministic fixture. A valid no-match is a fixture_unsatisfied
-  coverage gap. It does not suppress the independent image and named-format compatibility scenario
-  or require any reporting vendor metrics. Discovery and accepted fixture failures remain
-  conformance failures.
+narrative: This optional experimental canonical image formats slice discovers a matching native declaration before seeding its deterministic fixture. A valid no-match is a fixture_unsatisfied coverage gap. It does not suppress the independent image and named-format compatibility scenario or require any reporting vendor metrics. Discovery and accepted fixture failures remain conformance failures.
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -32,8 +28,7 @@ caller:
   role: buyer_agent
   example: Compliance test harness
 prerequisites:
-  description: Wholesale discovery must expose native experimental canonical image formats support.
-    The controller seeds the matching fixture only after that support is established.
+  description: Wholesale discovery must expose native experimental canonical image formats support. The controller seeds the matching fixture only after that support is established.
   test_kit: test-kits/acme-outdoor.yaml
   controller_seeding: true
 context:
@@ -157,18 +152,15 @@ phases:
     steps:
       - id: get_seeded_experimental_product
         title: Read experimental declarations
-        narrative: Read the seeded canonical-only image product and preserve its experimental declaration
-          without requiring a named-format projection.
+        narrative: Read the seeded canonical-only image product and preserve its experimental declaration without requiring a named-format projection.
         task: get_products
         schema_ref: media-buy/get-products-request.json
         response_schema_ref: media-buy/get-products-response.json
         doc_ref: /media-buy/task-reference/get_products
         comply_scenario: schema_compliance
         stateful: true
-        expected: Return the seeded experimental image declaration on its own product, independent of
-          catalog order and named-format support.
+        expected: Return the seeded experimental image declaration on its own product, independent of catalog order and named-format support.
         sample_request:
-          idempotency_key: $generate:uuid_v4#media_buy_seller_canonical_experimental_formats_canonical_product_discovery_get_seeded_experimental_product
           buying_mode: wholesale
           filters:
             channels:
@@ -195,3 +187,4 @@ phases:
                   experimental: true
                   canonical_formats_only: true
             description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true

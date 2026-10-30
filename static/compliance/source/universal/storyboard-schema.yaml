@@ -152,7 +152,7 @@
 #   never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent |
+#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | webhook_receiver | multi_agent |
 #   trusted_match_publisher_auth_runner | property_list_reference_runner (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
@@ -163,6 +163,12 @@
 #   behavior, or omit the field entirely."
 #
 #   Values and availability:
+#
+#     collect_product_pages_runner — intrinsic support for the opt-in wholesale
+#                    product-page collector. No operator configuration is needed.
+#                    A storyboard using collect_product_pages MUST declare this
+#                    requirement so older runners report requirement_unmet before
+#                    fixture mutation instead of silently checking only one page.
 #
 #     controller   — gate on agent advertising comply_test_controller.
 #                    Available when the agent's get_adcp_capabilities response
@@ -1130,6 +1136,29 @@
 #   case where the SDK's per-task request builder discards a body field
 #   from `sample_request`, use `context_inputs:` (above) as the
 #   post-builder injection path.
+#
+# collect_product_pages: true (optional; omit to read one page). Only valid for a
+#   get_products step with sample_request.buying_mode: wholesale and the
+#   storyboard requirement collect_product_pages_runner. The runner walks the
+#   complete, stable enumeration using the actual authored account, filters,
+#   fields, credentials, context, and page size. Every physical response must
+#   satisfy the Product schema, including its required fields when fields is
+#   supplied; collection does not relax validation for fields projections.
+#   Collected reads MUST omit idempotency_key: each cursor changes the request
+#   body and must execute a fresh read rather than replay a prior page.
+#   The initial request MUST NOT
+#   contain a cursor or if_wholesale_feed_version/if_pricing_version token.
+#   Negative-auth, parallel-dispatch, and response-applicability probe paths
+#   cannot be combined with collection.
+#
+#   Each physical page is schema-validated and observed by the step's enabled
+#   invariants, including pages later discarded after a feed restart or omitted
+#   from bounded receipt retention. Broken cursors, rejected/malformed pages,
+#   duplicate identities, unstable feeds, and exhausted budgets never yield a
+#   partial successful catalog. Authored field checks and context captures use
+#   the separately labelled logical_response only after enumeration completes.
+#   Actual wire receipts remain actual pages; see runner-output-contract.yaml >
+#   product_page_collection_output for evidence and JSON Pointer requirements.
 #
 #   Creative asset expansion: an `assets` object MAY contain the reserved
 #   `$build_assets_from_format` key with a `$context.<name>` value. The context

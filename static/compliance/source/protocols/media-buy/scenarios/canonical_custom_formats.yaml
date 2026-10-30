@@ -2,12 +2,12 @@ id: media_buy_seller/canonical_custom_formats
 version: 1.0.0
 title: Seller preserves custom canonical formats
 category: media_buy_seller
-summary: Verifies a seeded custom canonical formats declaration only after native catalog discovery
-  establishes that optional format family.
+summary: Verifies a seeded custom canonical formats declaration only after native catalog discovery establishes that optional format family.
 track: products
 introduced_in: "3.1"
 requires:
   - controller
+  - collect_product_pages_runner
 requires_all_capabilities:
   - path: media_buy.buying_modes
     contains: wholesale
@@ -16,10 +16,7 @@ requires_all_capabilities:
 required_tools:
   - get_products
   - comply_test_controller
-narrative: This optional custom canonical formats slice discovers a matching native declaration
-  before seeding its deterministic fixture. A valid no-match is a fixture_unsatisfied coverage gap.
-  It does not suppress the independent image and named-format compatibility scenario or require any
-  reporting vendor metrics. Discovery and accepted fixture failures remain conformance failures.
+narrative: This optional custom canonical formats slice discovers a matching native declaration before seeding its deterministic fixture. A valid no-match is a fixture_unsatisfied coverage gap. It does not suppress the independent image and named-format compatibility scenario or require any reporting vendor metrics. Discovery and accepted fixture failures remain conformance failures.
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -31,10 +28,7 @@ caller:
   role: buyer_agent
   example: Compliance test harness
 prerequisites:
-  description: Wholesale discovery must expose a native custom declaration with the exact
-    format_shape, format_schema URI and digest used by this fixture. The controller seeds that
-    contract only after this evidence is established; a different custom schema produces a visible
-    fixture_unsatisfied coverage gap.
+  description: Wholesale discovery must expose a native custom declaration with the exact format_shape, format_schema URI and digest used by this fixture. The controller seeds that contract only after this evidence is established; a different custom schema produces a visible fixture_unsatisfied coverage gap.
   test_kit: test-kits/acme-outdoor.yaml
   controller_seeding: true
 context:
@@ -180,7 +174,6 @@ phases:
           Return the seeded canonical_formats_custom_takeover product with a
           custom v2-only declaration and digest-pinned format_schema reference.
         sample_request:
-          idempotency_key: $generate:uuid_v4#media_buy_seller_canonical_custom_formats_canonical_product_discovery_get_seeded_custom_v2_only_product
           buying_mode: wholesale
           filters:
             channels:
@@ -211,3 +204,4 @@ phases:
                     uri: https://creative.adcontextprotocol.org/translated/acme-outdoor/schemas/custom_takeover_v1
                     digest: sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2
             description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true

@@ -13,9 +13,10 @@ function loadMediaBuyStoryboard(name) {
 const metricAndFormatScenarios = ['measurement_accountability', 'vendor_metric_accountability', 'canonical_formats'];
 
 function productFixtures(storyboard) {
+  if (!storyboard || typeof storyboard !== 'object') return [];
   return [
     ...(storyboard.fixtures?.products ?? []),
-    ...storyboard.phases.flatMap(phase => phase.steps)
+    ...(storyboard.phases ?? []).flatMap(phase => phase.steps ?? [])
       .filter(step => step.task === 'comply_test_controller' && step.sample_request?.scenario === 'seed_product')
       .map(step => ({ product_id: step.sample_request.params.product_id, ...step.sample_request.params.fixture })),
   ];
@@ -31,9 +32,9 @@ function pricingFixtures(storyboard) {
   ];
 }
 
-test('media-buy fixtures use schema channel values', () => {
+test('compliance product fixtures use schema channel values', () => {
   const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'static', 'schemas', 'source', 'enums', 'channels.json'), 'utf8'));
-  const directory = path.join(complianceRoot, 'protocols', 'media-buy');
+  const directory = complianceRoot;
   function inspect(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const file = path.join(dir, entry.name);
@@ -75,6 +76,9 @@ for (const name of metricAndFormatScenarios) {
       // satisfaction and reporting commitments have their own contract suites.
       const steps = [discovery, ...creates].map(step => ({
         ...step,
+        // Pagination and physical response schemas are exercised by the full
+        // canonical slices; these minimal fakes isolate pricing construction.
+        collect_product_pages: undefined,
         validations: step.validations.filter(v => step.task === 'get_products'
           ? ['field_present', 'field_value', 'field_absent', 'field_contains'].includes(v.check)
           : v.check === 'field_present' && v.path === 'media_buy_id'),
@@ -163,7 +167,7 @@ for (const defect of [null, 'wrong_product', 'split_format', 'broken_projection'
     if (defect === 'broken_projection') target.format_options[0].v1_format_ref[0].id = 'wrong-projection';
     if (defect === 'split_advisory') errors[1].source = 'intermediary';
     const steps = storyboard.phases.flatMap(phase => phase.steps).filter(step => step.task === 'get_products').map(step => ({
-      ...step, auth: undefined,
+      ...step, auth: undefined, collect_product_pages: undefined,
       validations: step.validations.filter(validation => validation.check !== 'response_schema'),
     }));
     const tools = ['get_products', 'comply_test_controller'];
@@ -191,7 +195,7 @@ for (const defect of [null, 'wrong_product', 'split_format', 'broken_projection'
   });
 }
 
-for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creative_fate_after_cancellation', 'dependency_impairment', 'dependency_impairment_cardinality']) {
+for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'measurement_terms_accepted', 'pending_creatives_to_start', 'inventory_list_targeting', 'inventory_list_no_match', 'creative_fate_after_cancellation', 'dependency_impairment', 'dependency_impairment_cardinality']) {
   for (const pricing of [{ fixed_price: 14 }, { floor_price: 8 }]) {
     test(`${name} prepares valid buys from ${'fixed_price' in pricing ? 'fixed' : 'auction'} CPM discovery`, async () => {
       const storyboard = loadMediaBuyStoryboard(name);
@@ -208,7 +212,10 @@ for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creati
         phases: [{ id: 'pricing_setup', title: 'Pricing setup', steps }],
       }, {
         _profile: { tools, raw_capabilities: {
-          creative: { has_creative_library: true }, media_buy: { propagation_surfaces: ['snapshot'] },
+          creative: { has_creative_library: true }, media_buy: {
+            propagation_surfaces: ['snapshot'], creative_approval_mode: 'auto_approve',
+            measurement_terms_acceptance: true, execution: { targeting: { property_list: true } },
+          },
         } },
         agentTools: tools,
         _client: {
@@ -220,6 +227,7 @@ for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creati
               pricing_options: [{ pricing_option_id: 'seller-cpm', pricing_model: 'cpm', currency: 'USD', ...pricing }],
               format_ids: [{ agent_url: 'https://creative.example', id: 'display_300x250' }],
               format_options: [{ format_option_id: 'seller-image', format_kind: 'image', params: { width: 300, height: 250 } }],
+              measurement_terms: { billing_measurement: { max_variance_percent: 5 } },
             }], context: request.context } };
           },
           async listCreativeFormats(request) {
@@ -236,12 +244,16 @@ for (const name of ['invalid_transitions', 'measurement_terms_rejected', 'creati
               if ('floor_price' in pricing) assert.ok(pkg.bid_price >= pricing.floor_price, 'every auction package needs a valid bid');
               else assert.equal(pkg.bid_price, undefined, 'fixed-price packages do not bid');
             }
-            if (name === 'measurement_terms_rejected') {
-              assert.equal(request.packages[0].measurement_terms.billing_measurement.max_variance_percent, 0);
-              return { success: false, data: { errors: [{ code: 'TERMS_REJECTED', message: 'Unsupported measurement terms' }], context: request.context } };
+            if (['measurement_terms_rejected', 'inventory_list_no_match'].includes(name)) {
+              if (name === 'measurement_terms_rejected') assert.equal(request.packages[0].measurement_terms.billing_measurement.max_variance_percent, 0);
+              return { success: false, data: { errors: [{
+                code: name === 'measurement_terms_rejected' ? 'TERMS_REJECTED' : 'PRODUCT_UNAVAILABLE',
+                message: 'Unsupported measurement terms or inventory list',
+              }], context: request.context } };
             }
             return { success: true, data: {
               media_buy_id: `seller-buy-${requests.length}`,
+              status: 'completed', media_buy_status: 'pending_creatives',
               packages: request.packages.map((pkg, i) => ({ ...pkg, package_id: `seller-package-${i}` })),
               context: request.context,
             } };
@@ -314,3 +326,21 @@ for (const supportsForce of [false, true]) {
     }
   });
 }
+
+
+test('inline creative discovery accepts either pricing structure while retaining format gates', () => {
+  const storyboard = loadMediaBuyStoryboard('inline_creatives_without_sync');
+  const reads = storyboard.phases.flatMap(phase => phase.steps).filter(step => step.task === 'get_products');
+  assert.equal(reads.length, 2);
+  for (const step of reads) {
+    assert.equal(step.sample_request.filters?.is_fixed_price, undefined);
+    assert.ok(step.context_outputs.some(output => output.path === 'products[0].pricing_options[0].pricing_option_id'));
+    assert.ok(step.validations.some(validation => validation.check === 'field_present'
+      && validation.path === 'products[0].pricing_options[0].pricing_option_id'));
+    assert.ok(!step.validations.some(validation => validation.path?.endsWith('.fixed_price')));
+  }
+  const canonical = reads.find(step => step.context_outputs.some(output => output.key === 'canonical_product_id'));
+  assert.ok(canonical.validations.some(validation => validation.path?.startsWith('products[0].format_options[0]')));
+  const legacy = reads.find(step => step.context_outputs.some(output => output.key === 'legacy_product_id'));
+  assert.ok(legacy.validations.some(validation => validation.path === 'products[0].format_ids[0].id'));
+});

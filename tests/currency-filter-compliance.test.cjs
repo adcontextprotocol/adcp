@@ -13,8 +13,8 @@ const SEED_SCENARIOS = ['seed_account', 'seed_product', 'seed_pricing_option'];
 
 function scenario() {
   const storyboard = loadStoryboardFile(SCENARIO);
-  // These fakes model seller pricing and controller setup. The complete product
-  // response shape is checked by schema lint and the training-agent matrix.
+  // Baseline and scope checks isolate seller pricing and controller setup.
+  // Collected final reads always validate every physical response schema.
   for (const phase of storyboard.phases) {
     for (const step of phase.steps) {
       step.validations = step.validations.filter(validation => validation.check !== 'response_schema');
@@ -23,7 +23,7 @@ function scenario() {
   return storyboard;
 }
 
-function seller({ accountCurrency, convertMandatory = false, reorder = false, duplicatePrice = false, defect } = {}) {
+function seller({ accountCurrency, convertMandatory = false, reorder = false, duplicatePrice = false, paginate = false, defect } = {}) {
   const calls = [];
   const products = new Map();
   const client = {
@@ -34,6 +34,14 @@ function seller({ accountCurrency, convertMandatory = false, reorder = false, du
         if (request.scenario === 'seed_product') {
           products.set(request.params.product_id, {
             product_id: request.params.product_id,
+            name: 'Currency filter display inventory',
+            description: 'Account-scoped auction inventory for currency filtering.',
+            publisher_properties: [{ publisher_domain: 'outdoormagazine.example', selection_type: 'all' }],
+            reporting_capabilities: {
+              available_reporting_frequencies: ['daily'], expected_delay_minutes: 60,
+              timezone: 'UTC', supports_webhooks: false, available_metrics: ['impressions', 'spend'],
+              date_range_support: 'date_range',
+            },
             ...structuredClone(request.params.fixture),
             pricing_options: [],
           });
@@ -52,6 +60,7 @@ function seller({ accountCurrency, convertMandatory = false, reorder = false, du
         } };
       }
       assert.equal(task, 'get_products');
+      assert.equal(request.fields, undefined, 'currency checks request full products for physical schema validation');
       let catalog = structuredClone([...products.values()]);
       for (const product of catalog) {
         // Sellers may normalize fixture rates into the account's currency and
@@ -85,11 +94,12 @@ function seller({ accountCurrency, convertMandatory = false, reorder = false, du
       const filteredReads = calls.filter(call => call.task === 'get_products' && call.request.filters).length;
       if (defect === 'empty_baseline' && !requested) catalog = [];
       if (defect === 'empty_filtered' && requested) catalog = [];
-      if (filteredReads === 2) {
+      if (filteredReads >= 2) {
         if (defect === 'later_option') catalog[0].pricing_options.push({
           pricing_option_id: 'leaked-eur-option', pricing_model: 'cpm', floor_price: 5, currency: 'EUR',
         });
         if (defect === 'later_product') catalog.push({
+          ...structuredClone(catalog[0]),
           product_id: 'leaked-eur-product',
           pricing_options: [{ pricing_option_id: 'eur-only', pricing_model: 'cpm', floor_price: 5, currency: 'EUR' }],
         });
@@ -97,7 +107,14 @@ function seller({ accountCurrency, convertMandatory = false, reorder = false, du
       }
       const context = structuredClone(request.context);
       if (defect === 'widened_context' && context?.accepted_pricing_currencies) context.accepted_pricing_currencies.push('EUR');
-      return { success: true, data: { products: catalog, context } };
+      const offset = Number(request.pagination?.cursor ?? 0);
+      const page = paginate && filteredReads >= 2 ? catalog.slice(offset, offset + 1) : catalog;
+      const hasMore = paginate && filteredReads >= 2 && offset + 1 < catalog.length;
+      return { success: true, data: {
+        status: 'completed', products: page, context,
+        cache_scope: 'account', wholesale_feed_version: 'currency-test-v1',
+        ...(paginate && filteredReads >= 2 ? { pagination: { has_more: hasMore, ...(hasMore ? { cursor: String(offset + 1) } : {}) } } : {}),
+      } };
     },
     async getProducts(request) {
       return this.executeTask('get_products', request);
@@ -183,4 +200,27 @@ test('valid empty currency results do not invent positive-price coverage', async
   const final = result.phases.flatMap(phase => phase.steps).find(step => step.step_id === 'get_products_usd_pricing');
   assert.deepEqual(final.response.products, []);
   assert.ok(final.validations.some(validation => validation.check === 'all_fields_present' && validation.not_applicable === true));
+});
+
+test('currency filtering validates matching prices across all catalog pages', async () => {
+  const { result } = await run({ accountCurrency: 'EUR', paginate: true });
+  assert.equal(result.overall_passed, true, JSON.stringify(failedChecks(result)));
+  const final = result.phases.flatMap(phase => phase.steps).find(step => step.step_id === 'get_products_usd_pricing');
+  assert.equal(final.product_page_collection.complete, true);
+  assert.equal(final.product_page_collection.page_count, 2);
+  assert.equal(final.response.products.length, 1);
+  assert.equal(final.product_page_collection.logical_response.products.length, 2);
+});
+
+test('currency filtering rejects an incompatible price on a later catalog page', async () => {
+  const { result } = await run({ paginate: true, defect: 'later_product' });
+  assert.equal(result.overall_passed, false);
+  const final = result.phases.flatMap(phase => phase.steps).find(step => step.step_id === 'get_products_usd_pricing');
+  assert.equal(final.product_page_collection.complete, true);
+  assert.equal(final.product_page_collection.page_count, 2);
+  assert.ok(final.response.products.every(product => product.pricing_options.every(price => price.currency === 'USD')),
+    'the actual first page alone would hide the filter violation');
+  assert.ok(failedChecks(result).some(validation => validation.check === 'all_fields_in_context_array'
+    && validation.json_pointer.startsWith('/product_page_collection/logical_response/')),
+  JSON.stringify(failedChecks(result)));
 });

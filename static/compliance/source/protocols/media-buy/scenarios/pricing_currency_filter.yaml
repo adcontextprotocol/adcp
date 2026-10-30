@@ -6,6 +6,7 @@ summary: "Verifies that get_products filters.pricing_currencies returns only pro
 track: media_buy
 requires:
   - controller
+  - collect_product_pages_runner
 
 requires_capability:
   path: media_buy.buying_modes
@@ -54,8 +55,9 @@ prerequisites:
     CPM products. The seeded catalog includes mixed-currency media pricing,
     an optional EUR signal add-on, and a mandatory EUR signal charge. The seller
     may expose those prices in its account's effective transaction currency.
-    The unfiltered catalog and filtered result must each contain a selectable
-    price, so an always-empty seller cannot pass the filter test.
+    The unfiltered catalog must contain a selectable media price. A filtered
+    result may be empty when mandatory charges cannot use that currency;
+    in that case positive-price coverage remains unproven.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -157,13 +159,6 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#pricing_currency_filter_baseline"
           buying_mode: "wholesale"
-          fields: &pricing_fields
-            - product_id
-            - name
-            - pricing_options
-            - signal_targeting_allowed
-            - signal_targeting_options
-            - signal_targeting_rules
           account: &pricing_account
             brand:
               domain: "acmeoutdoor.example"
@@ -206,7 +201,6 @@ phases:
           buying_mode: "wholesale"
           filters:
             pricing_currencies: ["$context.pricing_filter_currency"]
-          fields: *pricing_fields
           account: *pricing_account
           context:
             correlation_id: "pricing_currency_filter--scope"
@@ -232,6 +226,7 @@ phases:
       - id: get_products_usd_pricing
         title: "Return only accepted product pricing"
         task: get_products
+        collect_product_pages: true
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
@@ -245,11 +240,9 @@ phases:
           Optional signal prices may advertise other currencies. Mandatory charges
           must be satisfiable in the requested currency, including via conversion.
         sample_request:
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_pricing_currency_filter_discover_usd_products_get_products_usd_pricing"
           buying_mode: "wholesale"
           filters:
             pricing_currencies: "$context.pricing_filter_currencies"
-          fields: *pricing_fields
           account: *pricing_account
           context:
             correlation_id: "pricing_currency_filter--get_products_usd_pricing"

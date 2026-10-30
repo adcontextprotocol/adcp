@@ -195,6 +195,7 @@ phases:
               operator: "measurement-accountability.pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
+              sandbox: true
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_accountability_setup_sync_accounts"
         validations:
           - check: response_schema
@@ -220,13 +221,14 @@ phases:
           buying_mode: "brief"
           brief: "CTV inventory with completed-view reporting for a Q2 CPCV campaign."
           filters:
-            channels: ["ctv"]
+            channels: [ "ctv" ]
             required_metrics:
               - "completed_views"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "measurement-accountability.pinnacle-agency.example"
+            sandbox: true
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -267,6 +269,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "measurement-accountability.pinnacle-agency.example"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
           packages:
@@ -331,7 +334,7 @@ phases:
         validations:
           - check: field_value
             path: "success"
-            allowed_values: [true]
+            allowed_values: [ true ]
             description: "Delivery simulation succeeds"
 
       - id: get_delivery_clean
@@ -352,6 +355,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "measurement-accountability.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
         validations:

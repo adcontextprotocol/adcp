@@ -4,14 +4,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const YAML = require('yaml');
 const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
 
 const directory = path.join(__dirname, '..', 'static', 'compliance', 'source', 'protocols', 'media-buy', 'scenarios');
 const load = name => parseStoryboard(fs.readFileSync(path.join(directory, `${name}.yaml`), 'utf8'));
 const featureSeed = name => load(name).phases[0].steps[0].sample_request.params.fixture;
 
-async function runSlice(name, { shapes = ['image'], named = true, differentCustomSchema = false, discoveryFailure = false, seedFailure = false } = {}) {
+async function runSlice(name, { shapes = ['image'], named = true, differentCustomSchema = false, discoveryFailure = false, seedFailure = false, paginate = false } = {}) {
   const storyboard = load(name);
   // Price/creative purchase construction has separate coverage. This exercises
   // the actual applicability, native catalog resolution, controller seeding,
@@ -43,9 +42,13 @@ async function runSlice(name, { shapes = ['image'], named = true, differentCusto
       calls.push({ task: 'get_products', request: structuredClone(request) });
       if (request.filters === undefined && discoveryFailure) throw new Error('Native catalog is unavailable');
       const catalog = [...products.values()];
+      const offset = Number(request.pagination?.cursor ?? 0);
+      const page = paginate ? catalog.slice(offset, offset + 1) : catalog;
+      const hasMore = paginate && offset + 1 < catalog.length;
       return { success: true, data: {
-        status: 'completed', products: catalog, cache_scope: 'account', wholesale_feed_version: 'native-formats-v1',
-        ...(catalog.some(product => product.product_id === 'canonical_formats_divergent_display') ? {
+        status: 'completed', products: page, cache_scope: 'account', wholesale_feed_version: 'native-formats-v1',
+        ...(paginate ? { pagination: { has_more: hasMore, ...(hasMore ? { cursor: String(offset + 1) } : {}) } } : {}),
+        ...(page.some(product => product.product_id === 'canonical_formats_divergent_display') ? {
           errors: [{ code: 'FORMAT_DECLARATION_DIVERGENT', source: 'producer', message: 'The seeded format projections diverge' }],
         } : {}),
         context: request.context,
@@ -93,6 +96,27 @@ test('image and named-format compatibility runs without custom or experimental d
   assert.ok(seeds(calls).every(call => call.request.params.fixture.format_options?.every(option => option.format_kind !== 'custom' && !option.experimental) ?? true));
 });
 
+test('canonical compatibility finds later-page products and their producer advisories', async () => {
+  const { result, calls } = await runSlice('canonical_formats', { paginate: true });
+  assert.equal(result.overall_passed, true, JSON.stringify(failures(result)));
+  assert.equal(result.failed_count, 0);
+  assert.equal(result.skipped_count, 0);
+  assert.equal(seeds(calls).length, 4);
+  const reads = result.phases.filter(phase => phase.phase_id === 'canonical_product_discovery')
+    .flatMap(phase => phase.steps).filter(step => step.task === 'get_products');
+  assert.equal(reads.length, 4, 'all four compatibility reads collect the full catalog');
+  for (const read of reads) {
+    assert.equal(read.product_page_collection.complete, true);
+    assert.ok(read.product_page_collection.page_count > 1);
+    assert.equal(read.response.products.length, 1, 'the observed response is one physical page');
+    assert.equal(read.product_page_collection.logical_response.products.length, 5);
+    assert.equal(read.response.errors, undefined, 'the first physical page has no divergent-format advisory');
+  }
+  const divergent = reads.find(step => step.step_id === 'get_seeded_divergent_product');
+  assert.ok(divergent.validations.some(validation => validation.check === 'field_contains'
+    && validation.path === 'errors[*]' && validation.passed));
+});
+
 for (const [name, shape] of [['canonical_custom_formats', 'custom'], ['canonical_experimental_formats', 'experimental']]) {
   test(`${name}: absence produces an independent coverage gap before feature seeding`, async () => {
     const { result, calls } = await runSlice(name);
@@ -135,4 +159,17 @@ test('base divergent compatibility keeps its test-kit authentication and account
   assert.deepEqual(provision.auth, { type: 'api_key', from_test_kit: true });
   assert.deepEqual(divergence.auth, provision.auth);
   assert.ok(steps.indexOf(provision) < steps.indexOf(divergence));
+});
+
+
+test('collected discovery reads omit idempotency keys on every continuation scope', () => {
+  let collected = 0;
+  for (const name of ['canonical_formats', 'canonical_custom_formats', 'canonical_experimental_formats', 'pricing_currency_filter']) {
+    for (const phase of load(name).phases) for (const step of phase.steps) {
+      if (!step.collect_product_pages) continue;
+      collected++;
+      assert.equal(step.sample_request.idempotency_key, undefined, `${name}/${step.id} must issue fresh page reads`);
+    }
+  }
+  assert.equal(collected, 8);
 });
