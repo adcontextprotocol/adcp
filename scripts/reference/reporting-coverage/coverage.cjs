@@ -433,8 +433,10 @@ function sideAt(t, ctx, buy) {
   if (!inScope(version.config, ctx.input.account)) return null;
   const ids = new Set();
   for (const pkg of buy.packages) {
-    // "The seller resolves the selector separately for each account and each buy's products."
-    for (const id of resolvePackage(pkg, version, ctx.offeringsById, t)) ids.add(id);
+    // selection: "Resolution is per package ... A package resolves when its (buy, subscription_version) pair
+    // first does, at the later of the version's accepted_at and the buy's confirmed_at ... and the result stays
+    // fixed for that (buy, version) until the resolved offering is withdrawn."
+    for (const id of stickyResolution(pkg, version, buy, ctx, t)) ids.add(id);
   }
   const offerings = new Map();
   for (const id of [...ids].sort(byteCompare)) {
@@ -443,6 +445,28 @@ function sideAt(t, ctx, buy) {
     offerings.set(id, ctx.schedules.get(key));
   }
   return { version, offerings };
+}
+
+/**
+ * The offerings one package resolves to under a version at instant t. The pair resolves once, at the later of
+ * accepted_at and confirmed_at, among the offerings available then; an offering added later never re-resolves it.
+ * Withdrawal of a resolved offering is the one resolution change within a version: the package re-resolves among
+ * the offerings available at withdrawn_at.
+ */
+function stickyResolution(pkg, version, buy, ctx, t) {
+  const confirmedAt = buy.confirmed_at ? instant(buy.confirmed_at, `${buy.media_buy_id}.confirmed_at`) : version.acceptedAt;
+  let at = Math.max(version.acceptedAt, confirmedAt);
+  let resolved = resolvePackage(pkg, version, ctx.offeringsById, at);
+  for (;;) {
+    const withdrawals = resolved
+      .map(id => ctx.offeringsById.get(id).withdrawn_at)
+      .filter(value => value !== undefined)
+      .map(value => instant(value, 'withdrawn_at'))
+      .filter(w => w > at && w <= t);
+    if (withdrawals.length === 0) return resolved;
+    at = Math.min(...withdrawals);
+    resolved = resolvePackage(pkg, version, ctx.offeringsById, at);
+  }
 }
 
 /** End of the schedule's last period that starts before t (t itself when t is a boundary). */

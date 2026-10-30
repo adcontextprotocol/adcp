@@ -794,6 +794,7 @@ test('resolution is per package and fixed per (buy, version) until withdrawal; b
   assert.match(v.selection, /Resolution is per package/);
   assert.match(v.selection, /stays fixed for that \(buy, version\) until the resolved offering is withdrawn/);
   assert.match(v.selection, /An offering the seller adds later, or a product catalog change, never re-resolves it/);
+  assert.match(v.selection, /The buy owes the union: every offering any of its packages resolves/);
 
   const vs = validate('/schemas/core/reporting-subscription.json');
   const billing = { ...allAccounts, selector: { feed_purpose: 'billing', period_duration: 'P1M', required_finality: 'official', dimensions: ['package'] }, reconciliation_mode: 'consumer_receipt' };
