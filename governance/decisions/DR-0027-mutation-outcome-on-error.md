@@ -2,7 +2,9 @@
 id: DR-0027
 title: Failed mutations report their outcome on the error object, not a new code
 class: normative
-status: proposed
+status: accepted
+decided: 2026-10-30
+decided_by: WG Session C consent (objections closed 2026-10-30)
 date: 2026-10-06
 decided_by: pending WG ratification
 refs: ["#7812", "DR-0021"]

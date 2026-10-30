@@ -2,7 +2,9 @@
 id: DR-0029
 title: Delivery projections are advisory forecasts, not delivery records
 class: normative
-status: proposed
+status: accepted
+decided: 2026-10-30
+decided_by: WG Session C consent (objections closed 2026-10-30)
 date: 2026-10-09
 refs: ["#5850"]
 dissent: none
