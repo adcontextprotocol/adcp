@@ -456,6 +456,16 @@ rewritten history, or a remote/Git failure. Approval, merge provenance,
 signature verification and the byte-for-byte immutable-object checks are
 unchanged.
 
+On `main`, an ordinary push that is not a Version Packages merge skips the
+storyboard matrix in `verify-release` (`generation_only`). Such a push only
+regenerates the Draft Version Packages PR, which publishes nothing. That PR
+gets its own storyboard run in PR CI, and publication requires that run
+(below) or full verification at the release merge. Without the skip,
+generation waited about two hours behind verification and was staled by the
+next unrelated merge, because generation still requires exact current `main`.
+`main`'s own storyboard health is covered by `training-agent-storyboards.yml`
+on every push.
+
 On `main`, a Version Packages merge also skips re-running the storyboard
 matrix in `verify-release` when it is a provenance-verified release merge.
 `check-release-state.cjs verified-merge`:

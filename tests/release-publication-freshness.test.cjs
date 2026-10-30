@@ -435,9 +435,20 @@ test("the verified-merge step skips the API for a push that is not a release mer
   const f = mergeFixture(t);
   const step = f.runStep({ GITHUB_SHA: f.base });
   assert.equal(step.status, 0, step.stderr);
-  assert.equal(step.output, "");
+  // A non-release push is generation-only: storyboards are deferred to the
+  // Version Packages PR, and it is never marked verified.
+  assert.equal(step.output, "generation_only=true\n");
   assert.match(step.stdout, /Not a release merge/);
   assert.deepEqual(f.ghCalls(), []);
+});
+
+test("a release merge is never generation-only, verified or not", (t) => {
+  const f = mergeFixture(t);
+  f.responses.pulls = [];
+  const step = f.runStep();
+  assert.equal(step.status, 0, step.stderr);
+  assert.doesNotMatch(step.output, /generation_only/);
+  assert.doesNotMatch(step.output, /verified=true/);
 });
 
 // Security review follow-ups (#8424).

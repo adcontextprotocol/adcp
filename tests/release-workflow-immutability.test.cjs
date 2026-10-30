@@ -429,6 +429,22 @@ for (const name of ['Verify current storyboard coverage', 'Verify 3.0 storyboard
     gate.if.includes("steps.release-relevance.outputs.relevant == 'true' && steps.verified-merge.outputs.verified != 'true'"),
     `${name} must run unless the exact approved head is provenance-verified.`
   );
+  assert(
+    gate.if.includes("steps.verified-merge.outputs.generation_only != 'true'"),
+    `${name} must skip a generation-only push on main (it publishes nothing; the Version Packages PR is verified).`
+  );
+}
+{
+  // generation_only is set only for a main push that commits no release
+  // artifacts for the package version, i.e. never for a release merge.
+  const detect = verificationJob.steps.find(step => step.id === 'verified-merge');
+  assert(detect.if.includes("github.event_name == 'push'") && detect.if.includes("github.ref_name == 'main'"),
+    'generation_only must be limited to main pushes.');
+  const notMerge = detect.run.indexOf('if ! grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]"');
+  const gen = detect.run.indexOf('generation_only=true');
+  const verified = detect.run.indexOf('verified=true');
+  assert(notMerge >= 0 && gen > notMerge && gen < verified,
+    'generation_only must be emitted only inside the not-a-release-merge branch, before verified-merge runs.');
 }
 
 assert.strictEqual(
