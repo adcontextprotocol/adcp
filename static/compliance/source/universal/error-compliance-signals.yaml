@@ -1,5 +1,5 @@
 id: error_compliance_signals
-version: "1.0.1"
+version: "1.0.2"
 title: "Error handling — signals protocol"
 category: error_compliance
 summary: "Checks discovery error codes, context echo, and protocol versions for owned and marketplace signals agents."
@@ -9,6 +9,10 @@ requires:
 
 required_tools:
   - get_signals
+
+requires_capability:
+  path: supported_protocols
+  contains: signals
 
 narrative: |
   Every signals agent must handle invalid discovery input gracefully. This
