@@ -445,6 +445,15 @@ for (const name of ['Verify current storyboard coverage', 'Verify 3.0 storyboard
   const verified = detect.run.indexOf('verified=true');
   assert(notMerge >= 0 && gen > notMerge && gen < verified,
     'generation_only must be emitted only inside the not-a-release-merge branch, before verified-merge runs.');
+  assert(/set -euo pipefail/.test(detect.run), 'classification must run under set -e so a read failure emits nothing.');
+  assert.strictEqual(verificationJob.outputs.generation_only, '${{ steps.verified-merge.outputs.generation_only }}',
+    'verify-release must export generation_only for the release job tripwire.');
+  const artifacts = releaseJob.steps.find(step => step.id === 'release-artifacts');
+  assert.strictEqual(artifacts.env.GENERATION_ONLY, '${{ needs.verify-release.outputs.generation_only }}');
+  const trip = artifacts.run.indexOf('if [ "${GENERATION_ONLY:-}" = true ]; then');
+  const has = artifacts.run.indexOf('echo "has_release_artifacts=true"');
+  assert(trip >= 0 && trip < has && /exit 1/.test(artifacts.run.slice(trip, has)),
+    'The release job must refuse to publish a push classified generation_only that commits release artifacts.');
 }
 
 assert.strictEqual(

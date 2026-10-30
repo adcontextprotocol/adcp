@@ -458,13 +458,18 @@ unchanged.
 
 On `main`, an ordinary push that is not a Version Packages merge skips the
 storyboard matrix in `verify-release` (`generation_only`). Such a push only
-regenerates the Draft Version Packages PR, which publishes nothing. That PR
-gets its own storyboard run in PR CI, and publication requires that run
-(below) or full verification at the release merge. Without the skip,
-generation waited about two hours behind verification and was staled by the
-next unrelated merge, because generation still requires exact current `main`.
-`main`'s own storyboard health is covered by `training-agent-storyboards.yml`
-on every push.
+regenerates the Draft Version Packages PR, which publishes nothing. That PR's
+storyboard run happens in PR CI once it is marked ready (Drafts skip the
+matrix), and publication requires that run (below) or full verification at
+the release merge. The release job refuses to publish if a push it finds
+committing release artifacts was classified `generation_only`. Without the
+skip, generation waited about two hours behind verification and was staled by
+the next unrelated merge, because generation still requires exact current
+`main`. `main`'s own storyboard health is covered by
+`training-agent-storyboards.yml` on storyboard-relevant pushes. Generation
+still builds and signs a candidate tarball before any storyboard run; a
+superseded candidate is never published, and its Sigstore signature attests
+the producing workflow, not storyboard verification.
 
 On `main`, a Version Packages merge also skips re-running the storyboard
 matrix in `verify-release` when it is a provenance-verified release merge.

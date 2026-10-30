@@ -42,6 +42,7 @@ jobs:
     outputs:
       relevant: ${{ steps.release-relevance.outputs.relevant }}
       target_commit: ${{ steps.release-target.outputs.commit }}
+      generation_only: ${{ steps.verified-merge.outputs.generation_only }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v7.0.1
@@ -154,16 +155,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -uo pipefail
+          # Classification runs under -e: if the version or diff can't be read,
+          # the step fails before writing any output and verification runs in
+          # full. Only the verified-merge call below may fail without effect.
+          set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
+          [ -n "$VERSION" ]
           changed_files="$(git show --first-parent --format= --name-only --no-renames "$GITHUB_SHA")"
           if ! grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "$changed_files"; then
             # An ordinary push only regenerates the Draft Version Packages PR,
-            # which publishes nothing. That PR gets its own storyboard run in
-            # PR CI, and publication requires it (verified-merge) or full
-            # verification at the release merge. Skipping here lets generation
-            # start within minutes instead of after ~2h, so it isn't staled by
-            # the next unrelated merge to main.
+            # which publishes nothing. Its storyboard run happens in PR CI once
+            # the PR is marked ready, and publication requires that run
+            # (verified-merge) or full verification at the release merge.
+            # Skipping here lets generation start within minutes instead of
+            # after ~2h, so it isn't staled by the next unrelated merge.
             echo "generation_only=true" >> "$GITHUB_OUTPUT"
             echo "Not a release merge; generation only, storyboard verification deferred to the Version Packages PR."
             exit 0
@@ -260,6 +265,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PREPARE_NEXT: ${{ inputs.prepare_next }}
+          GENERATION_ONLY: ${{ needs.verify-release.outputs.generation_only }}
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
@@ -275,6 +281,12 @@ jobs:
           node scripts/check-release-state.cjs current
           changed_files="$(git show --first-parent --format= --name-only --no-renames "${RELEASE_SHA}")"
           if grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
+            # Storyboards were skipped only for a push classified as not a
+            # release merge. Never publish if the two classifications disagree.
+            if [ "${GENERATION_ONLY:-}" = true ]; then
+              echo "::error::verify-release classified this push as generation-only, but it commits release artifacts for ${VERSION}. Refusing to publish unverified content."
+              exit 1
+            fi
             echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
             echo "Detected committed release artifact changes for ${VERSION}."
           else
