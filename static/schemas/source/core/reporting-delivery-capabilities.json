@@ -118,7 +118,7 @@
     "status_retention_days": {
       "type": "integer",
       "minimum": 1,
-      "description": "Minimum period for which obligation, revision, and materialization metadata remain queryable. Revision content is retained for this period only for the revisions named in reporting-revision.json content_retention; other superseded snapshot revisions MAY be compacted to metadata only."
+      "description": "Minimum period, in exact 24-hour days (86,400 seconds each, not civil days, wherever it bounds a window such as unauthorized_at plus status_retention_days), for which obligation, revision, and materialization metadata remain queryable. Revision content is retained for this period only for the revisions named in reporting-revision.json content_retention; other superseded snapshot revisions MAY be compacted to metadata only."
     },
     "consumer_mismatch_escalation_seconds": {
       "type": "integer",

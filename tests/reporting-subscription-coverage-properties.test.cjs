@@ -338,7 +338,7 @@ forAll('local P1D boundaries are local midnights, or the first instant after a g
   }
 });
 
-forAll('local sub-daily boundaries are exactly the instants on a whole multiple of the duration', r => {
+forAll('local sub-daily boundaries are exactly the day starts and the instants on a whole multiple of the duration', r => {
   const zone = r.pick(ZONES);
   const duration = r.pick(['PT1H', 'PT30M', 'PT2H', 'PT3H', 'PT15M']);
   const step = { PT1H: HOUR, PT30M: HOUR / 2, PT2H: 2 * HOUR, PT3H: 3 * HOUR, PT15M: HOUR / 4 }[duration];
@@ -349,7 +349,8 @@ forAll('local sub-daily boundaries are exactly the instants on a whole multiple 
   const hi = center + 2 * DAY;
   const boundaries = new Set(localCalendar(duration, zone).periods(lo, hi).map(p => p.start));
   for (let t = lo; t < hi; t += 15 * 60_000) {
-    assert.equal(boundaries.has(t), timeOfDay(zone, t) % step === 0, `${zone} ${duration} at ${iso(t)}`);
+    const dayStart = tz.resolveWall(zone, Math.floor(tz.toWall(zone, t) / DAY) * DAY) === t;
+    assert.equal(boundaries.has(t), dayStart || timeOfDay(zone, t) % step === 0, `${zone} ${duration} at ${iso(t)}`);
   }
 });
 
@@ -368,10 +369,21 @@ forAll('local hourly periods per local day equal the whole hours that exist on i
   }
 });
 
-forAll('local PT24H equals P1D where midnight never moves', r => {
-  const zone = r.pick(ZONES_WITHOUT_MIDNIGHT_TRANSITIONS);
+forAll('local PT24H equals P1D in every zone, midnight transitions included', r => {
+  const zone = r.pick(ZONES);
   const center = Date.UTC(2026, r.int(0, 11), r.int(1, 28));
   assert.deepEqual(localCalendar('PT24H', zone).periods(center - 40 * DAY, center + 40 * DAY), localCalendar('P1D', zone).periods(center - 40 * DAY, center + 40 * DAY));
+});
+
+forAll('local day boundaries nest in every sub-daily schedule of the zone', r => {
+  const zone = r.pick(ZONES);
+  const duration = r.pick(['PT1H', 'PT2H', 'PT3H', 'PT30M']);
+  const transitions = tz.transitions(zone).filter(t => t.at > Date.UTC(2025, 0, 1) && t.at < Date.UTC(2027, 0, 1));
+  const center = transitions.length ? r.pick(transitions).at : Date.UTC(2026, r.int(0, 11), r.int(1, 28));
+  const sub = new Set(localCalendar(duration, zone).periods(center - 4 * DAY, center + 4 * DAY).map(p => p.start));
+  for (const day of localCalendar('P1D', zone).periods(center - 3 * DAY, center + 3 * DAY)) {
+    assert.ok(sub.has(day.start), `${zone} ${duration}: day start ${iso(day.start)} is a boundary`);
+  }
 });
 
 forAll('month boundaries keep the anchor day, clamped to the month end', r => {
