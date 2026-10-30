@@ -6,6 +6,114 @@
   "x-added-in": "3.3.0",
   "description": "Seller readback for one principal-level reporting subscription (experimental, media_buy.reporting_subscriptions). Per-account coverage and exclusions are read through get_reporting_status subscription_coverage while the caller is authorized; accounts whose authority the caller lost are reported here in accounts_unauthorized, because get_reporting_status treats them as unknown.",
   "type": "object",
+  "definitions": {
+    "ReportingSubscriptionPriorVersion": {
+      "title": "Reporting Subscription Prior Version",
+      "type": "object",
+      "properties": {
+        "subscription_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "superseded_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The next version's accepted_at, the cutover instant: this version owes its periods that start before it, in full."
+        },
+        "configuration": {
+          "$ref": "/schemas/core/reporting-subscription.json",
+          "description": "The configuration this version had: its scope, selector, destination, and reconciliation_mode. Sellers MUST include it, so a buyer that lost local state can recompute this version's owed periods."
+        }
+      },
+      "required": [
+        "subscription_version",
+        "accepted_at",
+        "superseded_at"
+      ],
+      "additionalProperties": false
+    },
+    "ReportingSubscriptionAccountExceptions": {
+      "title": "Reporting Subscription Account Exceptions",
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "account"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "offering_unsupported",
+              "capacity",
+              "overridden",
+              "excluded_by_buyer",
+              "action_required"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Reasons of the open exceptions, account- or buy-level."
+        }
+      },
+      "required": [
+        "account_id",
+        "reasons"
+      ],
+      "additionalProperties": false
+    },
+    "ReportingSubscriptionUnauthorizedAccount": {
+      "title": "Reporting Subscription Unauthorized Account",
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "account"
+        },
+        "unauthorized_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the caller's authority for the account ended. Nothing is delivered for periods ending after it, including on retries."
+        },
+        "last_owed_period_end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last period boundary at or before unauthorized_at: the end of the last period owed before authority ended."
+        },
+        "withheld_period_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Owed periods that ended at or before unauthorized_at but were not delivered by then. They are withheld, not missing, and never count as seller delay. If authority returns, they are owed again, due at the re-grant time plus the offering's delivery_sla."
+        },
+        "withheld_reporting_obligation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+            "x-entity": "reporting_obligation"
+          },
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "description": "Obligations of the withheld periods, when the seller lists them."
+        }
+      },
+      "required": [
+        "account_id",
+        "unauthorized_at",
+        "withheld_period_count"
+      ],
+      "additionalProperties": false
+    }
+  },
   "properties": {
     "subscription_id": {
       "type": "string",
@@ -27,22 +135,11 @@
     },
     "prior_versions": {
       "type": "array",
-      "description": "Earlier versions, newest first, retained while any obligation of that version is retained, so a buyer can recompute their expected periods after local-state loss. Each entry carries the configuration that version had.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "subscription_version": { "type": "integer", "minimum": 1 },
-          "accepted_at": { "type": "string", "format": "date-time" },
-          "superseded_at": { "type": "string", "format": "date-time", "description": "The next version's accepted_at, the cutover instant: this version owes its periods that start before it, in full." },
-          "configuration": {
-            "$ref": "/schemas/core/reporting-subscription.json",
-            "description": "The configuration this version had: its scope, selector, destination, and reconciliation_mode. Sellers MUST include it, so a buyer that lost local state can recompute this version's owed periods."
-          }
-        },
-        "required": ["subscription_version", "accepted_at", "superseded_at"],
-        "additionalProperties": false
-      }
+      "description": "Earlier versions, newest first, retained while any obligation of that version is retained, so a buyer can recompute their expected periods after local-state loss. Each entry carries the configuration that version had. At most the 16 newest are listed inline; prior_versions_count gives the total, and the rest are read through get_principal reporting_subscription_page.",
+      "maxItems": 16,
+      "items": { "$ref": "#/definitions/ReportingSubscriptionPriorVersion" }
     },
+    "prior_versions_count": { "type": "integer", "minimum": 0, "x-status": "experimental", "description": "Total retained prior versions. Present whenever prior_versions is. When larger than the number listed inline, page the rest through get_principal reporting_subscription_page with list prior_versions." },
     "deactivated_at": {
       "type": "string",
       "format": "date-time",
@@ -81,49 +178,40 @@
     },
     "accounts_with_exceptions": {
       "type": "array",
-      "description": "Accounts where this subscription has an open get_reporting_status exception, so a caller need not poll every account. Changes fire principal.changed with reason reporting_subscription_changed.",
+      "description": "Accounts where this subscription has an open get_reporting_status exception, so a caller need not poll every account, in account_id byte order. At most 1000 are listed inline; accounts_with_exceptions_count gives the total, and the rest are read through get_principal reporting_subscription_page. Changes fire principal.changed with reason reporting_subscription_changed.",
+      "items": { "$ref": "#/definitions/ReportingSubscriptionAccountExceptions" },
+      "maxItems": 1000
+    },
+    "accounts_with_exceptions_count": { "type": "integer", "minimum": 0, "x-status": "experimental", "description": "Total accounts with an open exception. Present whenever accounts_with_exceptions is." },
+    "accounts_unauthorized_count": { "type": "integer", "minimum": 0, "x-status": "experimental", "description": "Total accounts in accounts_unauthorized. Present whenever accounts_unauthorized is." },
+    "destination_override_refs": {
+      "type": "array",
+      "x-status": "experimental",
+      "maxItems": 64,
+      "description": "Destination generation bound for each destination_overrides destination_id. Present when and only when the configuration has destination_overrides.",
       "items": {
         "type": "object",
         "properties": {
-          "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
-          "reasons": {
-            "type": "array",
-            "items": { "type": "string", "enum": ["offering_unsupported", "capacity", "overridden", "excluded_by_buyer", "action_required"] },
-            "minItems": 1,
-            "uniqueItems": true,
-            "description": "Reasons of the open exceptions, account- or buy-level."
-          }
+          "destination_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$" },
+          "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination" }
         },
-        "required": ["account_id", "reasons"],
+        "required": ["destination_id", "destination_ref"],
         "additionalProperties": false
-      },
-      "maxItems": 1000
+      }
     },
     "accounts_unauthorized": {
       "type": "array",
-      "description": "Accounts this subscription covered whose authority the caller has since lost, so a revoked grant reads differently from a seller that stopped publishing. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at; after that it drops, and a later re-grant is a fresh coverage start from authorized_at with no gap claimed. Every addition or removal fires principal.changed with reason reporting_subscription_changed.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
-          "unauthorized_at": { "type": "string", "format": "date-time", "description": "When the caller's authority for the account ended. Nothing is delivered for periods ending after it, including on retries." },
-          "last_owed_period_end": { "type": "string", "format": "date-time", "description": "Last period boundary at or before unauthorized_at: the end of the last period owed before authority ended." },
-          "withheld_period_count": { "type": "integer", "minimum": 0, "description": "Owed periods that ended at or before unauthorized_at but were not delivered by then. They are withheld, not missing, and never count as seller delay. If authority returns, they are owed again, due at the re-grant time plus the offering's delivery_sla." },
-          "withheld_reporting_obligation_ids": {
-            "type": "array",
-            "items": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
-            "maxItems": 1000,
-            "uniqueItems": true,
-            "description": "Obligations of the withheld periods, when the seller lists them."
-          }
-        },
-        "required": ["account_id", "unauthorized_at", "withheld_period_count"],
-        "additionalProperties": false
-      },
+      "description": "Accounts this subscription covered whose authority the caller has since lost, in account_id byte order, so a revoked grant reads differently from a seller that stopped publishing. At most 1000 are listed inline; accounts_unauthorized_count gives the total, and the rest are read through get_principal reporting_subscription_page. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at; after that it drops, and a later re-grant is a fresh coverage start from authorized_at with no gap claimed. Every addition or removal fires principal.changed with reason reporting_subscription_changed.",
+      "items": { "$ref": "#/definitions/ReportingSubscriptionUnauthorizedAccount" },
       "maxItems": 1000
     }
   },
   "required": ["subscription_id", "subscription_version", "state", "accepted_at", "configuration"],
+  "dependencies": {
+    "prior_versions": ["prior_versions_count"],
+    "accounts_with_exceptions": ["accounts_with_exceptions_count"],
+    "accounts_unauthorized": ["accounts_unauthorized_count"]
+  },
   "allOf": [
     {
       "if": { "properties": { "state": { "const": "action_required" } }, "required": ["state"] },

@@ -47,6 +47,27 @@
             },
             "configuration": {
               "$ref": "/schemas/core/principal-state.json"
+            },
+            "reporting_subscription_page": {
+              "type": "object",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Present when and only when the request carried reporting_subscription_page: one page of the requested list, with the same entries and order as the inline list (account_id byte order for the account lists, newest first for prior_versions). Exactly the property named by list is present.",
+              "properties": {
+                "subscription_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_subscription" },
+                "list": { "type": "string", "enum": ["accounts_with_exceptions", "accounts_unauthorized", "prior_versions"] },
+                "accounts_with_exceptions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionAccountExceptions" }, "maxItems": 100 },
+                "accounts_unauthorized": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionUnauthorizedAccount" }, "maxItems": 100 },
+                "prior_versions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionPriorVersion" }, "maxItems": 100 },
+                "pagination": { "$ref": "/schemas/core/pagination-response.json" }
+              },
+              "required": ["subscription_id", "list", "pagination"],
+              "allOf": [
+                { "if": { "properties": { "list": { "const": "accounts_with_exceptions" } }, "required": ["list"] }, "then": { "required": ["accounts_with_exceptions"], "not": { "anyOf": [{ "required": ["accounts_unauthorized"] }, { "required": ["prior_versions"] }] } } },
+                { "if": { "properties": { "list": { "const": "accounts_unauthorized" } }, "required": ["list"] }, "then": { "required": ["accounts_unauthorized"], "not": { "anyOf": [{ "required": ["accounts_with_exceptions"] }, { "required": ["prior_versions"] }] } } },
+                { "if": { "properties": { "list": { "const": "prior_versions" } }, "required": ["list"] }, "then": { "required": ["prior_versions"], "not": { "anyOf": [{ "required": ["accounts_with_exceptions"] }, { "required": ["accounts_unauthorized"] }] } } }
+              ],
+              "additionalProperties": false
             }
           },
           "required": ["kind", "principal_id", "principal_kind", "configuration_version", "configuration"],
