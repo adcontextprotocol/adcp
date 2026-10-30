@@ -138,6 +138,8 @@ const PROPERTIES_3_3 = [
   ['core/reporting-delivery-offering.json', ['properties', 'withdrawn_at']],
   ['core/reporting-consumer-status.json', ['properties', 'offering_id']],
   ['media-buy/get-reporting-status-response.json', ['properties', 'scope', 'properties', 'delivery_config_generations', 'items', 'properties', 'offering_id']],
+  ['compliance/comply-test-controller-request.json', ['properties', 'params', 'properties', 'allowed_tasks']],
+  ['compliance/comply-test-controller-request.json', ['properties', 'params', 'properties', 'timezone']],
   ['core/reporting-delivery-offering.json', ['properties', 'standard_dimensions']],
   ['core/reporting-delivery-offering.json', ['properties', 'unmapped_dimensions']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']],
