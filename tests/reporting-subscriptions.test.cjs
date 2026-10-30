@@ -278,7 +278,7 @@ test('the buyer computes the first owed period from accepted_at, authorized_at, 
 
 test('a buy stops being owed at the earliest of end_time, canceled_at, and completed_at, as resolved per period', () => {
   const rule = read('core/reporting-subscription.json')['x-adcp-validation'].coverage;
-  assert.match(rule, /the earliest of end_time, the cancellation's delivery stop \(cancellation\.effective_at, or cancellation\.canceled_at when effective_at is absent\), and completed_at/);
+  assert.match(rule, /the earliest of end_time, the cancellation's delivery stop \(cancellation_effective_at, or cancellation\.canceled_at when it is absent\), and completed_at/);
   assert.match(rule, /evaluated at each period's scope_resolved_at/);
   assert.match(rule, /an elapsed period never becomes owed retroactively/);
   assert.match(rule, /so is the period containing the stop time/);
@@ -719,17 +719,18 @@ test('obligations flag a billing stub, and only billing obligations can be stubs
 
 test('the stop time is the cancellation delivery stop, not when the cancellation was recorded', () => {
   for (const [file, keys] of [
-    ['core/media-buy.json', ['properties', 'cancellation', 'properties', 'effective_at']],
-    ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'cancellation', 'properties', 'effective_at']],
+    ['core/media-buy.json', ['properties', 'cancellation_effective_at']],
+    ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'cancellation_effective_at']],
   ]) {
     const field = keys.reduce((o, k) => o[k], read(file));
     assert.equal(field.format, 'date-time', file);
     assert.equal(field['x-status'], 'experimental', file);
     assert.equal(field['x-added-in'], '3.3.0', file);
     assert.match(field.description, /MUST populate it/, file);
-    assert.match(field.description, /Buyers use canceled_at when it is absent/, file);
+    assert.match(field.description, /Buyers use cancellation\.canceled_at when it is absent/, file);
   }
-  assert.deepEqual(read('core/media-buy.json').properties.cancellation.required, ['canceled_at', 'canceled_by'], 'effective_at stays optional');
+  assert.deepEqual(read('core/media-buy.json').properties.cancellation.required, ['canceled_at', 'canceled_by'], 'cancellation stays unchanged');
+  assert.equal(read('core/media-buy.json').properties.cancellation.properties.effective_at, undefined, 'the closed cancellation object gains nothing');
 
   // Canceled on Nov 3 at 15:00Z with a notice period: delivery stops Nov 5 at 12:00Z.
   const base = { acceptedAt: '2026-11-01T00:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', startTime: '2026-11-02T14:20:00Z', endTime: '2026-11-10T05:00:00Z', offsetHours: -5 };

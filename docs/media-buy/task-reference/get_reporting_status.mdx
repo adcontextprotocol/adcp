@@ -682,7 +682,7 @@ periods that:
 3. overlap the buy's flight, from its `start_time` to its **stop time**. The stop time
    is the earliest of `end_time`, the cancellation's delivery stop, and `completed_at`,
    which sellers advertising `media_buy.reporting_subscriptions` populate for every
-   completed buy. The delivery stop is `cancellation.effective_at`, the instant
+   completed buy. The delivery stop is `cancellation_effective_at`, the instant
    delivery stops under the cancellation. It is later than `canceled_at`, the instant
    the cancellation was recorded, when the seller delivers through a notice period.
    Those sellers populate it; buyers use `canceled_at` when it is absent.
@@ -712,7 +712,7 @@ or completed buy isn't extended: its make-good goes on a subsequent buy in the s
 account.
 
 So a buyer derives every expected period from its own visible buys (`confirmed_at`,
-`start_time`, `end_time`, `cancellation.effective_at`, `completed_at`), the subscription's
+`start_time`, `end_time`, `cancellation_effective_at`, `completed_at`), the subscription's
 `accepted_at`, the account's `authorized_at`, and the offering's published schedule.
 It then subtracts the exceptions below. A period that remains is owed: a missing
 report there is the seller's to explain.
