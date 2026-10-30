@@ -43,12 +43,12 @@ Production stays on the 3.2 line and the packages above. For development and sta
 
 | SDK | Package | AdCP bundle | Roles and transports | Known limits |
 |---|---|---|---|---|
-| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.6` (npm `beta` dist-tag) | Signed `3.3.0-beta.1` only (beta.5 dropped `3.3-beta.0`; a beta.0 peer negotiates stable 3.2.7); also bundles stable 3.2.7, 3.1.29 and 3.0.25 | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. The standalone commercial-terms verifier fails closed on 3.3 definition pins; keep snapshot verification on the stable 3.2.7 contract. Reliable Reporting storage needs `@adcp/reporting-storage@0.3.0-beta.1`. |
+| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.7` (npm `beta` dist-tag) | Signed `3.3.0-beta.1` only (beta.5 dropped `3.3-beta.0`; a beta.0 peer negotiates stable 3.2.7); also bundles stable 3.2.7, 3.1.29 and 3.0.25 | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. The standalone commercial-terms verifier fails closed on 3.3 definition pins; keep snapshot verification on the stable 3.2.7 contract. Reliable Reporting storage needs `@adcp/reporting-storage@0.3.0-beta.1`. |
 
 No Python or Go package is listed for the 3.3 beta.1 preview yet. Until a row here names one, treat that SDK's 3.3 types and validators as unavailable.
 
 ```bash
-npm install @adcp/sdk@17.0.0-beta.6
+npm install @adcp/sdk@17.0.0-beta.7
 node -p "require('@adcp/sdk').ADCP_VERSION"   # 3.3.0-beta.1
 ```
 

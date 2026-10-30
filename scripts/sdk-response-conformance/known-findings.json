@@ -1,6 +1,6 @@
 [
   {
-    "sdk": {"package":"@adcp/sdk","version":"17.0.0-beta.6"},
+    "sdk": {"package":"@adcp/sdk","version":"17.0.0-beta.7"},
     "protocol": {
       "version": "3.2.1",
       "wire_selector": "3.2",
