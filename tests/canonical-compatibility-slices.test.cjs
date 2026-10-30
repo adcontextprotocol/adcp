@@ -171,5 +171,5 @@ test('collected discovery reads omit idempotency keys on every continuation scop
       assert.equal(step.sample_request.idempotency_key, undefined, `${name}/${step.id} must issue fresh page reads`);
     }
   }
-  assert.equal(collected, 8);
+  assert.equal(collected, 9);
 });
