@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/operator-unit.json",
+  "title": "Operator Unit",
+  "description": "Operator-owned buying context, such as a business unit, agency seat, or platform account beneath one operator domain. On an account, it is an account attribute. id is the operator-assigned identifier and filters a natural-key lookup. name is display metadata and never filters.",
+  "x-entity": "operator_unit",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "description": "Stable identifier assigned by the operator. Numeric platform IDs and durable slugs are both valid. Scoped by the enclosing operator domain."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Human-readable seat or business-unit name, such as Nova EMEA. This display label may change and never filters a natural-key lookup."
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "id": "234284238",
+      "name": "Nova EMEA"
+    },
+    {
+      "id": "benelux-seat",
+      "name": "Nova Benelux"
+    }
+  ]
+}

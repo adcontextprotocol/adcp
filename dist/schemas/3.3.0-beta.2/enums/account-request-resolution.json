@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/account-request-resolution.json",
+  "title": "Account Request Resolution",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "How a resolved account request produced its account (experimental, account.requests).",
+  "type": "string",
+  "enum": [
+    "matched",
+    "created",
+    "updated"
+  ],
+  "enumDescriptions": {
+    "matched": "The seller linked the request to an account that already existed, such as an existing direct relationship with the advertiser, and granted the caller access to it. No seller account object was created. On a change request, the seller pointed to an account the caller already holds instead of changing the named account, which is unchanged.",
+    "created": "The seller created a new account for the request. On a change request, the seller opened a separate account with the requested change applied instead of changing the named account, which is unchanged; only when the change request set allow_separate_account: true.",
+    "updated": "The request changed attributes on an existing account (it named account_id). The account keeps its account_id."
+  }
+}
