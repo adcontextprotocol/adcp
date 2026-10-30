@@ -16,6 +16,7 @@ import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
+import { projectTaskOutcomeForRelease } from '../served-outcome-status.js';
 import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from '../governance-agent-credentials.js';
 import { AccountRefValidationError, accountScopeFromRef } from '../account-scope.js';
 import { resolveServedAdcpVersionForTool } from '../task-handlers.js';
@@ -328,7 +329,12 @@ export function customToolFor(
           if (outcome.kind === 'replay') {
             const replayed: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
             if (replayed.status === undefined) replayed.status = 'completed';
-            return toAdaptedResponse(name, replayed, callerContext, options);
+            return toAdaptedResponse(
+              name,
+              projectTaskOutcomeForRelease(name, replayed, trainingCtx.servedAdcpVersion),
+              callerContext,
+              options,
+            );
           }
           claim = {
             principal,
@@ -352,7 +358,14 @@ export function customToolFor(
           logger.error({ err, tool: name }, 'custom-tool flushDirtySessions threw');
           return serviceUnavailable(err, callerContext);
         }
-        const response = toAdaptedResponse(name, result, callerContext, options);
+        // The cache keeps the release-neutral result; the response is shaped
+        // for this caller's served release.
+        const response = toAdaptedResponse(
+          name,
+          projectTaskOutcomeForRelease(name, result, trainingCtx.servedAdcpVersion),
+          callerContext,
+          options,
+        );
         if (claim) {
           const hasPayloadErrors = Array.isArray((result as { errors?: unknown[] } | null | undefined)?.errors)
             && ((result as { errors?: unknown[] }).errors ?? []).length > 0;

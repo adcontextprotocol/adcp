@@ -4,7 +4,7 @@
   "title": "Report Plan Adjustment Response",
   "description": "Append-only adjustment lifecycle result and attributed plan accounting state.",
   "type": "object",
-  "allOf": [{ "$ref": "/schemas/core/version-envelope.json" }],
+  "allOf": [{ "$ref": "/schemas/core/protocol-envelope.json" }],
   "x-status": "experimental",
   "properties": {
     "adjustment_id": {
@@ -50,11 +50,6 @@
       },
       "required": ["accounting_mode", "gross_committed", "adjustments_reported", "adjustments_verified", "net_cost", "headroom_restored", "ledger_committed", "net_committed", "budget_remaining"],
       "additionalProperties": false
-    },
-    "replayed": {
-      "type": "boolean",
-      "default": false,
-      "description": "Set to true when this response was returned from the idempotency cache rather than from a fresh execution. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, state-machine routing (cached state-tracking fields are historical snapshots, not current state — re-read via the resource's read endpoint), and any downstream system that assumes exactly-once event semantics. `replayed` appears only when the request actually resolved through the idempotency cache. Pure reads may ignore an optional `idempotency_key`; when a seller voluntarily caches keyed reads, those responses use the same replay indicator and full cache contract."
     },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }

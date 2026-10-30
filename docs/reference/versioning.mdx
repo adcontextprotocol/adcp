@@ -132,7 +132,7 @@ In-house clients that haven't moved to the SDK yet can keep sending `adcp_major_
 
 ### Relationship to MCP `protocolVersion`
 
-MCP carries its own `protocolVersion` field on the `initialize` handshake (e.g. `"2025-06-18"`). That handshake versions the **MCP wire** — JSON-RPC framing, transport semantics. AdCP `adcp_version` versions the **AdCP payload** — the schema of `params` and `result` content. The two are independent: an MCP-2025-06-18 server can speak AdCP 3.0 *or* 3.1, and an MCP client pinning AdCP `"3.1"` will fail with `VERSION_UNSUPPORTED` against a server that only speaks 3.0 even though the MCP handshake succeeded. A2A has no equivalent to MCP `initialize`, which is why `adcp_version` rides on the payload (where both transports can carry it).
+MCP carries its own `protocolVersion` field on the `initialize` handshake (e.g. `"2025-06-18"`). That handshake versions the **MCP wire** — JSON-RPC framing, transport semantics. AdCP `adcp_version` versions the **AdCP payload** — the schema of `params` and `result` content. The two are independent: an MCP-2025-06-18 server can speak AdCP 3.0 *or* 3.1, and an MCP client pinning AdCP `"3.1"` will fail with `VERSION_UNSUPPORTED` against a server that only speaks 3.0 even though the MCP handshake succeeded. A2A has no equivalent to MCP `initialize`, which is why `adcp_version` rides in the AdCP message itself, where both transports can carry it: in the request on the way in, and as an envelope field on the response.
 
 ### Features over versions
 

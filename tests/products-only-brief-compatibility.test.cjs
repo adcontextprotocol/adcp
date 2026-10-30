@@ -4,6 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const REPO_ROOT = path.join(__dirname, '..');
 const SOURCE_SCHEMA_ROOT = path.join(REPO_ROOT, 'static', 'schemas', 'source');
@@ -25,7 +28,7 @@ function loadSchemaUri(uri) {
   const filename = versionMatch
     ? path.join(REPO_ROOT, 'dist', 'schemas', versionMatch[1], versionMatch[2])
     : path.join(SOURCE_SCHEMA_ROOT, relative);
-  return JSON.parse(fs.readFileSync(filename, 'utf8'));
+  return versionMatch ? JSON.parse(fs.readFileSync(filename, 'utf8')) : readBuiltSchema(filename);
 }
 
 async function compileSchema(schema) {

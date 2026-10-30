@@ -4,6 +4,10 @@
   "title": "Create Media Buy - Input Required",
   "description": "Payload when task is paused waiting for user input or approval.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-input-required.json" }
+  ],
   "properties": {
     "reason": {
       "type": "string",

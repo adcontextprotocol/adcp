@@ -153,7 +153,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
         offer_reason: "installment_postponed",
         ...extra,
       });
-      const listed = (entry) => ({ outcome: "listed", proposals: [entry], opportunities: [] });
+      const listed = (entry) => ({ status: "completed", outcome: "listed", proposals: [entry], opportunities: [] });
 
       it("carries offer_reason on a seller_offer row", () => {
         assert.ok(validateListed(listed(row())), JSON.stringify(validateListed.errors));

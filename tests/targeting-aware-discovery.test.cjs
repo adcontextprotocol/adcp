@@ -8,6 +8,9 @@ const addFormats = require("ajv-formats");
 const YAML = require("yaml");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
+const { ensureBuiltSchemas, readBuiltSchema } = require("../scripts/built-schemas.cjs");
+
+ensureBuiltSchemas();
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -29,24 +32,15 @@ function currentCheckpoint() {
   };
 }
 
-async function loadSchema(uri) {
-  if (!uri.startsWith("/schemas/"))
-    throw new Error(`Unexpected schema URI: ${uri}`);
-  const filename = path.resolve(SCHEMA_ROOT, uri.slice("/schemas/".length));
-  if (!filename.startsWith(`${SCHEMA_ROOT}${path.sep}`))
-    throw new Error(`Schema path escape: ${uri}`);
-  return JSON.parse(fs.readFileSync(filename, "utf8"));
-}
-
 async function compile(uri) {
   const ajv = new Ajv({
     allErrors: true,
     strict: false,
     discriminator: true,
-    loadSchema,
+    loadSchema: async (ref) => readBuiltSchema(ref),
   });
   addFormats(ajv);
-  return ajv.compileAsync(await loadSchema(uri));
+  return ajv.compileAsync(readBuiltSchema(uri));
 }
 
 function errors(validate) {
