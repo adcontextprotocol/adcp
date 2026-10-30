@@ -1,0 +1,168 @@
+id: signal_marketplace/error_compliance
+version: "1.0.0"
+title: "Marketplace signal activation errors"
+protocol: signals
+category: signal_marketplace
+summary: "Checks activation rejection codes and context echo for signal marketplaces."
+track: error_handling
+requires:
+  - controller
+
+required_tools:
+  - activate_signal
+
+narrative: |
+  Marketplace signal agents must reject nonexistent segment handles and
+  malformed activation requests. Discovery errors and protocol version handling
+  are checked by the shared error_compliance_signals baseline.
+
+  These probes assert error codes and context echo. They do not independently
+  capture raw MCP flags or validate every error message and recovery field.
+
+agent:
+  interaction_model: marketplace_catalog
+  capabilities: []
+  examples:
+    - "Signal marketplaces that activate third-party audience data"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  controller_seeding: true
+  description: |
+    Seed an isolated sandbox account before sending invalid activation requests.
+  test_kit: "test-kits/nova-motors.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_c7062c470875"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-signal_marketplace_error_compliance-75d50c4b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_live_f885114c3a1b"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-signal_marketplace_error_compliance-75d50c4b"
+        billing: "operator"
+        status: "active"
+        sandbox: false
+
+phases:
+  - id: error_responses
+    title: "Error responses for invalid input"
+    narrative: |
+      The buyer sends activation requests with intentionally invalid data — a
+      nonexistent signal ID and an activation request missing a required field.
+      Each request should be rejected with a structured error containing an
+      appropriate AdCP error code.
+
+    steps:
+      - id: nonexistent_signal
+        title: "Reject nonexistent signal_agent_segment_id"
+        narrative: |
+          The buyer references a signal_agent_segment_id that does not exist on
+          this platform. REFERENCE_NOT_FOUND is the canonical code for a typed
+          parameter with no dedicated error code that fails to resolve. INVALID_REQUEST
+          is accepted as an alternative. SIGNAL_NOT_FOUND is reserved for unresolvable
+          signal_id (data-provider catalog references), not for opaque agent-internal
+          segment IDs.
+        task: activate_signal
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: error_handling
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject the request with:
+          - code: REFERENCE_NOT_FOUND or INVALID_REQUEST
+          - recovery: correctable
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_marketplace_error_compliance-75d50c4b"
+            sandbox: true
+          signal_agent_segment_id: "nonexistent-signal-id-xyz"
+          destinations:
+            - type: "agent"
+              agent_url: "https://test-dsp.example"
+          idempotency_key: "$generate:uuid_v4#marketplace-error-signals-nonexistent"
+          context:
+            correlation_id: "signal_marketplace/error_compliance--nonexistent_signal"
+        validations:
+          - check: error_code
+            allowed_values: ["REFERENCE_NOT_FOUND", "INVALID_REQUEST"]
+            description: "Error code is REFERENCE_NOT_FOUND or INVALID_REQUEST for unresolvable signal_agent_segment_id"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signal_marketplace/error_compliance--nonexistent_signal"
+            description: "Context correlation_id returned unchanged"
+
+      - id: missing_required_field
+        title: "Reject activation missing signal_agent_segment_id"
+        narrative: |
+          Send an activate_signal request without the required
+          signal_agent_segment_id field. The agent must reject this malformed
+          request with a structured error.
+        task: activate_signal
+        expect_error: true
+        negative_path: schema_invalid
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: error_handling
+        stateful: false
+        # signal_agent_segment_id is required per the schema — this request
+        # intentionally omits it to verify the agent's validation response.
+        sample_request_skip_schema: true
+        expected: |
+          Reject the request with:
+          - code: INVALID_REQUEST or VALIDATION_ERROR
+          - recovery: correctable
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_marketplace_error_compliance-75d50c4b"
+            sandbox: true
+          destinations:
+            - type: "agent"
+              agent_url: "https://test-dsp.example"
+          idempotency_key: "$generate:uuid_v4#marketplace-error-signals-missing-field"
+          context:
+            correlation_id: "signal_marketplace/error_compliance--missing_required_field"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Error code is INVALID_REQUEST or VALIDATION_ERROR"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "signal_marketplace/error_compliance--missing_required_field"
+            description: "Context correlation_id returned unchanged"

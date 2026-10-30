@@ -1,0 +1,131 @@
+id: property_list_reference_resolution
+version: 1.0.0
+title: Property list reference resolution
+category: schema_validation
+track: core
+summary: An independent receiver resolves an issued list over the task transport using only its
+  read-only bearer token and follows pagination.
+requires:
+  - property_list_reference_runner
+  - controller
+required_tools:
+  - create_property_list
+  - get_property_list
+  - update_property_list
+narrative: A buyer or governance agent issuing property list references must expose
+  get_property_list at its advertised endpoint. This storyboard creates two lists, then resolves the
+  shared list in a fresh session authenticated only by its issued credential. Three identifiers and
+  a page size of two require continuation. The same token must not read the control list or mutate
+  the shared list. Runners without the property_list_reference_runner requirement must report
+  requirement_unmet before creating fixtures or lists, never complete passing coverage.
+agent:
+  interaction_model: governance_agent
+  capabilities: []
+  examples:
+    - Buyer agents and governance agents issuing property list references
+caller:
+  role: buyer_agent
+  example: Compliance harness acting as an independent seller when resolving the reference
+prerequisites:
+  description: Seed an isolated sandbox account. All fixture identifiers remain in the agent under
+    test and must not be submitted to the public registry.
+  test_kit: test-kits/acme-outdoor.yaml
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_51cf6c5be402"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-property_list_reference_resolution-80f9aa53"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+
+phases:
+  - id: reference_resolution
+    title: Issue and resolve a scoped reference
+    steps:
+      - id: create_other_list
+        title: Unshared control list
+        narrative: Create a sandbox property list using the owner credentials.
+        task: create_property_list
+        schema_ref: property/create-property-list-request.json
+        response_schema_ref: property/create-property-list-response.json
+        doc_ref: /governance/property/tasks/property_lists#create_property_list
+        stateful: true
+        expected: Return the created list and a read-only bearer credential scoped to that list.
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: "compliance-property_list_reference_resolution-80f9aa53"
+            sandbox: true
+          name: Unshared control list
+          base_properties:
+            - selection_type: identifiers
+              identifiers:
+                - type: domain
+                  value: control.publisher.example
+          idempotency_key: $generate:uuid_v4#property_list_reference_resolution_create_other_list
+          context:
+            correlation_id: property_list_reference_resolution--create_other_list
+        validations:
+          - check: response_schema
+            description: Creation response matches its canonical schema
+        context_outputs:
+          - name: other_list_id
+            path: list.list_id
+      - id: create_shared_list
+        title: Shared reference list
+        narrative: Create a sandbox property list using the owner credentials.
+        task: create_property_list
+        schema_ref: property/create-property-list-request.json
+        response_schema_ref: property/create-property-list-response.json
+        doc_ref: /governance/property/tasks/property_lists#create_property_list
+        stateful: true
+        expected: Return the created list and a read-only bearer credential scoped to that list.
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: "compliance-property_list_reference_resolution-80f9aa53"
+            sandbox: true
+          name: Shared reference list
+          base_properties:
+            - selection_type: identifiers
+              identifiers:
+                - type: domain
+                  value: news.publisher.example
+                - type: domain
+                  value: sports.publisher.example
+                - type: domain
+                  value: video.publisher.example
+          idempotency_key: $generate:uuid_v4#property_list_reference_resolution_create_shared_list
+          context:
+            correlation_id: property_list_reference_resolution--create_shared_list
+        validations:
+          - check: response_schema
+            description: Creation response matches its canonical schema
+          - check: property_list_reference
+            description: Issued bearer credential resolves all pages and grants neither cross-list reads nor
+              mutation access
+            agent_url: $agent_url
+            list_id_path: list.list_id
+            auth_token_path: auth_token
+            denied_list_id: $context.other_list_id
+            page_size: 2
+            max_pages: 3
+            expected_identifiers:
+              - type: domain
+                value: news.publisher.example
+              - type: domain
+                value: sports.publisher.example
+              - type: domain
+                value: video.publisher.example
