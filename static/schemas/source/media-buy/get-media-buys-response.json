@@ -182,6 +182,13 @@
                 "format": "date-time",
                 "description": "ISO 8601 timestamp when this media buy was canceled."
               },
+              "effective_at": {
+                "type": "string",
+                "format": "date-time",
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "description": "When delivery stops under this cancellation: canceled_at when delivery stops at once, or later when the seller keeps delivering through a notice period (the product's cancellation_policy.notice_period) or to the end of a committed unit. Not later than end_time. Sellers advertising media_buy.reporting_subscriptions MUST populate it, because subscription reporting is owed through the period containing this instant, not the instant the cancellation was recorded. Buyers use canceled_at when it is absent."
+              },
               "canceled_by": {
                 "$ref": "/schemas/enums/canceled-by.json",
                 "description": "Which party initiated the cancellation."
