@@ -14,7 +14,7 @@ only matches `test_kit.*`; any other expression is ignored and the phase runs
 anyway. That runner therefore cannot execute this storyboard at all, so the
 regression tests cannot be written against it.
 
-This package pins a published `@adcp/sdk` **17.0.0-beta.7** so
+This package pins a published `@adcp/sdk` **17.0.0-beta.8** so
 `tests/cli-scenario-fixtures.test.cjs` can evaluate those guards and the auction-only
 seller regressions can enrich valid semantic rejection probes. Its conflicting peers (`@a2a-js/sdk` 1.x vs the root's 0.3.x) nest under
 `tests/sdk-runner/node_modules`, so **root production resolution is unchanged**:
@@ -32,7 +32,7 @@ and `refine_finalize_exclusivity` already ship context-reading `skip_if` on
 3.1.x.
 
 The seller fixture-discovery and complete product-feed checks are verified
-against the pinned 17.0.0-beta.7 runner. Collected reads declare
+against the pinned 17.0.0-beta.8 runner. Collected reads declare
 `collect_product_pages_runner`; older runners report that slice as unavailable
 instead of treating a partial feed as a complete result.
 

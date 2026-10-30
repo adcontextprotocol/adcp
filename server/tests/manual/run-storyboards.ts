@@ -80,7 +80,7 @@ const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
 const isThreeZeroCompatRun = isThreeZeroComplianceVersion(releasedComplianceVersion);
 const runner = maintenanceRunner(process.env.TENANT_PATH, releasedComplianceVersion);
 const runStoryboard = runner === 'seller' ? fixtureTestSdk.runStoryboard : runLegacyStoryboard;
-console.log(`Compliance runner: ${runner === 'seller' ? 'private @adcp/sdk 17.0.0-beta.7 (current seller)' : 'production @adcp/sdk 9.6.2 (maintenance baseline)'}`);
+console.log(`Compliance runner: ${runner === 'seller' ? 'private @adcp/sdk 17.0.0-beta.8 (current seller)' : 'production @adcp/sdk 9.6.2 (maintenance baseline)'}`);
 
 interface Summary {
   id: string;
