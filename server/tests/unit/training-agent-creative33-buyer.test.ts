@@ -6,7 +6,6 @@ import { ADCPMultiAgentClient, type CreativeManifest } from '@adcp/sdk';
 import { InMemoryStateStore } from '@adcp/sdk/server';
 import { mountCreative33Sandbox } from '../../src/training-agent/creative33/router.js';
 import { clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
-import { ensureTrainingAgentSchemaBundle } from '../../src/training-agent/schema-compat.js';
 
 type Json = Record<string, unknown>;
 const ACCOUNT = { account_id: 'creative33_sandbox' };
@@ -23,9 +22,6 @@ describe('published SDK buyer journeys on the frozen creative 3.3 beta', () => {
   let base: string;
   let agent: ReturnType<ADCPMultiAgentClient['agent']>;
   beforeAll(async () => {
-    // The SDK buyer validates against 3.3.0-beta.0, which the installed SDK
-    // may not package; register the retained bundles first, as the server does.
-    await ensureTrainingAgentSchemaBundle();
     const app = express();
     app.use(express.json({ limit: '1mb', verify: (req, _res, bytes) => {
       (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(bytes);
@@ -41,7 +37,7 @@ describe('published SDK buyer journeys on the frozen creative 3.3 beta', () => {
     await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     agent = ADCPMultiAgentClient.simple(`${base}/beta/3.3/creative/mcp`, {
-      authToken: 'buyer-flow-test', adcpVersion: '3.3.0-beta.0', wireAdcpVersion: '3.3-beta.0', timeout: 15000,
+      authToken: 'buyer-flow-test', adcpVersion: '3.3.0-beta.1', wireAdcpVersion: '3.3-beta.1', timeout: 15000,
     }).agent('default-agent');
   });
   afterAll(async () => {
@@ -64,7 +60,7 @@ describe('published SDK buyer journeys on the frozen creative 3.3 beta', () => {
 
     it('discovers the frozen contract', async () => {
       const discovered = data(await agent.getAdcpCapabilities({}));
-      expect(discovered).toMatchObject({ adcp_version: '3.3-beta.0', adcp: { supported_versions: ['3.3-beta.0'] } });
+      expect(discovered).toMatchObject({ adcp_version: '3.3-beta.1', adcp: { supported_versions: ['3.3-beta.1'] } });
       const formats = object(discovered.creative).supported_formats as Json[];
       expect(formats.find(value => value.capability_id === capabilityId)).toMatchObject({ format: { format_kind: kind }, operations: expect.arrayContaining(['build', 'preview']) });
     });

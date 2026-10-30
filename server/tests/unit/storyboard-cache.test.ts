@@ -15,7 +15,7 @@ describe('compliance storyboard cache', () => {
   });
 
   it('parses a bundle once and serves every ID from it', () => {
-    const options = { version: '3.3.0-beta.0', complianceDir: '/bundles/3.3' };
+    const options = { version: '3.3.0-beta.1', complianceDir: '/bundles/3.3' };
     expect(getCachedComplianceStoryboardById('a', options)?.id).toBe('a');
     expect(getCachedComplianceStoryboardById('b', { ...options, unrelatedRunOption: true } as never)?.id).toBe('b');
     expect(getCachedComplianceStoryboardById('missing', options)).toBeUndefined();
@@ -30,7 +30,7 @@ describe('compliance storyboard cache', () => {
 
   it('keeps bundles for different versions or directories apart', () => {
     getCachedComplianceStoryboardById('a', { version: '3.2', complianceDir: '/x' });
-    getCachedComplianceStoryboardById('a', { version: '3.3.0-beta.0', complianceDir: '/x' });
+    getCachedComplianceStoryboardById('a', { version: '3.3.0-beta.1', complianceDir: '/x' });
     getCachedComplianceStoryboardById('a', { version: '3.2', complianceDir: '/y' });
     getCachedComplianceStoryboardById('a', { version: '3.2', complianceDir: '/y', hostedStableLineAlias: '3.2' });
     expect(list).toHaveBeenCalledTimes(4);

@@ -35,10 +35,11 @@
     },
     "excluded": {
       "type": "array",
-      "description": "Exceptions that remove periods. An entry without media_buy_id applies to the whole account. Opening or closing one fires principal.changed with reason reporting_subscription_changed. Retained for status_retention_days after until.",
+      "description": "Exceptions that remove periods. An entry without media_buy_id applies to the whole account. Opening or closing one fires principal.changed with reason reporting_subscription_changed. Retained for status_retention_days after until. When the account's covered offerings have different period boundaries, the seller lists one entry per offering_id, each with that offering's cutover instants, as for gaps and timezone_cutovers.",
       "items": {
         "type": "object",
         "properties": {
+          "offering_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The offering whose periods this exception removes, when the account's covered offerings have different period boundaries; from and until are then that offering's cutover instants. Absent: the exception applies to every offering on the account (or buy, with media_buy_id)." },
           "media_buy_id": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" },
           "reason": { "$ref": "#/definitions/ReportingSubscriptionExclusionReason" },
           "from": { "type": "string", "format": "date-time", "description": "Cutover instant: periods starting at or after it are removed." },

@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { getSchemaDocumentByRef } from '@adcp/sdk/schemas';
 import {
   fieldsAddedAfterRelease,
@@ -6,11 +6,6 @@ import {
   propertiesAddedAfterRelease,
   servedReleaseEnum,
 } from '../../src/training-agent/served-release-fields.js';
-import { ensureTrainingAgentSchemaBundle } from '../../src/training-agent/schema-compat.js';
-// The installed SDK may not package every release the training agent serves
-// (3.3.0-beta.0 here); register the retained bundles first, as the server does.
-beforeAll(() => ensureTrainingAgentSchemaBundle());
-
 
 const CAPABILITIES = 'protocol/get-adcp-capabilities-response.json';
 
@@ -22,7 +17,7 @@ describe('served-release field gate (#8487)', () => {
       { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
     expect(threeTwo?.additionalProperties).toBe(false);
     for (const field of withheld) expect(threeTwo?.properties, field).not.toHaveProperty(field);
-    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3-beta.0')).toEqual(new Set());
+    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3-beta.1')).toEqual(new Set());
   });
 
   it('finds 3.3 fields under objects 3.2 leaves open, and leaves undeclared keys alone', () => {
@@ -41,7 +36,7 @@ describe('served-release field gate (#8487)', () => {
       '/media_buy/vendor_metric_optimization/supported_metrics',
     ]);
     // Same release line, whatever the prerelease checkpoint.
-    expect(fieldsAddedAfterRelease(capabilities, CAPABILITIES, '3.3-beta.0')).toEqual([]);
+    expect(fieldsAddedAfterRelease(capabilities, CAPABILITIES, '3.3-beta.1')).toEqual([]);
     // A 3.2 field is newer than 3.1.
     expect(fieldsAddedAfterRelease({ media_buy: { anonymous_discovery: true } }, CAPABILITIES, '3.1'))
       .toEqual(['/media_buy/anonymous_discovery']);
@@ -60,7 +55,7 @@ describe('served-release field gate (#8487)', () => {
     expect(servedReleaseEnum('enums/specialism.json', '3.1')).not.toContain('sales-dooh');
     expect(servedReleaseEnum('enums/specialism.json', '3.2')).toContain('sales-dooh');
     expect(servedReleaseEnum('enums/specialism.json', '3.2')).not.toContain('sales-fixed-rate');
-    expect(servedReleaseEnum('enums/specialism.json', '3.3-beta.0')).toContain('sales-fixed-rate');
+    expect(servedReleaseEnum('enums/specialism.json', '3.3-beta.1')).toContain('sales-fixed-rate');
     // A prerelease pin the SDK ships no bundle for reads its release line.
     expect(servedReleaseEnum('enums/specialism.json', '3.1-rc.15')).toEqual(servedReleaseEnum('enums/specialism.json', '3.1'));
     expect(servedReleaseEnum('enums/specialism.json', '3.2-rc.0')).not.toContain('sales-fixed-rate');

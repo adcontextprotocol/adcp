@@ -7,7 +7,6 @@ import {
   TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
 } from './types.js';
 import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } from './candidate-version.js';
-import { CREATIVE33_WIRE_VERSION } from './creative33/catalog.js';
 
 function canonicalSchemaBundleVersion(version: string): string {
   const match = version.match(/^(\d+)\.(\d+)(?:\.(\d+))?((?:-(?:beta|rc)\.\d+)?)$/);
@@ -30,9 +29,6 @@ export const RETAINED_SCHEMA_BUNDLE = canonicalSchemaBundleVersion(
 export const RETAINED_SCHEMA_BUNDLES: Readonly<Record<string, string>> = Object.freeze({
   [SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION]: RETAINED_SCHEMA_BUNDLE,
   [TRAINING_AGENT_RETAINED_RC_ADCP_VERSION]: canonicalSchemaBundleVersion(TRAINING_AGENT_RETAINED_RC_ADCP_VERSION),
-  // The creative 3.3 beta sandbox serves 3.3.0-beta.0; @adcp/sdk 17.0.0-beta.6
-  // packages 3.3.0-beta.1 instead.
-  [CREATIVE33_WIRE_VERSION]: canonicalSchemaBundleVersion(CREATIVE33_WIRE_VERSION),
 });
 
 /**
@@ -76,8 +72,8 @@ export function resolveRetainedSchemaRoot(
 }
 
 /**
- * Register the training agent's retained prerelease checkpoints (3.2 beta.6,
- * the last 3.2 RC and 3.3 beta.0) with SDK builds that do not package them,
+ * Register the training agent's retained prerelease checkpoints (beta.6 and
+ * the last 3.2 RC) with SDK builds that do not package them,
  * and, in a trusted candidate process, the built source tree under the
  * candidate's release key (see CANDIDATE_SCHEMA_BUNDLE).
  *
@@ -99,8 +95,10 @@ export function ensureTrainingAgentSchemaBundle(): Promise<void> {
       registerExternalSchemaRoot(CANDIDATE_SCHEMA_BUNDLE, root);
       // The SDK's ESM status rule reads schemas through its CommonJS schema
       // loader (envelope-status-compat.mjs requires ../validation/schema-loader),
-      // a separate module instance with its own external roots. Register there
-      // too, or the rule reads the published bundle and drops `status`.
+      // a separate module instance with its own external roots
+      // (adcontextprotocol/adcp-client#3519, still so in 17.0.0-beta.6).
+      // Register there too, or the rule reads the published bundle and drops
+      // `status`. Remove with #3519's fix.
       const cjsTesting = createRequire(import.meta.url)('@adcp/sdk/testing') as {
         registerExternalSchemaRoot: (version: string, schemaRoot: string) => void;
       };

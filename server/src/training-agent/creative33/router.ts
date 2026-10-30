@@ -20,15 +20,14 @@ import { createLogger } from '../../logger.js';
 import { getSdkIdempotencyStore } from '../idempotency.js';
 import { getCanonicalToolValidator, ValidateInputRequestSchema } from '@adcp/sdk/schemas';
 import { createCreative33Sandbox } from './platform.js';
-import { ensureTrainingAgentSchemaBundle } from '../schema-compat.js';
 import { CREATIVE33_MCP_ROUTE } from '../lab-route-paths.js';
 import {
   CREATIVE33_HTML_SCHEMA_BYTES, CREATIVE33_RESPONSIVE_HTML, CREATIVE33_ZIP_BYTES,
 } from './catalog.js';
 
 export const CREATIVE33_ROUTE = CREATIVE33_MCP_ROUTE;
-export const CREATIVE33_WIRE_VERSION = '3.3-beta.0';
-export const CREATIVE33_BUNDLE_VERSION = '3.3.0-beta.0';
+export const CREATIVE33_WIRE_VERSION = '3.3-beta.1';
+export const CREATIVE33_BUNDLE_VERSION = '3.3.0-beta.1';
 const NAMESPACE = 'adcp-training-agent:creative33';
 const logger = createLogger('training-agent-creative33');
 const TOOLS = new Set([
@@ -195,8 +194,6 @@ export function mountCreative33Sandbox(parent: Router, options: {
   parent.get(CREATIVE33_ROUTE, (_req, res) => { cors(res); res.setHeader('Allow', 'POST, OPTIONS'); res.status(405).end(); });
   parent.post(CREATIVE33_ROUTE, ...middleware, async (req, res) => {
     cors(res);
-    // The installed SDK may not package the 3.3.0-beta.0 bundle this route serves.
-    await ensureTrainingAgentSchemaBundle();
     // Only the upstream authenticator may establish identity. In particular,
     // cookies, argument fields, and a buyer-supplied req.auth bag are not authority.
     const principal = res.locals.trainingPrincipal as unknown;

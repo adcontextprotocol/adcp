@@ -1,14 +1,9 @@
-import { beforeAll, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { InMemoryStateStore, type Account, type CreativeAdServerPlatform, type RequestContext } from '@adcp/sdk/server';
 import type { ComplyControllerContext } from '@adcp/sdk/testing';
 import { createCreative33Sandbox, creative33AccountId } from '../../src/training-agent/creative33/platform.js';
 import { creative33Catalog, creative33FixtureManifest } from '../../src/training-agent/creative33/catalog.js';
-import { ensureTrainingAgentSchemaBundle } from '../../src/training-agent/schema-compat.js';
-// The installed SDK may not package every release the training agent serves
-// (3.3.0-beta.0 here); register the retained bundles first, as the server does.
-beforeAll(() => ensureTrainingAgentSchemaBundle());
-
 
 type Json = Record<string, unknown>;
 function harness() {

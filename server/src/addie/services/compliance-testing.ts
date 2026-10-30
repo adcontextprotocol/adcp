@@ -378,7 +378,7 @@ export async function comply(
   // An agent that echoes a newer release in the target's major has its
   // capabilities validated against that release by the SDK, using the hosted
   // roots withHostedComplianceOptions supplies (servedReleaseSchemaRoots).
-  const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
+  const result = normalizeControllerPreflightGapVerdicts(redactHostedGovernanceSecrets(rawResult, mintedSecrets));
   result.adcp_version ??= target.version;
   const notApplicableSpecialisms = markSpecialismsNotApplicableForTarget(result, target);
   if (overlayComplianceDir) restoreReleasedComplianceDirInFixCommands(result, overlayComplianceDir, target);
@@ -1058,8 +1058,82 @@ function trackHasFixtureUnavailableSkip(track: TrackResult): boolean {
     step.skipped && step.skip_reason === 'fixture_unavailable'));
 }
 
+/**
+ * SDK17 adds an empty failed /storyboard row when legacy controller preflight
+ * skipped the entire storyboard. That row describes missing coverage, not an
+ * additional seller assertion. Recover only this exact, structurally proven
+ * case; unknown verdicts, executed checks and assertion failures stay intact.
+ */
+function normalizeControllerPreflightGapVerdicts(result: ComplianceResult): ComplianceResult {
+  // Never substitute a line alias or latest catalog for an exact run bundle.
+  if (typeof result.adcp_version !== 'string' ||
+    !/^[1-9][0-9]*\.[0-9]+\.[0-9]+(?:-(?:beta|rc)\.[0-9]+)?$/.test(result.adcp_version)) return result;
+  type Scenario = TrackResult['scenarios'][number];
+  const byStoryboard = new Map<string, Scenario[]>();
+  for (const track of result.tracks) {
+    for (const scenario of track.scenarios) {
+      const id = scenarioStoryboardIdForFallback(scenario.scenario);
+      if (!id) continue;
+      const siblings = byStoryboard.get(id) ?? [];
+      siblings.push(scenario);
+      byStoryboard.set(id, siblings);
+    }
+  }
+  const replacements = new Map<Scenario, Scenario>();
+  for (const [id, scenarios] of byStoryboard) {
+    const verdicts = scenarios.filter(scenario => scenario.scenario === `${id}/storyboard`);
+    if (verdicts.length !== 1) continue;
+    const verdict = verdicts[0];
+    if (verdict.overall_passed !== false || !Array.isArray(verdict.steps) || verdict.steps.length !== 0) continue;
+    const storyboard = pinnedStoryboard(result, id);
+    if (storyboard?.prerequisites?.controller_seeding !== true ||
+      storyboard.phases.some(phase => phase.id === 'storyboard')) continue;
+    const phases = scenarios.filter(scenario => scenario !== verdict);
+    if (phases.length === 0 || phases.some(phase => !phase.steps?.length || phase.overall_passed !== true ||
+      phase.steps.some(step => step.skipped !== true || step.passed !== true ||
+        step.skip_reason !== 'missing_test_controller' ||
+        step.validations?.some(validation => validation.passed === false)))) continue;
+    const preflight = phases.find(phase => phase.scenario === `${id}/__controller_seeding__`);
+    if (!preflight?.steps?.length || preflight.steps.some(step => step.task !== 'comply_test_controller')) continue;
+    if ((result.failures ?? []).some(failure => !failure.storyboard_id || failure.storyboard_id === id)) continue;
+    const observations = [...(result.observations ?? []), ...result.tracks.flatMap(track => track.observations ?? [])];
+    if (observations.some(observation => observation.source?.code === 'storyboard-assertion-failed' &&
+      (!('storyboard_id' in observation.source) || !observation.source.storyboard_id ||
+        observation.source.storyboard_id === id))) continue;
+    const detail = 'Not tested: comply_test_controller is unavailable; required fixture state was not established.';
+    replacements.set(verdict, {
+      ...verdict,
+      overall_passed: true,
+      summary: detail,
+      steps: [{
+        step: 'Controller fixture setup unavailable',
+        step_id: 'requirement_unmet:controller',
+        task: 'comply_test_controller',
+        passed: true,
+        skipped: true,
+        skip_reason: 'requirement_unmet',
+        requirement: 'controller',
+        duration_ms: 0,
+        warnings: [detail],
+      }],
+    });
+  }
+  if (replacements.size === 0) return result;
+  const normalized = {
+    ...result,
+    tracks: result.tracks.map(track => ({
+      ...track,
+      scenarios: track.scenarios.map(scenario => replacements.get(scenario) ?? scenario),
+    })),
+  };
+  const context = pinnedStoryboardContexts.get(result);
+  if (context) pinnedStoryboardContexts.set(normalized, context);
+  return normalized;
+}
+
 /** Reconcile SDK aggregates with the same structural policy as storyboard rows. */
 function normalizeGradedTracks(result: ComplianceResult): ComplianceResult {
+  result = normalizeControllerPreflightGapVerdicts(result);
   const tracks = result.tracks.map(track => {
     // Preserve legacy phase-only results, including their failure verdicts.
     if (!track.scenarios.some(scenario => scenario.steps?.length)) return track;
@@ -1200,6 +1274,7 @@ export function deriveStoryboardStatuses(
   result: ComplianceResult,
   storyboardIds?: string[],
 ): StoryboardStatusEntry[] {
+  result = normalizeControllerPreflightGapVerdicts(result);
   interface FirstFailure {
     stepId: string | null;
     title: string | null;

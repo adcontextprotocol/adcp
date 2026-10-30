@@ -762,7 +762,10 @@ reads *when* each is due from the obligation.
 
 Summary and periods responses add `subscription_coverage[]`: one entry per caller
 subscription whose scope includes the account, including inactive subscriptions whose
-obligations are still retained. The revision view never carries it.
+obligations are still retained. The revision view never carries it. When the account's
+offerings have different period boundaries, `excluded[]`, `gaps[]`, and
+`timezone_cutovers[]` entries can carry an `offering_id`, each with that offering's
+cutover instants; an entry without one applies to every offering.
 
 ```json
 {
