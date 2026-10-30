@@ -86,7 +86,7 @@ fixtures:
       pricing_option_id: "cpm_vendor_metric_catalog_precondition"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 14.0
+      floor_price: 14.0
 
 phases:
   - id: account_setup
@@ -201,6 +201,7 @@ phases:
           packages:
             - product_id: "display_vendor_metric_catalog_precondition"
               pricing_option_id: "cpm_vendor_metric_catalog_precondition"
+              bid_price: 21
               budget: 5000
               optimization_goals:
                 - kind: "vendor_metric"
@@ -264,6 +265,7 @@ phases:
           packages:
             - product_id: "display_vendor_metric_catalog_precondition"
               pricing_option_id: "cpm_vendor_metric_catalog_precondition"
+              bid_price: 21
               budget: 5000
               optimization_goals:
                 - kind: "vendor_metric"

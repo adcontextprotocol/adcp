@@ -16,12 +16,12 @@ import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import YAML from 'yaml';
-import {
-  listAllComplianceStoryboards,
-  loadComplianceIndex,
-  runStoryboard,
-  getComplianceCacheDir,
-} from '@adcp/sdk/testing';
+// New seller conformance features use the isolated modern runner. Other
+// maintenance cohorts and frozen 3.0 runs retain their production SDK boundary.
+import fixtureTestSdk from '@adcp-protocol/fixture-test-sdk/testing';
+const { listAllComplianceStoryboards, loadComplianceIndex, getComplianceCacheDir } = fixtureTestSdk;
+import { runStoryboard as runLegacyStoryboard } from '@adcp/sdk/testing';
+import { isThreeZeroComplianceVersion, maintenanceRunner } from './maintenance-runner-selection.js';
 import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/sdk/testing';
 import {
   StaticJwksResolver,
@@ -66,11 +66,21 @@ const complianceOptions = process.env.ADCP_COMPLIANCE_DIR
       complianceDir: process.env.ADCP_COMPLIANCE_DIR,
       ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
     }
-  : undefined;
+  : {
+      complianceDir: join(process.cwd(), 'dist', 'compliance', 'latest'),
+      ...(process.env.ADCP_SCHEMA_ROOT
+        ? { schemaRoot: process.env.ADCP_SCHEMA_ROOT }
+        : process.env.TENANT_PATH === 'sales'
+          ? { schemaRoot: join(process.cwd(), 'dist', 'schemas', JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version) }
+          : {}),
+    };
 const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
   ? loadComplianceIndex(complianceOptions).adcp_version
   : undefined;
-const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
+const isThreeZeroCompatRun = isThreeZeroComplianceVersion(releasedComplianceVersion);
+const runner = maintenanceRunner(process.env.TENANT_PATH, releasedComplianceVersion);
+const runStoryboard = runner === 'seller' ? fixtureTestSdk.runStoryboard : runLegacyStoryboard;
+console.log(`Compliance runner: ${runner === 'seller' ? 'private @adcp/sdk 17.0.0-beta.8 (current seller)' : 'production @adcp/sdk 9.6.2 (maintenance baseline)'}`);
 
 interface Summary {
   id: string;

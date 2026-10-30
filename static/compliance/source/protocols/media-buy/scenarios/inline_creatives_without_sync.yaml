@@ -217,20 +217,18 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return at least one fixed-price product with a pricing option and a
+          Return at least one product with a pricing option and a
           format_options[] declaration that can be used by the inline CreativeAsset.
         sample_request:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_inline_creatives_without_sync_canonical_format_discovery_get_products_canonical_format"
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight with buyer-supplied inline creative."
-          filters:
-            # 3.1 product-filters.json defines no canonical-kind filter, so this
-            # probe cannot narrow by format_kind and does not pretend to. The
-            # buyer submits a 300x250 image creative on this path; rank a product
-            # whose first format option accepts that creative first for this
-            # brief. A product selected here that cannot take a 300x250 image is
-            # an asset-applicability mismatch, not a protocol defect.
-            is_fixed_price: true
+          # 3.1 product-filters.json defines no canonical-kind filter, so this
+          # probe cannot narrow by format_kind and does not pretend to. The
+          # buyer submits a 300x250 image creative on this path; rank a product
+          # whose first format option accepts that creative first for this
+          # brief. A product selected here that cannot take a 300x250 image is
+          # an asset-applicability mismatch, not a protocol defect.
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -257,8 +255,8 @@ phases:
             value: "image"
             description: "Mismatch detector, not a format selector. The buyer only has a 300x250 image to send on the canonical paths, so if this first declaration is some other kind the probe fails here, its captures are never promoted, and all three canonical paths stand down rather than buying an image under, say, a video declaration. It does NOT pick a matching declaration out of the catalog: a canonical-only seller whose first declaration is not an image still completes no canonical path and fails the closing coverage assertion. 3.1 defines no canonical-kind product filter, so this detection is all that is available here"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "The captured pricing option identifies either fixed pricing or an auction option; the runner supplies the auction bid from discovery"
           - check: field_value
             path: "context.correlation_id"
             value: "inline_creatives_without_sync--get_products_canonical"
@@ -908,14 +906,12 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return at least one fixed-price product with a pricing option and a
+          Return at least one product with a pricing option and a
           concrete format_id that can be used by the inline CreativeAsset.
         sample_request:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_inline_creatives_without_sync_legacy_format_inline_path_get_products_legacy_format"
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight with buyer-supplied inline creative."
-          filters:
-            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -940,8 +936,8 @@ phases:
             path: "products[0].format_ids[0].id"
             description: "EXPECTED AND NON-GATING for a canonical-only seller: format_ids is deprecated in 3.2 and a product carrying format_options[] alone is conformant, so a red here means the legacy path below is standing down and no action is required. It is graded only so an advertised legacy representation cannot skip silently."
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "The captured pricing option identifies either fixed pricing or an auction option; the runner supplies the auction bid from discovery"
           - check: field_value
             path: "context.correlation_id"
             value: "inline_creatives_without_sync--get_products_legacy"
@@ -1158,4 +1154,4 @@ phases:
           - id: inline_creative_path_coverage
             check: any_of
             allowed_values: [inline_creative_path_exercised]
-            description: "No format path completed create, update, and readback. If a path above failed, that failure is the cause - fix it there; this check is only the summary. If every path stood down instead, neither discovery gate closed on a usable product: the canonical paths need products[0] of the canonical get_products response to carry a fixed_price pricing option and a format_options[0] declaration, and the legacy path needs products[0] of its own response to carry a fixed_price pricing option and format_ids[0].id. A product that declares formats can still close every gate by returning no fixed_price pricing option first, or by carrying a format_options[0] declaration whose format_kind is not image - this fixture's creative is a 300x250 image, so the canonical probe asserts that kind and stands the canonical lanes down when it differs."
+            description: "No format path completed create, update, and readback. If a path above failed, that failure is the cause - fix it there; this check is only the summary. If every path stood down instead, neither discovery gate closed on a usable product: the canonical paths need products[0] of the canonical get_products response to carry a pricing option and a format_options[0] declaration, and the legacy path needs products[0] of its own response to carry a pricing option and format_ids[0].id. A product that declares formats can still close every gate by returning no pricing option first, or by carrying a format_options[0] declaration whose format_kind is not image - this fixture's creative is a 300x250 image, so the canonical probe asserts that kind and stands the canonical lanes down when it differs."

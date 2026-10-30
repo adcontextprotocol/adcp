@@ -1,16 +1,20 @@
 'use strict';
 
-/**
- * Test-only forwarder for the modern storyboard runner.
- *
- * `inline_creatives_without_sync` gates its three canonical paths with
- * `skip_if` expressions that read captured context. The root project's
- * production `@adcp/sdk` 9.6.2 only evaluates `test_kit.*` in `skip_if`, so it
- * cannot execute that storyboard at all. This workspace pins a published
- * 17.0.0-beta.3 purely for the regression tests; the server keeps 9.6.2.
- *
- * Only the public `/testing` surface is forwarded. Do not add forwarders for
- * anything the regression tests do not need, and never import this from
- * `server/` — runtime code must keep using `@adcp/sdk`.
- */
-module.exports = require('@adcp/sdk/testing');
+/** Test-only runner: production code continues using @adcp/sdk 9.6.2. */
+const path = require('node:path');
+const testing = require('@adcp/sdk/testing');
+const version = require('../../package.json').version;
+
+module.exports = {
+  ...testing,
+  runStoryboard(agentUrl, storyboard, options = {}) {
+    return testing.runStoryboard(agentUrl, storyboard, {
+      // Untagged in-process fakes intentionally have no transport pin. The
+      // declared server version still selects the real 3.1 schema and wire
+      // compatibility rules; real clients receive an explicit release pin.
+      ...(options._client ? { _serverAdcpVersion: version } : { adcpVersion: version }),
+      schemaRoot: path.join(__dirname, '../../dist/schemas', version),
+      ...options,
+    });
+  },
+};

@@ -122,7 +122,7 @@ fixtures:
       pricing_options:
         - pricing_option_id: "test-pricing-cpm"
           pricing_model: "cpm"
-          fixed_price: 5.00
+          floor_price: 5.00
           currency: "USD"
 
 phases:

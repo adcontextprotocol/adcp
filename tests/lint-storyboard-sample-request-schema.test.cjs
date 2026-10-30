@@ -319,3 +319,24 @@ test('normalizeSubstitutions synthesizes shape-valid placeholders at object-type
   assert.ok('data_provider_domain' in oneOfSynth);
   assert.ok('id' in oneOfSynth);
 });
+
+test('dynamic currency filters receive non-empty schema-valid array placeholders', () => {
+  const Ajv = require('ajv');
+  const filterSchema = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/product-filters.json'), 'utf8'));
+  const currencies = filterSchema.properties.pricing_currencies;
+  const validate = new Ajv({ strict: false }).compile(currencies);
+  for (const value of ['$context.accepted_pricing_currencies', ['$context.pricing_currency']]) {
+    const normalized = normalizeSubstitutions(value, currencies);
+    assert.equal(validate(normalized), true, JSON.stringify(validate.errors));
+    assert.ok(normalized.length > 0, 'the placeholder preserves the non-empty filter contract');
+  }
+});
+
+test('literal malformed currency filters remain invalid after substitution normalization', () => {
+  const Ajv = require('ajv');
+  const filterSchema = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/product-filters.json'), 'utf8'));
+  const currencies = filterSchema.properties.pricing_currencies;
+  const validate = new Ajv({ strict: false }).compile(currencies);
+  assert.equal(validate(normalizeSubstitutions(['not-a-currency'], currencies)), false);
+  assert.equal(validate(normalizeSubstitutions([], currencies)), false);
+});

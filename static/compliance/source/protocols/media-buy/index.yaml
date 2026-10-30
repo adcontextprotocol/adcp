@@ -8,6 +8,7 @@ required_tools:
   - get_products
   - create_media_buy
 requires_scenarios:
+  - media_buy_seller/product_filter_behavior
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
@@ -74,7 +75,7 @@ fixtures:
   products:
     - product_id: "sports_preroll_q2"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_30s"
     - product_id: "lifestyle_display_q2"
@@ -443,11 +444,13 @@ phases:
             - product_id: "sports_preroll_q2"
               budget: 25000
               pricing_option_id: "cpm_non_guaranteed"
+              bid_price: 25
               creative_assignments:
                 - creative_id: "video_30s_trail_pro"
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
+              bid_price: 10
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:

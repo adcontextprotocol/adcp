@@ -90,7 +90,7 @@ fixtures:
   products:
     - product_id: "cpcv_video_q2"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_30s"
   pricing_options:
@@ -188,6 +188,7 @@ phases:
             - product_id: "cpcv_video_q2"
               budget: 30000
               pricing_option_id: "auction_cpm"
+              bid_price: 18
               optimization_goals:
                 - kind: "metric"
                   metric: "completed_views"
@@ -255,6 +256,7 @@ phases:
             - product_id: "cpcv_video_q2"
               budget: 5000
               pricing_option_id: "auction_cpm"
+              bid_price: 18
               optimization_goals:
                 - kind: "metric"
                   metric: "completed_views"

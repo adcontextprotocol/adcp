@@ -121,12 +121,12 @@ fixtures:
       pricing_option_id: "cpm_vendor_opt"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 14.0
+      floor_price: 14.0
     - product_id: "display_vendor_metric_unreportable"
       pricing_option_id: "cpm_vendor_opt_unreportable"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 14.0
+      floor_price: 14.0
 
 phases:
   - id: discover_vendor_metric_optimization
@@ -178,7 +178,6 @@ phases:
           buying_mode: "brief"
           brief: "Display inventory with attention-score optimization from attentionvendor."
           filters:
-            is_fixed_price: true
             channels: ["display"]
           account:
             brand:
@@ -196,8 +195,8 @@ phases:
             path: "products[0].product_id"
             description: "At least one product returned"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "The captured pricing option is selectable with fixed or auction pricing"
           - check: field_present
             path: "products[0].vendor_metric_optimization.supported_metrics"
             description: "Product declares vendor_metric_optimization.supported_metrics[]"
@@ -554,6 +553,7 @@ phases:
           packages:
             - product_id: "display_vendor_metric_unreportable"
               pricing_option_id: "cpm_vendor_opt_unreportable"
+              bid_price: 21
               budget: 5000
               optimization_goals:
                 - kind: "vendor_metric"
