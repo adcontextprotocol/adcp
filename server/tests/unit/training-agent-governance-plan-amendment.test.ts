@@ -46,7 +46,8 @@ async function approvedIntent(): Promise<string> {
       idempotency_key: 'plan-amendment-7758-create-0001',
     },
   }, BUYER_CTX) as Record<string, any>;
-  expect(intent.verdict ?? intent.status, JSON.stringify(intent)).toBe('approved');
+  expect(intent.verdict, JSON.stringify(intent)).toBe('approved');
+  expect(intent.status, 'from 3.1 the verdict stays out of the envelope status').toBe('completed');
   return intent.governance_context as string;
 }
 
@@ -72,7 +73,8 @@ describe('execution check after a plan amendment (governance_denied)', () => {
       const context = await approvedIntent();
       await amendTo(10_000);
       const result = await purchaseCheck(context, { total_budget: 25_000, currency: 'USD' });
-      expect(result.verdict ?? result.status).toBe('denied');
+      expect(result.verdict).toBe('denied');
+      expect(result.status).toBe('completed');
       expect(result.check_type).toBe('execution');
       expect(result.findings).toEqual(expect.arrayContaining([
         expect.objectContaining({ category_id: 'budget_authority', severity: 'critical' }),
@@ -86,7 +88,8 @@ describe('execution check after a plan amendment (governance_denied)', () => {
       const context = await approvedIntent();
       await amendTo(10_000);
       const result = await purchaseCheck(context, {});
-      expect(result.verdict ?? result.status).toBe('denied');
+      expect(result.verdict).toBe('denied');
+      expect(result.status).toBe('completed');
       expect(result.findings).toEqual(expect.arrayContaining([
         expect.objectContaining({ category_id: 'budget_authority' }),
       ]));
@@ -97,7 +100,8 @@ describe('execution check after a plan amendment (governance_denied)', () => {
     await runWithSessionContext(async () => {
       const context = await approvedIntent();
       const result = await purchaseCheck(context, {});
-      expect(result.verdict ?? result.status, JSON.stringify(result)).toBe('approved');
+      expect(result.verdict, JSON.stringify(result)).toBe('approved');
+      expect(result.status).toBe('completed');
       expect(result.governance_context).toEqual(expect.any(String));
     });
   });

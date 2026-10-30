@@ -91,8 +91,10 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // from colliding with BiddingPolicy's CostPer and Strength. It is embedded in
 // list_products, request_proposals, and refine_proposals (~0.5 KiB each),
 // measured at 452,953 bytes (442.3 KiB) and bounded at 443 KiB.
+// The media-buy inputs reach core/task-id.json, the one task_id definition,
+// which brings them to 453_646 bytes, 14 over the former 443 KiB budget.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 443,
+  'media-buy': 444,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -102,8 +104,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // supported_viewability_standards capability add ~1.8 KB to the
 // comply_test_controller request, which already sat at 1_249_930 bytes.
 // Experimental Product.execution_requirements (#7763) reaches it through the
-// seeded Product and brings it to ~1_260_400 bytes.
-const PARITY_COMPILE_LIMIT = 1_265_000;
+// seeded Product and brings it to ~1_260_400 bytes. The one task_id,
+// task-status and task-message definitions it reaches through forced task
+// results bring it to 1_265_334 bytes.
+const PARITY_COMPILE_LIMIT = 1_266_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1056,6 +1060,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     },
   };
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',
@@ -1065,6 +1070,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     }],
   }), true, JSON.stringify(validateProjectedListProducts.errors));
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',

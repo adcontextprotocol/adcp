@@ -327,6 +327,27 @@ test('expected_arm: "acquired" restricts capture path resolution', () => {
   assert.equal(violations[0].rule, 'path_not_in_schema');
 });
 
+test('an arm carries the fields its document composes through the root allOf', () => {
+  // The submitted branch declares no task_id; the protocol envelope, which the
+  // response composes through its root allOf, declares it.
+  const step = (path) => ({
+    phases: [{
+      id: 'p',
+      steps: [{
+        id: 's',
+        task: 'create_media_buy',
+        response_schema_ref: 'media-buy/create-media-buy-response.json',
+        expected_arm: 'submitted',
+        context_outputs: [{ name: 'captured', path }],
+      }],
+    }],
+  });
+  assert.deepEqual(lintDoc(step('task_id'), '/synth/test.yaml'), []);
+  const violations = lintDoc(step('media_buy_id'), '/synth/test.yaml');
+  assert.equal(violations.length, 1, 'a success-only field still does not resolve on the submitted arm');
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+});
+
 test('unknown_expected_arm fires for context_outputs steps too', () => {
   const doc = {
     phases: [

@@ -1656,7 +1656,10 @@ export function handleCreativeApproval(
   const creativeFormat = req.creative_format || req.creative?.format;
 
   return {
-    status: 'approved',
+    // The task status; the decision is `approval_status`
+    // (served-outcome-status.ts projects it onto a served 3.0).
+    status: 'completed',
+    approval_status: 'approved',
     rights_id: rightsId,
     creative_id: creativeId,
     creative_url: creativeUrl,

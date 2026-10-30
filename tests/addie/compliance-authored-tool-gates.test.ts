@@ -176,7 +176,7 @@ function doohResponder(storyboard: Storyboard, broken?: string): Respond {
       } };
       case 'get_products': return { success: true, data: { products: [], cache_scope: 'account', context } };
       case 'list_products': return { success: true, data: {
-        outcome: 'listed', products: [product], feed_version: 'dooh-feed', cache_scope: 'account', context,
+        status: 'completed', outcome: 'listed', products: [product], feed_version: 'dooh-feed', cache_scope: 'account', context,
       } };
       case 'sync_creatives': return { success: true, data: {
         creatives: [{ creative_id: 'dooh_acme_portrait_1080x1920', action: 'created' }], context,

@@ -33,6 +33,7 @@
         }]
       },
       "compact_projection": {
+        "status": "completed",
         "outcome": "products_available",
         "products": [{
           "product_id": "brief-display-25",
@@ -112,6 +113,7 @@
         }]
       },
       "compact_projection": {
+        "status": "completed",
         "outcome": "products_available",
         "products": [{
           "product_id": "brief-display-30",
@@ -197,6 +199,7 @@
         }]
       },
       "compact_projection": {
+        "status": "completed",
         "outcome": "products_available",
         "products": [{
           "product_id": "brief-display-31",
@@ -247,6 +250,7 @@
   "listed_purchase_cases": [
     {
       "compact_projection": {
+        "status": "completed",
         "outcome": "products_available",
         "products": [{
           "product_id": "account-listed-display",

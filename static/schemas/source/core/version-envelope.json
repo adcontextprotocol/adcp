@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/version-envelope.json",
   "title": "AdCP Version Envelope",
-  "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into AdCP request schemas and shared response components so the version semantics live in one place. Strict (`additionalProperties: false`) request schemas also redeclare these two fields in their own `properties` via `$ref`, because draft-07 does not evaluate properties across `allOf`. The Trusted Match match requests are the exception: they inline both fields for their strict privacy boundary. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+  "description": "Release-precision AdCP protocol version negotiation fields, defined once. Request schemas compose this envelope directly through `allOf`. Strict (`additionalProperties: false`) request schemas also redeclare these two fields in their own `properties` via `$ref`, because draft-07 does not evaluate properties across `allOf`. The Trusted Match match requests are the exception: they inline both fields for their strict privacy boundary. On a request, these fields are part of the request payload: the buyer's version pin. Responses do not compose this envelope directly. `core/protocol-envelope.json` composes it, so on a response `adcp_version` and `adcp_major_version` are envelope fields that the server framework stamps beside `status`, `task_id` and the other protocol-layer fields, not task body data.",
   "type": "object",
   "properties": {
     "adcp_version": {

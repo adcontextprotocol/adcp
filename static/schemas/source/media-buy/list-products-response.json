@@ -4,6 +4,9 @@
   "title": "List Products Response",
   "description": "Canonical product offers and continuation state. Every product carries product_id and name; other compact detail fields follow the request's fields selection. Legacy named-format identifiers are never returned. This response never contains proposals or proposal-lifecycle fields.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "discriminator": {
     "propertyName": "outcome"
   },
@@ -40,7 +43,6 @@
         "additionalProperties": false
       }
     },
-    "replayed": { "type": "boolean", "const": true },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

@@ -44,7 +44,7 @@
     "brand.json##/oneOf": {
       "kind": "dangerous",
       "variants": 5,
-      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[house] | 2:req=[∅] | 3:req=[house] | 4:req=[∅]"
+      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[house] | 2:req=[∅] | 3:req=[house] | 4:req=[id,names]"
     },
     "brand/acquire-rights-response.json##/oneOf": {
       "kind": "dangerous",
@@ -122,9 +122,9 @@
       "note": "0:[standards_id] | 1:[errors]"
     },
     "content-standards/get-content-standards-response.json##/oneOf": {
-      "kind": "dangerous",
+      "kind": "narrowable",
       "variants": 2,
-      "note": "shared-required=[∅]; 0:req=[∅] | 1:req=[errors]"
+      "note": "0:[standards_id] | 1:[errors]"
     },
     "content-standards/get-media-buy-artifacts-response.json##/oneOf": {
       "kind": "narrowable",
@@ -223,8 +223,8 @@
     },
     "creative/get-creative-features-response.json##/oneOf": {
       "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[results] | 1:[errors]"
+      "variants": 3,
+      "note": "0:[results] | 1:[errors] | 2:[status,task_id]"
     },
     "creative/list-creatives-response.json##/properties/creatives/items/oneOf": {
       "kind": "narrowable",
