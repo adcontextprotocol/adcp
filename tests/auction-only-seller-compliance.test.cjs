@@ -12,6 +12,27 @@ function loadMediaBuyStoryboard(name) {
 
 const metricAndFormatScenarios = ['measurement_accountability', 'vendor_metric_accountability', 'canonical_formats'];
 
+test('authored literal auction packages carry bids without depending on brief ranking', () => {
+  const storyboards = [
+    YAML.parse(fs.readFileSync(path.join(complianceRoot, 'protocols/media-buy/index.yaml'), 'utf8')),
+    ...['audience_buy_flow', 'completed_views_buy_flow', 'reach_buy_flow', 'dependency_impairment_audience'].map(loadMediaBuyStoryboard),
+  ];
+  let checked = 0;
+  for (const storyboard of storyboards) {
+    const prices = storyboard.fixtures.pricing_options;
+    for (const phase of storyboard.phases) for (const step of phase.steps) {
+      if (!['create_media_buy', 'update_media_buy'].includes(step.task)) continue;
+      for (const pkg of step.sample_request?.packages ?? []) {
+        const price = prices.find(price => price.product_id === pkg.product_id && price.pricing_option_id === pkg.pricing_option_id);
+        if (!price || price.fixed_price !== undefined || price.floor_price === undefined) continue;
+        assert.ok(pkg.bid_price >= price.floor_price, `${storyboard.id}/${step.id}/${pkg.product_id} needs a bid at its authored floor`);
+        checked++;
+      }
+    }
+  }
+  assert.ok(checked >= 10, 'positive and negative package probes retain their intended auction inputs');
+});
+
 function productFixtures(storyboard) {
   if (!storyboard || typeof storyboard !== 'object') return [];
   return [

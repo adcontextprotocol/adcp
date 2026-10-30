@@ -152,12 +152,13 @@ test('lost authority is reported in the caller\'s own subscription state', () =>
   assert.ok(state({ ...current, prior_versions: [{ subscription_version: 1, accepted_at: '2026-10-01T00:00:00Z', superseded_at: '2026-11-01T00:00:00Z' }] }), JSON.stringify(state.errors));
 });
 
-test('receipts and statuses stay acceptable after revocation for revisions already read', () => {
+test('revocation refuses receipts and statuses; winding down uses a reduced grant', () => {
   for (const file of ['media-buy/sync-reporting-receipts-request.json', 'media-buy/sync-reporting-status-request.json']) {
     const rule = read(file)['x-adcp-validation'].after_revocation;
-    assert.match(rule, /read before unauthorized_at/, file);
-    assert.match(rule, /status_retention_days/, file);
+    assert.match(rule, /Authority is never extended past its end/, file);
     assert.match(rule, /unknown identifier/, file);
+    assert.match(rule, /keeps a reduced grant instead of revoking/, file);
+    assert.doesNotMatch(rule, /remains acceptable/, file);
   }
 });
 

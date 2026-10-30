@@ -10,6 +10,8 @@ import { registerStoryboardCandidateSchemaRoot } from '../manual/storyboard-cand
 
 const CANDIDATE_BUNDLE = '3.3.0-beta.999999';
 const CANDIDATE_WIRE = '3.3-beta.999999';
+const STRICT_FIXTURE_RELEASE = '3.3.0-beta.2';
+const CANDIDATE_SCHEMA_PREFIX = `/schemas/${CANDIDATE_BUNDLE}/`;
 const OUTPUT_PREFIX = 'CANDIDATE_SCHEMA_WITNESS ';
 
 type DeclineResponse = {
@@ -104,17 +106,24 @@ describe('candidate server schema registration', () => {
 
   beforeAll(async () => {
     schemaRoot = mkdtempSync(path.join(tmpdir(), 'adcp-future-candidate-schema-'));
-    cpSync(path.resolve('static/schemas/source'), schemaRoot, { recursive: true });
+    // Keep this controlled strict contract independent of development schemas,
+    // which may legitimately add envelope fields in a subsequent release.
+    cpSync(path.resolve('dist/schemas', STRICT_FIXTURE_RELEASE), schemaRoot, { recursive: true, dereference: true });
     for (const file of readdirSync(schemaRoot, { recursive: true }) as string[]) {
       if (!file.endsWith('.json')) continue;
       const filename = path.join(schemaRoot, file);
-      writeFileSync(filename, readFileSync(filename, 'utf8').replaceAll('"/schemas/', '"/schemas/latest/'));
+      writeFileSync(filename, readFileSync(filename, 'utf8').replaceAll(`/schemas/${STRICT_FIXTURE_RELEASE}/`, CANDIDATE_SCHEMA_PREFIX));
     }
     const indexPath = path.join(schemaRoot, 'index.json');
     const index = JSON.parse(readFileSync(indexPath, 'utf8'));
-    writeFileSync(indexPath, JSON.stringify({ ...index, adcp_version: CANDIDATE_BUNDLE }));
+    writeFileSync(indexPath, JSON.stringify({
+      ...index, adcp_version: CANDIDATE_BUNDLE, published_version: CANDIDATE_BUNDLE,
+      baseUrl: `/schemas/${CANDIDATE_BUNDLE}`,
+    }));
     const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async uri => {
-      const relative = new URL(uri, 'https://adcontextprotocol.org').pathname.replace(/^\/schemas\/(?:latest\/)?/, '');
+      const pathname = new URL(uri, 'https://adcontextprotocol.org').pathname;
+      if (!pathname.startsWith(CANDIDATE_SCHEMA_PREFIX)) throw new Error(`Schema escaped the controlled candidate: ${uri}`);
+      const relative = pathname.slice(CANDIDATE_SCHEMA_PREFIX.length);
       return JSON.parse(readFileSync(path.join(schemaRoot, relative), 'utf8'));
     } });
     addFormats(ajv);

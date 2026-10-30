@@ -1782,6 +1782,18 @@ This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version
 - 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
 - e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
 
+## 3.1.31
+
+### Patch Changes
+
+- eb9b943: Correct media-buy compliance fixtures for auction-only AdCP 3.1 sellers. Price-independent tests use non-guaranteed CPM floors and supply valid bids. Channel fixtures use the 3.1 enum, including `olv` for online video.
+
+  Optional metric and canonical-format scopes discover native support before seeding supported fixtures. Canonical compatibility requires explicit 3.1 `canonical_creatives` support; custom and experimental declarations have independent applicability. Currency checks use effective account pricing, preserve valid empty results, and avoid rate-card identity or ordering assumptions. Product-filter checks no longer seed unsupported guaranteed inventory.
+
+  The maintenance server retains its production SDK. Seller regression and manual compliance runners use an isolated modern test-only SDK and the immutable 3.1 schema snapshot; unrelated cohorts and frozen 3.0 compatibility runs retain their existing runner. The training agent now advertises the stable 3.1 contract it already serves, preventing exact 3.1 release requests from silently negotiating down to 3.0. Discover-before-seed and complete filter semantics require a compatible modern compliance runner; published versioned artifacts remain unchanged until the next patch release.
+
+- f1445df: Seed the sandbox account required by the three provenance storyboards and creative_reception on 3.1. Each scenario declares the same idempotent brand/operator sandbox fixture and uses an explicit sandbox AccountRef, so cold starts and rotated runs do not rely on another storyboard provisioning it. Register account seeding in the sales training tenant with a bounded replay cache scoped to the authenticated caller, preserving same-caller idempotency and the frozen 3.0 compatibility surface. Existing release artifacts and SDK pins are unchanged.
+
 ## 3.1.30
 
 ### Patch Changes
