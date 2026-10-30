@@ -867,3 +867,20 @@ test('per-account state is bounded inline and paged through get_principal', () =
   assert.equal(state.properties.accounts_with_exceptions.maxItems, 1000);
   assert.deepEqual(state.dependencies, { prior_versions: ['prior_versions_count'], accounts_with_exceptions: ['accounts_with_exceptions_count'], accounts_unauthorized: ['accounts_unauthorized_count'] });
 });
+
+test('a partial grant keeps coverage and refuses the missing reconciliation task with SCOPE_INSUFFICIENT', () => {
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].coverage, /Coverage depends on that task alone: a partial grant without sync_reporting_receipts or sync_reporting_status keeps the account covered/);
+  for (const [file, task] of [['media-buy/sync-reporting-receipts-request.json', 'sync_reporting_receipts'], ['media-buy/sync-reporting-status-request.json', 'sync_reporting_status']]) {
+    const rule = read(file)['x-adcp-validation'].after_revocation;
+    assert.match(rule, new RegExp(`A partial grant is not a loss of authority: when the caller's authorization for the account lists get_reporting_status but not ${task}`), file);
+    assert.match(rule, /SCOPE_INSUFFICIENT, never the unknown-identifier shape/, file);
+  }
+  assert.match(read('media-buy/sync-reporting-receipts-request.json')['x-adcp-validation'].after_revocation, /the pending receipt is the buyer's, never a seller delay/);
+});
+
+test('managed-delivery row schemas declare account_id for subscription delivery', () => {
+  const rule = read('core/reporting-delivery-offering.json')['x-adcp-validation'].subscription_rows;
+  assert.match(rule, /declares account_id as a required string property, and whose primary_keys include account_id/);
+  assert.match(rule, /Core offerings, delivered per account through the API transports, are exempt/);
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].destination, /whose primary_keys include account_id/);
+});

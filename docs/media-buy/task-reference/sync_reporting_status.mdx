@@ -237,6 +237,9 @@ After the buyer loses authority for an account, every status for that account fa
 exactly like an unknown identifier. A seller that wants the buyer to finish
 reconciling keeps a reduced grant listing this task instead of revoking. See
 [when authorization ends](/docs/media-buy/task-reference/get_reporting_status#when-authorization-ends).
+A grant that lists `get_reporting_status` but not this task is a partial grant: the
+account stays covered, and this task fails for it with
+[`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient).
 
 ## Relationship to billing receipts
 

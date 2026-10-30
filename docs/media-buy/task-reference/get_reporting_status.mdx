@@ -889,6 +889,13 @@ data.
   account is unavailable to every task, including
   [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
   and [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
+- **Partial grants.** Coverage depends only on `get_reporting_status` in
+  `allowed_tasks`. A grant that lists it but not `sync_reporting_receipts` or
+  `sync_reporting_status` keeps the account covered and readable. The seller refuses
+  the missing task for that account with
+  [`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient),
+  not as an unknown identifier. A billing obligation the buyer can't receipt stays
+  receipt-pending, and the missing receipt is the buyer's, never a seller delay.
 - **Winding down instead of revoking.** A seller that wants a buyer to finish
   reconciling after a relationship ends, for example after an agency change, keeps
   a reduced grant instead of revoking: an `authorization` whose `allowed_tasks`

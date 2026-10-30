@@ -44,6 +44,9 @@ identifier. A seller that wants billing reconciliation to finish after a
 relationship ends, for example after an agency change, keeps a reduced grant
 listing this task instead of revoking. See
 [when authorization ends](/docs/media-buy/task-reference/get_reporting_status#when-authorization-ends).
+A grant that lists [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) but not this task is a partial grant, not a
+loss of authority: the account stays covered, and this task fails for it with
+[`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient).
 
 **Request schema:** [`sync-reporting-receipts-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/sync-reporting-receipts-request.json)
 
