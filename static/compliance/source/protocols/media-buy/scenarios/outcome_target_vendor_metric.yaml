@@ -166,7 +166,7 @@ phases:
         title: "Request proposals for a 5,000 store-visit target"
         task: request_proposals
         schema_ref: "media-buy/request-proposals-request.json"
-        response_schema_ref: "media-buy/request-proposals-response.json"
+        response_schema_ref: "media-buy/request-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/request_proposals"
         stateful: true
         expected: |
@@ -254,7 +254,7 @@ phases:
         title: "Request proposals for store visits at a 4 USD cap on a 5,000 USD budget"
         task: request_proposals
         schema_ref: "media-buy/request-proposals-request.json"
-        response_schema_ref: "media-buy/request-proposals-response.json"
+        response_schema_ref: "media-buy/request-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/request_proposals"
         stateful: true
         expected: |
@@ -352,7 +352,7 @@ phases:
         title: "Reject store visits from a vendor no product declares"
         task: request_proposals
         schema_ref: "media-buy/request-proposals-request.json"
-        response_schema_ref: "media-buy/request-proposals-response.json"
+        response_schema_ref: "media-buy/request-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/request_proposals"
         stateful: false
         expect_error: true

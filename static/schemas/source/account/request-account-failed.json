@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/request-account-failed.json",
+  "title": "Request Account - Failed",
+  "x-status": "experimental",
+  "description": "Body of a failed request_account response. Both error layers are present: the envelope's adcp_error and at least one errors[] entry.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    },
+    "request": {
+      "$ref": "/schemas/account/request-account-response.json#/properties/request"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "adcp_error",
+    "errors"
+  ],
+  "additionalProperties": true
+}

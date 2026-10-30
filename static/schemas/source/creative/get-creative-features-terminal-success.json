@@ -3,6 +3,9 @@
   "$id": "/schemas/creative/get-creative-features-terminal-success.json",
   "title": "GetCreativeFeaturesSuccess",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "description": "Terminal success response. In AdCP 3.x evaluation_id is an optional migration field that providers SHOULD emit; it becomes required in AdCP 4.0. When present, it is the provider-side reconciliation identity allocated when the evaluation was accepted and remains stable across exact replays and asynchronous completion.",
   "properties": {
     "evaluation_id": {
@@ -49,9 +52,6 @@
       "$ref": "/schemas/core/creative-consumption.json",
       "description": "Structured consumption details for this evaluation. Informational — lets the buyer verify that vendor_cost is consistent with the rate card. vendor_cost is the billing source of truth."
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
@@ -60,13 +60,5 @@
     "results"
   ],
   "additionalProperties": true,
-  "not": {
-    "anyOf": [
-      { "required": ["errors"] },
-      {
-        "properties": { "status": { "const": "submitted" } },
-        "required": ["status"]
-      }
-    ]
-  }
+  "not": { "required": ["errors"] }
 }

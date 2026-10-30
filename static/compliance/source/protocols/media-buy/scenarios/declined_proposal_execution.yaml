@@ -117,7 +117,7 @@ phases:
         title: "Request a draft proposal"
         task: request_proposals
         schema_ref: "media-buy/request-proposals-request.json"
-        response_schema_ref: "media-buy/request-proposals-response.json"
+        response_schema_ref: "media-buy/request-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/request_proposals"
         stateful: true
         sample_request:
@@ -147,7 +147,7 @@ phases:
         title: "Finalize the draft"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         sample_request:
@@ -184,7 +184,7 @@ phases:
         title: "Record the decline"
         task: decline_proposals
         schema_ref: "media-buy/decline-proposals-request.json"
-        response_schema_ref: "media-buy/decline-proposals-response.json"
+        response_schema_ref: "media-buy/decline-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/decline_proposals"
         stateful: true
         sample_request:
@@ -209,7 +209,7 @@ phases:
         title: "Reject canonical proposal acceptance"
         task: accept_proposal
         schema_ref: "media-buy/accept-proposal-request.json"
-        response_schema_ref: "media-buy/accept-proposal-response.json"
+        response_schema_ref: "media-buy/accept-proposal-wire-response.json"
         doc_ref: "/media-buy/task-reference/accept_proposal"
         expect_error: true
         negative_path: payload_well_formed
@@ -235,7 +235,7 @@ phases:
         task: create_media_buy
         requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed

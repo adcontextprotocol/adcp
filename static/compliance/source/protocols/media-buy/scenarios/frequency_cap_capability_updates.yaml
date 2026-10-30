@@ -122,7 +122,7 @@ phases:
         title: "Require mutable package-cap support with an inherited window unit"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         sample_request:
@@ -147,7 +147,7 @@ phases:
         title: "Create independent immutable and mutable package caps"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         sample_request:
@@ -223,7 +223,7 @@ phases:
         title: "Reject a cap change on the create-only package"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -248,7 +248,7 @@ phases:
         title: "Authorization precedes capability on the create-only package"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -274,7 +274,7 @@ phases:
         title: "Reject a count outside the mutable product's allowed values"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -299,7 +299,7 @@ phases:
         title: "Update the mutable package cap"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         stateful: true
         sample_request:

@@ -175,7 +175,7 @@ phases:
           non-terminal and capped to one product.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: get_products_pagination_integrity
         stateful: true
@@ -252,7 +252,7 @@ phases:
           response must be terminal and must not carry a stale cursor.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: get_products_pagination_integrity
         stateful: true

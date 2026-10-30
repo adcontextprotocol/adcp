@@ -19,9 +19,6 @@
         }
       ],
       "properties": {
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -37,9 +34,6 @@
             "$ref": "/schemas/core/error.json"
           }
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -48,6 +42,5 @@
         "errors"
       ]
     }
-  ],
-  "properties": {}
+  ]
 }

@@ -92,7 +92,7 @@ phases:
         title: "Create revision rev_launch_1"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives#creative-revisions"
         comply_scenario: creative_flow
         stateful: true
@@ -140,7 +140,7 @@ phases:
         title: "Attempt to replace the asset without a new revision"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives#creative-revisions"
         comply_scenario: creative_flow
         stateful: true
@@ -230,7 +230,7 @@ phases:
         title: "Create revision rev_launch_2 with provenance"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives#creative-revisions"
         comply_scenario: creative_flow
         stateful: true

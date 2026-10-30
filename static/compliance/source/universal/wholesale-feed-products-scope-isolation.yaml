@@ -91,7 +91,7 @@ phases:
         title: "Bootstrap public product feed"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/tasks/get_products"
         stateful: true
         context_outputs:
@@ -132,7 +132,7 @@ phases:
         title: "Account-scope probe must not honor a public token"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/tasks/get_products"
         stateful: true
         expected: |

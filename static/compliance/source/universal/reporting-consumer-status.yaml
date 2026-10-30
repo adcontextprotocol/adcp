@@ -242,7 +242,7 @@ phases:
         title: "Read the missing obligation as a typed mismatch"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:
@@ -400,7 +400,7 @@ phases:
         title: "Keep the stale buyer status visible after seller recovery"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         context_outputs:
@@ -525,7 +525,7 @@ phases:
         title: "Read the resolved loop without losing history"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:
@@ -584,7 +584,7 @@ phases:
         title: "Hold the stale received status at delayed inside the grace window"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         context_outputs:
@@ -680,7 +680,7 @@ phases:
         title: "Escalate to a contact_ action while the grace window is still open"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:
@@ -756,7 +756,7 @@ phases:
         title: "Surface changed-after-read as a typed mismatch"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:
@@ -832,7 +832,7 @@ phases:
         title: "Confirm the rejected fork changed nothing"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:
@@ -903,7 +903,7 @@ phases:
         title: "Do not count silence before the deadline"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:
@@ -952,7 +952,7 @@ phases:
         title: "Count the missed deadline as visibility only"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         context_outputs:
@@ -1017,7 +1017,7 @@ phases:
         title: "Clear the count without moving health"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:
@@ -1402,7 +1402,7 @@ phases:
         title: "Degrade only this caller's view"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:
@@ -1447,7 +1447,7 @@ phases:
         title: "Read the same chain through the exact-revision view"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         stateful: true
         sample_request:

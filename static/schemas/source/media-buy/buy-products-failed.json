@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/buy-products-failed.json",
+  "title": "Buy Products - Failed",
+  "description": "Body of a failed buy_products response.",
+  "allOf": [{ "$ref": "/schemas/media-buy/media-buy-commitment-failed.json" }]
+}

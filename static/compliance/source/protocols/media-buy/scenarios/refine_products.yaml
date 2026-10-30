@@ -82,7 +82,7 @@ phases:
         title: "Send a brief"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: full_sales_flow
         stateful: false
@@ -122,7 +122,7 @@ phases:
         title: "Refine with request-level and product-level changes"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: full_sales_flow
         stateful: true

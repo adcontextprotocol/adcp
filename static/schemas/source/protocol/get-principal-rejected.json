@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/protocol/get-principal-rejected.json",
+  "title": "Get Principal - Rejected",
+  "description": "Body of a rejected get_principal response: the same body as a failed one.",
+  "x-status": "experimental",
+  "allOf": [
+    {
+      "$ref": "/schemas/protocol/get-principal-failed.json"
+    }
+  ]
+}

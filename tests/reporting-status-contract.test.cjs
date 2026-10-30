@@ -288,7 +288,8 @@ describe('managed reporting status contract', () => {
     [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal, validateAdjustment, validateAdjustmentReceipt, validateReliabilityStatistics, validateLedgerWebhook, validateStatusWebhook, validateConsumerStatus, validateStatusSyncRequest, validateStatusSyncResponse, validateStatusIssue] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
-      compile('/schemas/media-buy/get-reporting-status-response.json'),
+      // The wire response covers completed reads and failed lookups.
+      compile('/schemas/media-buy/get-reporting-status-wire-response.json'),
       compile('/schemas/core/reporting-delivery-ready-webhook.json'),
       compile('/schemas/core/notification-config.json'),
       compile('/schemas/protocol/get-adcp-capabilities-response.json'),

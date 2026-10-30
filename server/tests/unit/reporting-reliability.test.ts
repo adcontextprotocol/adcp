@@ -42,7 +42,8 @@ import { reportingSummaryCases } from '../../../tests/helpers/reporting-summary-
  * projection once the SDK is regenerated from RC.3 schemas.
  */
 function expectReliableReportingWireShape(response: unknown): void {
-  const validation = validateSourceSchema('media-buy/get-reporting-status-response.json', response);
+  // The wire response covers completed reads and failed lookups.
+  const validation = validateSourceSchema('media-buy/get-reporting-status-wire-response.json', response);
   expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
   expect(validation.valid).toBe(true);
 }

@@ -96,7 +96,7 @@ phases:
         title: "Commit a 60/40 package allocation"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         stateful: true
         sample_request:
           account:
@@ -158,7 +158,7 @@ phases:
         title: "Scale the fixed allocation to 50,000"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         stateful: true
         sample_request:
           account:
@@ -221,7 +221,7 @@ phases:
         title: "Reject total_budget that does not match the explicit package sum"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         stateful: true
         expect_error: true
         sample_request:

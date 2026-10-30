@@ -190,7 +190,7 @@ phases:
         title: Accept a configuration change after the package was recorded
         task: update_media_buy
         schema_ref: media-buy/update-media-buy-request.json
-        response_schema_ref: media-buy/update-media-buy-response.json
+        response_schema_ref: media-buy/update-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/update_media_buy
         stateful: true
         sample_request:
@@ -220,7 +220,7 @@ phases:
         title: Cancel only the first package and capture its original timestamp
         task: update_media_buy
         schema_ref: media-buy/update-media-buy-request.json
-        response_schema_ref: media-buy/update-media-buy-response.json
+        response_schema_ref: media-buy/update-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/update_media_buy
         stateful: true
         sample_request:
@@ -322,7 +322,7 @@ phases:
         title: Cancel the whole buy with a different reason
         task: update_media_buy
         schema_ref: media-buy/update-media-buy-request.json
-        response_schema_ref: media-buy/update-media-buy-response.json
+        response_schema_ref: media-buy/update-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/update_media_buy
         stateful: true
         sample_request:

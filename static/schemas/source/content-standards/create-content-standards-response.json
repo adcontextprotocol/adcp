@@ -18,9 +18,6 @@
           "type": "string",
           "description": "Unique identifier for the created standards configuration"
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -29,31 +26,6 @@
         "standards_id"
       ]
     },
-    {
-      "type": "object",
-      "description": "Error response",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "conflicting_standards_id": {
-          "type": "string",
-          "description": "If the error is a scope conflict, the ID of the existing standards that conflict"
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ]
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/content-standards/create-content-standards-failed.json" }
+  ]
 }

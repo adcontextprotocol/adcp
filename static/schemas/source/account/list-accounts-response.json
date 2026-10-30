@@ -41,9 +41,6 @@
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

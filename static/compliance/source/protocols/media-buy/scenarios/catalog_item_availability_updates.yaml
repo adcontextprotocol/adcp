@@ -69,7 +69,7 @@ phases:
         title: "Create a buyer-managed catalog"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -110,7 +110,7 @@ phases:
         title: "Read initial availability state and revision"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -184,7 +184,7 @@ phases:
         title: "Make an inaccessible item indistinguishable from a missing item"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -240,7 +240,7 @@ phases:
         title: "Reject a duplicate catalog/item key atomically"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         expect_error: true
         negative_path: payload_well_formed
@@ -278,7 +278,7 @@ phases:
         title: "Apply suppression after the rejected operation"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -373,7 +373,7 @@ phases:
         title: "Replay returns the exact historical acknowledgement"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -409,7 +409,7 @@ phases:
         title: "Refresh the catalog without clearing suppression"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -439,7 +439,7 @@ phases:
         title: "Observe persisted suppression after catalog refresh"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -471,7 +471,7 @@ phases:
         title: "Return positional results in lenient mode"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -551,7 +551,7 @@ phases:
         title: "Apply a suppression with automatic expiry"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -621,7 +621,7 @@ phases:
         title: "Read automatically restored state"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -657,7 +657,7 @@ phases:
         title: "Reject a stale concurrent update"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         expect_error: true
         negative_path: payload_well_formed
@@ -688,7 +688,7 @@ phases:
         title: "Reject an already-expired suppression"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         expect_error: true
         negative_path: payload_well_formed
@@ -719,7 +719,7 @@ phases:
         title: "Reject an invalid mixed request before either mutation"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         expect_error: true
         negative_path: payload_well_formed
@@ -760,7 +760,7 @@ phases:
         title: "Verify the mixed catalog change was not committed"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -794,7 +794,7 @@ phases:
         title: "Verify rejected operations did not change availability"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:
@@ -867,7 +867,7 @@ phases:
         title: "Reject a delayed write from the deleted incarnation"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         expect_error: true
         negative_path: payload_well_formed
@@ -909,7 +909,7 @@ phases:
         title: "Verify the recreated incarnation remained unchanged"
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         sample_request:

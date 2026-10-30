@@ -317,7 +317,7 @@ phases:
           set in the governance plan.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: full_sales_flow
         stateful: false
@@ -546,7 +546,7 @@ phases:
           reject the buy because the governance agent is registered for this account.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         stateful: true

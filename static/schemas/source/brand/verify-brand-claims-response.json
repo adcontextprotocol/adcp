@@ -22,9 +22,6 @@
             "$ref": "#/definitions/result_entry"
           }
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "signed_response": {
           "$ref": "#/definitions/signed_response",
           "description": "Payload-envelope JWS attesting the canonical bulk success response for verify_brand_claims. The signed payload response MUST match the unsigned task-body fields on this response, excluding signed_response and protocol/version envelope fields."
@@ -48,41 +45,8 @@
         ]
       }
     },
-    {
-      "title": "VerifyBrandClaimsError",
-      "type": "object",
-      "description": "Batch-level failure — the entire request was rejected. Use per-result `error` on the success arm for per-claim failures that should not fail the batch.",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "results"
-            ]
-          }
-        ]
-      }
-    }
+    { "$ref": "/schemas/brand/verify-brand-claims-failed.json" }
   ],
-  "properties": {},
   "definitions": {
     "signed_response": {
       "allOf": [

@@ -10,6 +10,8 @@
 
 const fs = require('fs');
 const path = require('path');
+// Dependency-free: the audit runs without installed packages.
+const { wireResponseSchemaFor } = require('./wire-responses.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const DOCS_DIR = path.join(ROOT, 'docs');
@@ -60,18 +62,37 @@ function walkFiles(dir, predicate) {
   return files.sort();
 }
 
-function loadSchemas() {
+function addSchema(schemas, schema, rel, schemasDir = SCHEMAS_DIR) {
+  tagSchemaNodes(schema, schema);
+  const id = schema.$id || `/schemas/${rel}`;
+  for (const key of schemaKeys(id, rel, schemasDir)) {
+    schemas.set(key, schema);
+  }
+}
+
+/** The source documents, keyed by every form a docs example may use. */
+function loadSchemas(schemasDir = SCHEMAS_DIR) {
   const schemas = new Map();
-  for (const file of walkFiles(SCHEMAS_DIR, (f) => f.endsWith('.json'))) {
-    const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
-    tagSchemaNodes(schema, schema);
-    const rel = path.relative(SCHEMAS_DIR, file).replace(/\\/g, '/');
-    const id = schema.$id || `/schemas/${rel}`;
-    for (const key of schemaKeys(id, rel)) {
-      schemas.set(key, schema);
-    }
+  for (const file of walkFiles(schemasDir, (f) => f.endsWith('.json'))) {
+    addSchema(schemas, JSON.parse(fs.readFileSync(file, 'utf8')), path.relative(schemasDir, file).replace(/\\/g, '/'), schemasDir);
   }
   return schemas;
+}
+
+/**
+ * The schema a docs example names: a source document, or a document the
+ * schema build generates (a task's wire response,
+ * `<protocol>/<task>-wire-response.json`, which composes the task's status
+ * bodies), built here from the source tree.
+ */
+function lookupSchema(schemas, schemaUri, schemasDir = SCHEMAS_DIR) {
+  const found = schemas.get(schemaUri);
+  if (found) return found;
+  const rel = schemaUri.replace(/^\/schemas\//, '');
+  const generated = wireResponseSchemaFor(schemasDir, rel);
+  if (!generated) return undefined;
+  addSchema(schemas, generated, rel, schemasDir);
+  return generated;
 }
 
 function tagSchemaNodes(node, root) {
@@ -105,7 +126,7 @@ function resolveJsonPointer(root, pointer) {
   return current || null;
 }
 
-function schemaKeys(id, rel) {
+function schemaKeys(id, rel, schemasDir = SCHEMAS_DIR) {
   const bare = id.replace(/^\/schemas\//, '');
   return [
     id,
@@ -113,7 +134,7 @@ function schemaKeys(id, rel) {
     `/schemas/latest/${bare}`,
     `https://adcontextprotocol.org/schemas/${bare}`,
     `https://adcontextprotocol.org/schemas/latest/${bare}`,
-    path.join(SCHEMAS_DIR, rel)
+    path.join(schemasDir, rel)
   ];
 }
 
@@ -339,7 +360,7 @@ function runAudit() {
       schemaBackedBlocks++;
 
       const schemaUri = normalizeSchemaUri(block.parsed.$schema);
-      const schema = schemas.get(schemaUri);
+      const schema = lookupSchema(schemas, schemaUri);
       if (!schema) {
         findings.push({
           file: path.relative(ROOT, file),
@@ -568,4 +589,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { auditValue, collectObjectContract };
+module.exports = { auditValue, collectObjectContract, loadSchemas, lookupSchema };
