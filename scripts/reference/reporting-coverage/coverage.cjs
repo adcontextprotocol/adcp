@@ -523,7 +523,7 @@ function expectedSubscriptionPeriods(input) {
       floors.push(new Map());
       if (side === null) return;
       const previous = index > 0 ? sides[index - 1].side : null;
-      for (const [offeringId, schedule] of side.offerings) {
+      for (const offeringId of side.offerings.keys()) {
         let floor;
         if (previous === null || previous.offerings.size === 0) {
           // "An incoming side with no outgoing predecessor, or whose predecessor resolved nothing, starts at T
