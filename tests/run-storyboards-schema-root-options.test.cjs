@@ -83,6 +83,27 @@ test('candidate-bundle capability discovery registers the external schema root',
   );
 });
 
+test('candidate schema root is entered in the SDK CommonJS loader as well as ESM', () => {
+  // The SDK's ESM build reads response schemas through its CommonJS loader
+  // for envelope-status shaping. A candidate that leads the published SDK is
+  // only resolvable there if the runner enters the root in that instance too.
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  assert.match(
+    source,
+    /createRequire\(import\.meta\.url\)[\s\S]*requireFromHere\.resolve\('@adcp\/sdk'\)[\s\S]*'validation', 'schema-loader\.js'/,
+    'resolve the CommonJS schema loader from the package entry the SDK itself loads',
+  );
+  assert.match(
+    source,
+    /function withCandidateSchemaRoot[\s\S]*sdkCommonJsSchemaRootScope\(version, root, fn\)[\s\S]*return withExternalSchemaRoot\(version, root, scoped\);/,
+  );
+  assert.match(
+    source,
+    /const run = complianceOptions\.schemaRoot && releasedComplianceVersion\s*\? \(\) => withCandidateSchemaRoot\(releasedComplianceVersion, complianceOptions\.schemaRoot!, main\)/,
+    'the whole run, including tenant construction and request handling, must see the candidate root in both SDK builds',
+  );
+});
+
 test('candidate-version negotiation is explicit and established before runtime imports', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
   assert.match(
