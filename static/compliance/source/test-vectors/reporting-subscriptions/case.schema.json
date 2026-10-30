@@ -494,6 +494,11 @@
         },
         "period_end": {
           "$ref": "#/definitions/z_instant"
+        },
+        "stub": {
+          "type": "boolean",
+          "const": true,
+          "description": "Present, and true, on a billing cutover stub: the stretch [E, first incoming boundary) a cutover hands to a billing feed whose schedule has no boundary at E (core/reporting-obligation.json stub)."
         }
       },
       "additionalProperties": false
@@ -520,6 +525,11 @@
         },
         "period_end": {
           "$ref": "#/definitions/z_instant"
+        },
+        "stub": {
+          "type": "boolean",
+          "const": true,
+          "description": "Present, and true, on a billing cutover stub: the stretch [E, first incoming boundary) a cutover hands to a billing feed whose schedule has no boundary at E (core/reporting-obligation.json stub)."
         },
         "media_buy_ids": {
           "type": "array",

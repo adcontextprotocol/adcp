@@ -729,8 +729,10 @@ outgoing schedule to an incoming one follows one rule:
 
 No period is owed twice. When the incoming schedule has no boundary at E, the stretch
 from E to its first boundary after E is owed under neither schedule. That stretch is
-shorter than one incoming period, and empty when the two schedules share boundaries:
-same alignment and timezone, with one period length dividing the other. For example,
+shorter than one incoming period. It is empty exactly when E is also an incoming
+boundary: always when the schedules share alignment, timezone, and anchor and the
+incoming period length divides the outgoing one (daily to hourly), but not when moving
+to a coarser schedule (hourly to daily), where E can fall mid-day. For example,
 moving a daily feed from UTC-5 to UTC-8 at 12:00Z ends the old schedule at 05:00Z the
 next day; the first owed new-timezone day starts at 08:00Z, and 05:00Z to 08:00Z is not
 owed.

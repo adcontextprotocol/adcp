@@ -11,7 +11,7 @@
   },
   "conventions": {
     "instants": "Every timestamp is an RFC 3339 instant and may carry fractional seconds or a non-Z offset. Compare instants, never strings. Expected rows write instants in Z form, with fractional seconds only when they are non-zero. Inputs carry at most millisecond precision.",
-    "rows": "expected has one row per (media buy, resolved offering, owed period), ordered by period_start, then subscription_version, then offering_id and media_buy_id in byte order. subscription_id, account_id, and report_definition_id are omitted: they are input.subscription_id, input.account.account_id, and the offering's report_definition_id.",
+    "rows": "expected has one row per (media buy, resolved offering, owed period), ordered by period_start, then subscription_version, then offering_id and media_buy_id in byte order. subscription_id, account_id, and report_definition_id are omitted: they are input.subscription_id, input.account.account_id, and the offering's report_definition_id. A billing cutover stub row, and its obligation, carry stub: true.",
     "obligations": "expected_obligations groups expected by subscription_version, offering_id, period_start, and period_end, with media_buy_ids sorted in byte order, the obligation's frozen media_buy_ids. Ordered by period_start, then subscription_version, then offering_id in byte order.",
     "now": "Only resolved periods are expected: those whose period_end is at or before input.now.",
     "input": "The input is what the buyer holds: its subscription versions as the get_principal readback shows them, the account's grants and timezone, the buys it can see through get_media_buys, the seller's offerings, and this subscription's get_reporting_status subscription_coverage entry for the account. case.schema.json describes each field.",
@@ -1436,6 +1436,220 @@
         {
           "subscription_version": 2,
           "offering_id": "off_e_pkg_acct_tz",
+          "period_start": "2026-11-06T05:00:00Z",
+          "period_end": "2026-11-07T05:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        }
+      ]
+    },
+    {
+      "id": "billing-cutover-owes-a-stub",
+      "name": "billing cutover owes a stub",
+      "origin": "adcp",
+      "rule": "adcp#8617: v1 resolves a UTC-day billing offering, v2 (accepted 11-04T12Z, alignment account_timezone) a New York-day one. v1 owes UTC days starting before T, through E = 11-05T00Z. On a billing feed the stretch to the first New York boundary is owed as one stub period [11-05T00Z, 11-05T05Z), flagged stub; New York days follow from 11-05T05Z. Billable time is contiguous.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/cutover",
+        "static/schemas/source/core/reporting-obligation.json#/properties/stub",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ],
+      "timezones": ["America/New_York"],
+      "input": {
+        "subscription_id": "billing-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-11-01T12:00:00Z",
+            "destination_method": {"pattern": "file_transfer", "transport": "s3"},
+            "configuration": {
+              "subscription_id": "billing-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {"account_ids": ["acct_1"]},
+              "selector": {
+                "feed_purpose": "billing",
+                "period_duration": "P1D",
+                "required_finality": "official",
+                "alignment": "utc",
+                "dimensions": ["package"]
+              },
+              "reconciliation_mode": "consumer_receipt",
+              "destination": {"destination_id": "billing-archive"}
+            }
+          },
+          {
+            "subscription_version": 2,
+            "accepted_at": "2026-11-04T12:00:00Z",
+            "destination_method": {"pattern": "file_transfer", "transport": "s3"},
+            "configuration": {
+              "subscription_id": "billing-daily",
+              "subscription_version": 2,
+              "active": true,
+              "scope": {"account_ids": ["acct_1"]},
+              "selector": {
+                "feed_purpose": "billing",
+                "period_duration": "P1D",
+                "required_finality": "official",
+                "alignment": "account_timezone",
+                "dimensions": ["package"]
+              },
+              "reconciliation_mode": "consumer_receipt",
+              "destination": {"destination_id": "billing-archive"}
+            }
+          }
+        ],
+        "account": {"account_id": "acct_1", "timezone": "America/New_York", "grants": [{"authorized_at": "2026-10-01T00:00:00Z"}]},
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-11-02T15:00:00Z",
+            "start_time": "2026-11-03T00:00:00Z",
+            "end_time": "2026-11-07T05:00:00Z",
+            "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_bill_ny", "off_bill_utc"]}]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_bill_ny",
+            "feed_purpose": "billing",
+            "report_definition_id": "rd_off_bill_ny",
+            "report_definition_uri": "https://seller.example/report-definitions/off_bill_ny.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"],
+              "canonicalization_id": "adcp_jcs_rows_v1",
+              "canonicalization_contract_version": "1.0",
+              "canonicalization_media_type": "application/vnd.adcp.reporting-canonicalization+json",
+              "canonicalization_uri": "https://seller.example/canonicalization/adcp_jcs_rows_v1.json",
+              "canonicalization_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "account_timezone", "delivery_sla": "P1D"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "consumer_receipt",
+            "standard_dimensions": ["package"],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": ["existing"],
+              "provider": {"domain": "seller.example"},
+              "format": "jsonl"
+            }
+          },
+          {
+            "offering_id": "off_bill_utc",
+            "feed_purpose": "billing",
+            "report_definition_id": "rd_off_bill_utc",
+            "report_definition_uri": "https://seller.example/report-definitions/off_bill_utc.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"],
+              "canonicalization_id": "adcp_jcs_rows_v1",
+              "canonicalization_contract_version": "1.0",
+              "canonicalization_media_type": "application/vnd.adcp.reporting-canonicalization+json",
+              "canonicalization_uri": "https://seller.example/canonicalization/adcp_jcs_rows_v1.json",
+              "canonicalization_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "utc", "delivery_sla": "P1D"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "consumer_receipt",
+            "standard_dimensions": ["package"],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": ["existing"],
+              "provider": {"domain": "seller.example"},
+              "format": "jsonl"
+            }
+          }
+        ],
+        "now": "2026-12-01T00:00:00Z"
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_bill_utc",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_bill_utc",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z"
+        },
+        {
+          "subscription_version": 2,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_bill_ny",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-05T05:00:00Z",
+          "stub": true
+        },
+        {
+          "subscription_version": 2,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_bill_ny",
+          "period_start": "2026-11-05T05:00:00Z",
+          "period_end": "2026-11-06T05:00:00Z"
+        },
+        {
+          "subscription_version": 2,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_bill_ny",
+          "period_start": "2026-11-06T05:00:00Z",
+          "period_end": "2026-11-07T05:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_bill_utc",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_bill_utc",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 2,
+          "offering_id": "off_bill_ny",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-05T05:00:00Z",
+          "stub": true,
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 2,
+          "offering_id": "off_bill_ny",
+          "period_start": "2026-11-05T05:00:00Z",
+          "period_end": "2026-11-06T05:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 2,
+          "offering_id": "off_bill_ny",
           "period_start": "2026-11-06T05:00:00Z",
           "period_end": "2026-11-07T05:00:00Z",
           "media_buy_ids": ["mb_1"]

@@ -563,9 +563,19 @@ function expectedSubscriptionPeriods(input) {
     sides.forEach(({ side }, index) => {
       if (side === null) return;
       const until = index + 1 < sides.length ? sides[index + 1].t : Infinity;
+      const previous = index > 0 ? sides[index - 1].side : null;
+      const isCutover = previous !== null && previous.offerings.size > 0;
       for (const [offeringId, schedule] of side.offerings) {
         const floor = floors[index].get(offeringId);
-        for (const period of schedulePeriods(schedule, ctx.lo, ctx.hi)) {
+        const periods = schedulePeriods(schedule, ctx.lo, ctx.hi).map(period => ({ ...period }));
+        // cutover: "When the incoming side is a billing feed, that stretch is owed instead, as one stub period
+        // [E, first incoming boundary after E) of the incoming schedule whose obligation carries stub true".
+        if (isCutover && ctx.offeringsById.get(offeringId).feed_purpose === 'billing') {
+          const next = periods.find(period => period.start >= floor);
+          if (next !== undefined && next.start > floor) periods.push({ start: floor, end: next.start, stub: true });
+        }
+        periods.sort((a, b) => a.start - b.start);
+        for (const period of periods) {
           const owed =
             period.start >= floor && period.start < until && // cutover: owned by this side
             period.start < period.end && // "A period whose start and end coincide ... is never owed"
@@ -581,6 +591,7 @@ function expectedSubscriptionPeriods(input) {
               offering_id: offeringId,
               start: period.start,
               end: period.end,
+              ...(period.stub ? { stub: true } : {}),
             });
           }
         }
@@ -604,12 +615,14 @@ function expectedSubscriptionPeriods(input) {
       offering_id: row.offering_id,
       period_start: format(row.start),
       period_end: format(row.end),
+      ...(row.stub ? { stub: true } : {}),
     })),
     expected_obligations: [...groups.values()].map(group => ({
       subscription_version: group.subscription_version,
       offering_id: group.offering_id,
       period_start: format(group.start),
       period_end: format(group.end),
+      ...(group.stub ? { stub: true } : {}),
       media_buy_ids: [...new Set(group.media_buy_ids)].sort(byteCompare),
     })),
     timezones: [...ctx.zonesUsed].sort(),
