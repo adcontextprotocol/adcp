@@ -214,7 +214,6 @@ describe('governance runtime attestation vectors', () => {
         attestation_reference_digest: evaluation.reference_digest,
       }];
       const response = {
-        status: 'completed',
         check_id: checkId,
         check_type: 'intent',
         verdict: vector.expected_verdict,
@@ -311,7 +310,6 @@ describe('governance runtime attestation vectors', () => {
   it('rejects schema-valid evaluations transplanted to another check', () => {
     const binding = clone(fixture.binding_vector);
     const response = {
-      status: 'completed',
       check_id: 'check_signal_002',
       verdict: 'approved',
       plan_id: fixture.base_request.plan_id,

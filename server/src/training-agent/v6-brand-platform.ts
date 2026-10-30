@@ -25,7 +25,6 @@ import {
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
-import { projectTaskOutcomeForRelease } from './served-outcome-status.js';
 
 interface TrainingBrandMeta {
   brand_domain?: string;
@@ -155,7 +154,7 @@ export class TrainingBrandPlatform
     },
     acquireRightsLegacy: async (req, ctx) => {
       const result = await handleAcquireRights(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      return translateV5Result(projectTaskOutcomeForRelease('acquire_rights', result, ctx?.servedAdcpVersion));
+      return translateV5Result(result);
     },
     updateRightsLegacy: async (req, ctx) => {
       const result = await handleUpdateRights(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));

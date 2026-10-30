@@ -1279,9 +1279,10 @@
           "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, force_get_signals_arm, and force_get_creative_features_arm. 'submitted' is supported for all four operations; get_creative_features also supports 'completed' with a deterministic result; create_media_buy also supports 'input-required'; get_products also supports 'rejected'. Async completion after a submitted task is covered by force_task_completion; 'working' is an out-of-band progress signal, not an initial response arm."
         },
         "task_id": {
-          "allOf": [{ "$ref": "/schemas/core/task-id.json" }],
+          "type": "string",
           "maxLength": 128,
-          "description": "Deterministic task handle the seller MUST emit verbatim on the next forced operation response when arm is 'submitted'. The seller MUST accept this exact value on subsequent tasks/get or get_task_status calls within the same authenticated sandbox account + principal pair and MUST return REFERENCE_NOT_FOUND for the same task_id under any other account or principal. Sandbox task_ids are caller-opaque strings - the seller's production task-id format rules do not apply."
+          "description": "Deterministic task handle the seller MUST emit verbatim on the next forced operation response when arm is 'submitted'. The seller MUST accept this exact value on subsequent tasks/get or get_task_status calls within the same authenticated sandbox account + principal pair and MUST return REFERENCE_NOT_FOUND for the same task_id under any other account or principal. Sandbox task_ids are caller-opaque strings - the seller's production task-id format rules do not apply.",
+          "x-entity": "task"
         },
         "evaluation_id": {
           "type": "string",

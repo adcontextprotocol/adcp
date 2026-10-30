@@ -194,12 +194,9 @@ function pathResolves(node, segments, seen = new Set(), root = node) {
   // (intersection of constraints means the resolved object carries the union
   // of properties across branches — a property defined in any branch is
   // present after merging).
-  // A node can carry several of these at once, such as a task response that
-  // composes the protocol envelope through allOf and discriminates its
-  // branches through oneOf, so every keyword is followed.
-  for (const keyword of ['oneOf', 'anyOf', 'allOf']) {
-    if (!Array.isArray(node[keyword])) continue;
-    for (const variant of node[keyword]) {
+  const variants = node.oneOf || node.anyOf || node.allOf;
+  if (Array.isArray(variants)) {
+    for (const variant of variants) {
       if (pathResolves(variant, segments, seen, root)) return true;
     }
   }
@@ -253,30 +250,15 @@ function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
   if (!Array.isArray(variants)) return null;
   for (const variant of variants) {
     if (!variant || typeof variant !== 'object') continue;
-    if (declaresConstDiscriminator(variant, expectedArm)) return variant;
+    const props = variant.properties || {};
+    for (const propName of Object.keys(props)) {
+      const propSchema = props[propName];
+      if (propSchema && propSchema.const === expectedArm) {
+        return variant;
+      }
+    }
   }
   return null;
-}
-
-/**
- * True when the variant, or a schema it composes through `allOf`, declares a
- * property with `const: "<expectedArm>"`. A submitted branch takes its
- * `status: "submitted"` from core/task-submitted.json that way.
- */
-function declaresConstDiscriminator(variant, expectedArm, seen = new Set()) {
-  if (!variant || typeof variant !== 'object') return false;
-  if (variant.$ref) {
-    if (seen.has(variant.$ref)) return false;
-    const next = new Set(seen);
-    next.add(variant.$ref);
-    return declaresConstDiscriminator(loadSchema(variant.$ref), expectedArm, next);
-  }
-  const props = variant.properties || {};
-  for (const propName of Object.keys(props)) {
-    const propSchema = props[propName];
-    if (propSchema && propSchema.const === expectedArm) return true;
-  }
-  return (variant.allOf || []).some((member) => declaresConstDiscriminator(member, expectedArm, seen));
 }
 
 /** Mirrors `findErrorArm` in lint-storyboard-validations-paths.cjs. */
@@ -347,16 +329,12 @@ function lintDoc(doc, filePath, allowlist = []) {
       continue;
     }
     const schema = armResult.schema;
-    // The document's root `allOf` (the protocol envelope on a task response)
-    // applies to every arm, so an arm carries the fields it composes too.
-    const rootComposition = schema === fullSchema ? [] : (fullSchema.allOf || []);
     for (let i = 0; i < step.contextOutputs.length; i++) {
       const out = step.contextOutputs[i];
       const rawPath = out?.path;
       if (typeof rawPath !== 'string' || rawPath.length === 0) continue;
       const segments = parsePath(rawPath);
       if (contextOutputPathResolves(schema, segments)) continue;
-      if (rootComposition.some((member) => pathResolves(member, segments, new Set(), fullSchema))) continue;
       if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
       violations.push({
         rule: 'path_not_in_schema',

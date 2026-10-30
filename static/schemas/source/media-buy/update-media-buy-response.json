@@ -6,6 +6,9 @@
   "type": "object",
   "allOf": [
     {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
       "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
@@ -126,7 +129,8 @@
           "description": "When true, this response contains simulated data from sandbox mode."
         },
         "context": {
-          "$ref": "/schemas/core/context.json"
+          "$ref": "/schemas/core/context.json",
+          "description": "Opaque operation-level correlation data echoed unchanged from the update_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -157,7 +161,8 @@
           "minItems": 1
         },
         "context": {
-          "$ref": "/schemas/core/context.json"
+          "$ref": "/schemas/core/context.json",
+          "description": "Opaque operation-level correlation data echoed unchanged from the update_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -203,11 +208,25 @@
       }
     },
     {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
       "title": "UpdateMediaBuySubmitted",
       "description": "Async task envelope returned when update_media_buy cannot be confirmed before the response — for example, when operator re-approval is required for mid-flight changes. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the updated media buy state lands in the terminal result, not this envelope.",
       "type": "object",
       "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose media_buy_id is issued in-line. See task-status.json for the full task-status enum."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle the buyer uses with get_task_status (or the legacy AdCP tasks/get alias), and that the seller references on push-notification callbacks. This AdCP application-layer handle remains the snake_case task_id in every transport payload and is distinct from any transport-native A2A Task id.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Awaiting operator re-approval; typical turnaround 2–4 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+        },
         "errors": {
           "type": "array",
           "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
@@ -216,12 +235,17 @@
           }
         },
         "context": {
-          "$ref": "/schemas/core/context.json"
+          "$ref": "/schemas/core/context.json",
+          "description": "Opaque operation-level correlation data echoed unchanged from the update_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
       },
+      "required": [
+        "status",
+        "task_id"
+      ],
       "additionalProperties": true,
       "not": {
         "anyOf": [

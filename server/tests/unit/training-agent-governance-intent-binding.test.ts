@@ -60,7 +60,7 @@ async function check(args: Record<string, unknown>) {
 }
 
 function claims(result: Record<string, any>) {
-  expect(result.verdict, JSON.stringify(result)).toBe('approved');
+  expect(result.status, JSON.stringify(result)).toBe('approved');
   expect(result.governance_context).toEqual(expect.any(String));
   return decodeJwt(result.governance_context as string);
 }

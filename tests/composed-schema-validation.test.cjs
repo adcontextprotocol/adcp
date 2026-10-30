@@ -3125,7 +3125,7 @@ async function runTests() {
 
   await testSchemaValidation(
     '/schemas/governance/report-plan-outcome-response.json',
-    { outcome_id: 'outcome_abc123', outcome_state: 'accepted', replayed: true, status: 'completed' },
+    { outcome_id: 'outcome_abc123', outcome_state: 'accepted', replayed: true },
     'report_plan_outcome accepts replayed on envelope'
   );
 
@@ -3147,8 +3147,7 @@ async function runTests() {
     '/schemas/governance/sync-plans-response.json',
     {
       plans: [{ plan_id: 'plan_abc123', status: 'active', version: 1 }],
-      replayed: 'true',
-      status: 'completed'
+      replayed: 'true'
     },
     'sync_plans rejects replayed as string (type enforced)'
   );
@@ -4745,7 +4744,6 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/decline-proposals-response.json',
     {
-      status: 'completed',
       results: [
         { proposal_id: 'proposal-1', outcome: 'declined' },
         { proposal_id: 'proposal-2', outcome: 'unable', reason: 'Proposal not found.' }
@@ -4885,7 +4883,7 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
-    { status: 'completed', outcome: 'listed', products: [], feed_version: 'feed-empty-1', cache_scope: 'public' },
+    { outcome: 'listed', products: [], feed_version: 'feed-empty-1', cache_scope: 'public' },
     'list_products treats no matches as an empty successful product page'
   );
   await testSchemaValidation(
@@ -4960,13 +4958,12 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
-    { status: 'completed', outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
+    { outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
     'list_products explicitly discriminates an unchanged feed response'
   );
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
-      status: 'completed',
       outcome: 'proposed',
       proposals: [{
         proposal_id: 'proposal-1',
@@ -4995,7 +4992,6 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
-      status: 'completed',
       outcome: 'rejected',
       reason: 'No available offer satisfies the campaign constraints.',
       suggestions: ['Broaden the flight dates.']
@@ -5004,13 +5000,12 @@ async function runTests() {
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
-    { status: 'completed', products: [] },
+    { products: [] },
     'request_proposals products-only compatibility requires an explicit outcome and continuation'
   );
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
-      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       incomplete: [{
@@ -5032,7 +5027,6 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
-      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       purchase_continuation: {
@@ -5048,7 +5042,6 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
-      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       incomplete: [{
@@ -5068,7 +5061,6 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
-      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       proposals: [{ proposal_id: 'synthetic-proposal' }],
@@ -5086,7 +5078,6 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
-      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       purchase_continuation: {
@@ -5103,7 +5094,6 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
-      status: 'completed',
       proposals: [{
         proposal_id: 'proposal-1',
         name: 'Draft premium video plan',
@@ -5141,7 +5131,6 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
-      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
@@ -5157,7 +5146,6 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
-      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'unable',
@@ -5172,7 +5160,6 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
-      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
@@ -5187,7 +5174,6 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
-      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5203,7 +5189,6 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
-      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5217,7 +5202,6 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
-      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5230,7 +5214,6 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
-      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-draft-1',
         outcome: 'finalized',
@@ -5263,7 +5246,6 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
-      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-draft-1',
         outcome: 'finalized',
@@ -5886,7 +5868,6 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/signals/get-signals-async-response-working.json',
     {
-      status: 'working',
       percentage: 40,
       current_step: 'querying_providers',
       step_number: 2,

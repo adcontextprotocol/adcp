@@ -103,11 +103,8 @@ describe('get_creative_features retry and reconciliation contract', () => {
     assert.equal(validate({ ...submitted, results: [] }), false);
     assert.equal(validate({ ...submitted, vendor_cost: 0.025 }), false);
 
-    // core/task-submitted.json carries status: submitted and the required
-    // task_id; the variant composes it instead of restating it.
     const submittedVariant = readSchema('creative/get-creative-features-async-response-submitted.json');
-    assert.equal(submittedVariant.required, undefined);
-    assert.ok(submittedVariant.allOf.some((member) => member.$ref === '/schemas/core/task-submitted.json'));
+    assert.deepEqual(submittedVariant.required, ['status', 'task_id']);
   });
 
   it('keeps success, error, and submitted arms mutually exclusive', () => {
