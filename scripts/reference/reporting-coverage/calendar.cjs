@@ -29,10 +29,18 @@ const tz = require('./tz.cjs');
 const HOUR = 3_600_000;
 const DAY = tz.DAY;
 
+/**
+ * An input that cannot determine coverage. code is the frozen error code from
+ * static/compliance/source/test-vectors/reporting-subscriptions/error-codes.json
+ * (COVERAGE_INPUT_INCOMPLETE for a missing value, COVERAGE_INPUT_INVALID for a
+ * malformed one); detail names the cause from that code's details.
+ */
 class CoverageInputError extends Error {
-  constructor(code, message) {
-    super(`${code}: ${message}`);
-    this.code = code;
+  constructor(detail, message) {
+    super(`${detail}: ${message}`);
+    this.detail = detail;
+    this.code = detail.startsWith('missing_') ? 'COVERAGE_INPUT_INCOMPLETE' : 'COVERAGE_INPUT_INVALID';
+    this.recovery = 'correctable';
   }
 }
 

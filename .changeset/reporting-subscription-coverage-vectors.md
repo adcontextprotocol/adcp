@@ -16,4 +16,9 @@ Add canonical reporting-subscription coverage vectors (experimental `media_buy.r
 - Empty flights.
 - The confirmation period.
 
+The set also freezes two vocabularies both SDKs use verbatim:
+
+- `error-codes.json`: the subscription and coverage error codes, each with its recovery class, whether the task was dispatched, and its fix.
+- `reason-codes.json`: the coverage reason codes, which say why a period is or isn't owed, with the fixed rule order.
+
 A brute-force reference model in `scripts/reference/reporting-coverage/` reproduces every case. It evaluates the zic source itself and shares no time zone code with either SDK. Property tests also check the model: exceptions only remove periods, nothing is owed twice, prefix stability, no retroactive extension, and calendar invariants.

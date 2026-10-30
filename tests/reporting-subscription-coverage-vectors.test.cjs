@@ -7,6 +7,8 @@
  * and checks the vectors themselves: each case against case.schema.json, the
  * wire objects inside each input against the AdCP schemas, the tzdata pin, and
  * the model's time zone evaluator against zic(8) output for the pinned release.
+ * It also checks the frozen vocabularies beside the vectors, error-codes.json and
+ * reason-codes.json, against the case schema and the reference model.
  */
 
 const assert = require('node:assert/strict');
@@ -21,6 +23,8 @@ const SET = path.join(ROOT, 'static/compliance/source/test-vectors/reporting-sub
 const REFERENCE = path.join(ROOT, 'scripts/reference/reporting-coverage');
 const vectors = JSON.parse(fs.readFileSync(path.join(SET, 'vectors.json'), 'utf8'));
 const caseSchema = JSON.parse(fs.readFileSync(path.join(SET, 'case.schema.json'), 'utf8'));
+const errorCodes = JSON.parse(fs.readFileSync(path.join(SET, 'error-codes.json'), 'utf8'));
+const reasonCodes = JSON.parse(fs.readFileSync(path.join(SET, 'reason-codes.json'), 'utf8'));
 const tzdata = JSON.parse(fs.readFileSync(path.join(REFERENCE, 'tzdata.json'), 'utf8'));
 const tz = require(path.join(REFERENCE, 'tz.cjs'));
 const { expectedSubscriptionPeriods, instant } = require(path.join(REFERENCE, 'coverage.cjs'));
@@ -82,7 +86,6 @@ test('every case validates against case.schema.json and has a unique id', () => 
     assert.ok(validateCase(vector), `${vector.id}: ${ajv.errorsText(validateCase.errors)}`);
     assert.ok(!ids.has(vector.id), `duplicate id ${vector.id}`);
     ids.add(vector.id);
-    if (vector.expected_error) assert.ok(vector.expected_error.code in vectors.error_codes, `${vector.id}: unknown error code`);
   }
 });
 
@@ -133,7 +136,10 @@ test('non_wire_inputs lists exactly the non-wire fields a case uses', () => {
 for (const vector of vectors.cases) {
   test(`reference model reproduces ${vector.id}`, () => {
     if (vector.expected_error) {
-      assert.throws(() => expectedSubscriptionPeriods(vector.input), error => error.code === vector.expected_error.code);
+      assert.throws(
+        () => expectedSubscriptionPeriods(vector.input),
+        error => error.code === vector.expected_error.code && error.detail === vector.expected_error.detail,
+      );
       return;
     }
     const result = expectedSubscriptionPeriods(vector.input);
@@ -142,6 +148,77 @@ for (const vector of vectors.cases) {
     assert.deepEqual(result.timezones, vector.timezones);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Frozen vocabularies
+// ---------------------------------------------------------------------------
+
+const sorted = list => [...list].sort();
+const specFileExists = ref => fs.existsSync(path.join(ROOT, ref.split('#')[0]));
+
+test('error-codes.json is well formed and its codes are unique', () => {
+  const seen = new Set();
+  for (const entry of errorCodes.codes) {
+    assert.match(entry.code, /^[A-Z][A-Z0-9_]*$/, entry.code);
+    assert.ok(!seen.has(entry.code), `duplicate ${entry.code}`);
+    seen.add(entry.code);
+    assert.ok(['transient', 'correctable', 'terminal'].includes(entry.recovery), `${entry.code}: recovery`);
+    assert.ok(entry.dispatched in errorCodes.dispatched_values, `${entry.code}: dispatched`);
+    assert.ok(['buyer', 'seller', 'both'].includes(entry.raised_by), `${entry.code}: raised_by`);
+    assert.ok(entry.raised_when && entry.message_fix, `${entry.code}: raised_when and message_fix`);
+    assert.ok(entry.sdk_classes?.typescript && entry.sdk_classes?.python, `${entry.code}: sdk_classes`);
+    for (const detail of Object.keys(entry.details ?? {})) assert.match(detail, /^[a-z][a-z0-9_]*$/, `${entry.code}: ${detail}`);
+    for (const ref of entry.spec_refs) assert.ok(specFileExists(ref), `${entry.code}: ${ref} does not exist`);
+  }
+});
+
+test('the case schema carries the frozen error and reason vocabularies', () => {
+  const coverage = errorCodes.codes.filter(entry => entry.code.startsWith('COVERAGE_INPUT_'));
+  assert.deepEqual(sorted(caseSchema.definitions.error_code.enum), sorted(errorCodes.codes.map(entry => entry.code)));
+  assert.deepEqual(sorted(caseSchema.properties.expected_error.properties.code.enum), sorted(coverage.map(entry => entry.code)));
+  assert.deepEqual(sorted(caseSchema.definitions.coverage_input_error_detail.enum), sorted(coverage.flatMap(entry => Object.keys(entry.details))));
+  assert.deepEqual(caseSchema.definitions.coverage_reason.enum, reasonCodes.reasons.map(reason => reason.code));
+  assert.deepEqual(caseSchema.definitions.coverage_rule.enum, reasonCodes.rule_order);
+});
+
+test('every coverage input error the reference model raises is a frozen code and detail', () => {
+  const coverage = new Map(errorCodes.codes.filter(entry => entry.code.startsWith('COVERAGE_INPUT_')).map(entry => [entry.code, entry]));
+  const { CoverageInputError } = require(path.join(REFERENCE, 'calendar.cjs'));
+  for (const file of fs.readdirSync(REFERENCE).filter(name => name.endsWith('.cjs'))) {
+    const source = fs.readFileSync(path.join(REFERENCE, file), 'utf8');
+    for (const [, detail] of source.matchAll(/new CoverageInputError\('([a-z_]+)'/g)) {
+      const error = new CoverageInputError(detail, 'probe');
+      assert.ok(coverage.get(error.code)?.details?.[detail], `${file}: ${error.code} / ${detail} is not in error-codes.json`);
+      assert.equal(error.recovery, coverage.get(error.code).recovery);
+    }
+  }
+});
+
+test('reason-codes.json is well formed: unique codes, known rules, one owed default', () => {
+  const seen = new Set();
+  assert.deepEqual(sorted(Object.keys(reasonCodes.rules)), sorted(reasonCodes.rule_order));
+  for (const reason of reasonCodes.reasons) {
+    assert.match(reason.code, /^[a-z][a-z_]*(?::[a-z][a-z_]*)?$/, reason.code);
+    assert.ok(!seen.has(reason.code), `duplicate ${reason.code}`);
+    seen.add(reason.code);
+    assert.ok(['owed', 'not_owed'].includes(reason.verdict), `${reason.code}: verdict`);
+    assert.ok(reason.rule === null || reasonCodes.rule_order.includes(reason.rule), `${reason.code}: rule`);
+    assert.ok(['both', 'seller'].includes(reason.side), `${reason.code}: side`);
+    assert.ok(reason.definition, `${reason.code}: definition`);
+    for (const ref of reason.spec_refs) assert.ok(specFileExists(ref), `${reason.code}: ${ref} does not exist`);
+    if (reason.verdict === 'owed') assert.equal(reason.rule, null, `${reason.code}: owed reasons follow every rule`);
+  }
+  // Every rule can reject a period, and each excluded:<reason> code is a wire exclusion reason.
+  for (const rule of reasonCodes.rule_order.filter(rule => rule !== 'timezone')) {
+    assert.ok(reasonCodes.reasons.some(reason => reason.rule === rule), `rule ${rule} has no reason`);
+  }
+  const wireReasons = JSON.parse(fs.readFileSync(path.join(ROOT, 'static/schemas/source/core/reporting-subscription-coverage.json'), 'utf8'))
+    .definitions.ReportingSubscriptionExclusionReason.enum;
+  assert.deepEqual(sorted(reasonCodes.reasons.filter(r => r.code.startsWith('excluded:')).map(r => r.code.slice('excluded:'.length))), sorted(wireReasons));
+  const gapReasons = JSON.parse(fs.readFileSync(path.join(ROOT, 'static/schemas/source/core/reporting-subscription-coverage.json'), 'utf8'))
+    .properties.gaps.items.properties.reason.enum;
+  assert.deepEqual(sorted(reasonCodes.reasons.filter(r => r.code.startsWith('gap:')).map(r => r.code.slice('gap:'.length))), sorted(gapReasons));
+});
 
 test('the time zone evaluator matches zic for the pinned release', () => {
   const [from, to] = tzdata.zic_transitions.range;

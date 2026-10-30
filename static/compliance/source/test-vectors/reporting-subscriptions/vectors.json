@@ -16,16 +16,8 @@
     "now": "Only resolved periods are expected: those whose period_end is at or before input.now.",
     "input": "The input is what the buyer holds: its subscription versions as the get_principal readback shows them, the account's grants and timezone, the buys it can see through get_media_buys, the seller's offerings, and this subscription's get_reporting_status subscription_coverage entry for the account. case.schema.json describes each field.",
     "non_wire_inputs": "Lists input fields no AdCP response carries, which a buyer must retain itself to agree with the seller: buys[].prior_flights (flight values before an update) and offerings[].available_from or withdrawn_at (when an offering became or stopped being available, which changes a resolution).",
-    "expected_error": "When the input cannot determine coverage, expected_error.code names why, from error_codes. wire_valid is false when the input also fails AdCP schema validation."
-  },
-  "error_codes": {
-    "invalid_timezone": "A zone a schedule reads is not an IANA zone or link name (reporting-schedule.json iana_timezone).",
-    "missing_account_timezone": "An account_timezone offering resolves and the account has no timezone.",
-    "missing_source_timezone": "An account_resolved source_timezone offering resolves and the seller-resolved zone is not known.",
-    "missing_previous_timezone": "A timezone_cutovers entry has no previous_timezone, which sellers MUST include.",
-    "missing_standard_dimensions": "A candidate offering does not publish standard_dimensions, which sellers advertising subscriptions MUST publish.",
-    "missing_status_retention_days": "A grant was revoked and re-granted later, and the retention window that decides whether the re-grant continues the chain is not known.",
-    "invalid_period_duration": "A period_duration is not a schedule duration, mixes date and time components under a local alignment, or is sub-daily under a local alignment without dividing 24 hours."
+    "expected_error": "When the input cannot determine coverage, expected_error gives the error code and detail an SDK raises, from error-codes.json in this directory (COVERAGE_INPUT_INCOMPLETE or COVERAGE_INPUT_INVALID). wire_valid is false when the input also fails AdCP schema validation.",
+    "vocabularies": "error-codes.json freezes the error codes SDKs raise for subscriptions and coverage; reason-codes.json freezes the reasons a period is or is not owed. Both SDKs use them verbatim."
   },
   "cases": [
     {
@@ -10233,7 +10225,7 @@
         ],
         "now": "2026-12-01T00:00:00Z"
       },
-      "expected_error": {"code": "invalid_timezone", "wire_valid": true}
+      "expected_error": {"code": "COVERAGE_INPUT_INVALID", "detail": "invalid_timezone", "wire_valid": true}
     },
     {
       "id": "account-timezone-offering-requires-the-account-timezone",
@@ -10296,7 +10288,7 @@
         ],
         "now": "2026-12-01T00:00:00Z"
       },
-      "expected_error": {"code": "missing_account_timezone", "wire_valid": true}
+      "expected_error": {"code": "COVERAGE_INPUT_INCOMPLETE", "detail": "missing_account_timezone", "wire_valid": true}
     },
     {
       "id": "a-timezone-cutover-without-previous-timezone-is-refused",
@@ -10362,7 +10354,7 @@
         "now": "2026-12-01T00:00:00Z",
         "coverage": {"timezone_cutovers": [{"effective_at": "2026-11-05T05:00:00Z", "timezone": "America/Los_Angeles"}]}
       },
-      "expected_error": {"code": "missing_previous_timezone", "wire_valid": true}
+      "expected_error": {"code": "COVERAGE_INPUT_INCOMPLETE", "detail": "missing_previous_timezone", "wire_valid": true}
     },
     {
       "id": "an-offering-without-standard-dimensions-cannot-be-resolved",
@@ -10427,7 +10419,7 @@
         ],
         "now": "2026-12-01T00:00:00Z"
       },
-      "expected_error": {"code": "missing_standard_dimensions", "wire_valid": true}
+      "expected_error": {"code": "COVERAGE_INPUT_INCOMPLETE", "detail": "missing_standard_dimensions", "wire_valid": true}
     },
     {
       "id": "re-grant-requires-status-retention-days",
@@ -10498,7 +10490,7 @@
         ],
         "now": "2026-12-01T00:00:00Z"
       },
-      "expected_error": {"code": "missing_status_retention_days", "wire_valid": true}
+      "expected_error": {"code": "COVERAGE_INPUT_INCOMPLETE", "detail": "missing_status_retention_days", "wire_valid": true}
     },
     {
       "id": "havana-spring-forward-at-midnight",
@@ -13589,7 +13581,7 @@
         ],
         "now": "2026-12-01T00:00:00Z"
       },
-      "expected_error": {"code": "invalid_period_duration", "wire_valid": false}
+      "expected_error": {"code": "COVERAGE_INPUT_INVALID", "detail": "invalid_period_duration", "wire_valid": false}
     },
     {
       "id": "p1y-account-timezone-calendar-years",
@@ -13749,7 +13741,7 @@
         ],
         "now": "2026-12-01T00:00:00Z"
       },
-      "expected_error": {"code": "invalid_period_duration", "wire_valid": true}
+      "expected_error": {"code": "COVERAGE_INPUT_INVALID", "detail": "invalid_period_duration", "wire_valid": true}
     },
     {
       "id": "local-duration-cannot-mix-date-and-time",
@@ -13808,7 +13800,7 @@
         ],
         "now": "2026-12-01T00:00:00Z"
       },
-      "expected_error": {"code": "invalid_period_duration", "wire_valid": true}
+      "expected_error": {"code": "COVERAGE_INPUT_INVALID", "detail": "invalid_period_duration", "wire_valid": true}
     },
     {
       "id": "fractional-seconds-and-offsets",
@@ -15515,7 +15507,7 @@
         ],
         "now": "2026-12-01T00:00:00Z"
       },
-      "expected_error": {"code": "missing_source_timezone", "wire_valid": true}
+      "expected_error": {"code": "COVERAGE_INPUT_INCOMPLETE", "detail": "missing_source_timezone", "wire_valid": true}
     }
   ]
 }

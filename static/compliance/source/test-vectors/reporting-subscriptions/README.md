@@ -11,9 +11,25 @@ These vectors give the input a buyer holds and the exact owed periods, so SDKs
 and seller test suites can check the same rule against frozen inputs, and
 against something neither of them wrote.
 
-- `vectors.json` holds the cases, the pinned tzdata release, the conventions,
-  and the error codes.
-- `case.schema.json` describes one case and every input field.
+- `vectors.json` holds the cases, the pinned tzdata release, and the
+  conventions.
+- `case.schema.json` describes one case and every input field. It also carries
+  the two frozen vocabularies below as definitions.
+- `error-codes.json` freezes the error codes SDKs raise for subscriptions and
+  for coverage computation. Each code has a recovery class
+  (`transient`, `correctable`, or `terminal`) and says whether the task was
+  dispatched. It also gives the fix the message ends with, and the SDK classes.
+  `expected_error` in a case is one of its `COVERAGE_INPUT_*` codes with a
+  `detail`.
+- `reason-codes.json` freezes why a period is or isn't owed: the fixed rule
+  order (`scope`, `authorization`, `version`, `activity`, `offering`,
+  `flight`, `confirmation`, `exception`, `gap`, `cutover`, `timezone`), each
+  rule, and each reason code with its precise definition. A period takes the
+  reason of the first rule that rejects it.
+
+Both SDKs use the two vocabularies verbatim, so a buyer's and a seller's
+explanation of the same period, and their errors, compare by code. Renaming or
+removing a code needs a new `vocabulary_version`.
 
 ## How the expected rows were derived
 
@@ -70,8 +86,8 @@ For each case:
 1. Build your SDK's coverage input from `input`. `case.schema.json` says where
    each field comes from on the wire. Fields listed in `non_wire_inputs` are
    ones a buyer must retain itself.
-2. When the case has `expected_error`, assert your SDK refuses the input. Map
-   your error to the `code` it corresponds to.
+2. When the case has `expected_error`, assert your SDK raises that `code`
+   with that `detail`.
 3. Otherwise compare your rows with `expected`, and your grouped obligations
    with `expected_obligations`, as instants rather than strings, in the order
    `conventions.rows` gives.

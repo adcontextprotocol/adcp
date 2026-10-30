@@ -373,6 +373,10 @@ function excepted(windows, buyId, offeringId, period) {
 function normalizeVersions(input) {
   const versions = input.versions.map((record, index) => {
     const config = record.configuration;
+    if (config === undefined || config === null) {
+      // prior_versions[].configuration: "Sellers MUST include it, so a buyer that lost local state can recompute"
+      throw new CoverageInputError('missing_version_configuration', `versions[${index}] has no configuration`);
+    }
     if (config.destination !== undefined && record.destination_method === undefined) {
       throw new CoverageInputError('missing_destination_method', `versions[${index}] names a destination without its destination_method`);
     }
@@ -455,8 +459,8 @@ function endOfLastPeriodStartingBefore(schedule, t, ctx) {
 
 /**
  * Every owed period, one row per (buy, offering, period), and the same rows
- * grouped into obligations. Throws CoverageInputError (with .code) when the
- * input cannot determine coverage.
+ * grouped into obligations. Throws CoverageInputError (with .code and .detail
+ * from error-codes.json) when the input cannot determine coverage.
  */
 function expectedSubscriptionPeriods(input) {
   const now = instant(input.now, 'now');
