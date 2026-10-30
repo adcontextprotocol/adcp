@@ -712,11 +712,43 @@ delivery starts, so the added periods are still unresolved and become owed. A ca
 or completed buy isn't extended: its make-good goes on a subsequent buy in the same
 account.
 
+A buyer that lost local state reads past flights from the buy's `flight_history` on
+[`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). It lists every
+**retroactive** edit: one where the start time or stop time, before or after the edit,
+is earlier than the instant the seller recorded it. Each entry carries `recorded_at`
+and the `start_time` and `stop_time` in force before the edit. The flight in force at
+a period end is the one in the earliest entry recorded after it, or the current flight
+if none is. Edits that only move future values change no elapsed period and aren't
+listed.
+
+Resolution is from the wire as well. Each package on `get_media_buys` carries
+`reporting_delivery_offering_ids`, the offerings it can satisfy, fixed when the package
+is confirmed. Each offering publishes `available_from` and `withdrawn_at`. An offering
+is a candidate only between them, and its withdrawal is a resolution change, a cutover
+at `withdrawn_at`. A withdrawn offering stays in the capabilities catalog while any
+obligation that resolved it is retained, so its schedule stays readable.
+
 So a buyer derives every expected period from its own visible buys (`confirmed_at`,
-`start_time`, `end_time`, `cancellation_effective_at`, `completed_at`), the subscription's
+`start_time`, `end_time`, `cancellation_effective_at`, `completed_at`, `flight_history`), the subscription's
 `accepted_at`, the account's `authorized_at`, and the offering's published schedule.
 It then subtracts the exceptions below. A period that remains is owed: a missing
 report there is the seller's to explain.
+
+**When the owed set is final.** A period's owed set freezes at its
+`scope_resolved_at`, the period end. It is final in any snapshot whose `ledger_as_of`
+is later than the period end, because the seller must already have committed its
+obligation. A period that ends at or after `ledger_as_of` isn't frozen yet: treat
+your own projection, and `next_expected_at`, as provisional, and report nothing
+missing for it. For a subscription generation, `next_expected_at` counts only a
+period the coverage rule, less open exceptions, owes for at least one covered buy as
+flights now stand.
+
+**Several offerings per version.** One subscription version can resolve several
+offerings: with `match: all`, across packages from different products, or across a
+resolution change. `scope.delivery_config_generations` then lists the version once per
+offering, with `offering_id`. A consumer status for such a period carries the same
+`offering_id`, which is part of its chain identity, because two offerings can share a
+report definition and period.
 
 **Cutovers.** Every change effective at an instant T that hands periods from an
 outgoing schedule to an incoming one follows one rule:
@@ -906,7 +938,8 @@ data.
   as in a fraud or compromise response, stops everything.
 - **Re-grant.** The account leaves `accounts_unauthorized[]` and is readable here
   again. The re-grant continues the earlier authorization chain, so
-  `authorization.authorized_at` keeps its original value. Withheld periods are owed again, due at the re-grant time plus the offering's
+  `authorization.authorized_at` keeps its original value and
+  `authorization.regranted_at` records the re-grant. Withheld periods are owed again, due at `regranted_at` plus the offering's
   `delivery_sla` rather than their original `expected_at`. With
   `subscriptions.backfill_on_regrant: true`, no gap is recorded and every period in
   the revoked interval is owed, on the same re-grant deadline. Otherwise the interval

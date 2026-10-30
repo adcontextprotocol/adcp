@@ -49,6 +49,13 @@
       "x-added-in": "3.3.0",
       "description": "When the caller's current authorization chain for this account began. A re-grant before the previous unauthorized_at plus status_retention_days continues the chain and leaves authorized_at unchanged; a later re-grant starts a new chain and sets it to the re-grant time. Reporting subscriptions cover the account from the first period boundary at or after it. Sellers advertising media_buy.reporting_subscriptions MUST populate it."
     },
+    "regranted_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "The latest re-grant within the caller's current authorization chain for this account: when authority last resumed after a loss that the re-grant continued, because it came before the previous unauthorized_at plus status_retention_days. Absent while the chain has had no re-grant. A re-grant that starts a new chain sets authorized_at to the re-grant time and leaves this absent. Reporting subscriptions owe withheld periods at this instant plus the offering's delivery_sla, and an unbackfilled gap ends at the first period boundary at or after it. Sellers advertising media_buy.reporting_subscriptions MUST populate it whenever the current chain has a re-grant."
+    },
     "read_only": {
       "type": "boolean",
       "description": "Convenience flag. When true, the caller is permitted only non-mutating tasks. Sellers MUST reject any mutation from a read-only caller with READ_ONLY_SCOPE. For the AdCP 3.2 product split, read-only permits list_products but rejects request_proposals, refine_proposals, and decline_proposals; a legacy get_products call is permitted only when the seller can guarantee the selected arm is a synchronous side-effect-free read. Sellers MAY omit this field; omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone — the seller MUST set this explicitly when it applies.",

@@ -106,7 +106,7 @@
         "properties": {
           "offering_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The offering whose boundaries from and until use, when covered offerings have different boundaries. Absent: the gap applies to every offering on the account." },
           "from": { "type": "string", "format": "date-time", "description": "Last period boundary at or before unauthorized_at." },
-          "until": { "type": "string", "format": "date-time", "description": "First period boundary at or after the re-grant." },
+          "until": { "type": "string", "format": "date-time", "description": "First period boundary at or after the re-grant, authorization.regranted_at." },
           "reason": { "type": "string", "enum": ["unauthorized"] }
         },
         "required": ["from", "until", "reason"],

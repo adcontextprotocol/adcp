@@ -885,3 +885,83 @@ test('managed-delivery row schemas declare account_id for subscription delivery'
   assert.match(rule, /Core offerings, delivered per account through the API transports, are exempt/);
   assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].destination, /whose primary_keys include account_id/);
 });
+
+// Wire data so coverage is computable without asking (3.3.0-beta.3).
+// Flight in force at instant X: the earliest flight_history entry recorded after X, else the current flight.
+function flightAt(current, history, when) {
+  const later = history.filter(h => Date.parse(h.recorded_at) > when).sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at));
+  return later.length ? { start: later[0].start_time, stop: later[0].stop_time } : current;
+}
+
+test('flight_history lets a buyer recompute past periods after a retroactive edit', () => {
+  for (const [file, keys] of [
+    ['core/media-buy.json', ['properties', 'flight_history']],
+    ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'flight_history']],
+  ]) {
+    const field = keys.reduce((o, k) => o[k], read(file));
+    assert.equal(field['x-status'], 'experimental', file);
+    assert.equal(field['x-added-in'], '3.3.0', file);
+    assert.equal(field.maxItems, 64, file);
+    assert.deepEqual(field.items.required, ['recorded_at', 'start_time', 'stop_time'], file);
+    assert.match(field.description, /MUST list every retroactive edit while any reporting obligation for the buy is retained/, file);
+    assert.match(field.description, /The flight in force at an instant X is the one in the earliest entry recorded after X/, file);
+  }
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].coverage, /flight_history lists every retroactive edit/);
+
+  // Daily periods at UTC-5. Flight Nov 2 - Nov 10. On Nov 6 at 12:00Z the seller shortens end_time to Nov 4 (retroactive).
+  const current = { start: '2026-11-02T05:00:00Z', stop: '2026-11-04T05:00:00Z' };
+  const history = [{ recorded_at: '2026-11-06T12:00:00Z', start_time: '2026-11-02T05:00:00Z', stop_time: '2026-11-10T05:00:00Z' }];
+  const owed = [];
+  for (let start = Date.parse('2026-11-02T05:00:00Z'); start < Date.parse('2026-11-12T05:00:00Z'); start += DAY) {
+    const f = flightAt(current, history, start + DAY);
+    if (Date.parse(f.start) < start + DAY && start < Date.parse(f.stop)) owed.push(new Date(start).toISOString().slice(0, 10));
+  }
+  assert.deepEqual(owed, ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05'], 'periods resolved before the edit stay owed; later ones follow the new flight');
+});
+
+test('regranted_at, per-package offering snapshots, and offering availability are on the wire', () => {
+  const auth = read('core/account-authorization.json').properties.regranted_at;
+  assert.equal(auth['x-status'], 'experimental');
+  assert.equal(auth['x-added-in'], '3.3.0');
+  assert.match(auth.description, /latest re-grant within the caller's current authorization chain/);
+  assert.match(auth.description, /MUST populate it whenever the current chain has a re-grant/);
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].coverage, /due at authorization\.regranted_at plus the offering's delivery_sla/);
+
+  const pkg = read('media-buy/get-media-buys-response.json').properties.media_buys.items.properties.packages.items.properties.reporting_delivery_offering_ids;
+  assert.equal(pkg.items.$ref, '/schemas/core/reporting-delivery-offering-id.json');
+  assert.equal(pkg['x-added-in'], '3.3.0');
+  assert.match(pkg.description, /fixed when the package is confirmed/);
+  assert.match(pkg.description, /MUST include it on every package/);
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].selection, /the package lists it in its reporting_delivery_offering_ids snapshot/);
+
+  const offering = read('core/reporting-delivery-offering.json').properties;
+  for (const k of ['available_from', 'withdrawn_at']) {
+    assert.equal(offering[k].format, 'date-time', k);
+    assert.equal(offering[k]['x-added-in'], '3.3.0', k);
+  }
+  assert.match(offering.withdrawn_at.description, /stays in offerings, with withdrawn_at, while any obligation that resolved it is retained/);
+  assert.match(offering.withdrawn_at.description, /a resolution change, a cutover at withdrawn_at/);
+  assert.ok(!read('core/reporting-delivery-offering.json').required.includes('withdrawn_at'));
+});
+
+test('several offerings per version: generations and consumer-status chains carry offering_id', () => {
+  const gen = read('media-buy/get-reporting-status-response.json').properties.scope.properties.delivery_config_generations;
+  assert.ok(gen.items.properties.offering_id, 'delivery_config_generations[].offering_id');
+  assert.deepEqual(gen.items.required, ['delivery_config_id', 'delivery_config_version', 'feed_purpose'], 'offering_id stays optional');
+  assert.match(gen.description, /listed once per resolved offering/);
+
+  const status = read('core/reporting-consumer-status.json');
+  assert.equal(status.properties.offering_id['x-added-in'], '3.3.0');
+  assert.match(status['x-adcp-validation'].immutability, /report definition, offering_id \(for a subscription-derived generation; otherwise none\), and period/);
+  assert.match(read('core/reporting-obligation.json')['x-adcp-validation'].record_counts, /report_definition_id, offering_id \(for an obligation that carries one\), and period logical key/);
+  const v = validate('/schemas/core/reporting-consumer-status.json');
+  const base = { reporting_status_id: 'status_0001_abcdef', delivery_config_id: 'analytics-daily', delivery_config_version: 1, report_definition_id: 'def_v1', period: { start: '2026-11-02T05:00:00Z', end: '2026-11-03T05:00:00Z', source_timezone: 'America/New_York' }, consumer_status: 'obligation_missing', status_as_of: '2026-11-03T12:00:00Z' };
+  assert.ok(v({ ...base, offering_id: 'pkg_daily' }), JSON.stringify(v.errors));
+});
+
+test('next_expected_at and frozen periods are defined for owed sets', () => {
+  const response = read('media-buy/get-reporting-status-response.json');
+  assert.match(response.properties.next_expected_at.description, /a scheduled period counts only when the subscription coverage rule, less open exceptions, owes it/);
+  assert.match(response['x-adcp-validation'].subscription_coverage, /final in a snapshot whose ledger_as_of is later than period\.end/);
+  assert.match(response['x-adcp-validation'].subscription_coverage, /a period ending at or after ledger_as_of is not frozen/);
+});

@@ -41,6 +41,20 @@
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.reporting_subscriptions). Native report-definition dimensions with no standard mapping. Present when any exist. They count as distinct under match exact and never count toward finest."
     },
+    "available_from": {
+      "type": "string",
+      "format": "date-time",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.reporting_subscriptions). When this offering became, or becomes, available. Before it the offering is not a candidate for subscription resolution or configuration. Absent: available since before any retained obligation."
+    },
+    "withdrawn_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.reporting_subscriptions). When the seller withdrew, or will withdraw, this offering. From it the offering is not a candidate, and subscriptions that resolved it move to their next candidate as a resolution change, a cutover at withdrawn_at, so periods that started before it stay owed under it in full. A withdrawn offering stays in offerings, with withdrawn_at, while any obligation that resolved it is retained, so buyers can still read its schedule. Sellers advertising media_buy.reporting_subscriptions MUST NOT remove an offering from offerings any other way while such an obligation is retained."
+    },
     "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
     "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
     "reporting_profile": {

@@ -43,7 +43,9 @@ against `3.2.0-rc.2` that already emits `CONSUMER_STATUS_MISMATCH` must add
 
 Each immutable statement addresses one exact `(authenticated consumer, account,
 delivery_config_id, delivery_config_version, report_definition_id, period)`
-chain:
+chain. For a generation derived from a [reporting subscription](/docs/protocol/sync_principal#reporting-subscriptions)
+(experimental), `offering_id` is part of the chain too, because one subscription
+version can resolve several offerings that share a report definition and period:
 
 | `consumer_status` | Meaning | Required evidence |
 |---|---|---|
