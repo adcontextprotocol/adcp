@@ -6,7 +6,6 @@
   "description": "Authoritative caller/account-isolated reporting status response. The view echoes the request and discriminates summary, periods, exact revision, and fatal error shapes. Seller obligation/revision state and separately attributed consumer status remain distinct but are compared in the caller-scoped health projection. Every identifier, cursor, ledger snapshot, destination, revision, materialization, consumer status, and resource is scoped to the authenticated caller and account.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/version-envelope.json" },
     { "$ref": "/schemas/core/protocol-envelope.json" },
     {
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
@@ -154,16 +153,11 @@
       "title": "Unavailable lookup",
       "type": "object",
       "properties": {
-        "adcp_version": { "type": "string" },
-        "adcp_major_version": { "type": "integer" },
         "status": { "type": "string", "const": "failed" },
         "view": { "enum": ["summary", "periods", "revision"] },
         "failure_kind": { "type": "string", "const": "lookup_unavailable" },
-        "context_id": { "type": "string" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "replayed": { "type": "boolean" },
         "adcp_error": {
           "type": "object",
           "properties": {
@@ -189,27 +183,22 @@
         }
       },
       "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
     },
     {
       "title": "Operational failure",
       "type": "object",
       "properties": {
-        "adcp_version": { "type": "string" },
-        "adcp_major_version": { "type": "integer" },
         "status": { "type": "string", "const": "failed" },
         "view": { "enum": ["summary", "periods", "revision"] },
         "failure_kind": { "type": "string", "const": "operational" },
-        "context_id": { "type": "string" },
         "context": { "$ref": "/schemas/core/context.json" },
-        "message": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "replayed": { "type": "boolean" },
-        "adcp_error": { "$ref": "/schemas/core/error.json" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }
       },
       "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": false
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
         }
       ]
     }

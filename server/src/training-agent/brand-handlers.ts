@@ -1178,16 +1178,11 @@ function defaultRightsWindow() {
 /**
  * 3.0 reports the grant outcome in `status` (`acquired`, `pending_approval`,
  * `rejected`); 3.1 moved it to `rights_status` and left `status` to the task
- * envelope.
+ * envelope. The handler emits the 3.1 shape; served-outcome-status.ts
+ * projects it onto a served 3.0, with the other renamed outcomes.
  */
 export async function handleAcquireRights(args: ToolArgs, ctx: TrainingContext) {
-  const result = await acquireRights(args, ctx);
-  const servedVersion = ctx.storyboardCompat?.version === '3.0' ? '3.0' : ctx.servedAdcpVersion;
-  if (!servesReleaseBefore(servedVersion, 3, 1) || typeof (result as { rights_status?: unknown }).rights_status !== 'string') {
-    return result;
-  }
-  const { rights_status: rightsStatus, ...rest } = result as Record<string, unknown>;
-  return { ...rest, status: rightsStatus };
+  return acquireRights(args, ctx);
 }
 
 async function acquireRights(
@@ -1710,7 +1705,10 @@ export function handleCreativeApproval(
   const creativeFormat = req.creative_format || req.creative?.format;
 
   return {
-    status: 'approved',
+    // The task status; the decision is `approval_status`
+    // (served-outcome-status.ts projects it onto a served 3.0).
+    status: 'completed',
+    approval_status: 'approved',
     rights_id: rightsId,
     creative_id: creativeId,
     creative_url: creativeUrl,

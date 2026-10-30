@@ -88,7 +88,86 @@ prerequisites:
   test_kit: "test-kits/hosted-grader.yaml"
 
 phases:
+  - id: fixed_rate_applicability
+    title: "Resolve the fixed-rate recovery slice"
+    narrative: |
+      This slice preserves exact governance-approved requests, so it uses fixed
+      pricing. Discover applicability before writing governance state. A valid
+      empty catalog skips the remaining phases and leaves recovery coverage
+      unproven; discovery errors and invalid responses still fail.
+    steps:
+      - id: sync_accounts
+        title: "Establish account with seller"
+        agent: sales
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "hosted-grader.adcontextprotocol.org"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_denied_recovery_seller_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_fixed_rate_recovery_scope
+        title: Establish fixed-rate applicability before governance writes
+        agent: sales
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        stateful: false
+        expected: A valid empty fixed-price result leaves this recovery slice unproven. Malformed or failed discovery remains a failure.
+        sample_request:
+          idempotency_key: $generate:uuid_v4#governance_denied_recovery_get_fixed_rate_recovery_scope
+          buying_mode: brief
+          brief: Display inventory on outdoor lifestyle content. Q2 flight.
+          filters:
+            is_fixed_price: true
+          account:
+            brand:
+              domain: hosted-grader.adcontextprotocol.org
+            operator: pinnacle-agency.example
+        context_outputs:
+          - path: products
+            key: governance_fixed_rate_products
+        validations:
+          - check: response_schema
+            description: Applicability discovery matches the get_products response schema
+          - check: field_present
+            path: products
+            description: The seller returns a product array; an empty fixed-price result is valid
+
+  - id: fixed_rate_recovery_unavailable
+    title: "Fixed-rate recovery coverage is unavailable"
+    skip_if: "context.governance_fixed_rate_products.0"
+    narrative: |
+      No fixed-price product was captured. The governed recovery loop was not
+      exercised. This validation-only marker records unavailable coverage and
+      dispatches no agent task; discovery failures remain separate failures.
+    steps:
+      - id: report_unavailable_fixed_rate_recovery
+        title: "No fixed-price product: signed governance recovery is unproven"
+        expected: "Unavailable fixed-rate pricing leaves the governance denial and recovery behavior unproven; no governance mutations are sent."
+        validations:
+          - check: field_present
+            path: governance_recovery_evidence
+            description: "Recovery evidence is unavailable because fixed-price discovery supplied no product"
+
   - id: governance_plan_setup
+    skip_if: "!context.governance_fixed_rate_products.0"
     title: "Set up the governance plan"
     narrative: |
       Create a governance plan with a $100K budget. The initial $25K buy fits this plan,
@@ -128,33 +207,9 @@ phases:
             description: "Response matches sync-plans-response.json schema"
 
   - id: seller_setup
-    title: "Account and governance registration on seller"
+    skip_if: "!context.governance_fixed_rate_products.0"
+    title: "Governance registration on seller"
     steps:
-      - id: sync_accounts
-        title: "Establish account with seller"
-        agent: sales
-        task: sync_accounts
-        schema_ref: "account/sync-accounts-request.json"
-        response_schema_ref: "account/sync-accounts-response.json"
-        doc_ref: "/accounts/tasks/sync_accounts"
-        stateful: true
-        expected: |
-          Return the account with account_id active.
-        sample_request:
-          accounts:
-            - brand:
-                domain: "hosted-grader.adcontextprotocol.org"
-              operator: "pinnacle-agency.example"
-              billing: "operator"
-              payment_terms: "net_30"
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_denied_recovery_seller_setup_sync_accounts"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-accounts-response.json schema"
-          - check: field_present
-            path: "accounts[0].account_id"
-            description: "Account has a platform-assigned ID"
-
       - id: sync_governance
         title: "Register governance agent with seller"
         agent: sales
@@ -182,6 +237,7 @@ phases:
             description: "Response matches sync-governance-response.json schema"
 
   - id: buy_denied
+    skip_if: "!context.governance_fixed_rate_products.0"
     title: "Approved intent, amended plan, denied execution"
     narrative: |
       The buyer authorizes a $25K request at intent time. The plan owner then cuts
@@ -353,6 +409,7 @@ phases:
             description: "Response echoes context.correlation_id verbatim on error responses (echo contract applies to both success and failure)"
 
   - id: buy_retried
+    skip_if: "!context.governance_fixed_rate_products.0"
     title: "Corrected buy within the amended plan — governance approves"
     narrative: |
       The buyer reads the denial findings, shrinks the buy to $8K (within the amended

@@ -75,17 +75,17 @@ fixtures:
       pricing_option_id: coverage_z_matching_cpm
       pricing_model: cpm
       currency: USD
-      fixed_price: 10
+      floor_price: 10
     - product_id: coverage_a_country
       pricing_option_id: coverage_country_cpm
       pricing_model: cpm
       currency: USD
-      fixed_price: 10
+      floor_price: 10
     - product_id: coverage_b_metro
       pricing_option_id: coverage_metro_cpm
       pricing_model: cpm
       currency: USD
-      fixed_price: 10
+      floor_price: 10
 
 phases:
   - id: legacy_coverage
@@ -122,9 +122,9 @@ phases:
             path: products[1]
             description: "Each independently non-matching product is excluded"
           - check: field_value
-            path: products[0].pricing_options[0].fixed_price
+            path: products[0].pricing_options[0].floor_price
             value: 10
-            description: "Coverage does not rescope the offer's price"
+            description: "Coverage does not rescope the offer's auction floor"
           - check: field_absent
             path: products[0].expires_at
             description: "Coverage does not turn the durable fixture into an expiring configured offer"

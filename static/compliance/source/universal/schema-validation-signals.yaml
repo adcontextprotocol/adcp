@@ -1,5 +1,5 @@
 id: schema_validation_signals
-version: "1.0.0"
+version: "1.0.1"
 title: "Schema compliance — signals protocol"
 category: schema_validation
 summary: "Validates that signals agent responses conform to AdCP schemas with all required fields present and correctly typed."
@@ -9,6 +9,10 @@ requires:
 
 required_tools:
   - get_signals
+
+requires_capability:
+  path: supported_protocols
+  contains: signals
 
 narrative: |
   Every AdCP agent must return responses that match the published JSON schemas.

@@ -1,12 +1,14 @@
 'use strict';
 
-const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { ProtocolClient } = require('@adcp/sdk');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 const ADCP_VERSION = '3.2.0-beta.0';
@@ -20,7 +22,9 @@ function readSchema(uri) {
   if (!uri.startsWith('/schemas/')) {
     throw new Error(`Cannot load external schema: ${uri}`);
   }
-  return JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, uri.slice('/schemas/'.length)), 'utf8'));
+  // The published composition: on a response, adcp_version is a protocol
+  // envelope field that the schema build declares on closed roots.
+  return readBuiltSchema(uri);
 }
 
 async function compileCompactSchema(tool, direction = 'request') {
@@ -121,8 +125,8 @@ test('SDK auto version envelope passes every strict compact lifecycle request sc
 test('list_products accepts the served payload version with release precision', async () => {
   const validate = await compileCompactSchema('list_products', 'response');
   for (const response of [
-    { outcome: 'listed', products: [], feed_version: 'creative-feed', cache_scope: 'public' },
-    { outcome: 'unchanged', feed_version: 'creative-feed', cache_scope: 'public' },
+    { status: 'completed', outcome: 'listed', products: [], feed_version: 'creative-feed', cache_scope: 'public' },
+    { status: 'completed', outcome: 'unchanged', feed_version: 'creative-feed', cache_scope: 'public' },
   ]) {
     assert.equal(validate(response), true, JSON.stringify(validate.errors));
     assert.equal(validate({ ...response, adcp_version: '3.2-beta.0' }), true,

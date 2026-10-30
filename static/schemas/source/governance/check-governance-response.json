@@ -6,7 +6,7 @@
   "type": "object",
   "allOf": [
     {
-      "$ref": "/schemas/core/version-envelope.json"
+      "$ref": "/schemas/core/protocol-envelope.json"
     },
     {
       "if": { "required": ["check_type"] },
@@ -325,13 +325,6 @@
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$",
       "description": "SHA-256 of RFC 8785 JCS({ evaluations: runtime_attestation_evaluations, findings: attestation_bound_findings }), where attestation_bound_findings is the response findings[] subset carrying attestation_reference_digest, preserved in response order. Required whenever runtime_attestation_evaluations is present. The governance_context JWS carries this exact value as runtime_attestation_binding_digest; get_plan_audit_logs retains ordered {reference, evaluation} pairs so auditors can first recompute every reference_digest and then prove which evaluations and findings the signed decision relied on."
-    },
-    "governance_context": {
-      "type": "string",
-      "description": "Opaque authorization context for this governed action. Present only when verdict is approved; denied and conditions responses MUST NOT carry it. The buyer attaches it to the protocol envelope when sending the governed request. The service persists and forwards it on subsequent execution and lifecycle checks without requiring plan_id.\n\nGovernance agents MUST emit a compact JWS per the AdCP JWS profile. Verifiers validate the standard authorization claims but MUST NOT interpret embedded governance state for business logic. The issuing governance agent uses the token to recover its internal plan and decision state.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
     },
     "context": {
       "$ref": "/schemas/core/context.json"

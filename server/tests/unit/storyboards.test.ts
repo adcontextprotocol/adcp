@@ -695,8 +695,20 @@ describe('compareAdcpVersions', () => {
 });
 
 describe('getStoryboardsForVersion', () => {
-  it('preserves introduced storyboards for exact stable and prerelease versions', () => {
-    expect(getStoryboardsForVersion('3.1.18').length).toBe(getStoryboardsForVersion('3.1').length);
+  it('keeps exact stable snapshots pinned while line aliases advance', () => {
+    const frozen = getStoryboardsForVersion('3.1.18');
+    const current = getStoryboardsForVersion('3.1');
+    expect(frozen).toHaveLength(122);
+    expect(frozen.every(storyboard => storyboard.adcp_version === '3.1.18')).toBe(true);
+    expect(current.every(storyboard => storyboard.adcp_version === hostedComplianceTarget('3.1').version)).toBe(true);
+    for (const id of [
+      'media_buy_seller/canonical_custom_formats',
+      'media_buy_seller/canonical_experimental_formats',
+      'media_buy_seller/product_filter_behavior',
+    ]) {
+      expect(current.some(storyboard => storyboard.id === id)).toBe(true);
+      expect(frozen.some(storyboard => storyboard.id === id)).toBe(false);
+    }
     expect(getStoryboardsForVersion('3.2.0-beta.9').length).toBe(
       getStoryboardsForVersion('3.2-beta.9').length,
     );

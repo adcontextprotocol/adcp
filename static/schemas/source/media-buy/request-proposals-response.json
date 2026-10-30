@@ -4,8 +4,10 @@
   "title": "Request Proposals Response",
   "description": "One or more immutable draft media-plan proposals and compact canonical products referenced by their purchases. Products always carry product_id and name and never carry legacy named-format identifiers. During the AdCP 3.x compatibility window, an SDK projecting a valid products-only get_products brief result may instead return the deprecated products_available outcome with an explicit purchase continuation. Native 3.2 sellers MUST NOT use that compatibility outcome, and adapters MUST NOT fabricate a proposal, terms digest, or feed version.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
-    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "outcome": { "type": "string", "enum": ["proposed", "products_available", "rejected"] },
     "reason": { "type": "string", "minLength": 1 },
     "suggestions": {
@@ -164,13 +166,9 @@
       "description": "Experimental (media_buy.open_opportunities). Effective later-proposal consent for the request's opportunity, as the seller recorded it. Sellers that advertise media_buy.open_opportunities.later_proposals.supported MUST return it whenever the request carried opportunity.later_proposals. accepted false here means the seller will not send later proposals, whatever the request asked for.",
       "x-added-in": "3.3.0"
     },
-    "status": { "type": "string", "enum": ["completed", "submitted"] },
-    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-    "message": { "type": "string", "maxLength": 2000 },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
-    "ext": { "$ref": "/schemas/core/ext.json" },
-    "replayed": { "type": "boolean", "const": true }
+    "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "dependencies": {
     "collections": ["products"]

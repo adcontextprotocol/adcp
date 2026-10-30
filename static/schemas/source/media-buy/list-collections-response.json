@@ -5,6 +5,9 @@
   "description": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. One page of the selling agent's collection cards, or confirmation that the selected catalog has not changed. Entries are core/response-collection.json copies under the authority rules defined there and for include_collections: adagents.json stays the root of authorization, a copy wins only on images, sample_content, url, description, season, cadence and distribution[].followers, and a copy of an undeclared collection or from an agent adagents.json does not authorize is unverified display data that never feeds carriage verification. For the same key, account and moment, the copy MUST equal the one a product or proposal read with include_collections returns. The response carries no products, pricing, availability or account terms.",
   "x-status": "experimental",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "discriminator": {
     "propertyName": "outcome"
   },
@@ -30,7 +33,6 @@
       "enum": ["public", "account"],
       "description": "public when the visible set does not depend on the account, and always when the request carried no account; account when it does. A seller MAY return public to a conditional request whose earlier response was account, meaning the account no longer has a distinct visible set; the buyer drops its account-scoped copy and uses the public one."
     },
-    "replayed": { "type": "boolean", "const": true },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
@@ -54,11 +56,13 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
+  "not": { "required": ["products"] },
   "examples": [
     {
       "description": "A listed page with one creator card",
       "data": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -96,6 +100,7 @@
     {
       "description": "A conditional read that matched",
       "data": {
+        "status": "completed",
         "outcome": "unchanged",
         "collections_version": "cc_2026_10_16_r88",
         "cache_scope": "account"

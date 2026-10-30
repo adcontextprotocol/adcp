@@ -116,7 +116,7 @@ fixtures:
             height: 250
     - product_id: "no_fcap_native_q4"
       delivery_type: "guaranteed"
-      channels: ["native"]
+      channels: ["display"]
       format_options:
         - format_option_id: "native_article"
           format_kind: "native"

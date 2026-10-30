@@ -174,6 +174,7 @@ async function runInline({
   drift = {},
   failDiscovery = null,
   sameKindCatalog = false,
+  auction = false,
 }) {
   const storyboard = loadStoryboardFile(path.join(SCENARIOS, 'inline_creatives_without_sync.yaml'));
   // Strip only response_schema: the stub returns deliberately minimal payloads that are
@@ -185,6 +186,7 @@ async function runInline({
       step.validations = (step.validations ?? []).filter(check => check.check !== 'response_schema');
       // Simulate the rejected proposal: narrow the legacy probe by canonical kind.
       if (filterLegacyDiscovery && step.id === 'get_products_legacy_format') {
+        step.sample_request.filters ??= {};
         step.sample_request.filters.format_kinds = ['image'];
       }
       // Negative control: withhold the disambiguating selector the storyboard sends.
@@ -222,6 +224,11 @@ async function runInline({
           sameKindCatalog,
           ...(drift[discoveryKey(request)] ?? {}),
         });
+        assert.equal(request.filters?.is_fixed_price, undefined, 'inline creative management accepts either pricing type');
+        if (auction) for (const price of product.pricing_options) {
+          delete price.fixed_price;
+          price.floor_price = 8;
+        }
         // A seller honouring filters.format_kinds returns nothing when it publishes no
         // canonical declaration to match - exactly the legacy-only case.
         if (request.filters?.format_kinds && !product.format_options) {
@@ -234,6 +241,7 @@ async function runInline({
       } else if (task === 'create_media_buy') {
         if (failLane === lane) return { success: false, error: 'inline creative rejected' };
         const requested = request.packages[0];
+        if (auction) assert.ok(requested.bid_price >= 8, 'inline auction purchases bid at least the discovered floor');
         // A seller that published a selectable id requires a ref naming it. A legacy
         // package is selector-bearing by other means - the creative carries format_id.
         const catalog = buildProduct({ canonical, legacy, shape, sameKindCatalog }).format_options ?? [];
@@ -319,6 +327,14 @@ async function runInline({
 }
 
 const validateRef = ajv.getSchema('/schemas/core/format-option-ref.json');
+
+for (const [canonical, legacy] of [[true, false], [false, true], [true, true]]) {
+  test(`inline creatives: auction pricing completes advertised paths (${canonical}, ${legacy})`, async () => {
+    const { result, creates } = await runInline({ canonical, legacy, auction: true });
+    assert.equal(result.overall_passed, true, JSON.stringify(result.phases));
+    assert.equal(creates.length, Number(canonical) + Number(legacy));
+  });
+}
 
 // Each canonical shape is graded on exactly one path, and the emitted selector is a
 // valid FormatOptionRef - including the publisher-catalog shape, which is addressable

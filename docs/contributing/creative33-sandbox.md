@@ -7,7 +7,7 @@ description: "Exercise AdCP 3.3 beta creative workflows with the published SDK, 
 # Creative 3.3 beta sandbox
 
 This development lab serves the frozen AdCP `3.3.0-beta.1` contract using the
-published TypeScript SDK `17.0.0-beta.6`. Its MCP endpoint is:
+published TypeScript SDK `17.0.0-beta.8`. Its MCP endpoint is:
 
 `https://test-agent.adcontextprotocol.org/beta/3.3/creative/mcp`
 

@@ -64,7 +64,7 @@ fixtures:
         sandbox: true
   products:
     - product_id: "audience_activation_inline_dataset"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["retail_media"]
       audience_activation:
         methods:
@@ -76,7 +76,7 @@ fixtures:
           pattern: "sync_audiences"
         notes: "Inline sync is preferred; dataset access is arranged during account setup."
     - product_id: "audience_activation_dataset_only"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["retail_media"]
       audience_activation:
         methods:
@@ -88,24 +88,24 @@ fixtures:
           vendor:
             domain: "data-cloud.example"
     - product_id: "audience_activation_undeclared"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["retail_media"]
   pricing_options:
     - product_id: "audience_activation_inline_dataset"
       pricing_option_id: "audience_activation_inline_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 12.0
+      floor_price: 12.0
     - product_id: "audience_activation_dataset_only"
       pricing_option_id: "audience_activation_dataset_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 12.0
+      floor_price: 12.0
     - product_id: "audience_activation_undeclared"
       pricing_option_id: "audience_activation_undeclared_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 12.0
+      floor_price: 12.0
 
 phases:
   - id: capability_and_matching
