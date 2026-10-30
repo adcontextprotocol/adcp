@@ -6,7 +6,6 @@ status: accepted
 decided: 2026-10-30
 decided_by: WG Session C consent (objections closed 2026-10-30)
 date: 2026-10-06
-decided_by: pending WG ratification
 refs: ["#7812", "DR-0021"]
 dissent: product review preferred a dedicated error code (Option B in the PR description)
 ---
