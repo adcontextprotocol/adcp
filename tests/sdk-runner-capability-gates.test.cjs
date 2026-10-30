@@ -1009,7 +1009,8 @@ async function runProductFilterBehavior(buyingModes, brokenMode) {
           channels: ['olv'],
           delivery_type: 'non_guaranteed',
         };
-        const products = request.buying_mode === 'refine' ? [] : [matchingProduct];
+        const products = request.buying_mode === 'refine' || request.filters?.delivery_type === 'guaranteed'
+          ? [] : [matchingProduct];
         if (request.buying_mode === brokenMode) {
           products.push(request.buying_mode === 'refine' ? matchingProduct : {
             product_id: 'product-that-should-have-been-filtered-out',
@@ -1037,12 +1038,14 @@ test('product filters always test brief and independently test each advertised o
   ]) {
     await t.test(buyingModes?.join(', ') ?? 'buying_modes absent (defaults to brief)', async () => {
       const { result, requests, steps } = await runProductFilterBehavior(buyingModes);
-      const expectedModes = ['brief', ...['wholesale', 'refine'].filter(mode => buyingModes?.includes(mode))];
+      const expectedModes = ['brief', 'brief',
+        ...(buyingModes?.includes('wholesale') ? ['wholesale', 'wholesale'] : []),
+        ...(buyingModes?.includes('refine') ? ['refine'] : [])];
       assert.deepEqual(requests.map(request => request.buying_mode), expectedModes);
       assert.equal(result.overall_passed, true);
       assert.equal(result.failed_count, 0);
       assert.equal(result.passed_count, expectedModes.length);
-      assert.equal(result.skipped_count, 3 - expectedModes.length);
+      assert.equal(result.skipped_count, 5 - expectedModes.length);
       assert.equal(steps.brief_filters.passed, true);
       assert.ok(!steps.brief_filters.skipped, 'universal brief coverage must execute');
 
@@ -1080,7 +1083,7 @@ test('advertised refine still fails when the seller ignores replacement filters'
 
 test('a wholesale filter failure does not suppress supported refine coverage', async () => {
   const { result, requests, steps } = await runProductFilterBehavior(['brief', 'wholesale', 'refine'], 'wholesale');
-  assert.deepEqual(requests.map(request => request.buying_mode), ['brief', 'wholesale', 'refine']);
+  assert.deepEqual(requests.map(request => request.buying_mode), ['brief', 'brief', 'wholesale', 'refine']);
   assert.equal(result.overall_passed, false);
   assert.equal(result.failed_count, 1);
   assert.equal(steps.wholesale_filters.passed, false);
@@ -1096,7 +1099,7 @@ test('a brief filter failure blocks dependent refine but leaves wholesale covera
       assert.equal(result.overall_passed, false);
       assert.equal(steps.brief_filters.passed, false);
       assert.deepEqual(requests.map(request => request.buying_mode),
-        buyingModes?.includes('wholesale') ? ['brief', 'wholesale'] : ['brief']);
+        buyingModes?.includes('wholesale') ? ['brief', 'wholesale', 'wholesale'] : ['brief']);
       assert.equal(steps.refine_filters.skip_reason,
         buyingModes?.includes('refine') ? 'prerequisite_failed' : 'not_applicable');
       if (buyingModes?.includes('wholesale')) {

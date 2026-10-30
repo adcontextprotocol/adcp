@@ -131,6 +131,16 @@ test('candidate-version negotiation is explicit and established before runtime i
   );
 });
 
+test('candidate server callbacks bind the exact schema root before runtime imports', () => {
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  const registration = source.indexOf('registerStoryboardCandidateSchemaRoot(');
+  assert.ok(registration > source.indexOf('packageVersion !== releasedComplianceVersion'),
+    'server schema registration must follow the package/compliance candidate identity check');
+  assert.ok(registration < source.indexOf("await import('../../src/training-agent/types.js')"),
+    'server schemas must be available before the SDK caches its per-release envelope policy');
+  assert.match(source, /registerStoryboardCandidateSchemaRoot\(\s*releasedComplianceVersion,\s*complianceOptions\.schemaRoot,?\s*\)/);
+});
+
 test('3.0 compatibility wrapper overrides inherited candidate mode', () => {
   const source = fs.readFileSync(THREE_ZERO_COMPAT_WRAPPER, 'utf8');
   assert.match(

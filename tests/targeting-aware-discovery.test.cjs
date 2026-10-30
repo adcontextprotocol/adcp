@@ -1246,13 +1246,21 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
   );
   assert.equal(step("accept_distinct_coverage_and_targeting").expect_error, undefined);
 
-  assert.equal(filterStoryboard.fixtures.products.length, 3);
+  assert.equal(filterStoryboard.fixtures.products.length, 2);
   assert.deepEqual(
     filterStoryboard.fixtures.products
       .slice(1)
       .map((product) => product.product_id),
-    ["filter_behavior_negative_channel", "filter_behavior_negative_delivery"]
+    ["filter_behavior_negative_channel"]
   );
+  assert.ok(filterStoryboard.fixtures.products.every(product => product.delivery_type === "non_guaranteed"),
+    "delivery filtering must not require a guaranteed fixture on an auction-only seller");
+  for (const mode of ["brief", "wholesale"]) {
+    const id = `get_filtered_${mode}_guaranteed_products`;
+    assert.equal(filterStep(id).sample_request.filters.delivery_type, "guaranteed");
+    assert.equal(hasFilterCheck(id, "all_fields_in_context_array", "products[*].delivery_type"), true,
+      "the delivery negative probe checks every returned product while allowing valid empty results");
+  }
 
   assert.equal(
     hasFilterCheck("get_filtered_brief_products", "field_absent", "products[1]"),
