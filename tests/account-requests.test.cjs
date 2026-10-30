@@ -63,7 +63,7 @@ test('each request state carries exactly its own fields', () => {
   const v = validate('/schemas/core/account-request-record.json');
   const ok = [
     { ...base, state: 'in_review', pending_action: sellerReview },
-    { ...base, state: 'resolved', account_id: 'acc_1', resolution: 'matched' },
+    { ...base, state: 'resolved', account_id: 'acc_1', resolution: 'matched', account: { account_id: 'acc_1', name: 'Matched account', status: 'active', billing: 'operator', payment_terms: 'net_30' } },
     { ...base, state: 'ambiguous', candidates },
     { ...base, state: 'rejected', errors: [{ code: 'POLICY_VIOLATION', message: 'Category not accepted.' }] },
   ];
@@ -243,8 +243,8 @@ test('a change request can resolve to a separate or existing account, leaving th
     updated_at: '2026-10-29T09:00:00Z',
   };
   const separate = { account_id: 'acc_nova_nl_2', name: 'Nova Athletics NL', status: 'active', revision: 1 };
-  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl_2', resolution: 'created', account: separate }), JSON.stringify(v.errors));
-  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl', resolution: 'matched' }), JSON.stringify(v.errors));
+  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl_2', resolution: 'created', account: separate, not_carried_over: [] }), JSON.stringify(v.errors));
+  assert.ok(v({ ...change, state: 'resolved', account_id: 'acc_nova_nl', resolution: 'matched', account: { account_id: 'acc_nova_nl', name: 'Nova Athletics NL', status: 'active' } }), JSON.stringify(v.errors));
 });
 
 test('a separate account on a change is opt-in; otherwise the seller rejects with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT', () => {
@@ -316,4 +316,50 @@ test('request_account change mode is authorized, reachability-first, and continu
   assert.match(req.description, /re-checks revision when it resolves/);
   const caps = read('protocol/get-adcp-capabilities-response.json').properties.account.properties.requests.oneOf[0].properties;
   assert.ok(caps.changeable_attributes, 'sellers declare which attributes they change');
+});
+
+// Account follow-ups (3.3.0-beta.3).
+test('matched and created resolutions carry the target account and its money terms', () => {
+  const record = read('core/account-request-record.json');
+  assert.match(record.properties.account.description, /When resolution is matched or created, sellers MUST include it, with the account's money terms/);
+  const v = validate('/schemas/core/account-request-record.json');
+  const target = { account_id: 'acc_nova_pinnacle', name: 'Nova Athletics via Pinnacle Media', status: 'active', billing: 'operator', payment_terms: 'net_45' };
+  for (const resolution of ['matched', 'created']) {
+    assert.ok(v({ ...base, state: 'resolved', account_id: 'acc_nova_pinnacle', resolution, account: target }), JSON.stringify(v.errors));
+    assert.equal(v({ ...base, state: 'resolved', account_id: 'acc_nova_pinnacle', resolution }), false, `${resolution} without account`);
+  }
+  for (const example of record.examples) assert.ok(v(example.data), example.description);
+  const response = validate('/schemas/account/request-account-response.json');
+  for (const example of read('account/request-account-response.json').examples) assert.ok(response(example.data), example.description);
+});
+
+test('money changes carry effective_at; a separate account lists what did not carry over', () => {
+  const record = read('core/account-request-record.json');
+  assert.equal(record.properties.effective_at['x-added-in'], '3.3.0');
+  assert.equal(record.properties.not_carried_over['x-added-in'], '3.3.0');
+  assert.deepEqual(record.properties.not_carried_over.items.enum, ['notification_configs', 'reporting_delivery_configs', 'reporting_bucket', 'governance_agents', 'creatives', 'audiences', 'catalogs', 'event_sources']);
+  const v = validate('/schemas/core/account-request-record.json');
+  const account = { account_id: 'acc_nova', name: 'Nova', status: 'active', revision: 8, payment_terms: 'net_60' };
+  const money = { request_id: 'areq_money', requested: { account_id: 'acc_nova', revision: 7, payment_terms: 'net_60' }, created_at: '2026-10-28T09:00:00Z', updated_at: '2026-10-28T09:00:00Z', state: 'resolved', account_id: 'acc_nova', resolution: 'updated', account };
+  assert.ok(v({ ...money, effective_at: '2026-11-01T00:00:00Z' }), JSON.stringify(v.errors));
+  assert.equal(v(money), false, 'a money change needs effective_at');
+  const countries = { ...money, requested: { account_id: 'acc_nova', brand: { domain: 'nova-athletics.example', countries: ['NL'] } } };
+  assert.ok(v(countries), JSON.stringify(v.errors));
+  assert.equal(v({ ...countries, effective_at: '2026-11-01T00:00:00Z' }), false, 'effective_at only on money changes');
+
+  const separate = { request_id: 'areq_sep', requested: { account_id: 'acc_nova', brand: { domain: 'nova-athletics.example', countries: ['NL'] } }, created_at: '2026-10-28T09:00:00Z', updated_at: '2026-10-28T09:00:00Z', state: 'resolved', account_id: 'acc_nova_nl', resolution: 'created', account: { account_id: 'acc_nova_nl', name: 'Nova NL', status: 'active' } };
+  assert.ok(v({ ...separate, not_carried_over: ['reporting_delivery_configs', 'governance_agents'] }), JSON.stringify(v.errors));
+  assert.equal(v(separate), false, 'a separate account says what did not carry over');
+  assert.equal(v({ ...separate, requested: { brand: { domain: 'nova-athletics.example' }, operator: 'pinnacle-media.example' }, not_carried_over: [] }), false, 'not on an open request');
+});
+
+test('timezone is changeable only where changeable_attributes lists it', () => {
+  const caps = read('protocol/get-adcp-capabilities-response.json').properties.account.properties.requests.oneOf[0].properties.changeable_attributes;
+  assert.ok(caps.items.enum.includes('timezone'));
+  assert.match(caps.description, /a seller that changes an account's timezone through request_account MUST list timezone/);
+  assert.match(read('account/request-account-request.json').description, /currency and timezone change only on sellers that list them in account\.requests\.changeable_attributes/);
+  const doc = fs.readFileSync(path.join(ROOT, 'docs/accounts/tasks/request_account.mdx'), 'utf8');
+  assert.doesNotMatch(doc, /The changeable attributes are those \[#8474\]/);
+  assert.match(doc, /change only on a seller that lists them/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'docs/protocol/sync_principal.mdx'), 'utf8'), /on a seller that lists `timezone` in `account\.requests\.changeable_attributes`/);
 });

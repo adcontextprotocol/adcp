@@ -1439,7 +1439,7 @@
                 "read_task": { "type": "string", "const": "list_accounts" },
                 "changeable_attributes": {
                   "type": "array",
-                  "description": "Account attributes this seller accepts in request_account change requests (account_id plus fields). Absent or empty means the seller supports opening accounts only. Advisory: sellers still validate each change.",
+                  "description": "Account attributes this seller accepts in request_account change requests (account_id plus fields). Absent or empty means the seller supports opening accounts only. Advisory: sellers still validate each change. currency and timezone are changeable only when listed; a seller that changes an account's timezone through request_account MUST list timezone, and refuses a change to an unlisted currency or timezone with UNSUPPORTED_FEATURE.",
                   "items": { "type": "string", "enum": ["countries", "operator_unit", "billing", "billing_entity", "payment_terms", "currency", "timezone"] },
                   "uniqueItems": true
                 },

@@ -664,7 +664,7 @@ advertising `supported: true` MUST also list `account.requests` in
 
 `event_type` is present only when the seller fires `account_request.changed`; a seller that declares it also declares `adcp.capability_changes.notifications.supported: true`, because buyers subscribe through the caller-scoped `notification_configs`. Without it, buyers poll `list_accounts` with `request_ids`.
 
-`changeable_attributes` lists the attributes the seller accepts in `request_account` change requests (`account_id` plus fields); absent or empty means the seller supports opening accounts only.
+`changeable_attributes` lists the attributes the seller accepts in `request_account` change requests (`account_id` plus fields); absent or empty means the seller supports opening accounts only. `currency` and `timezone` change only when listed: a seller that changes an account's timezone through `request_account` lists `timezone`, and refuses an unlisted `currency` or `timezone` change with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
 
 `pending_action_kinds` is advisory: it lets buyers prepare the people who will
 act. Sellers may issue other kinds, and buyers handle unknown kinds through the
