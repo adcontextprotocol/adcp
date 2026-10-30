@@ -18,7 +18,8 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import type { Socket } from 'node:net';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import YAML from 'yaml';
 import {
   listAllComplianceStoryboards,
@@ -1309,10 +1310,38 @@ async function main() {
   process.exit(exitCode);
 }
 
+// The SDK's ESM build reaches its CommonJS schema loader through
+// createRequire for some response shaping (envelope-status-compat.mjs decides
+// whether decline_proposals / list_products omit the envelope `status` by
+// reading the served version's response schema). That CommonJS instance keeps
+// its own external-root scope, so a root entered only through the ESM import
+// above is invisible to it. While the published SDK packages the candidate
+// bundle that is harmless; once a Version Packages bundle leads the SDK by a
+// candidate, the CommonJS lookup misses, the SDK assumes an envelope schema,
+// and it stamps `status: "completed"` onto responses whose candidate schema
+// forbids it. Enter the same root in that instance too. The path is resolved
+// from the package's own CommonJS entry, so it is the module the SDK loads.
+type SchemaRootScope = <T>(version: string, root: string, fn: () => Promise<T>) => Promise<T>;
+const sdkCommonJsSchemaRootScope = ((): SchemaRootScope | undefined => {
+  const requireFromHere = createRequire(import.meta.url);
+  const loaderPath = join(dirname(requireFromHere.resolve('@adcp/sdk')), 'validation', 'schema-loader.js');
+  if (!existsSync(loaderPath)) return undefined;
+  const loader = requireFromHere(loaderPath) as { withExternalSchemaRoot?: unknown };
+  return typeof loader.withExternalSchemaRoot === 'function'
+    ? loader.withExternalSchemaRoot as SchemaRootScope
+    : undefined;
+})();
+function withCandidateSchemaRoot<T>(version: string, root: string, fn: () => Promise<T>): Promise<T> {
+  const scoped = sdkCommonJsSchemaRootScope
+    ? () => sdkCommonJsSchemaRootScope(version, root, fn)
+    : fn;
+  return withExternalSchemaRoot(version, root, scoped);
+}
+
 // Tenant registries initialize eagerly when mounted. Keep the candidate root
 // registered for their construction as well as discovery and storyboard calls.
 const run = complianceOptions.schemaRoot && releasedComplianceVersion
-  ? () => withExternalSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot!, main)
+  ? () => withCandidateSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot!, main)
   : main;
 run().catch(err => {
   // eslint-disable-next-line no-console
