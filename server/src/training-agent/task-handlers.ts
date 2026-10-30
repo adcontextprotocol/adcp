@@ -54,7 +54,7 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { servesReleaseBefore, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, supportsAccountChangeFeed, atLeastAdcpVersion, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
 import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
@@ -130,6 +130,7 @@ import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getGovernanceSigningPublicJwk } from './governance-signing.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
 import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
+import { projectTaskOutcomeForRelease } from './served-outcome-status.js';
 import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
 import { validateCtvSemantics } from './ctv-experience-matrix.js';
 import {
@@ -3337,14 +3338,6 @@ export function acceptancePolicyDiscoveryCapability(
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
-interface ParsedAdcpReleaseVersion {
-  raw: string;
-  major: number;
-  minor: number;
-  patch: number;
-  prerelease?: string;
-}
-
 interface VersionUnsupportedDetails {
   adcp_version?: string;
   adcp_major_version?: number;
@@ -3362,19 +3355,6 @@ type McpRequestHandler = (request: { params?: Record<string, unknown> }, extra: 
 const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks/cancel'] as const;
 // `request_signing.protocol_methods_*` item pattern in the AdCP 3.1 schemas.
 const THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN = /^[a-z][a-z0-9_]*\/[a-z][a-z0-9_]*$/;
-
-function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
-  if (typeof value !== 'string') return undefined;
-  const match = value.match(/^(\d+)\.(\d+)(?:\.(\d+))?(?:-([A-Za-z0-9.-]+))?$/);
-  if (!match) return undefined;
-  return {
-    raw: value,
-    major: Number.parseInt(match[1], 10),
-    minor: Number.parseInt(match[2], 10),
-    patch: match[3] ? Number.parseInt(match[3], 10) : 0,
-    ...(match[4] && { prerelease: match[4] }),
-  };
-}
 
 function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: ParsedAdcpReleaseVersion): number {
   if (left.major !== right.major) return left.major - right.major;
@@ -24847,7 +24827,7 @@ async function executeTrainingAgentToolInContext(
       return {
         success: true,
         data: {
-          ...replayed,
+          ...projectTaskOutcomeForRelease(toolName, replayed, versionResolution.servedVersion),
           adcp_version: versionResolution.servedVersion,
           replayed: true,
           ...(callerContext !== undefined && { context: callerContext }),
@@ -24882,7 +24862,11 @@ async function executeTrainingAgentToolInContext(
       initialHandlerArgs,
       versionResolution.servedVersion,
     );
-    const response = addServedAdcpVersion(projectedResponse, versionResolution.servedVersion, callerContext) as Record<string, unknown>;
+    const response = addServedAdcpVersion(
+      projectTaskOutcomeForRelease(toolName, projectedResponse, versionResolution.servedVersion),
+      versionResolution.servedVersion,
+      callerContext,
+    ) as Record<string, unknown>;
     if (claim && typeof idempotencyKey === 'string') {
       const hasErrors = Array.isArray(cacheResponse.errors) && cacheResponse.errors.length > 0;
       const hasAdvisorySuccessPayload = permitsAdvisoryErrors(toolName, cacheResponse);
@@ -25224,12 +25208,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // before the envelope-fold landed, or handlers that emitted bodies
         // without status). Per #4878, every per-task response schema now
         // requires envelope `status`.
-        const replayBody = projectProductDiscoveryResult(
+        const replayBody = projectTaskOutcomeForRelease(name, projectProductDiscoveryResult(
           name,
           outcome.response as Record<string, unknown>,
           initialHandlerArgs,
           servedAdcpVersion,
-        );
+        ), servedAdcpVersion);
         const body: Record<string, unknown> = { ...replayBody, replayed: true };
         if (!isTaskRequest && body.status === undefined) body.status = 'completed';
         body.adcp_version = servedAdcpVersion;
@@ -25429,7 +25413,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `completed` on synchronous success — handlers that emit a different
         // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
         // `inner` and we honor that value.
-        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs, servedAdcpVersion);
+        const outwardInner = projectTaskOutcomeForRelease(
+          name,
+          projectProductDiscoveryResult(name, inner, initialHandlerArgs, servedAdcpVersion),
+          servedAdcpVersion,
+        );
         const response: Record<string, unknown> = { ...outwardInner };
         if (response.status === undefined) response.status = 'completed';
         response.adcp_version = servedAdcpVersion;

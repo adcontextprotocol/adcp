@@ -82,7 +82,6 @@ const PROPERTIES_3_3 = [
   ['core/reporting-status-issue.json', ['properties', 'reporting_revision_id']],
   ['governance/check-governance-request.json', ['properties', 'budget_period_id']],
   ['governance/check-governance-response.json', ['properties', 'budget_period_id']],
-  ['media-buy/list-products-response.json', ['properties', 'adcp_version']],
   ['media-buy/sync-audiences-response.json', ['oneOf', 0, 'properties', 'audiences', 'items', 'properties', 'platform_id']],
   ['media-buy/sync-event-sources-response.json', ['oneOf', 0, 'properties', 'event_sources', 'items', 'properties', 'platform_id']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'adcp', 'properties', 'implementation']],

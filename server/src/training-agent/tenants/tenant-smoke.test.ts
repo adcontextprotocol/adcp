@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import type { TrainingContext } from '../types.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { validateSourceSchema } from '../source-schema.js';
 import { clearAccountStore, handleSyncGovernance } from '../account-handlers.js';
 import { clearIdempotencyCache } from '../idempotency.js';
@@ -35,6 +35,10 @@ import { accountScopeFromRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { GovernanceAgentStub } from '@adcp/sdk/testing';
 import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
+import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import addFormats from 'ajv-formats';
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import {
   clearReportingAccountBindingCacheForTesting,
   reportingMediaBuyCandidateHistoryForTesting,
@@ -42,6 +46,54 @@ import {
 } from '../reporting-reliability.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
+
+// The schema trees the build publishes, and the copies inside them that
+// reuse the $ids of the schemas they project.
+const PUBLISHED_SCHEMAS_DIR = path.resolve('dist/schemas');
+const PUBLISHED_COPY_DIRECTORIES = new Set(['bundled', 'mcp', path.join('core', 'async-response-refs')]);
+const publishedValidators = new Map<string, ValidateFunction>();
+
+/** The newest published release of a served line ("3.2" -> "3.2.8"). */
+function newestPublishedRelease(line: string): string {
+  const pattern = new RegExp(`^${line.replace('.', '\\.')}\\.(\\d+)$`);
+  const patches = readdirSync(PUBLISHED_SCHEMAS_DIR)
+    .map(name => pattern.exec(name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
+  const newest = patches.at(-1);
+  if (!newest) throw new Error(`No published ${line} schema release under ${PUBLISHED_SCHEMAS_DIR}`);
+  return newest[0];
+}
+
+/** Validates a response against the published schema of the release it was served at. */
+function validatePublishedSchema(release: string, relativePath: string, value: unknown): {
+  valid: boolean;
+  errors: ErrorObject[];
+} {
+  let validator = publishedValidators.get(`${release}/${relativePath}`);
+  if (!validator) {
+    const root = path.join(PUBLISHED_SCHEMAS_DIR, release);
+    const ajv = new Ajv({ strict: false });
+    addFormats(ajv);
+    const walk = (relative: string): void => {
+      for (const entry of readdirSync(path.join(root, relative), { withFileTypes: true })) {
+        const child = path.join(relative, entry.name);
+        if (entry.isDirectory()) {
+          if (!PUBLISHED_COPY_DIRECTORIES.has(child)) walk(child);
+        } else if (entry.name.endsWith('.json')) {
+          const schema = JSON.parse(readFileSync(path.join(root, child), 'utf8')) as Record<string, unknown>;
+          if (typeof schema.$id === 'string') ajv.addSchema(schema, schema.$id);
+        }
+      }
+    };
+    walk('');
+    validator = ajv.getSchema(`https://adcontextprotocol.org/schemas/${release}/${relativePath}`);
+    if (!validator) throw new Error(`Published ${release} schema not found: ${relativePath}`);
+    publishedValidators.set(`${release}/${relativePath}`, validator);
+  }
+  const valid = validator(value) === true;
+  return { valid, errors: [...(validator.errors ?? [])] };
+}
 
 const SALES_CURRENT_SCENARIOS = [
   'force_creative_status',
@@ -2952,7 +3004,18 @@ describe('tenant routing smoke', () => {
         expect(result?.products, JSON.stringify(listed)).toHaveLength(1);
         expect(result?.products?.[0].product_id).toBe(productId);
         expect(result?.products?.[0].format_options).toEqual([format]);
-        const validation = validateSourceSchema('media-buy/list-products-response.json', result);
+        // The response is served at the training agent's current line (3.2),
+        // so it is graded against that line's newest published schema, not
+        // the 3.3 source: 3.2's list_products does not compose the protocol
+        // envelope and rejects the `status` the 3.3 source requires, and the
+        // SDK omits `status` for a served 3.2 (adcp-client#3493).
+        const served = (result as { adcp_version?: unknown } | undefined)?.adcp_version;
+        expect(served).toBe(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+        const validation = validatePublishedSchema(
+          newestPublishedRelease(TRAINING_AGENT_CURRENT_ADCP_VERSION),
+          'media-buy/list-products-response.json',
+          result,
+        );
         expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
       }
     } finally {
@@ -4200,6 +4263,120 @@ describe('tenant routing smoke', () => {
       expect(updated.result?.structuredContent?.adcp_error).toBeUndefined();
       expect(updated.result?.structuredContent?.errors).toBeUndefined();
       expect(updated.result?.structuredContent?.paused).toBe(true);
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('carries task outcomes outside the envelope status from 3.1 and in it at 3.0', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const governanceUrl = `${baseUrl}/governance/mcp`;
+      const brandUrl = `${baseUrl}/brand/mcp`;
+      await initializeTenant(governanceUrl);
+      await initializeTenant(brandUrl);
+      const structured = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+      const brand = { domain: 'tenant-envelope-status.example' };
+      const planId = 'plan-tenant-envelope-status';
+      const caller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
+        .update('test-token')
+        .digest('hex')
+        .slice(0, 32)}`;
+      const synced = structured(await callTenantTool(governanceUrl, 2, 'sync_plans', {
+        idempotency_key: 'tenant-envelope-status-plan-sync',
+        brand,
+        plans: [{
+          plan_id: planId,
+          brand,
+          objectives: 'Grade the envelope status of governance responses.',
+          budget: { total: 100_000, currency: 'USD', reallocation_threshold: 100_000 },
+          flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+        }],
+      }));
+      expect(synced?.adcp_error, JSON.stringify(synced)).toBeUndefined();
+
+      const check = async (id: number, version?: string) => structured(await callTenantTool(governanceUrl, id, 'check_governance', {
+        idempotency_key: `tenant-envelope-status-check-${id}`,
+        ...(version && { adcp_version: version }),
+        brand,
+        plan_id: planId,
+        caller,
+        target_agent: `${getCanonicalBase()}/sales`,
+        tool: 'create_media_buy',
+        payload: { total_budget: { amount: 1_000, currency: 'USD' } },
+        proposed_commitment: { amount: 1_000, currency: 'USD' },
+      }));
+
+      const current = await check(3);
+      expect(current, JSON.stringify(current)).toMatchObject({ status: 'completed', verdict: 'approved' });
+      const currentValidation = validateSourceSchema('governance/check-governance-response.json', current);
+      expect(currentValidation.valid, JSON.stringify(currentValidation.errors)).toBe(true);
+
+      const reported = structured(await callTenantTool(governanceUrl, 4, 'report_plan_outcome', {
+        idempotency_key: 'tenant-envelope-status-outcome',
+        brand,
+        plan_id: planId,
+        check_id: current!.check_id,
+        governance_context: current!.governance_context,
+        outcome: 'completed',
+        seller_response: { seller_reference: 'mb_envelope_status', committed_budget: 1_000 },
+      }));
+      expect(reported, JSON.stringify(reported)).toMatchObject({ status: 'completed', outcome_state: 'accepted' });
+      const reportedValidation = validateSourceSchema('governance/report-plan-outcome-response.json', reported);
+      expect(reportedValidation.valid, JSON.stringify(reportedValidation.errors)).toBe(true);
+
+      const threeZero = await check(5, '3.0');
+      expect(threeZero, JSON.stringify(threeZero)).toMatchObject({ status: 'approved' });
+
+      // report_plan_outcome at a 3.0 pin carries the outcome state in status,
+      // on the first call and on its idempotent replay.
+      const reportThreeZero = async (id: number) => structured(await callTenantTool(governanceUrl, id, 'report_plan_outcome', {
+        idempotency_key: 'tenant-envelope-status-outcome-3-0',
+        adcp_version: '3.0',
+        brand,
+        plan_id: planId,
+        check_id: threeZero!.check_id,
+        governance_context: threeZero!.governance_context,
+        outcome: 'completed',
+        seller_response: { seller_reference: 'mb_envelope_status_3_0', committed_budget: 1_000 },
+      }));
+      const reportedThreeZero = await reportThreeZero(8);
+      expect(reportedThreeZero, JSON.stringify(reportedThreeZero)).toMatchObject({ status: 'accepted' });
+      const replayedThreeZero = await reportThreeZero(9);
+      expect(replayedThreeZero, JSON.stringify(replayedThreeZero)).toMatchObject({
+        status: 'accepted',
+        outcome_id: reportedThreeZero!.outcome_id,
+        replayed: true,
+      });
+
+      const approval = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'creative_approval', {
+        ...(version && { adcp_version: version }),
+        rights_id: 'janssen_likeness_voice',
+        creative_id: 'cr_envelope_status',
+        creative_url: 'https://cdn.tenant-envelope-status.example/creative.png',
+      }));
+      const approved = await approval(6);
+      expect(approved, JSON.stringify(approved)).toMatchObject({ status: 'completed', approval_status: 'approved' });
+      const approvedValidation = validateSourceSchema('brand/creative-approval-response.json', approved);
+      expect(approvedValidation.valid, JSON.stringify(approvedValidation.errors)).toBe(true);
+      const threeZeroApproval = await approval(7, '3.0');
+      expect(threeZeroApproval, JSON.stringify(threeZeroApproval)).toMatchObject({ status: 'approved' });
+
+      const acquire = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'acquire_rights', {
+        idempotency_key: `tenant-envelope-status-rights-${id}`,
+        ...(version && { adcp_version: version }),
+        account: { brand: { domain: 'tenant-envelope-rights.example' }, operator: 'tenant-envelope-rights.example' },
+        rights_id: 'janssen_likeness_voice',
+        pricing_option_id: 'monthly_exclusive',
+        buyer: { domain: 'tenant-envelope-rights.example' },
+        campaign: { description: 'Envelope status campaign', uses: ['likeness'] },
+      }));
+      const acquired = await acquire(10);
+      expect(acquired, JSON.stringify(acquired)).toMatchObject({ status: 'completed', rights_status: 'acquired' });
+      const acquiredThreeZero = await acquire(11, '3.0');
+      expect(acquiredThreeZero, JSON.stringify(acquiredThreeZero)).toMatchObject({ status: 'acquired' });
     } finally {
       await close();
     }

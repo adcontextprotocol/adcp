@@ -4,6 +4,9 @@
   "title": "Control Media Buy Response",
   "description": "Result of applying operational controls without embedding the package or creative object graphs.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "discriminator": {
     "propertyName": "status"
   },
@@ -43,8 +46,7 @@
           "minItems": 1
         },
         "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": { "type": "boolean", "const": true }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status", "media_buy_id", "revision"],
       "additionalProperties": true,
@@ -57,8 +59,7 @@
         "status": { "type": "string", "const": "failed" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 },
         "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": { "type": "boolean", "const": true }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status", "errors"],
       "additionalProperties": true,
@@ -70,18 +71,16 @@
       }
     },
     {
+      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
       "title": "Control Submitted",
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "submitted" },
-        "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-        "message": { "type": "string", "maxLength": 2000 },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
         "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": { "type": "boolean", "const": true }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
-      "required": ["status", "task_id"],
+      "required": ["status"],
       "additionalProperties": true,
       "not": {
         "anyOf": [

@@ -56,8 +56,10 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // opportunity.later_proposals adds a Duration reference to the shared
   // opportunity context reached from the proposal and purchase tools (+2).
   // Core gender adds one shared predicate reached by five inputs.
-  assert.equal(report.definition_instances, 710);
-  assert.equal(report.unique_definitions, 191);
+  // core/task-id.json, the one task_id definition, is reached by one input
+  // (+1 instance, +1 unique).
+  assert.equal(report.definition_instances, 711);
+  assert.equal(report.unique_definitions, 192);
   assert.equal(report.repeated_definitions, 136);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
@@ -182,7 +184,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 191);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 192);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

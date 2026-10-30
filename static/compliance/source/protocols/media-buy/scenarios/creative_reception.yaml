@@ -1,5 +1,5 @@
 id: media_buy_seller/creative_reception
-version: "1.0.0"
+version: "1.0.1"
 title: "Sales agent with creative capabilities"
 category: media_buy_seller
 summary: "Stateful sales agent that accepts pushed creative assets and renders them in its environment."

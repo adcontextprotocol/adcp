@@ -4,6 +4,9 @@
   "title": "Refine Proposals Response",
   "description": "One ordered result per requested source proposal. Revision results may carry multiple immutable draft proposals when alternatives were requested; finalization and hold extension each return one committed proposal per source. Products contains the compact canonical products needed to evaluate the resulting terms.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "anyOf": [
     {
       "properties": { "status": { "type": "string", "const": "completed" } },
@@ -20,7 +23,6 @@
     }
   ],
   "properties": {
-    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "results": {
       "type": "array",
       "description": "Results in the request's refinements[] order; position carries no ranking. If any result is finalized, every result MUST be finalized; under inventory_hold semantics a finalize batch either creates every requested hold or none, and under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics, or a draft hold_policy with available false) it commits every requested proposal's terms or none, with no inventory hold placed for those entries. An extend_hold batch either extends every requested hold or none. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
@@ -189,9 +191,6 @@
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },
-    "status": { "type": "string", "enum": ["completed", "submitted"] },
-    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-    "message": { "type": "string", "maxLength": 2000 },
     "expected_confirmation_at": {
       "type": "string",
       "format": "date-time",
@@ -200,8 +199,7 @@
     },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
-    "ext": { "$ref": "/schemas/core/ext.json" },
-    "replayed": { "type": "boolean", "const": true }
+    "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "dependencies": {
     "collections": ["products"]

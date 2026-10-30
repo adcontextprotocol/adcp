@@ -265,6 +265,535 @@
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
       "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for buyer context in a planning cycle. Its opportunity_id is opaque, not a join key. It has no ext."
+    },
+    {
+      "file": "core/protocol-envelope.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The envelope's task_id, carried by every task response."
+    },
+    {
+      "file": "core/mcp-webhook-payload.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task a webhook notification reports on."
+    },
+    {
+      "file": "core/tasks-get-request.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/tasks-get-request.json",
+        "quote": "Unique identifier of the task to retrieve"
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get retrieves; it requires task_id."
+    },
+    {
+      "file": "core/tasks-get-response.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get returns."
+    },
+    {
+      "file": "core/tasks-list-request.json",
+      "pointer": "/properties/filters/properties/task_ids/items",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/tasks-get-request.json",
+        "quote": "Unique identifier of the task to retrieve"
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the tasks/list filter."
+    },
+    {
+      "file": "core/tasks-list-response.json",
+      "pointer": "/properties/tasks/items/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task tasks/list returns."
+    },
+    {
+      "file": "protocol/get-task-status-request.json",
+      "pointer": "/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/tasks-get-request.json",
+        "quote": "Unique identifier of the task to retrieve"
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task get_task_status retrieves; it requires task_id."
+    },
+    {
+      "file": "protocol/list-tasks-request.json",
+      "pointer": "/properties/filters/properties/task_ids/items",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/tasks-get-request.json",
+        "quote": "Unique identifier of the task to retrieve"
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the list_tasks filter."
+    },
+    {
+      "file": "protocol/list-tasks-response.json",
+      "pointer": "/properties/tasks/items/properties/task_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/core/protocol-envelope.json",
+        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
+      },
+      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task list_tasks returns."
+    },
+    {
+      "file": "core/compact-task-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "core/compact-task-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "creative/sync-creatives-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "creative/sync-creatives-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/accept-proposal-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/accept-proposal-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/accept-proposal-response.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/build-creative-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/build-creative-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/buy-products-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/buy-products-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/buy-products-response.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/control-media-buy-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/control-media-buy-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/control-media-buy-response.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/create-media-buy-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/create-media-buy-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/decline-proposals-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/decline-proposals-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/decline-proposals-response.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/get-products-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/get-products-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/list-products-response.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/refine-proposals-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/refine-proposals-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/request-proposals-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/request-proposals-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/request-proposals-response.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/sync-catalogs-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/sync-catalogs-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/update-media-buy-async-response-input-required.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "media-buy/update-media-buy-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "signals/get-signals-async-response-working.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "core/protocol-envelope.json",
+      "pointer": "/properties/message",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
+        "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
+      },
+      "reason": "Correction (d) of DR-0036: the envelope's message, on every task response, refers to core/task-message.json, so it carries the 2,000-character bound that 3.2.7 published on the compact responses and the submitted payloads. One bound for every delivery path, at the same 2,000."
+    },
+    {
+      "file": "core/mcp-webhook-payload.json",
+      "pointer": "/properties/message",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
+        "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
+      },
+      "reason": "Correction (d) of DR-0036: a webhook notification's message refers to core/task-message.json, so the bound does not depend on whether the task state arrives in a response or a webhook. The same 2,000 that 3.2.7 published on the compact responses."
+    },
+    {
+      "file": "core/response.json",
+      "pointer": "/properties/message",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
+        "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
+      },
+      "reason": "Correction (d) of DR-0036: the response wrapper's message refers to core/task-message.json, so the wrapper carries the same 2,000-character bound as the envelope."
     }
   ]
 }

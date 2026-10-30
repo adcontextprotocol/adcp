@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-working.json",
+  "title": "Task Working",
+  "description": "The status of a working task payload: status is working. Every working response body composes this schema through allOf, so the status the body describes is pinned in one place.",
+  "type": "object",
+  "properties": {
+    "status": { "const": "working" }
+  },
+  "required": ["status"]
+}

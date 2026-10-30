@@ -4,12 +4,15 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA_BASE_DIR = path.join(ROOT, 'static/schemas/source');
 
 function readSchema(relativePath) {
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, relativePath), 'utf8'));
+  return readBuiltSchema(`/schemas/${relativePath}`);
 }
 
 async function loadExternalSchema(uri) {
@@ -183,6 +186,7 @@ test('a committed proposal that holds inventory carries hold_placed_at', async (
 test('a request_proposals response carries a draft hold_policy beside product policies', async () => {
   const validate = await compile('/schemas/media-buy/request-proposals-response.json');
   const response = {
+    status: 'completed',
     outcome: 'proposed',
     proposals: [{ ...DRAFT, hold_policy: { available: true, min_duration: 'P2D' } }],
     products: [{ ...CANONICAL_PRODUCT, hold_policy: HOLDABLE }],
