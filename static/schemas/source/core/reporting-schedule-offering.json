@@ -20,6 +20,7 @@
       "if": { "properties": { "alignment": { "const": "billing_cycle" } }, "required": ["alignment"] },
       "then": {
         "required": ["period_anchor_policy"],
+        "not": { "properties": { "period_duration": { "pattern": "^P(?:0+[YMD])*T" } }, "required": ["period_duration"] },
         "allOf": [
           {
             "if": { "properties": { "period_anchor_policy": { "const": "fixed" } }, "required": ["period_anchor_policy"] },

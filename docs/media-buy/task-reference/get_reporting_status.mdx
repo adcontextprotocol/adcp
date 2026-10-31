@@ -710,7 +710,10 @@ report there is the seller's to explain.
 outgoing schedule to an incoming one follows one rule:
 
 1. The outgoing schedule owes its periods that start before T, in full. Let E be the
-   end of the last of them; E is T when T falls on an outgoing boundary.
+   end of the last of them; E is T when T falls on an outgoing boundary. E is never
+   earlier than the outgoing side's own start, the instant it began owing from: when
+   two cutovers fall inside one period, the second outgoing side owed nothing before T,
+   and the incoming side carries its start forward.
 2. The incoming schedule owes its periods that start at or after E.
 
 No period is owed twice. When the incoming schedule has no boundary at E, the stretch
@@ -743,8 +746,11 @@ owed.
   incoming offering: an offering present on both sides hands off at the end of its own
   last period that started before T; a newly resolved offering starts at the latest
   such end across the outgoing offerings.
-- **Reactivation.** Turning an inactive subscription back on is a fresh start at the
-  reactivation instant, under the ordinary start rule. Nothing that starts while the
+- **Reactivation.** Turning an inactive subscription back on is a fresh start: coverage
+  resumes at the first boundary at or after the later of the reactivation instant and
+  the end of the last period owed before deactivation. So a version, offering, or
+  timezone change made while inactive never makes a period owed twice, and a
+  reactivation before that end is a cutover at it. Nothing that starts while the
   subscription was inactive is owed. The readback lists each interval in
   `inactive_intervals`, so a buyer can recompute after losing local state.
 - **Account timezone change.** For account-timezone periods, the old timezone's

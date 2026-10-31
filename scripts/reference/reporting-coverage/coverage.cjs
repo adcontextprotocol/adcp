@@ -529,7 +529,17 @@ function expectedSubscriptionPeriods(input) {
       const previous = index > 0 ? sides[index - 1].side : null;
       for (const offeringId of side.offerings.keys()) {
         let floor;
-        if (previous === null || previous.offerings.size === 0) {
+        const reactivation = previous === null ? ctx.inactive.find(window => window.until === t) : undefined;
+        const before = reactivation === undefined ? -1 : sides.findIndex(entry => entry.t >= reactivation.from) - 1;
+        if (before >= 0 && sides[before].side !== null && sides[before].side.offerings.size > 0) {
+          // coverage: "coverage resumes at the first boundary at or after the later of the reactivation instant and
+          // the end of the last period owed before the deactivation", computed like a cutover's E at the
+          // deactivation instant, so a schedule change made while inactive never owes a period twice.
+          const last = sides[before].side;
+          const lastEnd = id => Math.max(endOfLastPeriodStartingBefore(last.offerings.get(id), reactivation.from, ctx), floors[before].get(id));
+          const end = last.offerings.has(offeringId) ? lastEnd(offeringId) : Math.max(...[...last.offerings.keys()].map(lastEnd));
+          floor = Math.max(t, end);
+        } else if (previous === null || previous.offerings.size === 0) {
           // "An incoming side with no outgoing predecessor, or whose predecessor resolved nothing, starts at T
           // under the ordinary start rule." Reactivation: "coverage resumes at the first boundary at or after
           // the reactivation instant". A period starts at or after the first boundary at or after T exactly

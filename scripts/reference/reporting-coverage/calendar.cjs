@@ -13,12 +13,13 @@
  *   wall time in the zone (a gap advances by the gap, a fold takes the earlier
  *   offset); then add n x (hours, minutes, seconds) as exact elapsed time.
  *   utc alignment is this in Etc/UTC from 1970-01-01T00:00:00.
- * - Sub-daily local schedules (account_timezone, source_timezone, or
- *   billing_cycle with a duration of only hours, minutes, and seconds that
- *   divides 24 hours). For every local date, every wall time that is a whole
- *   multiple of the duration after local midnight, read in the zone: a wall
- *   time that does not exist yields no boundary, a repeated one yields one
- *   boundary per offset.
+ * - Sub-daily local schedules (account_timezone or source_timezone with a
+ *   duration of only hours, minutes, and seconds that divides 24 hours). For
+ *   every local date, its day start (its first instant: local midnight, or the
+ *   first instant after a gap at midnight), plus every wall time that is a
+ *   whole multiple of the duration after local midnight, read in the zone: a
+ *   wall time that does not exist yields no boundary, a repeated one yields one
+ *   boundary per offset. billing_cycle needs a date component.
  *
  * Periods are consecutive boundaries. A period whose start equals its end has
  * zero length; the coverage model never owes it.
@@ -114,6 +115,9 @@ function createCalendar({ duration, zone, originWall, local }) {
     const lastDay = Math.floor((hi + 2 * DAY) / DAY) + 1;
     const found = new Set();
     for (let dayIndex = firstDay; dayIndex <= lastDay; dayIndex += 1) {
+      // period_generation: "Each local date's day start, its first instant ... is always a boundary", so a
+      // midnight that does not exist still starts the day, at the first instant after the gap.
+      found.add(tz.resolveWall(zone, dayIndex * DAY));
       for (let offset = 0; offset < DAY; offset += d.timeMs) {
         for (const instant of tz.wallInstants(zone, dayIndex * DAY + offset)) found.add(instant);
       }
@@ -154,6 +158,8 @@ function localCalendar(duration, zone) {
 
 /** billing_cycle: the anchor instant expressed in the zone. */
 function billingCalendar(duration, zone, anchor) {
+  // period_generation: "billing_cycle alignment requires a period_duration with a date component".
+  if (!parseDuration(duration).hasDate) throw new CoverageInputError('invalid_period_duration', `${duration} is a sub-daily billing_cycle duration`);
   return createCalendar({ duration, zone, originWall: tz.toWall(zone, anchor), local: true });
 }
 

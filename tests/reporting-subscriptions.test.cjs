@@ -600,7 +600,7 @@ test('offerings publish mapped dimensions so a buyer resolves match from the wir
   const subscription = read('core/reporting-subscription.json');
   assert.match(subscription['x-adcp-validation'].selection, /publishes the result on the offering as standard_dimensions/);
   assert.match(subscription.properties.selector.properties.match.description, /With match exact and no dimensions, every candidate qualifies and the lowest offering_id wins/);
-  assert.match(subscription.properties.selector.properties.period_timezone.description, /utc offering matches only when this is a UTC alias/);
+  assert.match(subscription.properties.selector.properties.period_timezone.description, /utc offering matches only when this is exactly UTC or Etc\/UTC; other names that tzdata links to UTC/);
 });
 
 test('cutovers, authorization chains, reactivation, and period arithmetic are pinned', () => {
@@ -652,4 +652,22 @@ test('a deactivated subscription reads inactive in coverage, never active', () =
   assert.equal(v({ ...base, status: 'inactive' }), false, 'inactive requires deactivated_at');
   assert.equal(v({ ...base, status: 'active', deactivated_at: '2026-11-10T00:00:00Z' }), false, 'deactivated_at only when inactive');
   assert.match(read('core/reporting-subscription-coverage.json').properties.status.description, /its entry is omitted/);
+});
+
+test('period arithmetic and cutover edge cases are pinned (3.3.0-beta.3)', () => {
+  const rule = read('core/reporting-schedule.json')['x-adcp-validation'].period_generation;
+  assert.match(rule, /The day start is the date's first instant: local midnight, or, where midnight does not exist/);
+  assert.match(rule, /PT24H equals P1D under a local alignment/);
+  assert.match(rule, /Australia\/Lord_Howe's 30-minute changes make one hourly period 90 minutes long/);
+  assert.match(rule, /billing_cycle alignment requires a period_duration with a date component/);
+  assert.match(rule, /P7D weeks under these three alignments start on Thursday/);
+  const v = read('core/reporting-subscription.json')['x-adcp-validation'];
+  assert.match(v.cutover, /never earlier than the outgoing side's own start/);
+  assert.match(v.coverage, /the later of the reactivation instant listed in inactive_intervals and the end of the last period owed before the deactivation/);
+  assert.match(read('core/reporting-delivery-capabilities.json').properties.status_retention_days.description, /exact 24-hour days/);
+  const schedule = validate('/schemas/core/reporting-schedule.json');
+  const cycle = { alignment: 'billing_cycle', period_anchor: '2026-01-01T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'P1D' };
+  assert.ok(schedule({ ...cycle, period_duration: 'P1M' }), JSON.stringify(schedule.errors));
+  for (const d of ['PT1H', 'P0DT6H']) assert.equal(schedule({ ...cycle, period_duration: d }), false, `billing_cycle ${d}`);
+  assert.ok(schedule({ alignment: 'account_timezone', period_duration: 'PT1H', delivery_sla: 'PT1H' }), 'sub-daily stays valid for local alignments');
 });

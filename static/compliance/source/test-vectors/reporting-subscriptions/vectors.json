@@ -9635,6 +9635,171 @@
       ]
     },
     {
+      "id": "reactivation-after-a-schedule-change-never-owes-twice",
+      "name": "reactivation after a schedule change never owes twice",
+      "origin": "adcp",
+      "rule": "3.3.0-beta.3: v1 resolves a UTC day offering and is deactivated at 11-04T12Z, so its 11-04T00Z day stays owed through 11-05T00Z. While inactive, v2 is accepted at 11-04T13Z with alignment account_timezone in Tokyo (midnight 15:00Z), and the subscription is reactivated at 11-04T14Z. Coverage resumes at the first boundary at or after the later of the reactivation instant and the end of the last period owed before deactivation (11-05T00Z): 11-05T15Z. The fresh start alone would have owed the Tokyo day from 11-04T15Z, overlapping the owed UTC day.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/cutover",
+        "static/schemas/source/core/reporting-subscription-state.json#/properties/inactive_intervals",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ],
+      "timezones": ["Asia/Tokyo"],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-11-01T12:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {"all_authorized_accounts": true},
+              "selector": {"feed_purpose": "analytics", "period_duration": "P1D", "required_finality": "official", "dimensions": ["package"]},
+              "reconciliation_mode": "delivery_only"
+            },
+            "superseded_at": "2026-11-04T13:00:00Z"
+          },
+          {
+            "subscription_version": 2,
+            "accepted_at": "2026-11-04T13:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 2,
+              "active": true,
+              "scope": {"all_authorized_accounts": true},
+              "selector": {
+                "feed_purpose": "analytics",
+                "period_duration": "P1D",
+                "required_finality": "official",
+                "dimensions": ["package"],
+                "alignment": "account_timezone"
+              },
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {"account_id": "acct_1", "timezone": "Asia/Tokyo", "grants": [{"authorized_at": "2026-10-01T00:00:00Z"}]},
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-11-02T15:00:00Z",
+            "start_time": "2026-11-03T00:00:00Z",
+            "end_time": "2026-11-07T00:00:00Z",
+            "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_a_pkg", "off_e_pkg_acct_tz"]}]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "utc", "delivery_sla": "PT6H"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package"]
+          },
+          {
+            "offering_id": "off_e_pkg_acct_tz",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_e_pkg_acct_tz",
+            "report_definition_uri": "https://seller.example/report-definitions/off_e_pkg_acct_tz.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "P1D", "alignment": "account_timezone", "delivery_sla": "PT6H"},
+            "supported_finality": ["official"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package"]
+          }
+        ],
+        "now": "2026-12-01T00:00:00Z",
+        "inactive_intervals": [{"deactivated_at": "2026-11-04T12:00:00Z", "reactivated_at": "2026-11-04T14:00:00Z"}]
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z"
+        },
+        {
+          "subscription_version": 2,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_e_pkg_acct_tz",
+          "period_start": "2026-11-05T15:00:00Z",
+          "period_end": "2026-11-06T15:00:00Z"
+        },
+        {
+          "subscription_version": 2,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_e_pkg_acct_tz",
+          "period_start": "2026-11-06T15:00:00Z",
+          "period_end": "2026-11-07T15:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 2,
+          "offering_id": "off_e_pkg_acct_tz",
+          "period_start": "2026-11-05T15:00:00Z",
+          "period_end": "2026-11-06T15:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 2,
+          "offering_id": "off_e_pkg_acct_tz",
+          "period_start": "2026-11-06T15:00:00Z",
+          "period_end": "2026-11-07T15:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        }
+      ]
+    },
+    {
       "id": "exception-bounds-between-boundaries",
       "name": "exception bounds between boundaries",
       "origin": "adcp-client#3505",
@@ -10998,6 +11163,264 @@
           "offering_id": "off_p_hourly_local",
           "period_start": "2026-03-09T03:00:00Z",
           "period_end": "2026-03-09T04:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        }
+      ]
+    },
+    {
+      "id": "havana-pt24h-equals-p1d-when-midnight-does-not-exist",
+      "name": "havana PT24H equals P1D when midnight does not exist",
+      "origin": "adcp",
+      "rule": "Each local date's day start, its first instant, is always a boundary of a sub-daily local schedule (3.3.0-beta.3). Havana springs forward at 00:00 on 2026-03-08, so March 8 starts at 01:00 CDT (05:00Z). PT24H has its boundary there, exactly like P1D: March 7 is 24 hours and March 8 is 23. Under the earlier reading the nonexistent midnight yielded no boundary and PT24H had a 47-hour period.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-schedule.json#/x-adcp-validation/period_generation",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ],
+      "timezones": ["America/Havana"],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-03-01T00:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {"all_authorized_accounts": true},
+              "selector": {
+                "feed_purpose": "pacing",
+                "period_duration": "PT24H",
+                "required_finality": "snapshot",
+                "dimensions": ["package"],
+                "alignment": "account_timezone"
+              },
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {"account_id": "acct_1", "timezone": "America/Havana", "grants": [{"authorized_at": "2026-02-01T00:00:00Z"}]},
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-03-01T00:00:00Z",
+            "start_time": "2026-03-07T05:00:00Z",
+            "end_time": "2026-03-10T04:00:00Z",
+            "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_h24_acct_tz"]}]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_h24_acct_tz",
+            "feed_purpose": "pacing",
+            "report_definition_id": "rd_off_h24_acct_tz",
+            "report_definition_uri": "https://seller.example/report-definitions/off_h24_acct_tz.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "PT24H", "alignment": "account_timezone", "delivery_sla": "PT1H"},
+            "supported_finality": ["snapshot"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package"]
+          }
+        ],
+        "now": "2026-04-01T00:00:00Z"
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_h24_acct_tz",
+          "period_start": "2026-03-07T05:00:00Z",
+          "period_end": "2026-03-08T05:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_h24_acct_tz",
+          "period_start": "2026-03-08T05:00:00Z",
+          "period_end": "2026-03-09T04:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_h24_acct_tz",
+          "period_start": "2026-03-09T04:00:00Z",
+          "period_end": "2026-03-10T04:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_h24_acct_tz",
+          "period_start": "2026-03-07T05:00:00Z",
+          "period_end": "2026-03-08T05:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_h24_acct_tz",
+          "period_start": "2026-03-08T05:00:00Z",
+          "period_end": "2026-03-09T04:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_h24_acct_tz",
+          "period_start": "2026-03-09T04:00:00Z",
+          "period_end": "2026-03-10T04:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        }
+      ]
+    },
+    {
+      "id": "havana-pt2h-nests-in-the-day",
+      "name": "havana PT2H nests in the day",
+      "origin": "adcp",
+      "rule": "The day start is a boundary of every sub-daily local schedule, so local days nest in two-hour periods even when midnight does not exist. On 2026-03-08 in Havana, 00:00 does not exist and the day starts at 01:00 CDT (05:00Z): the PT2H periods are 05:00Z-06:00Z (one hour, from the day start to 02:00 CDT) and then two-hour periods from 06:00Z. March 7 ends at 05:00Z with 22:00-24:00 CST (03:00Z-05:00Z).",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-schedule.json#/x-adcp-validation/period_generation",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ],
+      "timezones": ["America/Havana"],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-03-01T00:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {"all_authorized_accounts": true},
+              "selector": {
+                "feed_purpose": "pacing",
+                "period_duration": "PT2H",
+                "required_finality": "snapshot",
+                "dimensions": ["package"],
+                "alignment": "account_timezone"
+              },
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {"account_id": "acct_1", "timezone": "America/Havana", "grants": [{"authorized_at": "2026-02-01T00:00:00Z"}]},
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-03-01T00:00:00Z",
+            "start_time": "2026-03-08T03:00:00Z",
+            "end_time": "2026-03-08T12:00:00Z",
+            "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_p2_local"]}]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_p2_local",
+            "feed_purpose": "pacing",
+            "report_definition_id": "rd_off_p2_local",
+            "report_definition_uri": "https://seller.example/report-definitions/off_p2_local.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"]
+            },
+            "schedule": {"period_duration": "PT2H", "alignment": "account_timezone", "delivery_sla": "PT1H"},
+            "supported_finality": ["snapshot"],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": ["package"]
+          }
+        ],
+        "now": "2026-04-01T00:00:00Z"
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T03:00:00Z",
+          "period_end": "2026-03-08T05:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T05:00:00Z",
+          "period_end": "2026-03-08T06:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T06:00:00Z",
+          "period_end": "2026-03-08T08:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T08:00:00Z",
+          "period_end": "2026-03-08T10:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T10:00:00Z",
+          "period_end": "2026-03-08T12:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T03:00:00Z",
+          "period_end": "2026-03-08T05:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T05:00:00Z",
+          "period_end": "2026-03-08T06:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T06:00:00Z",
+          "period_end": "2026-03-08T08:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T08:00:00Z",
+          "period_end": "2026-03-08T10:00:00Z",
+          "media_buy_ids": ["mb_1"]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_p2_local",
+          "period_start": "2026-03-08T10:00:00Z",
+          "period_end": "2026-03-08T12:00:00Z",
           "media_buy_ids": ["mb_1"]
         }
       ]
@@ -13801,6 +14224,88 @@
         "now": "2026-12-01T00:00:00Z"
       },
       "expected_error": {"code": "COVERAGE_INPUT_INVALID", "detail": "invalid_period_duration", "wire_valid": true}
+    },
+    {
+      "id": "sub-daily-billing-cycle-is-refused",
+      "name": "sub-daily billing cycle is refused",
+      "origin": "adcp",
+      "rule": "period_generation (3.3.0-beta.3): billing_cycle alignment requires a period_duration with a date component. A sub-daily duration restarts at each local midnight, so the anchor would have no effect; PT1H under billing_cycle is refused, and the reporting-schedule schema rejects it.",
+      "spec_refs": ["static/schemas/source/core/reporting-schedule.json#/x-adcp-validation/period_generation"],
+      "timezones": [],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-10-15T00:00:00Z",
+            "destination_method": {"pattern": "file_transfer", "transport": "s3"},
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {"account_ids": ["acct_1"]},
+              "selector": {"feed_purpose": "billing", "period_duration": "PT1H", "required_finality": "official", "dimensions": ["package"]},
+              "reconciliation_mode": "consumer_receipt",
+              "destination": {"destination_id": "billing-archive"}
+            }
+          }
+        ],
+        "account": {"account_id": "acct_1", "timezone": "America/New_York", "grants": [{"authorized_at": "2026-10-01T00:00:00Z"}]},
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-10-20T00:00:00Z",
+            "start_time": "2026-11-10T00:00:00Z",
+            "end_time": "2027-01-15T00:00:00Z",
+            "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_m_billing_monthly"]}]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_m_billing_monthly",
+            "feed_purpose": "billing",
+            "report_definition_id": "rd_off_m_billing_monthly",
+            "report_definition_uri": "https://seller.example/report-definitions/off_m_billing_monthly.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": ["account_id", "package_id"],
+              "canonicalization_id": "adcp_jcs_rows_v1",
+              "canonicalization_contract_version": "1.0",
+              "canonicalization_media_type": "application/vnd.adcp.reporting-canonicalization+json",
+              "canonicalization_uri": "https://seller.example/canonicalization/adcp_jcs_rows_v1.json",
+              "canonicalization_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "schedule": {
+              "period_duration": "PT1H",
+              "alignment": "billing_cycle",
+              "delivery_sla": "P5D",
+              "period_anchor_policy": "fixed",
+              "period_anchor": "2026-01-01T05:00:00Z",
+              "period_timezone": "America/New_York"
+            },
+            "supported_finality": ["official"],
+            "reconciliation_mode": "consumer_receipt",
+            "standard_dimensions": ["package"],
+            "method": {
+              "pattern": "file_transfer",
+              "transport": "s3",
+              "orchestration": "producer_managed",
+              "destination_modes": ["existing"],
+              "provider": {"domain": "seller.example"},
+              "format": "jsonl"
+            }
+          }
+        ],
+        "now": "2027-03-01T00:00:00Z"
+      },
+      "expected_error": {"code": "COVERAGE_INPUT_INVALID", "detail": "invalid_period_duration", "wire_valid": false}
     },
     {
       "id": "fractional-seconds-and-offsets",
