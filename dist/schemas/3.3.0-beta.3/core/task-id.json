@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/task-id.json",
+  "title": "Task ID",
+  "description": "Unique identifier for tracking an asynchronous AdCP operation. Used to query task status (`tasks/get`, `get_task_status`), correlate webhook notifications, and retrieve results when complete. It identifies a task, so it is never empty. The single definition every `task_id` declaration refers to.",
+  "type": "string",
+  "minLength": 1,
+  "x-entity": "task",
+  "x-max-length-4.0": 128
+}

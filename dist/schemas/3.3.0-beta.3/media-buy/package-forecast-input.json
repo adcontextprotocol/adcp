@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-forecast-input.json",
+  "title": "Package Forecast Input",
+  "description": "Proposed package for a read-only availability forecast in get_products refine mode (AdCP 3.3). Field shapes and package validation rules are shared with Package Request. The enclosing refine entry supplies product_id; it MUST NOT be repeated here. pricing_option_id and budget are required. The budget uses the selected pricing option's currency, and impressions, when supplied, has its create_media_buy goal semantics. Omitted flight boundaries inherit filters.start_date/end_date; if an exact flight or goal cannot be resolved, the seller reports unable with notes rather than guessing. Targeting inherits the effective discovery configuration and applies package-level per-dimension replacement or clearing exactly as on create. All supplied fields are forecast inputs only: no booking, hold, reservation, creative upload, or assignment is performed.",
+  "type": "object",
+  "x-added-in": "3.3.0",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/allOf/0"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/allOf/1"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/allOf/2"
+    },
+    {
+      "not": {
+        "required": [
+          "product_id"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "format_ids": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/format_ids",
+      "deprecated": true,
+      "x-removed-in": "4.0.0",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format selector with the same receiver rules as Package Request."
+    },
+    "format_option_refs": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/format_option_refs"
+    },
+    "format_kind": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/format_kind"
+    },
+    "params": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/params"
+    },
+    "budget": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/budget"
+    },
+    "min_spend_target": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/min_spend_target"
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/pacing"
+    },
+    "pricing_option_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/pricing_option_id"
+    },
+    "bid_price": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/bid_price",
+      "deprecated": true
+    },
+    "bidding": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/bidding"
+    },
+    "impressions": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/impressions"
+    },
+    "daily_budget_cap": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/daily_budget_cap"
+    },
+    "start_time": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/start_time"
+    },
+    "end_time": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/end_time"
+    },
+    "start_requires_all_creatives_approved": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/start_requires_all_creatives_approved"
+    },
+    "paused": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/paused"
+    },
+    "catalogs": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/catalogs"
+    },
+    "optimization_goals": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/optimization_goals"
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/targeting_overlay"
+    },
+    "audience_evidence_requirements": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/audience_evidence_requirements"
+    },
+    "target_audiences": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/target_audiences"
+    },
+    "audience_evidence_pins": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/audience_evidence_pins"
+    },
+    "measurement_terms": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/measurement_terms"
+    },
+    "performance_standards": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/performance_standards"
+    },
+    "committed_metrics": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/committed_metrics"
+    },
+    "creative_assignments": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/creative_assignments"
+    },
+    "creatives": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/creatives"
+    },
+    "agency_estimate_number": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/agency_estimate_number"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/context"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/properties/ext"
+    }
+  },
+  "required": [
+    "pricing_option_id",
+    "budget"
+  ],
+  "dependencies": {
+    "target_audiences": [
+      "audience_evidence_requirements"
+    ],
+    "params": [
+      "format_kind"
+    ]
+  },
+  "not": {
+    "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/media-buy/package-request.json#/not"
+  },
+  "additionalProperties": true
+}

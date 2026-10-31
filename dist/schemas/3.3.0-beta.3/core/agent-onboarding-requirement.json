@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/agent-onboarding-requirement.json",
+  "title": "Agent Onboarding Requirement",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "One requirement an onboarding mode imposes, discriminated by kind. Only aao_verified, storyboard, and experimental_feature carry fields; other kinds are the kind alone. The aao_verified fields (role, verification_modes, verified_specialisms, adcp_version) use the AgenticAdvertising.org Verified badge token's own claim names (docs/building/verification/aao-verified.mdx). The requirement describes the gate the publishing party applies on its own side; it creates no conformance obligation on the counterparty.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/agent-onboarding-requirement-kind.json"
+    },
+    "role": {
+      "type": "string",
+      "description": "aao_verified: the badge role required, such as media-buy.",
+      "maxLength": 128
+    },
+    "verification_modes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 128
+      },
+      "minItems": 1,
+      "description": "aao_verified: accepted verification modes, as the badge token names them.",
+      "maxItems": 32
+    },
+    "verified_specialisms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 128
+      },
+      "minItems": 1,
+      "description": "aao_verified: specialisms the badge's verified_specialisms claim must include.",
+      "maxItems": 32
+    },
+    "adcp_version": {
+      "type": "string",
+      "description": "aao_verified: the AdCP release the badge must cover.",
+      "maxLength": 32
+    },
+    "id": {
+      "type": "string",
+      "description": "storyboard: the storyboard id. experimental_feature: the feature id.",
+      "maxLength": 128
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "aao_verified"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "role"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "storyboard",
+              "experimental_feature"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "id"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true
+}
