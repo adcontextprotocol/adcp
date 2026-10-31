@@ -1388,6 +1388,68 @@ test('measurement acceptance is split from the universal rejection scenario', as
   assert.deepEqual(submittedTerms, expectedTerms);
 });
 
+test('measurement terms gate skips when the declaration is absent or arrives via a fetched capabilities response', async () => {
+  const accepted = loadMediaBuyStoryboard('measurement_terms_accepted');
+  const tools = ['get_adcp_capabilities', ...accepted.required_tools, 'comply_test_controller'];
+
+  // Absent key via profile injection: media_buy is declared but
+  // measurement_terms_acceptance is not. The coverage above only exercises
+  // the explicit `false` case, and an absent key is what a seller that never
+  // declares the capability actually sends (#7344).
+  const absentKey = await runStoryboard('https://agent.example/mcp', accepted, {
+    _profile: {
+      tools,
+      raw_capabilities: { media_buy: {} },
+    },
+    agentTools: tools,
+  });
+  assert.equal(absentKey.overall_passed, true);
+  assert.equal(absentKey.phases[0].phase_id, 'capability_unsupported');
+  assert.equal(absentKey.phases[0].steps[0].skip_reason, 'capability_unsupported');
+
+  // Fetched-response shape: the production runner resolves the profile it
+  // gates on from the agent's own get_adcp_capabilities response. Feed the
+  // gate a real response payload (mock _client, wire shape with context
+  // echo) instead of a hand-written literal: the response omits
+  // measurement_terms_acceptance, so the gate must skip the scenario and no
+  // storyboard task may be dispatched (#7344). Note the pinned SDK's
+  // runStoryboard gates on the resolved profile only — it does not call
+  // _client.getAdcpCapabilities for storyboard-level gates, and omitting
+  // the profile leaves the gate unevaluated — so the fetch itself remains
+  // the hosted runner / adcp-client half of #7344.
+  const dispatchedTasks = [];
+  const client = {
+    resetContext() {},
+    async getAdcpCapabilities(request) {
+      dispatchedTasks.push('get_adcp_capabilities');
+      return {
+        success: true,
+        data: { media_buy: {}, context: request.context },
+      };
+    },
+    async getProducts() {
+      dispatchedTasks.push('get_products');
+      throw new Error('measurement_terms_accepted must not dispatch when the capability is undeclared');
+    },
+    async createMediaBuy() {
+      dispatchedTasks.push('create_media_buy');
+      throw new Error('measurement_terms_accepted must not dispatch when the capability is undeclared');
+    },
+  };
+  const capabilitiesResponse = await client.getAdcpCapabilities({ context: {} });
+  assert.equal(capabilitiesResponse.success, true);
+  const liveFetch = await runStoryboard('https://agent.example/mcp', accepted, {
+    _profile: { tools, raw_capabilities: capabilitiesResponse.data },
+    agentTools: tools,
+    skip_controller_seeding: true,
+    _client: client,
+  });
+  assert.equal(liveFetch.overall_passed, true);
+  assert.equal(liveFetch.phases[0].phase_id, 'capability_unsupported');
+  assert.equal(liveFetch.phases[0].steps[0].skip_reason, 'capability_unsupported');
+  assert.deepEqual(dispatchedTasks, ['get_adcp_capabilities']);
+});
+
 test('storyboard capability gates use the schema shape the runner evaluates', () => {
   // requires_capability is a single predicate; compound AND gates belong in
   // requires_all_capabilities. A malformed gate (e.g. `requires_capability:
