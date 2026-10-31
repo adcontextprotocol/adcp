@@ -903,7 +903,8 @@ test('flight_history lets a buyer recompute past periods after a retroactive edi
     assert.equal(field['x-added-in'], '3.3.0', file);
     assert.equal(field.maxItems, 64, file);
     assert.deepEqual(field.items.required, ['recorded_at', 'start_time', 'stop_time'], file);
-    assert.match(field.description, /MUST list every retroactive edit while any reporting obligation for the buy is retained/, file);
+    assert.match(field.description, /MUST list every retroactive edit recorded within the last status_retention_days/, file);
+    assert.match(field.description, /a seller MUST refuse a retroactive edit that would exceed that with INVALID_STATE/, file);
     assert.match(field.description, /The flight in force at an instant X is the one in the earliest entry recorded after X/, file);
   }
   assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].coverage, /flight_history lists every retroactive edit/);
