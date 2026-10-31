@@ -3,6 +3,9 @@
   "$id": "/schemas/media-buy/build-creative-async-response-working.json",
   "title": "Build Creative - Working",
   "description": "Progress payload for active build_creative task. Returned during AI generation, format transformation, or complex library retrieval with macro resolution.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "percentage": {

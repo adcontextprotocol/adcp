@@ -3,6 +3,9 @@
   "$id": "/schemas/media-buy/get-products-async-response-working.json",
   "title": "Get Products - Working",
   "description": "Progress payload for active get_products task.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "percentage": {

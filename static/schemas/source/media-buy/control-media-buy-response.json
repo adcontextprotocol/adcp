@@ -12,6 +12,7 @@
       "title": "Control Applied",
       "type": "object",
       "properties": {
+        "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
         "status": { "type": "string", "const": "completed" },
         "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
         "revision": { "type": "integer", "minimum": 1 },
@@ -54,6 +55,7 @@
       "title": "Control Error",
       "type": "object",
       "properties": {
+        "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
         "status": { "type": "string", "const": "failed" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 },
         "context": { "$ref": "/schemas/core/context.json" },
@@ -73,6 +75,7 @@
       "title": "Control Submitted",
       "type": "object",
       "properties": {
+        "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
         "status": { "type": "string", "const": "submitted" },
         "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
         "message": { "type": "string", "maxLength": 2000 },

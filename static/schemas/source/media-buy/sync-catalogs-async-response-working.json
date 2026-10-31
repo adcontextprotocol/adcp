@@ -3,6 +3,9 @@
   "$id": "/schemas/media-buy/sync-catalogs-async-response-working.json",
   "title": "Sync Catalogs - Working",
   "description": "Progress payload for active sync_catalogs task.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "percentage": {
