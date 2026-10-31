@@ -192,9 +192,14 @@ jobs:
           name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
           path: bundle
 
+      # main bundles are AdCP 3.3 candidates. The Python SDK generates them only
+      # on its `next` branch (SDK 10 / AdCP 3.3); its default branch, `main`,
+      # is the 9.x line for AdCP 3.2 and cannot package a 3.3 bundle key.
+      # Move this back to the default branch when the SDK promotes 3.3 there.
       - uses: actions/checkout@v7.0.1
         with:
           repository: adcontextprotocol/adcp-client-python
+          ref: next
           path: sdk
           fetch-depth: 1
 
