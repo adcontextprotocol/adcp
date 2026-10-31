@@ -528,10 +528,14 @@ phases:
               budget: 25000
               pricing_option_id: "cpm_non_guaranteed"
               bid_price: 25
+              context:
+                buyer_ref: "media_buy_seller--sports_preroll_package"
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
               bid_price: 10
+              context:
+                buyer_ref: "media_buy_seller--lifestyle_display_package"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_media_buy_seller_create"
@@ -614,6 +618,20 @@ phases:
             path: "media_buys[0].context.correlation_id"
             value: "media_buy_seller--create_media_buy"
             description: "get_media_buys includes persisted media-buy context from create_media_buy"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "sports_preroll_q2"
+              context:
+                buyer_ref: "media_buy_seller--sports_preroll_package"
+            description: "get_media_buys returns each package's persisted context from create_media_buy on that package, in any order"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "lifestyle_display_q2"
+              context:
+                buyer_ref: "media_buy_seller--lifestyle_display_package"
+            description: "get_media_buys returns each package's persisted context from create_media_buy on that package, in any order"
 
   - id: delivery_monitoring
     title: "Delivery and reporting"
@@ -784,10 +802,14 @@ phases:
               budget: 25000
               pricing_option_id: "cpm_non_guaranteed"
               bid_price: 25
+              context:
+                buyer_ref: "media_buy_seller--sports_preroll_package"
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
               bid_price: 10
+              context:
+                buyer_ref: "media_buy_seller--lifestyle_display_package"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_media_buy_seller_timezone"
@@ -848,6 +870,20 @@ phases:
             path: "media_buys[0].context.correlation_id"
             value: "media_buy_seller--create_media_buy"
             description: "get_media_buys includes persisted media-buy context from create_media_buy"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "sports_preroll_q2"
+              context:
+                buyer_ref: "media_buy_seller--sports_preroll_package"
+            description: "get_media_buys returns each package's persisted context from create_media_buy on that package, in any order"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "lifestyle_display_q2"
+              context:
+                buyer_ref: "media_buy_seller--lifestyle_display_package"
+            description: "get_media_buys returns each package's persisted context from create_media_buy on that package, in any order"
 
   - id: buyer_selected_delivery_monitoring
     title: "Buyer-selected timezone delivery and reporting"
