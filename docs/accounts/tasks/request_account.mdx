@@ -148,14 +148,21 @@ A day later, sales ops finds no relationship and hands the next step to the buye
 }
 ```
 
-Once the human registers, the request resolves. The full record also carries `account`, with the new account's money terms, because they can differ from the ones requested:
+Once the human registers, the request resolves. It carries `account` with the new account's money terms, because they can differ from the ones requested (`requested`, `created_at`, and `updated_at` are omitted here):
 
 ```json
 {
   "request_id": "areq_01K4F8M2Q7",
   "state": "resolved",
   "account_id": "acc_renault_fr_wpp",
-  "resolution": "created"
+  "resolution": "created",
+  "account": {
+    "account_id": "acc_renault_fr_wpp",
+    "name": "Renault France via WPP Media",
+    "status": "active",
+    "billing": "operator",
+    "payment_terms": "net_45"
+  }
 }
 ```
 
