@@ -1,0 +1,56 @@
+name: Ladon approval policy
+
+# Read-only PR-head tests. This is a configuration/regression check, not the
+# separate trusted exact-head human-approval check required before lifting hold.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Ladon approval policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LADON_ACTIONS_PATH: ${{ github.workspace }}/.ladon-reviewed-actions
+    steps:
+      - name: Check out exact consumer head without write credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: consumer
+          persist-credentials: false
+
+      - name: Check out reviewed Ladon implementation and pin history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: adcontextprotocol/actions
+          ref: d6e930d4a2a01ee0d476fd8347eaf258f85d889c
+          path: .ladon-reviewed-actions
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .ladon-reviewed-actions/.nvmrc
+
+      - name: Install locked review test dependencies without lifecycle scripts
+        working-directory: .ladon-reviewed-actions
+        run: npm ci --ignore-scripts
+
+      - name: Verify every invocation, immutable nested pins, and human hold
+        working-directory: consumer
+        run: node --test .github/ladon-policy.test.cjs
+
+      - name: Run reviewed approval-boundary regressions and static checks
+        working-directory: .ladon-reviewed-actions
+        run: |
+          npm test -- --force
+          npm run type-check
+          npm run build
+          git diff --exit-code -- ladon
