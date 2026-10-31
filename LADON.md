@@ -78,6 +78,27 @@ algorithms) change. A clarification is patch-eligible only when the prior spec
 was demonstrably ambiguous *and* any conformant 3.1.0 implementation would
 already satisfy the new MUST. "It's just docs" does not apply to normative docs.
 
+### Mandatory: every minor-release change has a pathway back
+
+Per DR-0033, a PR that changes `static/schemas/source/**` or normative docs for
+a minor release (3.x now, and each later major's own minors from 4.1 onward)
+must state, for each new or changed field, enum value, task, union variant,
+requiredness or semantic rule, how it maps to the previous minor release of the
+same major:
+
+- droppable (and, for a mutating request, whether dropping changes what the
+  seller commits to);
+- moves (with the mapping);
+- refused (with the error); or
+- identity-bearing (Breaking, with the reduction and migration rule from
+  DR-0032).
+
+Look in the PR body, the changeset, or the docs migration page. A minor-release
+change with no stated pathway is `high`. A stated pathway with no cross-version
+conformance case and no tracked follow-up is `medium`. A mutation-side field
+declared "droppable" whose loss would change spend, targeting, caps or account
+identity is `high`, because it is a refusal mislabeled as droppable.
+
 ### Mandatory: cite governance precedent
 
 When a PR decides a question of protocol policy or convention rather than
