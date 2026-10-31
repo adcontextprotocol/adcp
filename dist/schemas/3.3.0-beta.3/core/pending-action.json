@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/pending-action.json",
+  "title": "Pending Action",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "What has to happen next, and on whose side, before a pending account request can move on (experimental, account.requests). waiting_on: seller means the buyer only waits. waiting_on: buyer means a human on the buyer side must act, normally at url. The URL is shown only to the authenticated caller that owns the request and MUST NOT carry credentials or bearer tokens. Possession of the URL, or of the request_id it may contain, MUST NOT by itself be enough to complete the action: the human authenticates with the seller first.",
+  "type": "object",
+  "properties": {
+    "waiting_on": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/pending-action-party.json",
+      "description": "Whose turn it is. seller: the seller is reviewing; poll or wait for the webhook. buyer: a buyer-side human must complete the action."
+    },
+    "kind": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/pending-action-kind.json"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Where a human completes the action. Required when waiting_on is buyer. MAY be present when waiting_on is seller, for example to show review status."
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Human-readable description of what is needed. Treat as untrusted text."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this action lapses. A request still waiting on the buyer at this time moves to rejected."
+    }
+  },
+  "required": [
+    "waiting_on",
+    "kind",
+    "message"
+  ],
+  "if": {
+    "properties": {
+      "waiting_on": {
+        "const": "buyer"
+      }
+    },
+    "required": [
+      "waiting_on"
+    ]
+  },
+  "then": {
+    "required": [
+      "url"
+    ]
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Seller sales ops matching the request against existing advertiser records",
+      "data": {
+        "waiting_on": "seller",
+        "kind": "review",
+        "message": "Checking for an existing Renault France relationship. Usually one business day."
+      }
+    },
+    {
+      "description": "No relationship exists; a buyer-side human must register",
+      "data": {
+        "waiting_on": "buyer",
+        "kind": "sign_up",
+        "url": "https://advertisers.streamhaus.example/register?ref=areq_01K4F8",
+        "message": "Register WPP Media France as an advertiser and accept the StreamHaus terms.",
+        "expires_at": "2026-11-15T00:00:00Z"
+      }
+    }
+  ]
+}

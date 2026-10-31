@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/account/list-accounts-request.json",
+  "title": "List Accounts Request",
+  "description": "Request parameters for listing accounts accessible to the authenticated agent. For upstream-managed namespaces, this discovers seller/storefront account_id values. For buyer-declared accounts, responses return each account_id with its brand, operator, and attributes, so a buyer recovers its account IDs after a cold start.",
+  "x-tool-summary": "List accounts accessible to the caller and recover their canonical account references.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/account-ref.json",
+      "description": "Optional account filter. Use `account_id` to retrieve one known seller/storefront account, or the natural key (`brand` + `operator`, narrowed by any of `brand.countries`, `operator_unit`, `currency`, `timezone`, and `sandbox`, matched as in account-ref.json) to find buyer-declared accounts and their account_id values. When present, the seller returns every matching account visible to the authenticated caller; unlike an account reference on other tasks, several matches are not an error."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "pending_approval",
+        "rejected",
+        "payment_required",
+        "suspended",
+        "closed"
+      ],
+      "description": "Filter accounts by status. Omit to return accounts in all statuses."
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/pagination-request.json"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform."
+    },
+    "include_requests": {
+      "type": "boolean",
+      "default": false,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). When true, also return the caller's account requests in account_requests[]: every open request (in_review or ambiguous) plus requests that changed state in the last 30 days. Sellers retain resolved and rejected requests for at least 30 days after their last state change. Only the caller's own requests are returned."
+    },
+    "request_ids": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). Return only these requests in account_requests[]; implies include_requests. Unknown IDs, and IDs belonging to other callers, are omitted silently.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true
+    },
+    "requests_pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/pagination-request.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). Pages account_requests[] independently of accounts; implies include_requests. Pass the cursor from account_requests_pagination to read the next page. The top-level pagination field pages accounts only."
+    },
+    "include_webhook_activity": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, request recent webhook delivery attempts for each returned account in account.webhook_activity[]. Sellers MAY omit webhook_activity if they do not expose this debug log; when present, three-state semantics match the shared webhook_activity[] contract."
+    },
+    "webhook_activity_limit": {
+      "type": "integer",
+      "description": "Maximum number of webhook_activity[] records to return per account when include_webhook_activity is true.",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [],
+  "additionalProperties": true
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/canonical-installment-ref.json",
+  "title": "Canonical Installment Reference",
+  "x-added-in": "3.3.0",
+  "description": "Closed canonical identity of one installment within a publisher-scoped collection. Only the identity members below are permitted, so the same installment always has one reference value and a set of references always serializes to the same JCS bytes. Use this wherever a reference is matched by identity against a canonical set — digest-covered terms, and references a receiving agent resolves and acts on. core/installment-ref.json stays open for delivery-reporting rows, where a reference is a self-identifying dimension key rather than something compared against a reference set, so extra members are harmless. Resolution is against the referenced product's declared installments; the publisher_domain names the adagents.json that scopes the collection ID and MUST NOT be dereferenced to resolve a reference.",
+  "type": "object",
+  "properties": {
+    "collection_ref": {
+      "title": "Canonical Collection Reference",
+      "type": "object",
+      "description": "Closed parent collection identity. Collection IDs are scoped to the adagents.json at publisher_domain, so both members participate in identity.",
+      "properties": {
+        "publisher_domain": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "collection_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-entity": "collection"
+        }
+      },
+      "required": [
+        "publisher_domain",
+        "collection_id"
+      ],
+      "additionalProperties": false
+    },
+    "installment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Installment ID within the referenced collection.",
+      "x-entity": "installment"
+    }
+  },
+  "required": [
+    "collection_ref",
+    "installment_id"
+  ],
+  "additionalProperties": false
+}

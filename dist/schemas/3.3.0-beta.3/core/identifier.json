@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/identifier.json",
+  "title": "Identifier",
+  "description": "A property identifier with type and value. Used to identify properties across platforms (domains, app store IDs, etc.).",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/identifier-types.json",
+      "description": "Type of identifier"
+    },
+    "value": {
+      "type": "string",
+      "description": "The identifier value. Domain and subdomain values MUST be lowercase ASCII hostnames (IDNs use lowercase A-label/punycode form), without scheme, path, port, whitespace, or trailing dot. Domain permits one leading '*.'; subdomain does not. For domain: 'example.com' matches base plus www and m; 'edition.example.com' matches that subdomain; '*.example.com' matches all subdomains but not the base. Invalid values MUST cause rejection of the containing request; receivers MUST NOT silently discard identifiers."
+    }
+  },
+  "required": [
+    "type",
+    "value"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "domain"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "pattern": "^(?:\\*\\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\\s\\S])",
+            "maxLength": 255,
+            "allOf": [
+              {
+                "if": {
+                  "pattern": "^\\*\\."
+                },
+                "else": {
+                  "maxLength": 253
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "subdomain"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\\s\\S])",
+            "maxLength": 253
+          }
+        }
+      }
+    }
+  ]
+}

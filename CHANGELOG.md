@@ -1,5 +1,116 @@
 # Changelog
 
+## 3.3.0-beta.3
+
+### Minor Changes
+
+- 4af25bf: Account requests (experimental): resolved requests carry money terms, money changes say when they take effect, and timezone changeability is consistent.
+  
+  - A request that resolves as `matched` or `created` now MUST carry `account`, with the account's `billing`, `billing_entity` (without write-only fields) and `payment_terms`, because they can differ from the terms requested.
+  - A request that resolves as `updated` and changed `billing`, `billing_entity` or `payment_terms` carries `effective_at`, when the new money terms take effect.
+  - A change request that resolves as `created` (a separate account) carries `not_carried_over`: the account-level configurations the new account doesn't have.
+  - `currency` and `timezone` change through `request_account` only on sellers that list them in `account.requests.changeable_attributes`; a seller that changes timezone MUST list it. `request_account` and `sync_principal` docs now agree.
+- 30e24b6: Reporting subscriptions (experimental): billing coverage has no unowed stretch, and the flight ends when delivery stops.
+  
+  - **Billing stubs.** When a cutover hands periods to a billing feed whose schedule has no boundary at the handoff instant E, the stretch from E to the first incoming boundary is now owed as one stub period instead of under neither schedule. Its obligation carries the new `stub: true` (`core/reporting-obligation.json`, billing only). This covers account timezone changes on billing offerings, so no billable hour goes unreported. Pacing and analytics feeds still leave the stretch unowed.
+  - **Delivery stop on cancellation.** `cancellation_effective_at` (experimental), a sibling of `cancellation` on `core/media-buy.json` and `get_media_buys`, is when delivery stops under the cancellation, later than `canceled_at` when the seller delivers through a notice period. Sellers advertising `media_buy.reporting_subscriptions` MUST populate it, and the coverage rule's stop time uses it instead of the instant the cancellation was recorded.
+  - **Delivery stays inside the flight.** A seller advertising `media_buy.reporting_subscriptions` MUST NOT deliver on a buy outside its flight. To deliver later, including a make-good under `makegood_policy` remedy `additional_delivery`, it first extends `end_time`; a canceled or completed buy's make-good goes on a subsequent buy.
+  - The cutover text now says exactly when the stretch is empty: when E is also an incoming boundary. That always holds when moving to a finer schedule (daily to hourly) on the same alignment, timezone, and anchor, but not when moving to a coarser one (hourly to daily). The coverage vectors and reference model gain billing stubs (`stub: true` rows) and the `billing-cutover-owes-a-stub` case, and read `cancellation_effective_at` (`cancellation-notice-period-is-owed-through-the-delivery-stop`).
+  - Account-level billing configurations (`sync_accounts` `reporting_delivery_configs`) follow the same rules: a new generation or an account timezone change is a cutover that owes a stub when E isn't an incoming boundary, and a seller with an active billing generation delivers on a buy only inside its flight (`x-adcp-validation.billing_continuity`).
+- 8b5584e: Experimental live creative updates (#8404, folds in staged activation from #6780). A buyer changes a creative that is serving by syncing it again under the same `creative_id`; the seller declares in `creative.live_updates` which kinds of change (`click_through`, `trackers`, `asset_content`, `format`) it applies in place and how the creative serves meanwhile: `uninterrupted` (decided inside the sync call), `staged` (the approved prior version keeps serving until the change is approved, then is promoted atomically; `on_rejection` is `keeps_prior` or `stops`), or `paused_for_review` (the existing lifecycle). Name and tag changes are always accepted.
+  
+  - `list_creatives` returns `staged_update` while a staged change awaits promotion; `sync_creatives` returns `staged_update` on the item; `dry_run` returns the exact outcome of one change. There is no per-creative policy readback: the capability is the general floor and `dry_run` answers for one change.
+  - New experimental notification type `creative.staged_update_changed` (`creative/creative-staged-update-changed-webhook.json`) reports a staged update's review outcome (`promoted` or `rejected`), only to subscribers that register it. `creative.status_changed` is unchanged: a staged outcome is not a status transition, so a buyer on an earlier release never receives an `approved → approved` fire its closed validator would reject.
+  - New error code `CREATIVE_LIVE_UPDATE_UNSUPPORTED` (with `error-details/creative-live-update-unsupported.json`) replaces `INVALID_STATE` for declaring sellers only. Sellers that do not declare `creative.live_updates` keep the original rule: creatives on active, non-paused packages cannot be updated, and the refusal is `INVALID_STATE`.
+  - `comply_test_controller` `force_creative_status` forces a pending staged update's review outcome.
+  - New storyboards `media_buy_seller/creative_live_updates` and `media_buy_seller/creative_live_update_refusal`; the training agent's sales tenant implements the surface.
+- dc4490e: Reporting subscriptions (experimental): a deactivated subscription no longer reads as active in `get_reporting_status`. `subscription_coverage[].status` gains `inactive`, with a required `deactivated_at`. Periods that started before deactivation stay owed, and no later ones are. An inactive subscription is listed only while it still has retained obligations for the account; after that its entry is omitted. Before, the status enum had no inactive value, so a deactivated subscription still in scope could only read as `active`.
+- 2a28649: Reporting subscriptions (experimental): period arithmetic and cutover edge cases found while building the canonical coverage vectors (#8616) are settled, and the vectors and reference model pin them.
+  
+  - **Day start.** Under a local alignment, each local date's first instant is always a boundary: local midnight, or the first instant after a DST gap at midnight (Havana, Santiago, Cairo). Days therefore nest in every sub-daily schedule, and `PT24H` equals `P1D`; before, a nonexistent midnight left a 47-hour `PT24H` period, and `PT2H` didn't nest. New vectors: `havana-pt24h-equals-p1d-when-midnight-does-not-exist` and `havana-pt2h-nests-in-the-day`.
+  - **Lord Howe confirmed.** Literal wall-clock hours stand: a 30-minute DST change makes one hourly period 90 minutes long.
+  - **Two cutovers inside one period.** E is never earlier than the outgoing side's own start, so the incoming side carries that start forward, as both SDKs and the vectors already do.
+  - **Reactivation after a change made while inactive** resumes at the first boundary at or after the later of the reactivation instant and the end of the last period owed before deactivation, so nothing is owed twice. New vector: `reactivation-after-a-schedule-change-never-owes-twice`.
+  - **UTC aliases** are exactly `UTC` and `Etc/UTC`.
+  - **`billing_cycle` needs a date component.** A sub-daily `billing_cycle` would ignore its anchor, so it is now invalid (schema-enforced). New vector: `sub-daily-billing-cycle-is-refused`.
+  - **Weeks** (`P7D`) under `utc`, `account_timezone`, and `source_timezone` start on Thursday (1970-01-01); `billing_cycle` with an anchor sets another week start.
+  - **`status_retention_days`** counts exact 24-hour days.
+- 1c9a3b2: Reporting subscriptions (experimental): the wire now carries everything a buyer needs to compute owed periods without asking.
+  
+  - `authorization.regranted_at`: the latest re-grant within the current authorization chain. Withheld periods are due at it plus `delivery_sla`, and unbackfilled gaps end at the first boundary at or after it.
+  - `flight_history` on media buys (`core/media-buy.json`, `get_media_buys`): every retroactive flight edit, with the `start_time` and `stop_time` in force before it, retained while the buy's obligations are. Retroactive edits stay allowed. A buyer reads the flight in force at any `scope_resolved_at` from the wire.
+  - `packages[].reporting_delivery_offering_ids` on `get_media_buys`: the package's offering set, fixed at confirmation, so selection resolves per package.
+  - `available_from` and `withdrawn_at` on reporting delivery offerings. Withdrawal is a resolution change at `withdrawn_at`, and a withdrawn offering stays in the catalog while obligations that resolved it are retained.
+  - Clarifications: `delivery_config_generations[].offering_id` for subscription versions resolving several offerings; `offering_id` joins the consumer-status chain identity; `next_expected_at` counts only periods the coverage rule owes; a period's owed set is final once its end is before `ledger_as_of`.
+  - The coverage vectors now use only wire inputs. Cases carry the buy's `flight_history` in place of the buyer-retained `prior_flights`, offerings carry `available_from` and `withdrawn_at` as published, `non_wire_inputs` is gone, and the vector test validates both against the AdCP schemas.
+- e2d1723: Compliance (experimental): `comply_test_controller` adds the `reporting_subscription_probe` scenario for `media_buy.reporting_subscriptions`. Its operations are `revoke_grant`, `regrant`, `reduce_grant` (new `allowed_tasks` param), `set_account_timezone` (new `timezone` param), and `advance_time` (`target_time`). They act only on the caller's own grant on sandbox accounts and on one virtual clock, `simulated_now`. With them, storyboards can test coverage, `accounts_unauthorized`, gaps, withheld periods, wind-down grants, and timezone cutovers against a remote seller without waiting on wall-clock boundaries.
+- 1b3a93a: Reporting subscriptions (experimental): deterministic resolution and admission, and fewer versions at agency scale.
+  
+  - **Admission under `max_accounts`** is now normative. It is sticky, ordered by the account's `authorization.authorized_at` and then `account_id` in byte order, and the same for every subscription of a principal. Accounts without covered buys count, so admission is computable from `list_accounts`.
+  - **Resolution** is per package, made when a (buy, version) pair first resolves, and fixed until the resolved offering is withdrawn. A newly added offering never re-resolves it.
+  - **Billing subscriptions MUST use `match: exact` with `dimensions`** (schema-enforced).
+  - **`destination_overrides[]`** routes accounts, by `account_ids` or `operator_domains`, to other destinations inside one subscription.
+  - **Membership edits apply in place.** Adding or removing `account_ids`, and changing `exclude_account_ids`, no longer need a new `subscription_version`. Each edit is recorded per account as an `excluded_by_buyer` exception interval.
+  - **Bounded, paged readback.** `prior_versions` lists the 16 newest inline, and the account lists stay capped at 1,000. Each list carries a total count, and `get_principal` gains a `reporting_subscription_page` request for the rest.
+  - **Several pacing or analytics subscriptions** may apply to one account and purpose. Where two resolve the same offering for a package, the lower `subscription_id` owes it and the other records a package-level `overridden` exception. Billing stays one per account at a scope level.
+  - **Partial grants.** Coverage depends only on `get_reporting_status` in the caller's `allowed_tasks`. A grant without `sync_reporting_receipts` or `sync_reporting_status` keeps the account covered, and the seller refuses the missing task for that account with `SCOPE_INSUFFICIENT`, not as an unknown identifier. A billing obligation the buyer can't receipt stays receipt-pending, attributed to the buyer.
+  - **`account_id` on delivered rows.** A seller advertising subscriptions publishes every managed-delivery offering with a row schema that declares `account_id` as a required string and lists it in `primary_keys`, so consolidated destinations validate and never collide.
+  - **A buy owes the union of its packages' resolutions**: under `exact` or `finest`, a buy whose packages come from different products can owe two offerings. The coverage vectors and reference model now pin sticky resolution: `a-newly-available-offering-never-re-resolves` replaces `resolution-change-is-a-cutover`, and `withdrawal-of-the-resolved-offering-is-a-cutover` is new.
+- 1f08104: Reporting (experimental): revocation means no access. `sync_reporting_receipts` and `sync_reporting_status` no longer accept receipts and statuses after the caller loses authority for an account. Before, they stayed open for `status_retention_days` for revisions the caller had read. Once authority ends, every reference to the account, receipts included, resolves like an unknown identifier, so a seller responding to fraud or a compromised agent stops everything at once.
+  
+  A seller that wants a buyer to finish reconciling after a relationship ends, for example after an agency-of-record change, keeps a reduced grant instead of revoking: an `authorization` whose `allowed_tasks` lists only the reconciliation tasks it permits (such as `get_reporting_status`, `sync_reporting_receipts`, and `sync_reporting_status`), with `read_only: false`. The account stays in reporting-subscription coverage while that grant lists `get_reporting_status`, so the buyer keeps receiving final revisions and adjustments for its buys.
+
+### Patch Changes
+
+- 931a9d6: Every task response schema and async status payload now composes `core/protocol-envelope.json` through its root `allOf`, as the envelope's notes already require. On MCP and REST the envelope fields (`status`, `task_id`, `context_id`, `context`, `message`, `timestamp`, `replayed`, `adcp_error`, `push_notification_config`, `governance_context`) are siblings of the body fields at the response root, but 47 of the 124 tool response and async status schemas did not compose the envelope, and 18 closed roots and `oneOf`/`anyOf` branches rejected envelope fields outright, because draft-07 `additionalProperties` does not see properties declared through `allOf`. Generated SDK types therefore could not represent a conforming response.
+  
+  - `core/protocol-envelope.json` composes `core/version-envelope.json`, so `adcp_version` and `adcp_major_version` are envelope fields on every response, stamped by the server framework rather than carried as task data. Request schemas keep composing the version envelope directly; response schemas no longer do.
+  - Every response root and status branch is open, as DR-0019 keeps response roots, so the envelope's fields validate where the envelope declares them. The 18 that were closed are reopened: the 3.2 proposal-flow response roots and branches (DR-0036 correction (a)), the `list_collections`, `list_proposals`, `get_media_buy_issue` and `report_media_buy_issue` responses, which are new in 3.3, and the `get_reporting_status` failure branches, which are experimental. Closed value objects and rows inside response bodies stay closed. No build step adds the envelope: source and published schemas agree.
+  - A local declaration of an envelope field is kept only where it narrows: a branch's `status` const or enum, a `const` pin such as the fixed `message` and `adcp_error` of an unavailable `get_reporting_status` lookup, and `context` as a `$ref` to `core/context.json`. The 66 other local copies (`task_id` ×23, `message` ×21, `replayed` ×11, the `get_reporting_status` failure branches' `adcp_version`, `adcp_major_version`, `context_id`, `timestamp` and `adcp_error`, `governance_context` on `check_governance`, and `status` on `get_task_status`) are removed, so the envelope's declarations govern. The untrusted-input guidance on the async `message` copies moves to `core/task-message.json`. The root `status` enums on `decline_proposals`, `request_proposals` and `refine_proposals` are removed; their branch consts discriminate.
+  - The compact proposal-flow responses no longer pin `replayed` to `true` (12 locations); the envelope's boolean governs, so a response accepts `replayed: false`.
+  - A task-level `message` has one bound of 2,000 characters, in one definition: `core/task-message.json` (`type: string`, `maxLength: 2000`, untrusted input to the receiver). The envelope, the MCP webhook payload and the response wrapper refer to it, so the bound does not depend on the delivery path. The 23 response nodes that capped `message` at 2,000 themselves no longer restate it. A seller whose text is longer MUST truncate it rather than fail the task. 3.2.7's envelope, webhook payload and wrapper declared no bound; DR-0036 records the change as correction (d), at the 2,000 that 3.2.7 published on the compact and submitted responses. A `const` pin on `message`, such as the fixed text of an unavailable `get_reporting_status` lookup, is kept. `core/error.json`, `core/warning.json` and messages inside task bodies keep their own bounds.
+  - `task_id` has one definition, `core/task-id.json` (`type: string`, `minLength: 1`), that every `task_id` declaration refers to: the envelope, `tasks/get` and `get_task_status` requests and responses, the task list responses and filters, the MCP webhook payload and the compliance controller (which keeps its own `maxLength: 128`). An empty `task_id` identifies no task, so it is rejected; 3.2.7 already published `minLength: 1` on `core/compact-task-submitted.json`. DR-0036 records this as correction (c). A submitted response requires `task_id` through `core/task-submitted.json` (`status: submitted` and a required `task_id`), which every submitted response body and branch composes through `allOf`, so none restates the rule; generated types see the requirement. Likewise every working body composes `core/task-working.json` (`status: working`) and every input-required body composes `core/task-input-required.json` (`status: input-required`), so an async status payload accepts only its own status.
+  - `core/protocol-envelope.json` states that an absent `replayed` means `false` and that a response may carry `replayed: false`; `replayed: true` appears only on a replay.
+  - Async status payloads and the governance responses now require `status`, which the envelope already made required on every task response. Webhook `result` examples carry the task's `status`.
+  
+  No body field is added, renamed or removed.
+- 73b098c: Make media-buy compliance scenarios respect auction-only sellers and declared optional capabilities. Price-independent lifecycle, reporting, discovery, and format fixtures use non-guaranteed CPM floors, with bids supplied for auction buys. Product filtering tests no longer require sellers to seed guaranteed inventory.
+  
+  Discover native reporting and canonical compatibility support before seeding optional feature fixtures; unsupported native shapes produce visible coverage gaps, while malformed discovery and failed advertised operations remain failures. Canonical compatibility checks no longer require vendor metrics and match product/format contracts independently of catalog order.
+  
+  Currency filtering follows the account's effective transaction currency and checks every returned media price without assuming fixture IDs, rate-card IDs, ordering, or exact counts. Correct invalid native/audio channel fixtures to display/streaming_audio.
+  
+  Canonical compatibility and final currency checks collect all wholesale catalog pages with physical-page schema and invariant checks. The runner reports the logical catalog separately from actual exchanges, preserves later-page producer advisories, and safely skips this feature on older runners. Valid empty currency results leave positive-price coverage explicitly unproven.
+- 0c4553c: Give the three hand-authored AdCP 3.2 request-signing vectors (`profile-3.2/positive/001`, `profile-3.2/negative/001` and `profile-3.2/negative/002`) operation-valid `create_media_buy` bodies, re-derive their Content-Digest and signatures, and restore the legacy `positive/002` and `negative/018` bodies #7580 made valid. Each vector keeps its single intended fault. Restore the regression check that every routed signing vector carries an operation-valid body, extended to `profile-3.2/`.
+- b1ebc1c: `media_buy_seller` now checks that `get_media_buys` returns each package's persisted `context`. The `create_media_buy` sample requests (both the default and the buyer-selected-timezone branches) send a distinct `context.buyer_ref` on each of their two packages, and `check_buy_status` requires each package to come back with its own `product_id` and that `context`, in any order (`field_contains` over `media_buys[0].packages[*]`).
+  
+  `get_media_buys` already says sellers MUST include a package's persisted `context` when the package was created through AdCP with one, but only `pending_creatives_to_start` checked it, and that scenario is `not_applicable` for any seller without auto-approval and a creative library. A seller that drops package `context` on readback now fails the core lifecycle. No schema, task definition or released artifact changes.
+- 023bbd2: Add canonical reporting-subscription coverage vectors (experimental `media_buy.reporting_subscriptions`) under `static/compliance/source/test-vectors/reporting-subscriptions/`, with a case schema and a pinned IANA tzdata release (2026f). There are 113 cases. 81 are ported from the TypeScript SDK's parity table and re-derived from the spec text. The new cases cover:
+  
+  - DST gaps and folds at midnight in Santiago, Havana, and Cairo.
+  - Lord Howe's 30-minute DST.
+  - Sub-daily local periods at +05:45.
+  - Month-end clamps.
+  - Weeks (P7D) and years.
+  - Compound changes at one instant.
+  - Grant chains of four.
+  - `max_accounts` capacity per offering.
+  - Fractional seconds and offsets.
+  - Empty flights.
+  - The confirmation period.
+  
+  The set also freezes two vocabularies both SDKs use verbatim:
+  
+  - `error-codes.json`: the subscription and coverage error codes, each with its recovery class, whether the task was dispatched, and its fix.
+  - `reason-codes.json`: the coverage reason codes, which say why a period is or isn't owed, with the fixed rule order.
+  
+  A brute-force reference model in `scripts/reference/reporting-coverage/` reproduces every case. It evaluates the zic source itself and shares no time zone code with either SDK. Property tests also check the model: exceptions only remove periods, nothing is owed twice, prefix stability, no retroactive extension, and calendar invariants.
+- c788bbc: Gate the universal media-buy and signals error/schema storyboards on their
+  declared protocol. Agents that do not offer that protocol receive the existing
+  capability applicability skip before controller and tool requirements are
+  evaluated. Claimants still need the required tools, fixture setup and successful
+  checks. Existing released compliance artifacts are unchanged.
+
 ## 3.3.0-beta.2
 
 ### Minor Changes
