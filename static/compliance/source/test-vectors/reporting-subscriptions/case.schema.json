@@ -57,18 +57,6 @@
       },
       "description": "IANA zones the expected rows depend on, as named in the input. Empty when every schedule is utc-aligned."
     },
-    "non_wire_inputs": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "enum": [
-          "buys[].prior_flights",
-          "offerings[].available_from/withdrawn_at"
-        ]
-      },
-      "description": "Input fields no AdCP response carries; a buyer must retain them to agree with the seller."
-    },
     "input": {
       "$ref": "#/definitions/input"
     },
@@ -384,30 +372,24 @@
                   "additionalProperties": false
                 }
               },
-              "prior_flights": {
+              "flight_history": {
                 "type": "array",
-                "description": "Not on the wire. Flight values before an update replaced them; a value applies to periods resolved before its replaced_at.",
+                "description": "The buy's flight_history from get_media_buys (core/media-buy.json flight_history): its retroactive flight edits, oldest first, each with the flight in force before it. The flight in force at an instant is the one in the earliest entry recorded after it, or the current flight.",
                 "items": {
                   "type": "object",
                   "required": [
-                    "replaced_at",
+                    "recorded_at",
                     "start_time",
-                    "end_time"
+                    "stop_time"
                   ],
                   "properties": {
-                    "replaced_at": {
+                    "recorded_at": {
                       "$ref": "#/definitions/instant"
                     },
                     "start_time": {
                       "$ref": "#/definitions/instant"
                     },
-                    "end_time": {
-                      "$ref": "#/definitions/instant"
-                    },
-                    "canceled_at": {
-                      "$ref": "#/definitions/instant"
-                    },
-                    "completed_at": {
+                    "stop_time": {
                       "$ref": "#/definitions/instant"
                     }
                   },
@@ -420,7 +402,7 @@
         },
         "offerings": {
           "type": "array",
-          "description": "Seller offerings as published (reporting-delivery-offering.json, with standard_dimensions and unmapped_dimensions). available_from and withdrawn_at are not on the wire: when the offering became or stopped being available, which changes a resolution.",
+          "description": "Seller offerings as published (reporting-delivery-offering.json, with standard_dimensions, unmapped_dimensions, and the availability window available_from and withdrawn_at, which changes a resolution).",
           "items": {
             "type": "object",
             "required": [

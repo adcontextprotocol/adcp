@@ -15,7 +15,6 @@
     "obligations": "expected_obligations groups expected by subscription_version, offering_id, period_start, and period_end, with media_buy_ids sorted in byte order, the obligation's frozen media_buy_ids. Ordered by period_start, then subscription_version, then offering_id in byte order.",
     "now": "Only resolved periods are expected: those whose period_end is at or before input.now.",
     "input": "The input is what the buyer holds: its subscription versions as the get_principal readback shows them, the account's grants and timezone, the buys it can see through get_media_buys, the seller's offerings, and this subscription's get_reporting_status subscription_coverage entry for the account. case.schema.json describes each field.",
-    "non_wire_inputs": "Lists input fields no AdCP response carries, which a buyer must retain itself to agree with the seller: buys[].prior_flights (flight values before an update) and offerings[].available_from or withdrawn_at (when an offering became or stopped being available, which changes a resolution).",
     "expected_error": "When the input cannot determine coverage, expected_error gives the error code and detail an SDK raises, from error-codes.json in this directory (COVERAGE_INPUT_INCOMPLETE or COVERAGE_INPUT_INVALID). wire_valid is false when the input also fails AdCP schema validation.",
     "vocabularies": "error-codes.json freezes the error codes SDKs raise for subscriptions and coverage; reason-codes.json freezes the reasons a period is or is not owed. Both SDKs use them verbatim."
   },
@@ -765,7 +764,6 @@
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
       "timezones": [],
-      "non_wire_inputs": ["buys[].prior_flights"],
       "input": {
         "subscription_id": "analytics-daily",
         "versions": [
@@ -790,7 +788,7 @@
             "start_time": "2026-11-03T00:00:00Z",
             "end_time": "2026-11-08T00:00:00Z",
             "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_a_pkg"]}],
-            "prior_flights": [{"replaced_at": "2026-11-07T12:00:00Z", "start_time": "2026-11-03T00:00:00Z", "end_time": "2026-11-06T00:00:00Z"}]
+            "flight_history": [{"recorded_at": "2026-11-07T12:00:00Z", "start_time": "2026-11-03T00:00:00Z", "stop_time": "2026-11-06T00:00:00Z"}]
           }
         ],
         "offerings": [
@@ -889,7 +887,6 @@
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
       "timezones": [],
-      "non_wire_inputs": ["buys[].prior_flights"],
       "input": {
         "subscription_id": "analytics-daily",
         "versions": [
@@ -914,14 +911,7 @@
             "start_time": "2026-11-03T00:00:00Z",
             "end_time": "2026-11-08T00:00:00Z",
             "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_a_pkg"]}],
-            "prior_flights": [
-              {
-                "replaced_at": "2026-11-06T12:00:00Z",
-                "start_time": "2026-11-03T00:00:00Z",
-                "end_time": "2026-11-08T00:00:00Z",
-                "canceled_at": "2026-11-04T12:00:00Z"
-              }
-            ]
+            "flight_history": [{"recorded_at": "2026-11-06T12:00:00Z", "start_time": "2026-11-03T00:00:00Z", "stop_time": "2026-11-04T12:00:00Z"}]
           }
         ],
         "offerings": [
@@ -4666,7 +4656,6 @@
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
       "timezones": [],
-      "non_wire_inputs": ["offerings[].available_from/withdrawn_at"],
       "input": {
         "subscription_id": "analytics-daily",
         "versions": [
@@ -4821,7 +4810,6 @@
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
       "timezones": [],
-      "non_wire_inputs": ["offerings[].available_from/withdrawn_at"],
       "input": {
         "subscription_id": "analytics-daily",
         "versions": [
@@ -15193,7 +15181,6 @@
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
       "timezones": [],
-      "non_wire_inputs": ["buys[].prior_flights"],
       "input": {
         "subscription_id": "analytics-daily",
         "versions": [
@@ -15218,7 +15205,7 @@
             "start_time": "2026-11-03T00:00:00Z",
             "end_time": "2026-11-07T00:00:00Z",
             "packages": [{"package_id": "pkg_1", "reporting_delivery_offering_ids": ["off_a_pkg"]}],
-            "prior_flights": [{"replaced_at": "2026-11-04T12:00:00Z", "start_time": "2026-11-03T00:00:00Z", "end_time": "2026-11-03T00:00:00Z"}]
+            "flight_history": [{"recorded_at": "2026-11-04T12:00:00Z", "start_time": "2026-11-03T00:00:00Z", "stop_time": "2026-11-03T00:00:00Z"}]
           }
         ],
         "offerings": [
