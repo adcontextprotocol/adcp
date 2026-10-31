@@ -6,9 +6,6 @@
   "type": "object",
   "allOf": [
     {
-      "$ref": "/schemas/core/version-envelope.json"
-    },
-    {
       "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
@@ -87,6 +84,12 @@
               },
               "spec": "docs/creative/task-reference/list_creatives.mdx#per-creative-fields"
             }
+          },
+          "staged_update": {
+            "$ref": "/schemas/core/creative-staged-update.json",
+            "description": "A change accepted in staged mode and not yet promoted. While present, assets, revision_id, and status describe the version that serves; the staged content is the buyer's last synced content. Removed on promotion (the staged content and revision become current) and on withdrawal. Stays with status rejected under on_rejection keeps_prior until the buyer supersedes or withdraws it.",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0"
           },
           "seller_revision": {
             "type": ["integer", "string"],
@@ -569,7 +572,7 @@
           },
           "webhook_activity": {
             "type": "array",
-            "description": "Recent webhook fires scoped to this creative — creative.status_changed, creative.purged, creative.assignment_changed, and assignment-level indicators.changed deliveries. Present only when include_webhook_activity is true. Account-anchored records include subscriber_id; the parent creative_id disambiguates the record. Retention: 30 days from completed_at. See snapshot-and-log.mdx § Webhook activity log pattern.",
+            "description": "Recent webhook fires scoped to this creative — creative.status_changed, creative.staged_update_changed, creative.purged, creative.assignment_changed, and assignment-level indicators.changed deliveries. Present only when include_webhook_activity is true. Account-anchored records include subscriber_id; the parent creative_id disambiguates the record. Retention: 30 days from completed_at. See snapshot-and-log.mdx § Webhook activity log pattern.",
             "items": {
               "$ref": "/schemas/core/webhook-activity-record.json"
             },

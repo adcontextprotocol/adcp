@@ -91,8 +91,6 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_accepted_discover_products_get_products_brief"
           buying_mode: "brief"
           brief: "Return a product with default measurement terms you can accept unchanged. Premium video inventory, Q3 flight, $50K."
-          filters:
-            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -114,8 +112,8 @@ phases:
             path: "products[0].product_id"
             description: "At least one product returned"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "The captured pricing option identifies either fixed pricing or an auction option; the runner supplies the auction bid from discovery"
           - check: field_present
             path: "products[0].measurement_terms"
             description: "The product declares the default measurement terms replayed by the purchase"

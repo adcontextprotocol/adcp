@@ -1,0 +1,255 @@
+{
+  "vocabulary_version": 1,
+  "contract_version": "3.3",
+  "feature": "media_buy.reporting_subscriptions",
+  "status": "experimental",
+  "description": "Frozen coverage reason codes: why one period of one (media buy, resolved offering) pair under one subscription version is or is not owed. Buyer and seller SDKs use these codes verbatim in coverage explanations (CoverageTrace reason), reconciliation lines (PeriodLine reason), and telemetry, so a buyer's and a seller's explanation of the same period compare by code. Adding a code is additive; renaming or removing one, or changing its rule, needs a new vocabulary_version.",
+  "classification": "Classify one period [start, end) of one schedule that a version's resolved offering uses for one media buy (for an account_timezone offering, of either zone across a timezone change). Evaluate the rules in rule_order. A period that a rule rejects takes that rule's reason, so a period several rules reject takes the reason of the first. A period no rule rejects is owed if it has ended at or before now (owed, owed:regrant_backfill, or owed:withheld), and otherwise takes period_not_ended. Each period has exactly one reason. Instants compare as instants; a period starts at a boundary of its schedule, so starting on or after the first boundary at or after an instant X is the same as starting at or after X.",
+  "rule_order": [
+    "scope",
+    "authorization",
+    "version",
+    "activity",
+    "offering",
+    "flight",
+    "confirmation",
+    "exception",
+    "gap",
+    "cutover",
+    "timezone"
+  ],
+  "rules": {
+    "scope": "The version's scope selects the account: account_ids names it, or all_authorized_accounts with exclude_account_ids not naming it; and operator_domains, when present, lists the account's operator.",
+    "authorization": "The caller is authorized for the account over the period, by the authorization chains (account-authorization.json authorized_at, reporting-subscription-state.json accounts_unauthorized).",
+    "version": "The period starts at or after the coverage start: the later of the accepted_at of the first version whose scope selects the account and the first authorization chain's authorized_at. (Later chains are the authorization rule's.)",
+    "activity": "The subscription is active: the period does not start inside an inactive interval, or after a reactivation but before reactivated_at.",
+    "offering": "The buy's packages resolve an offering under the version's selector, and this offering is one of them.",
+    "flight": "The period overlaps the buy's flight [start_time, stop) with flight values as of the period end (scope_resolved_at), where stop is the earliest of end_time, canceled_at, and completed_at.",
+    "confirmation": "The buy is confirmed and the period ends after confirmed_at.",
+    "exception": "No get_reporting_status excluded[] entry applying to the buy and offering covers the period start in [from, until).",
+    "gap": "No gaps[] entry applying to the offering covers the period start, and without backfill_on_regrant the period does not end after an unauthorized_at and start before the re-grant that continued the chain.",
+    "cutover": "The version's side owns the period: it starts at or after the side's handoff E (the side's start instant when it has no outgoing predecessor) and before the next change instant T, at which the next side or a deactivation takes over.",
+    "timezone": "For an account_timezone offering whose account changed timezone, the period is one of the zone in effect at its start: the previous zone's periods start before effective_at, the new zone's at or after it."
+  },
+  "reasons": [
+    {
+      "code": "not_in_scope",
+      "verdict": "not_owed",
+      "rule": "scope",
+      "side": "both",
+      "definition": "No version in effect at the period's start selects the account: account_ids does not name it, the account is not one the caller's all_authorized_accounts covers, or operator_domains does not list its operator. An account listed in exclude_account_ids takes excluded:excluded_by_buyer instead.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "static/schemas/source/core/reporting-subscription.json#/properties/scope"
+      ]
+    },
+    {
+      "code": "excluded:excluded_by_buyer",
+      "verdict": "not_owed",
+      "rule": "scope",
+      "side": "both",
+      "definition": "The version is all_authorized_accounts and its exclude_account_ids names the account; the seller records it as an excluded[] entry with reason excluded_by_buyer.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/properties/exclude_account_ids",
+        "static/schemas/source/core/reporting-subscription-coverage.json#/definitions/ReportingSubscriptionExclusionReason"
+      ]
+    },
+    {
+      "code": "not_authorized",
+      "verdict": "not_owed",
+      "rule": "authorization",
+      "side": "both",
+      "definition": "The period starts at or after the first chain's authorized_at, but no chain authorizes it: it ends after the unauthorized_at that ended a chain (none is delivered for periods ending after unauthorized_at), and it starts before the authorized_at of any later chain. Periods inside a chain that continued after a re-grant take gap:unauthorized or owed:regrant_backfill instead.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#when-authorization-ends",
+        "static/schemas/source/core/account-authorization.json#/properties/authorized_at"
+      ]
+    },
+    {
+      "code": "before_coverage_start",
+      "verdict": "not_owed",
+      "rule": "version",
+      "side": "both",
+      "definition": "The period starts before the coverage start: before the accepted_at of the first version whose scope selects the account, or before the first authorization chain's authorized_at. A version accepted or an authorization begun mid-period starts at the next boundary. Periods before a later chain's authorized_at take not_authorized.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "static/schemas/source/core/reporting-subscription-state.json#/properties/accepted_at",
+        "static/schemas/source/core/account-authorization.json#/properties/authorized_at"
+      ]
+    },
+    {
+      "code": "subscription_inactive",
+      "verdict": "not_owed",
+      "rule": "activity",
+      "side": "both",
+      "definition": "The period starts at or after a deactivated_at and before the matching reactivated_at (or deactivated_at is current). Periods that started before deactivated_at stay owed in full; after reactivation, coverage resumes at the first boundary at or after reactivated_at.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "static/schemas/source/core/reporting-subscription-state.json#/properties/inactive_intervals"
+      ]
+    },
+    {
+      "code": "excluded:offering_unsupported",
+      "verdict": "not_owed",
+      "rule": "offering",
+      "side": "both",
+      "definition": "No offering matching the selector is available on the account's or the buy's products, so the buy (or the account) resolves nothing, whether computed from the wire or read from an excluded[] entry with reason offering_unsupported. An entry with package_ids removes those packages, not periods; the buy stays covered for its other packages.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/selection",
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded"
+      ]
+    },
+    {
+      "code": "outside_flight",
+      "verdict": "not_owed",
+      "rule": "flight",
+      "side": "both",
+      "definition": "The period ends at or before the buy's start_time, or the flight is empty (its stop is at or before start_time), with flight values as of the period end. An extension or reinstatement made after the period ended does not change this.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ]
+    },
+    {
+      "code": "after_stop",
+      "verdict": "not_owed",
+      "rule": "flight",
+      "side": "both",
+      "definition": "The period starts at or after the buy's stop time (the earliest of end_time, canceled_at, and completed_at as of the period end). The period containing the stop is owed in full.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ]
+    },
+    {
+      "code": "before_confirmation",
+      "verdict": "not_owed",
+      "rule": "confirmation",
+      "side": "both",
+      "definition": "The buy is not confirmed (confirmed_at null or absent), or the period ends at or before confirmed_at. The period in which the buy is confirmed ends after it and is owed in full.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ]
+    },
+    {
+      "code": "excluded:capacity",
+      "verdict": "not_owed",
+      "rule": "exception",
+      "side": "both",
+      "definition": "An excluded[] entry with reason capacity (for example beyond subscriptions.max_accounts), applying to the buy and offering, covers the period start in [from, until).",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded",
+        "static/schemas/source/core/reporting-delivery-capabilities.json#/properties/subscriptions"
+      ]
+    },
+    {
+      "code": "excluded:overridden",
+      "verdict": "not_owed",
+      "rule": "exception",
+      "side": "both",
+      "definition": "An excluded[] entry with reason overridden covers the period start: the caller's own sync_accounts delivery config, or its own account_ids subscription replacing an all-accounts one, takes the account and feed_purpose.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/precedence"
+      ]
+    },
+    {
+      "code": "excluded:action_required",
+      "verdict": "not_owed",
+      "rule": "exception",
+      "side": "both",
+      "definition": "An account-level excluded[] entry with reason action_required covers the period start: the seller serves the account only after pending_action completes.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded"
+      ]
+    },
+    {
+      "code": "gap:unauthorized",
+      "verdict": "not_owed",
+      "rule": "gap",
+      "side": "both",
+      "definition": "A gaps[] entry applying to the offering covers the period start in [from, until), or, without backfill_on_regrant, the period ends after an unauthorized_at and starts before the re-grant that continued the chain (from is the last boundary at or before unauthorized_at, until the first at or after the re-grant).",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/gaps",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#when-authorization-ends"
+      ]
+    },
+    {
+      "code": "cutover_stretch",
+      "verdict": "not_owed",
+      "rule": "cutover",
+      "side": "both",
+      "definition": "The period straddles a handoff that leaves part of it owed under neither schedule. Under rule cutover: the period starts before the side's handoff E and ends after E, so the outgoing side, which owes up to E, covers only part of it; this is the incoming period containing the stretch from E to the incoming schedule's first boundary after E, which is shorter than one incoming period. Under rule timezone: every period of a zone outside that zone's span (a previous-zone period starting at or after effective_at, or a new-zone period starting before it).",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/cutover",
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/timezone_cutovers"
+      ]
+    },
+    {
+      "code": "owed_under_other_version",
+      "verdict": "not_owed",
+      "rule": "cutover",
+      "side": "both",
+      "definition": "Another version's side owns the time: the period starts before the side's handoff E and ends at or before E (the outgoing version owes that time; for the same schedule, that very period), or it starts at or after the next change instant T, where the next version's side takes over. Periods after a deactivation take subscription_inactive.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/cutover",
+        "static/schemas/source/core/reporting-subscription-state.json#/properties/prior_versions"
+      ]
+    },
+    {
+      "code": "period_not_ended",
+      "verdict": "not_owed",
+      "rule": null,
+      "side": "both",
+      "definition": "No rule rejects the period, but it ends after now, so it has not resolved and is not yet owed. It becomes owed when it ends unless a later change removes it.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage"
+      ]
+    },
+    {
+      "code": "owed",
+      "verdict": "owed",
+      "rule": null,
+      "side": "both",
+      "definition": "No rule rejects the period and it has ended at or before now. A missing report for it is the seller's to explain.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ]
+    },
+    {
+      "code": "owed:regrant_backfill",
+      "verdict": "owed",
+      "rule": null,
+      "side": "both",
+      "definition": "Owed because backfill_on_regrant is true: without it the period would take gap:unauthorized (it ends after an unauthorized_at and starts before the re-grant that continued the chain). Due at the re-grant time plus the offering's delivery_sla.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-capabilities.json#/properties/subscriptions",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#when-authorization-ends"
+      ]
+    },
+    {
+      "code": "owed:withheld",
+      "verdict": "owed",
+      "rule": null,
+      "side": "both",
+      "definition": "Owed, and the caller's authority is currently lost: the period ended at or before the latest unauthorized_at and no re-grant has followed yet. The seller withholds it (counted in withheld_period_count when not yet delivered); it is never missing or delayed, and is owed again on re-grant.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription-state.json#/properties/accounts_unauthorized",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#when-authorization-ends"
+      ]
+    },
+    {
+      "code": "buy_not_visible",
+      "verdict": "not_owed",
+      "rule": "scope",
+      "side": "seller",
+      "definition": "Seller-only. The buy exists in the account, but the caller cannot see it through get_media_buys (for example it was created in the seller's UI or by another agent), so it is not covered. Never sent to the buyer.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage"
+      ]
+    }
+  ]
+}

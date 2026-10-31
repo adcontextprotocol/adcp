@@ -4,10 +4,23 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const YAML = require('yaml');
+const http = require('node:http');
+const { z } = require('zod');
+const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 
-const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
+const {
+  parseStoryboard,
+  runStoryboard,
+  createTestClient,
+  applyStoryboardVersionOptions,
+  resolveStoryboardsForCapabilities,
+  resolveBundleOrStoryboard,
+  buildComplianceBundleResults,
+} = require('@adcp/sdk/testing');
 
 const mediaBuyScenariosPath = path.join(
   __dirname,
@@ -996,7 +1009,8 @@ async function runProductFilterBehavior(buyingModes, brokenMode) {
           channels: ['olv'],
           delivery_type: 'non_guaranteed',
         };
-        const products = request.buying_mode === 'refine' ? [] : [matchingProduct];
+        const products = request.buying_mode === 'refine' || request.filters?.delivery_type === 'guaranteed'
+          ? [] : [matchingProduct];
         if (request.buying_mode === brokenMode) {
           products.push(request.buying_mode === 'refine' ? matchingProduct : {
             product_id: 'product-that-should-have-been-filtered-out',
@@ -1024,12 +1038,14 @@ test('product filters always test brief and independently test each advertised o
   ]) {
     await t.test(buyingModes?.join(', ') ?? 'buying_modes absent (defaults to brief)', async () => {
       const { result, requests, steps } = await runProductFilterBehavior(buyingModes);
-      const expectedModes = ['brief', ...['wholesale', 'refine'].filter(mode => buyingModes?.includes(mode))];
+      const expectedModes = ['brief', 'brief',
+        ...(buyingModes?.includes('wholesale') ? ['wholesale', 'wholesale'] : []),
+        ...(buyingModes?.includes('refine') ? ['refine'] : [])];
       assert.deepEqual(requests.map(request => request.buying_mode), expectedModes);
       assert.equal(result.overall_passed, true);
       assert.equal(result.failed_count, 0);
       assert.equal(result.passed_count, expectedModes.length);
-      assert.equal(result.skipped_count, 3 - expectedModes.length);
+      assert.equal(result.skipped_count, 5 - expectedModes.length);
       assert.equal(steps.brief_filters.passed, true);
       assert.ok(!steps.brief_filters.skipped, 'universal brief coverage must execute');
 
@@ -1067,7 +1083,7 @@ test('advertised refine still fails when the seller ignores replacement filters'
 
 test('a wholesale filter failure does not suppress supported refine coverage', async () => {
   const { result, requests, steps } = await runProductFilterBehavior(['brief', 'wholesale', 'refine'], 'wholesale');
-  assert.deepEqual(requests.map(request => request.buying_mode), ['brief', 'wholesale', 'refine']);
+  assert.deepEqual(requests.map(request => request.buying_mode), ['brief', 'brief', 'wholesale', 'refine']);
   assert.equal(result.overall_passed, false);
   assert.equal(result.failed_count, 1);
   assert.equal(steps.wholesale_filters.passed, false);
@@ -1083,7 +1099,7 @@ test('a brief filter failure blocks dependent refine but leaves wholesale covera
       assert.equal(result.overall_passed, false);
       assert.equal(steps.brief_filters.passed, false);
       assert.deepEqual(requests.map(request => request.buying_mode),
-        buyingModes?.includes('wholesale') ? ['brief', 'wholesale'] : ['brief']);
+        buyingModes?.includes('wholesale') ? ['brief', 'wholesale', 'wholesale'] : ['brief']);
       assert.equal(steps.refine_filters.skip_reason,
         buyingModes?.includes('refine') ? 'prerequisite_failed' : 'not_applicable');
       if (buyingModes?.includes('wholesale')) {
@@ -1525,3 +1541,272 @@ test('accepting active does not bypass context echoes or upstream side effects',
     )), JSON.stringify(steps[0].validations));
   }
 });
+
+function signalErrorComplianceSelection(t, marketplace) {
+  // Copy real authored bundles into a cache matching the installed SDK's schema
+  // version. No generated/released cache or installed SDK file is modified.
+  const source = path.join(__dirname, '..', 'static/compliance/source');
+  const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'signal-error-compliance-'));
+  t.after(() => fs.rmSync(cache, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(cache, 'universal'), { recursive: true });
+  fs.copyFileSync(
+    path.join(source, 'universal/error-compliance-signals.yaml'),
+    path.join(cache, 'universal/error-compliance-signals.yaml'),
+  );
+  for (const relative of ['protocols/signals', 'specialisms/signal-owned', 'specialisms/signal-marketplace']) {
+    fs.cpSync(path.join(source, relative), path.join(cache, relative), { recursive: true });
+  }
+  fs.writeFileSync(path.join(cache, 'index.json'), JSON.stringify({
+    adcp_version: require('@adcp/sdk').ADCP_VERSION,
+    generated_at: '2026-10-29T00:00:00Z',
+    universal: ['error-compliance-signals'],
+    protocols: [{ id: 'signals', title: 'Signals', has_baseline: true, path: 'protocols/signals' }],
+    specialisms: ['signal-owned', 'signal-marketplace'].map(id => ({
+      id, protocol: 'signals', title: id, status: 'stable', path: `specialisms/${id}`,
+    })),
+  }));
+  const capabilities = { supported_protocols: ['signals'], specialisms: [marketplace ? 'signal-marketplace' : 'signal-owned'] };
+  const options = { complianceDir: cache };
+  const resolved = resolveStoryboardsForCapabilities(capabilities, options);
+  return { capabilities, options, resolved };
+}
+
+async function runSignalErrorEvidence(storyboard, {
+  marketplace = false,
+  activation = marketplace,
+  controller = true,
+  discovery = true,
+  fault,
+} = {}) {
+  const tools = [
+    'get_adcp_capabilities',
+    ...(discovery ? ['get_signals'] : []),
+    ...(activation ? ['activate_signal'] : []),
+    ...(controller ? ['comply_test_controller'] : []),
+  ];
+  const capabilities = {
+    status: 'completed',
+    adcp: { major_versions: [3], idempotency: { supported: false } },
+    supported_protocols: ['signals'],
+    specialisms: [marketplace ? 'signal-marketplace' : 'signal-owned'],
+  };
+  const calls = [];
+  const rejection = (request, code) => ({
+    success: false,
+    data: {
+      status: 'failed',
+      errors: [{ code, message: 'Fixture rejection', recovery: 'correctable' }],
+      ...(fault !== 'missing-context' && { context: request.context }),
+    },
+  });
+  const success = request => ({
+    success: true,
+    data: { status: 'completed', signals: [], cache_scope: 'account', context: request.context },
+  });
+  const runOptions = applyStoryboardVersionOptions(storyboard, {
+    _profile: { tools, raw_capabilities: capabilities },
+    agentTools: tools,
+    skip_controller_seeding: true,
+    test_kit: YAML.parse(fs.readFileSync(path.join(__dirname, '../static/compliance/source/test-kits/nova-motors.yaml'), 'utf8')),
+  });
+  // Keep the SDK's version metadata on the official client instance so the
+  // version-annotated resolver output reuses this isolated test client.
+  runOptions._client = Object.assign(createTestClient('https://agent.example/mcp', 'mcp', runOptions), {
+      resetContext() {},
+      async getAdcpCapabilities(request) {
+        calls.push({ task: 'get_adcp_capabilities', request });
+        return { success: true, data: { ...capabilities, context: request.context } };
+      },
+      async getSignals(request, _context, options) {
+        calls.push({ task: 'get_signals', request, options });
+        if (request.adcp_major_version === 99) return rejection(request, 'VERSION_UNSUPPORTED');
+        if (typeof request.signal_spec !== 'string') {
+          if (fault === 'accept-invalid-discovery') return success(request);
+          return rejection(request, fault === 'wrong-code' ? 'ACCOUNT_SETUP_REQUIRED' : 'INVALID_REQUEST');
+        }
+        return success(request);
+      },
+      async activateSignal(request, _context, options) {
+        calls.push({ task: 'activate_signal', request, options });
+        const missing = request.signal_agent_segment_id === undefined;
+        if (fault === (missing ? 'accept-missing-segment' : 'accept-unknown-segment')) return success(request);
+        return rejection(request, missing ? 'INVALID_REQUEST' : 'REFERENCE_NOT_FOUND');
+      },
+  });
+  const result = await runStoryboard('https://agent.example/mcp', storyboard, runOptions);
+  return { result, calls };
+}
+
+test('signals error evidence follows the actual owned/marketplace bundle selection', t => {
+  const owned = signalErrorComplianceSelection(t, false);
+  assert.ok(owned.resolved.storyboards.some(storyboard => storyboard.id === 'error_compliance_signals'));
+  assert.ok(!owned.resolved.storyboards.some(storyboard => storyboard.id === 'signal_marketplace/error_compliance'));
+
+  const marketplace = signalErrorComplianceSelection(t, true);
+  assert.ok(marketplace.resolved.storyboards.some(storyboard => storyboard.id === 'signal_marketplace/error_compliance'));
+  const index = marketplace.resolved.storyboards.find(storyboard => storyboard.id === 'signal_marketplace');
+  assert.ok(index.requires_scenarios.includes('signal_marketplace/error_compliance'));
+  assert.deepEqual(
+    resolveBundleOrStoryboard('signal_marketplace/error_compliance', marketplace.options).map(storyboard => storyboard.id),
+    ['signal_marketplace/error_compliance'],
+  );
+});
+
+test('signals discovery error bundle passes for both models without requiring activation', async t => {
+  for (const [marketplace, activation] of [[false, false], [true, true], [false, true]]) {
+    const { resolved } = signalErrorComplianceSelection(t, marketplace);
+    const bundle = resolved.bundles.find(entry => entry.ref.id === 'error-compliance-signals');
+    const storyboard = bundle.storyboards[0];
+    const { result, calls } = await runSignalErrorEvidence(storyboard, { marketplace, activation });
+    assert.equal(result.overall_passed, true, JSON.stringify(result));
+    assert.equal(result.passed_count, 5);
+    assert.equal(result.skipped_count, 0);
+    assert.equal(buildComplianceBundleResults([bundle], [result])[0].status, 'passing');
+    assert.ok(!calls.some(call => call.task === 'activate_signal'));
+    const malformed = calls.filter(call => call.task === 'get_signals' && call.request.signal_spec === 123);
+    assert.equal(malformed.length, 2, 'both authored error probes reach discovery with wrong-typed input');
+    assert.ok(malformed.every(call => call.options?.skipRequestValidation === true));
+    // An owned agent exposing optional activation still claims only owned
+    // coverage: selection does not silently imply marketplace conformance.
+    if (!marketplace) {
+      assert.ok(!resolved.storyboards.some(entry => entry.id === 'signal_marketplace/error_compliance'));
+    }
+  }
+});
+
+test('signals discovery errors preserve failures and missing required evidence', async t => {
+  const { resolved } = signalErrorComplianceSelection(t, false);
+  const bundle = resolved.bundles.find(entry => entry.ref.id === 'error-compliance-signals');
+  for (const fault of ['accept-invalid-discovery', 'wrong-code', 'missing-context']) {
+    const { result } = await runSignalErrorEvidence(bundle.storyboards[0], { fault });
+    assert.equal(buildComplianceBundleResults([bundle], [result])[0].status, 'failing', fault);
+    assert.ok(result.failed_count > 0);
+  }
+  for (const unavailable of [{ discovery: false }, { controller: false }]) {
+    const { result, calls } = await runSignalErrorEvidence(bundle.storyboards[0], unavailable);
+    assert.equal(buildComplianceBundleResults([bundle], [result])[0].status, 'partial');
+    assert.ok(!calls.some(call => call.task === 'get_signals'));
+  }
+});
+
+test('marketplace activation errors execute both negatives and cap the real bundle on failure or gaps', async t => {
+  const { resolved } = signalErrorComplianceSelection(t, true);
+  const bundle = resolved.bundles.find(entry => entry.ref.id === 'signal-marketplace');
+  const storyboard = bundle.storyboards.find(entry => entry.id === 'signal_marketplace/error_compliance');
+  const { result, calls } = await runSignalErrorEvidence(storyboard, { marketplace: true });
+  assert.equal(result.overall_passed, true, JSON.stringify(result));
+  assert.equal(result.passed_count, 2);
+  assert.equal(result.skipped_count, 0);
+  assert.equal(calls.filter(call => call.task === 'activate_signal').length, 2);
+  assert.equal(calls.find(call => call.request.signal_agent_segment_id === undefined).options.skipRequestValidation, true);
+  assert.notEqual(calls.find(call => call.request.signal_agent_segment_id !== undefined).options?.skipRequestValidation, true);
+  // Other marketplace flows have not run in this focused regression. Keep
+  // them incomplete rather than fabricating sibling passes to credit a role.
+  assert.equal(buildComplianceBundleResults([bundle], [result])[0].status, 'partial');
+  for (const fault of ['accept-unknown-segment', 'accept-missing-segment']) {
+    const broken = await runSignalErrorEvidence(storyboard, { marketplace: true, fault });
+    assert.equal(buildComplianceBundleResults([bundle], [broken.result])[0].status, 'failing', fault);
+  }
+  for (const unavailable of [{ activation: false }, { controller: false }]) {
+    const missing = await runSignalErrorEvidence(storyboard, { marketplace: true, ...unavailable });
+    assert.equal(buildComplianceBundleResults([bundle], [missing.result])[0].status, 'partial');
+    assert.equal(missing.calls.length, 0);
+  }
+});
+
+const universalProtocolCases = [
+  ['error-compliance', 'media_buy', 'signals'],
+  ['schema-validation', 'media_buy', 'signals'],
+  ['error-compliance-signals', 'signals', 'media_buy'],
+  ['schema-validation-signals', 'signals', 'media_buy'],
+];
+
+function loadUniversalProtocolStoryboard(name, root = 'static/compliance/source') {
+  return YAML.parse(fs.readFileSync(path.join(__dirname, '..', root, 'universal', `${name}.yaml`), 'utf8'));
+}
+
+function universalProtocolOptions(protocols, tools = ['get_adcp_capabilities']) {
+  return {
+    adcpVersion: '3.2.7',
+    agentTools: tools,
+    _profile: { tools, raw_capabilities: { supported_protocols: protocols } },
+  };
+}
+
+async function withInvalidCapabilityResponse(callback) {
+  const connections = [];
+  const server = http.createServer(async (req, res) => {
+    const mcp = new McpServer({ name: 'Invalid capability fixture', version: '1.0.0' });
+    mcp.registerTool('get_adcp_capabilities', { inputSchema: z.object({}).passthrough() }, async params => {
+      const data = { status: 'completed', context: params.context };
+      return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data };
+    });
+    connections.push(mcp);
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await mcp.connect(transport);
+    await transport.handleRequest(req, res);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    return await callback(`http://127.0.0.1:${server.address().port}/mcp`);
+  } finally {
+    await Promise.all(connections.map(connection => connection.close()));
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
+for (const [name, claimed, unrelated] of universalProtocolCases) {
+  test(`${name}: unrelated protocol reaches applicability before controller or tool requirements`, async () => {
+    const board = loadUniversalProtocolStoryboard(name);
+    const result = await runStoryboard('https://agent.example/mcp', board, universalProtocolOptions([unrelated]));
+    assert.equal(result.passed_count, 0);
+    assert.equal(result.failed_count, 0);
+    assert.equal(result.skipped_count, 1);
+    assert.equal(result.phases[0].phase_id, 'capability_unsupported');
+    assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
+    assert.match(result.phases[0].steps[0].skip.detail, /supported_protocols/);
+  });
+
+  test(`${name}: protocol claim keeps missing controller evidence incomplete`, async () => {
+    const board = loadUniversalProtocolStoryboard(name);
+    for (const protocols of [[claimed], [claimed, unrelated]]) {
+      const result = await runStoryboard('https://agent.example/mcp', board, universalProtocolOptions(protocols));
+      const steps = result.phases.flatMap(phase => phase.steps);
+      assert.equal(result.passed_count, 0);
+      assert.ok(steps.length > 0);
+      assert.equal(result.phases[0].phase_id, 'requirement_unmet');
+      assert.ok(steps.some(step => step.skip?.requirement === 'controller'));
+      assert.ok(steps.every(step => step.skip_reason !== 'capability_unsupported'));
+    }
+  });
+
+  test(`${name}: a real capability assertion failure remains blocking`, async () => {
+    const board = loadUniversalProtocolStoryboard(name);
+    // Exercise the source's actual discovery assertions independently of
+    // fixture/runtime setup. A dual-protocol claim must not neutralize either
+    // family's checks; the returned response omits required capability data.
+    const discoveryOnly = {
+      ...board,
+      requires: undefined,
+      prerequisites: undefined,
+      fixtures: undefined,
+      phases: [board.phases[0]],
+    };
+    const result = await withInvalidCapabilityResponse(url => runStoryboard(url, discoveryOnly, {
+      ...universalProtocolOptions([claimed, unrelated], ['get_adcp_capabilities', ...board.required_tools]),
+      protocol: 'mcp',
+      allow_http: true,
+      transport: { allowPrivateIp: true },
+    }));
+    assert.equal(result.overall_passed, false);
+    assert.ok(result.failed_count > 0);
+    assert.ok(result.phases.flatMap(phase => phase.steps).some(step => step.validations.some(check => !check.passed)));
+  });
+
+  test(`${name}: published 3.2.7 remains unchanged and carries no inferred protocol gate`, () => {
+    const released = loadUniversalProtocolStoryboard(name, 'dist/compliance/3.2.7');
+    assert.equal(released.requires_capability, undefined);
+    assert.equal(released.requires_all_capabilities, undefined);
+  });
+}

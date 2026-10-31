@@ -6,12 +6,12 @@ description: "Exercise AdCP 3.3 beta creative workflows with the published SDK, 
 
 # Creative 3.3 beta sandbox
 
-This development lab serves the frozen AdCP `3.3.0-beta.0` contract using the
-published TypeScript SDK `17.0.0-beta.0`. Its MCP endpoint is:
+This development lab serves the frozen AdCP `3.3.0-beta.1` contract using the
+published TypeScript SDK `17.0.0-beta.8`. Its MCP endpoint is:
 
 `https://test-agent.adcontextprotocol.org/beta/3.3/creative/mcp`
 
-The wire selector is `3.3-beta.0`. The endpoint defaults to that beta and
+The wire selector is `3.3-beta.1`. The endpoint defaults to that beta and
 rejects stable or other prerelease selectors. Capability discovery lists only
 this release and the implemented creative fixture contracts. All operations
 finish synchronously.

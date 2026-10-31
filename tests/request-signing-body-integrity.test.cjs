@@ -152,22 +152,30 @@ describe('AdCP 3.2 request-signing body-integrity policy', () => {
         legacy: await compileLegacyRequestSchema('/schemas/3.1.1/media-buy/update-media-buy-request.json'),
       },
     };
-    // 028 addresses the MCP endpoint with a JSON-RPC envelope; positive/007 and 008 address
-    // paths that are not AdCP operations. None of them carries an operation body.
-    const unrouted = name => name.startsWith('028-');
-    const unroutedPositive = name => name.startsWith('007-') || name.startsWith('008-');
+    // These exact fixtures address JSON-RPC or non-operation paths in both
+    // profiles. Pin their paths so renumbering cannot silently exempt a routed
+    // operation from request-schema validation.
+    const unrouted = new Map([
+      ['028-unsigned-protocol-method-required.json', '/mcp'],
+      ['007-query-byte-preserved.json', '/adcp/get_media_buy'],
+      ['008-percent-encoded-path.json', '/adcp/resource/%e2%98%83/item'],
+    ]);
     const suites = [
-      { dir: 'negative', skip: unrouted, profiles: ['current', 'legacy'] },
-      { dir: 'positive', skip: unroutedPositive, profiles: ['current', 'legacy'] },
-      { dir: 'profile-3.2/negative', skip: unrouted, profiles: ['current'] },
-      { dir: 'profile-3.2/positive', skip: unroutedPositive, profiles: ['current'] },
+      { dir: 'negative', profiles: ['current', 'legacy'] },
+      { dir: 'positive', profiles: ['current', 'legacy'] },
+      { dir: 'profile-3.2/negative', profiles: ['current'] },
+      { dir: 'profile-3.2/positive', profiles: ['current'] },
     ];
 
-    for (const { dir, skip, profiles } of suites) {
-      const files = fs.readdirSync(path.join(baseDir, dir)).filter(name => name.endsWith('.json') && !skip(name));
+    for (const { dir, profiles } of suites) {
+      const files = fs.readdirSync(path.join(baseDir, dir)).filter(name => name.endsWith('.json'));
       assert.ok(files.length > 0, `${dir} has no routed vectors`);
       for (const file of files) {
         const vector = JSON.parse(fs.readFileSync(path.join(baseDir, dir, file), 'utf8'));
+        if (unrouted.has(file)) {
+          assert.equal(new URL(vector.request.url).pathname, unrouted.get(file), `${dir}/${file} must remain unrouted`);
+          continue;
+        }
         const operation = Object.keys(schemas).find(name => new URL(vector.request.url).pathname.endsWith(`/${name}`));
         assert.ok(operation, `no request schema selected for ${dir}/${file}`);
         const body = JSON.parse(vector.request.body);

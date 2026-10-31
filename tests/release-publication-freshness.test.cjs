@@ -435,9 +435,41 @@ test("the verified-merge step skips the API for a push that is not a release mer
   const f = mergeFixture(t);
   const step = f.runStep({ GITHUB_SHA: f.base });
   assert.equal(step.status, 0, step.stderr);
-  assert.equal(step.output, "");
+  // A non-release push is generation-only: storyboards are deferred to the
+  // Version Packages PR, and it is never marked verified.
+  assert.equal(step.output, "generation_only=true\n");
   assert.match(step.stdout, /Not a release merge/);
   assert.deepEqual(f.ghCalls(), []);
+});
+
+test("artifacts for a different version are generation-only, never a release", (t) => {
+  const f = mergeFixture(t);
+  fs.mkdirSync(path.join(f.dir, "dist/schemas/0.0.1"), { recursive: true });
+  fs.writeFileSync(path.join(f.dir, "dist/schemas/0.0.1/index.json"), "{}\n");
+  f.git("add", "-f", "dist/schemas/0.0.1/index.json");
+  f.git("commit", "-qm", "unrelated version artifacts");
+  const sha = f.git("rev-parse", "HEAD");
+  const step = f.runStep({ GITHUB_SHA: sha });
+  assert.equal(step.status, 0, step.stderr);
+  assert.equal(step.output, "generation_only=true\n");
+});
+
+test("an unreadable package.json fails the step without classifying it", (t) => {
+  const f = mergeFixture(t);
+  assert.equal(f.runStep({ GITHUB_SHA: f.base }).status, 0);
+  fs.writeFileSync(path.join(f.dir, "package.json"), "{ not json");
+  const broken = f.runStep({ GITHUB_SHA: f.base });
+  assert.notEqual(broken.status, 0, "classification failure must fail the step");
+  assert.equal(broken.output, "", "no generation_only or verified output on failure");
+});
+
+test("a release merge is never generation-only, verified or not", (t) => {
+  const f = mergeFixture(t);
+  f.responses.pulls = [];
+  const step = f.runStep();
+  assert.equal(step.status, 0, step.stderr);
+  assert.doesNotMatch(step.output, /generation_only/);
+  assert.doesNotMatch(step.output, /verified=true/);
 });
 
 // Security review follow-ups (#8424).

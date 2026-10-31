@@ -79,7 +79,7 @@ fixtures:
       pricing_option_id: "property_reporting_display_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 10.0
+      floor_price: 10.0
 
 phases:
   - id: setup
@@ -126,6 +126,7 @@ phases:
           packages:
             - product_id: "property_reporting_display"
               pricing_option_id: "property_reporting_display_cpm"
+              bid_price: 15
               budget: 1000
           idempotency_key: "$generate:uuid_v4#property_delivery_reporting_create_buy"
         context_outputs:

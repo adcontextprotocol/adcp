@@ -803,6 +803,7 @@ function accountStateToWire(account: AccountState): AccountWireShape {
 export const ACCOUNT_ANCHORED_NOTIFICATION_TYPE_VALUES = [
   'creative.status_changed',
   'creative.purged',
+  'creative.staged_update_changed',
   'account.change_recorded',
   'product.created',
   'product.updated',

@@ -170,7 +170,9 @@ The seller applies the change to the same account, which keeps its `account_id`,
 
 `currency`, `timezone`, and `sandbox` are set when the account opens. A seller MAY refuse a `currency` or `timezone` change with `UNSUPPORTED_FEATURE`, and changing one normally means opening a new account. `sandbox` never changes: the seller refuses a different `sandbox` value with `UNSUPPORTED_FEATURE`.
 
-A seller can apply a `countries` change, refuse it, or review it first. To review it, the seller reports `action: "unchanged"` and `status: "pending_approval"` on the entry's result row, and `setup` can explain the review. The account keeps its current countries until the seller approves, and `list_accounts` reports the account's own status. For example:
+A seller can apply a `countries` change, refuse it, or review it first. To review it, the seller reports `action: "unchanged"` and `status: "pending_approval"` on the entry's result row, and `setup` can explain the review. The account keeps its current countries until the seller decides, and `list_accounts` reports the account's own status.
+
+A seller that supports experimental `account.requests` MUST put the review's `request_id` on that row. Read the request through [`list_accounts`](/docs/accounts/tasks/list_accounts) with `request_ids`, or wait for `account_request.changed`. It resolves the way a [`request_account` change](/docs/accounts/tasks/request_account#changing-an-account) without `allow_separate_account` does: `updated` when the seller applies the change, `matched` when it points to an account the caller already holds, or `rejected` with the reason. A settings update never opens a separate account. A seller that would accept the change only on a new account rejects it with [`ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT`](/docs/building/verification/compliance-catalog#error-code-account-change-requires-new-account), either on the row (`action: "failed"`) or on the request after review, and the buyer opens a new account with a provisioning entry if it wants one. For example:
 
 ```json
 {
@@ -179,6 +181,7 @@ A seller can apply a `countries` change, refuse it, or review it first. To revie
       "account": { "account_id": "acc_nova_pinnacle" },
       "action": "unchanged",
       "status": "pending_approval",
+      "request_id": "areq_nova_be_market",
       "setup": {
         "message": "Adding BE requires a market review."
       }
@@ -187,7 +190,9 @@ A seller can apply a `countries` change, refuse it, or review it first. To revie
 }
 ```
 
-A settings-update result row echoes `account` and does not carry `brand`. To confirm a `countries` change, or to learn the outcome of a review, read the account again through [`list_accounts`](/docs/accounts/tasks/list_accounts).
+A settings-update result row echoes `account` and does not carry `brand`. To confirm a `countries` change, read the account again through [`list_accounts`](/docs/accounts/tasks/list_accounts). Without a `request_id`, the account shows its current countries both while the review runs and after a refusal, so only the request tells the two apart.
+
+`countries` declares the markets the account serves. What a seller may use them for, what a change does to accepted media buys, and what happens when a change makes two accounts alike are set out in [Account identity](/docs/accounts/overview#account-identity).
 
 `revision` is optional and guards the write. When it is stale, the seller returns [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) without side effects. Every persisted account change increments `revision`; reads, dry runs, validation failures, and exact idempotency replays do not.
 
@@ -335,8 +340,8 @@ Each entry has:
 
 - `subscriber_id` — buyer-supplied identifier, unique within the account; echoed on every fire so multi-subscriber accounts can route by endpoint
 - `url` — HTTPS endpoint URL. Sellers MUST complete an endpoint activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active.
-- `event_types[]` — types the subscriber wants. Only account-anchored types are permitted (today: `creative.status_changed`, `creative.assignment_changed`, `indicators.changed`, `creative.purged`, `account.status_changed`, `account.change_recorded`, `product.created`, `product.updated`, `product.priced`, `product.removed`, `signal.created`, `signal.updated`, `signal.priced`, `signal.removed`, `wholesale_feed.bulk_change`, and the experimental `collection_card.updated`, `collection_card.removed` and `collection_catalog.bulk_change`, which a buyer registers only with a seller that lists them in `wholesale_feed_webhooks.event_types`; see [`list_collections`](/docs/media-buy/task-reference/list_collections#collection-card-webhooks)). Sellers MUST reject any media-buy-anchored type (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) or agent-anchored type (`capabilities.changed`) as a per-account validation failure with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) or [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) in `accounts[].errors[]`, and `error.field` MUST point at the invalid `event_types` entry.
-- `product_payload_view` — `canonical` for a [`list_products`](/docs/media-buy/task-reference/list_products) mirror or `legacy` for the 3.x `get_products` shape. Omission defaults to `legacy`; valid only when a product event is selected.
+- `event_types[]` — types the subscriber wants. Only account-anchored types are permitted (today: `creative.status_changed`, `creative.assignment_changed`, `indicators.changed`, `creative.purged`, `account.status_changed`, `account.change_recorded`, `product.created`, `product.updated`, `product.priced`, `product.removed`, `signal.created`, `signal.updated`, `signal.priced`, `signal.removed`, `wholesale_feed.bulk_change`, the experimental `proposal.offered`, and the experimental `collection_card.updated`, `collection_card.removed` and `collection_catalog.bulk_change`, which a buyer registers only with a seller that lists them in `wholesale_feed_webhooks.event_types`; see [`list_collections`](/docs/media-buy/task-reference/list_collections#collection-card-webhooks)). Sellers MUST reject any media-buy-anchored type (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) or agent-anchored type (`capabilities.changed`) as a per-account validation failure with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) or [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) in `accounts[].errors[]`, and `error.field` MUST point at the invalid `event_types` entry.
+- `product_payload_view` — `canonical` for a [`list_products`](/docs/media-buy/task-reference/list_products) mirror or `legacy` for the 3.x `get_products` shape. Omission defaults to `legacy`; valid only when a product event is selected. Sellers echoing configs MUST NOT add `product_payload_view` to a config that selects no product event.
 - `authentication` (optional) — legacy Bearer or HMAC-SHA256. Omit to use the default RFC 9421 webhook profile. A seller with `legacy_hmac_fallback: false` rejects an entry that carries it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) in `accounts[].errors[]`. When present, the same signed-registration downgrade-resistance rules as `push_notification_config.authentication` apply. Credentials are write-only — sellers omit them on reads.
 - `active` (default `true`) — set `false` to pause a subscriber without removing the registration. Sellers MAY skip only the outbound proof challenge while `active: false`; they MUST still enforce HTTPS parsing, hostname normalization, and reserved-range rejection on write. Paused subscribers MUST NOT receive fires until reactivated. Reactivation MUST repeat full SSRF validation with connect pinning plus proof-of-control for any tuple without current valid proof.
 

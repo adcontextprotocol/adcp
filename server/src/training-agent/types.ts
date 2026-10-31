@@ -2,6 +2,7 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/sdk.
  */
+import type { StagedCreativeUpdate } from './live-creative-updates.js';
 import type {
   LegacyProduct as Product,
   Proposal,
@@ -235,6 +236,41 @@ export function supportsAccountChangeFeed(servedVersion: string | undefined): bo
   const major = Number.parseInt(match[1], 10);
   const minor = Number.parseInt(match[2], 10);
   return major > 3 || (major === 3 && minor >= 2);
+}
+
+/** An AdCP release version (`3.2`, `3.1-rc.4`, `3.0.28`), parsed. */
+export interface ParsedAdcpReleaseVersion {
+  raw: string;
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease?: string;
+}
+
+/** The one parser for served and requested AdCP release versions. */
+export function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
+  if (typeof value !== 'string') return undefined;
+  const match = value.match(/^(\d+)\.(\d+)(?:\.(\d+))?(?:-([A-Za-z0-9.-]+))?$/);
+  if (!match) return undefined;
+  return {
+    raw: value,
+    major: Number.parseInt(match[1], 10),
+    minor: Number.parseInt(match[2], 10),
+    patch: match[3] ? Number.parseInt(match[3], 10) : 0,
+    ...(match[4] && { prerelease: match[4] }),
+  };
+}
+
+/**
+ * Whether the served release carries a task outcome in the top-level
+ * `status` key. AdCP 3.0 did; from 3.1 `status` is the envelope task status
+ * (`enums/task-status.json`) and the outcome has its own field (see
+ * served-outcome-status.ts). A caller with no served release speaks the
+ * current line.
+ */
+export function servesOutcomeInEnvelopeStatus(servedVersion: string | undefined): boolean {
+  const parsed = parseAdcpReleaseVersion(servedVersion);
+  return parsed !== undefined && parsed.major === 3 && parsed.minor === 0;
 }
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
@@ -1130,6 +1166,9 @@ export interface CreativeState {
     reasonCode: string;
   };
   webhookActivity?: CreativeWebhookActivityRecord[];
+  /** Live creative update accepted in staged mode and not yet promoted. The
+   * fields above describe the version that serves until promotion. */
+  stagedUpdate?: StagedCreativeUpdate;
 }
 
 export interface CreativeWebhookActivityRecord {
@@ -1137,7 +1176,7 @@ export interface CreativeWebhookActivityRecord {
   subscriber_id: string;
   fired_at: string;
   completed_at: string;
-  notification_type: 'creative.status_changed' | 'creative.purged';
+  notification_type: 'creative.status_changed' | 'creative.purged' | 'creative.staged_update_changed';
   attempt: number;
   status: 'success' | 'failed';
   url: string;

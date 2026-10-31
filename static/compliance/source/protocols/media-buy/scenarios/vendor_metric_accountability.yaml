@@ -7,9 +7,15 @@ track: reporting
 requires:
   - controller
 
-requires_capability:
-  path: media_buy.features.committed_metrics_supported
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.features.committed_metrics_supported
+    equals: true
+  - path: media_buy.buying_modes
+    contains: wholesale
+  - path: compliance_testing.scenarios
+    contains: seed_product
+  - path: compliance_testing.scenarios
+    contains: seed_pricing_option
 
 required_tools:
   - get_products
@@ -49,7 +55,7 @@ agent:
   capabilities:
     - sells_media
   examples:
-    - "Any media buy seller that declares vendor_metrics on its products"
+    - "Sellers exposing the attention and post-flight vendor reporting contract exercised by this slice"
 
 caller:
   role: buyer_agent
@@ -57,54 +63,185 @@ caller:
 
 prerequisites:
   description: |
-    The seller supports comply_test_controller and can seed products with
-    `reporting_capabilities.vendor_metrics`. The seeded product must appear in
-    `get_products` responses when filtered by the declared vendor.
+    The seller supports wholesale discovery and committed metric snapshots. A
+    fully paginated, schema-valid catalog must contain a native non-guaranteed
+    display product declaring attentionvendor.example's attention_units and
+    post_flight_brand_lift metrics, plus the live and post_flight measurement
+    windows exercised below. An unrelated vendor metric is not evidence for
+    this contract. A valid no-match is fixture_unsatisfied coverage, not a pass
+    or proof that other vendor metrics or measurement windows are unsupported.
+    This exact compatibility slice uses the domain-only vendor reference below;
+    different brand IDs or additional vendor-reference metadata do not qualify it.
+    This slice requires seed_product and seed_pricing_option to be advertised in
+    compliance_testing.scenarios before any fixture mutation.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+context:
+  account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: vendor-metric-accountability.pinnacle-agency.example
+    sandbox: true
 fixtures:
+  accounts:
+    - account_id: acct_vendor_metric_accountability_sandbox
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: vendor-metric-accountability.pinnacle-agency.example
+        sandbox: true
+        billing: operator
+        status: active
   products:
-    - product_id: "display_premium_vendor_metrics"
-      # Non-guaranteed so sales-non-guaranteed-only sellers can run this scenario
-      # (#7754). Fixed-price because discovery filters on is_fixed_price and the
-      # creates send no bid. is_guarantee_basis is not conditioned on delivery_type.
-      delivery_type: "non_guaranteed"
-      channels: ["display"]
-      format_options:
-        - format_option_id: "display_300x250"
-          format_kind: "image"
-          params:
-            width: 300
-            height: 250
-      reporting_capabilities:
-        available_metrics:
-          - impressions
-          - clicks
-          - spend
-        measurement_windows:
-          - window_id: "live"
-            duration_days: 0
-            expected_availability_days: 0
-          - window_id: "post_flight"
-            duration_days: 0
-            expected_availability_days: 14
-            is_guarantee_basis: true
-        vendor_metrics:
-          - vendor:
-              domain: "attentionvendor.example"
-            metric_id: "attention_units"
-          - vendor:
-              domain: "attentionvendor.example"
-            metric_id: "post_flight_brand_lift"
-  pricing_options:
-    - product_id: "display_premium_vendor_metrics"
-      pricing_option_id: "cpm_standard_vendor"
-      pricing_model: "cpm"
-      currency: "USD"
-      fixed_price: 12.0
+    - product_id: native_vendor_metric_reporting_support
+fixture_resolution:
+  products:
+    - handle: native_vendor_metric_reporting_support
+      strategies:
+        - discover
+      match:
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /channels
+          operator: contains_all
+          value:
+            - display
+        - path: /pricing_options
+          operator: any_match
+          where:
+            - path: /pricing_model
+              operator: equals
+              value: cpm
+        - path: /reporting_capabilities/vendor_metrics
+          operator: any_match
+          where:
+            - path: /vendor
+              operator: equals
+              value:
+                domain: attentionvendor.example
+            - path: /metric_id
+              operator: equals
+              value: attention_units
+        - path: /reporting_capabilities/vendor_metrics
+          operator: any_match
+          where:
+            - path: /vendor
+              operator: equals
+              value:
+                domain: attentionvendor.example
+            - path: /metric_id
+              operator: equals
+              value: post_flight_brand_lift
+        - path: /reporting_capabilities/measurement_windows
+          operator: any_match
+          where:
+            - path: /window_id
+              operator: equals
+              value: live
+            - path: /duration_days
+              operator: equals
+              value: 0
+            - path: /expected_availability_days
+              operator: equals
+              value: 0
+        - path: /reporting_capabilities/measurement_windows
+          operator: any_match
+          where:
+            - path: /window_id
+              operator: equals
+              value: post_flight
+            - path: /duration_days
+              operator: equals
+              value: 0
+            - path: /expected_availability_days
+              operator: equals
+              value: 14
+            - path: /is_guarantee_basis
+              operator: equals
+              value: true
 
 phases:
+  - id: seed_supported_reporting_fixture
+    title: Prepare reporting fixtures only after declared native support
+    steps:
+      - id: seed_reporting_product
+        title: Seed the reporting product after native support is established
+        task: comply_test_controller
+        schema_ref: compliance/comply-test-controller-request.json
+        response_schema_ref: compliance/comply-test-controller-response.json
+        doc_ref: /building/by-layer/L3/comply-test-controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: vendor-metric-accountability.pinnacle-agency.example
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: display_premium_vendor_metrics
+            fixture:
+              delivery_type: non_guaranteed
+              channels:
+                - display
+              format_options:
+                - format_option_id: display_300x250
+                  format_kind: image
+                  params:
+                    width: 300
+                    height: 250
+              reporting_capabilities:
+                available_metrics:
+                  - impressions
+                  - spend
+                measurement_windows:
+                  - window_id: live
+                    duration_days: 0
+                    expected_availability_days: 0
+                  - window_id: post_flight
+                    duration_days: 0
+                    expected_availability_days: 14
+                    is_guarantee_basis: true
+                vendor_metrics:
+                  - vendor:
+                      domain: attentionvendor.example
+                    metric_id: attention_units
+                  - vendor:
+                      domain: attentionvendor.example
+                    metric_id: post_flight_brand_lift
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The supported reporting fixture is seeded successfully
+      - id: seed_reporting_price
+        title: Seed auction pricing for the reporting fixture
+        task: comply_test_controller
+        schema_ref: compliance/comply-test-controller-request.json
+        response_schema_ref: compliance/comply-test-controller-response.json
+        doc_ref: /building/by-layer/L3/comply-test-controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: vendor-metric-accountability.pinnacle-agency.example
+            sandbox: true
+          scenario: seed_pricing_option
+          params:
+            product_id: display_premium_vendor_metrics
+            pricing_option_id: cpm_standard_vendor
+            fixture:
+              pricing_model: cpm
+              currency: USD
+              floor_price: 12
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The auction reporting price is seeded successfully
   - id: discover_with_required_vendor_metrics
     title: "Discover products that declare an attention vendor metric"
     narrative: |
@@ -127,9 +264,10 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "pinnacle-agency.example"
+              operator: "vendor-metric-accountability.pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
+              sandbox: true
           idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_accountability_setup_sync_accounts"
         validations:
           - check: response_schema
@@ -156,15 +294,15 @@ phases:
           buying_mode: "brief"
           brief: "Display inventory with attention measurement from attentionvendor."
           filters:
-            channels: ["display"]
-            is_fixed_price: true
+            channels: [ "display" ]
             required_vendor_metrics:
               - vendor:
                   domain: "attentionvendor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "vendor-metric-accountability.pinnacle-agency.example"
+            sandbox: true
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -185,9 +323,13 @@ phases:
           - check: field_present
             path: "products[0].reporting_capabilities.vendor_metrics[0].metric_id"
             description: "Each declared vendor metric entry carries a metric_id"
+          - check: field_contains
+            path: "products[0].reporting_capabilities.vendor_metrics[*].vendor.domain"
+            value: "attentionvendor.example"
+            description: "The selected product declares a metric from the requested vendor"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "The captured pricing option is selectable with fixed or auction pricing"
 
   - id: create_media_buy
     title: "Commit the media buy on the matched product"
@@ -216,7 +358,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "vendor-metric-accountability.pinnacle-agency.example"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
           packages:
@@ -306,7 +449,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "vendor-metric-accountability.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
         validations:
@@ -358,6 +502,9 @@ phases:
           the vendor_metric_values.
         sample_request:
           account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: vendor-metric-accountability.pinnacle-agency.example
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -383,7 +530,7 @@ phases:
         validations:
           - check: field_value
             path: "success"
-            allowed_values: [true]
+            allowed_values: [ true ]
             description: "Delivery simulation succeeds"
 
       - id: get_delivery_with_vendor_metrics
@@ -404,7 +551,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "vendor-metric-accountability.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
         validations:

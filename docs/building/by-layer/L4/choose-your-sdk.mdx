@@ -43,16 +43,16 @@ Production stays on the 3.2 line and the packages above. For development and sta
 
 | SDK | Package | AdCP bundle | Roles and transports | Known limits |
 |---|---|---|---|---|
-| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.3` (npm `beta` dist-tag) | Signed `3.3.0-beta.0`; also bundles stable 3.2.7, 3.1.29 and 3.0.25 | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. The standalone commercial-terms verifier fails closed on 3.3 definition pins; keep snapshot verification on the stable 3.2.7 contract. Reliable Reporting storage needs `@adcp/reporting-storage@0.3.0-beta.1`. |
+| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.8` (npm `beta` dist-tag) | Signed `3.3.0-beta.1` only (beta.5 dropped `3.3-beta.0`; a beta.0 peer negotiates stable 3.2.7); also bundles stable 3.2.7, 3.1.29 and 3.0.25 | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. The standalone commercial-terms verifier fails closed on 3.3 definition pins; keep snapshot verification on the stable 3.2.7 contract. Reliable Reporting storage needs `@adcp/reporting-storage@0.3.0-beta.1`. |
 
-No Python or Go package is listed for beta.0 yet. Until a row here names one, treat that SDK's 3.3 types and validators as unavailable.
+No Python or Go package is listed for the 3.3 beta.1 preview yet. Until a row here names one, treat that SDK's 3.3 types and validators as unavailable.
 
 ```bash
-npm install @adcp/sdk@17.0.0-beta.3
-node -p "require('@adcp/sdk').ADCP_VERSION"   # 3.3.0-beta.0
+npm install @adcp/sdk@17.0.0-beta.8
+node -p "require('@adcp/sdk').ADCP_VERSION"   # 3.3.0-beta.1
 ```
 
-SDK 17 is a major release. Before upgrading from 16, read the [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md). It changes the HTML-markup legacy formats (`display_html`, `display_WxH_html`) from `html5` to `display_tag` with inline-markup delivery ([#8339](https://github.com/adcontextprotocol/adcp/issues/8339)). It also fails closed on unresolved account references on 3.3 routes. A 3.3 seller must advertise `3.3-beta.0` in `supported_versions` before an SDK 17 buyer sends that pin.
+SDK 17 is a major release. Before upgrading from 16, read the [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md). It changes the HTML-markup legacy formats (`display_html`, `display_WxH_html`) from `html5` to `display_tag` with inline-markup delivery ([#8339](https://github.com/adcontextprotocol/adcp/issues/8339)). It also fails closed on unresolved account references on 3.3 routes. A 3.3 seller must advertise `3.3-beta.1` in `supported_versions` before an SDK 17 buyer sends that pin.
 
 Integrations that stay on 3.1 keep using the 3.1 lines: `@adcp/sdk` 13.x (npm `adcp-3.1` dist-tag) and `adcp` 7.x. The [SDK version map](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2) lists the 3.1 and 3.2 line for each language and each SDK's upgrade guide.
 

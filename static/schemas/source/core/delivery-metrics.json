@@ -705,6 +705,16 @@
       "items": {
         "$ref": "/schemas/core/vendor-metric-value.json"
       }
+    },
+    "vendor_metric_provenance": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.measurement_provenance). Collection-mechanism provenance for rows of `vendor_metric_values` in this object, one entry per `(vendor, metric_id, qualifier)` and joined on that key. A sibling of the closed rows, not a field on them. Sellers that emit it declare `media_buy.measurement_provenance` in `experimental_features`. Omit when no row has provenance to report.",
+      "items": {
+        "$ref": "/schemas/core/vendor-metric-provenance.json"
+      },
+      "minItems": 1
     }
   },
   "dependencies": {

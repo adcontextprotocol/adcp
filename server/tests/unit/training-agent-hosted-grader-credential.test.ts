@@ -162,7 +162,7 @@ describe('hosted-grader governance credential (adcp#7758)', () => {
     expect(sync.error, JSON.stringify(sync.json)).toBeUndefined();
 
     const intent = await callTool(governanceMcp(), grader, 'check_governance', intentCheck(planId));
-    expect(intent.structured.status ?? intent.structured.verdict, JSON.stringify(intent.json)).toBe('approved');
+    expect(intent.structured.verdict, JSON.stringify(intent.json)).toBe('approved');
     const token = intent.structured.governance_context as string;
     expect(claimsOf(token)).toMatchObject({
       iss: getTrainingGovernanceIssuer(),
@@ -184,7 +184,7 @@ describe('hosted-grader governance credential (adcp#7758)', () => {
         end_time: '2099-06-30T23:59:59Z',
       },
     });
-    expect(execution.structured.status ?? execution.structured.verdict, JSON.stringify(execution.json)).toBe('approved');
+    expect(execution.structured.verdict, JSON.stringify(execution.json)).toBe('approved');
 
     // The buyer side closes the loop on its own plan.
     const audit = await callTool(governanceMcp(), grader, 'get_plan_audit_logs', { plan_ids: [planId] });

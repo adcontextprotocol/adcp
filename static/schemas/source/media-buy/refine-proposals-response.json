@@ -4,6 +4,9 @@
   "title": "Refine Proposals Response",
   "description": "One ordered result per requested source proposal. Revision results may carry multiple immutable draft proposals when alternatives were requested; finalization and hold extension each return one committed proposal per source. Products contains the compact canonical products needed to evaluate the resulting terms.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "anyOf": [
     {
       "properties": { "status": { "type": "string", "const": "completed" } },
@@ -20,7 +23,6 @@
     }
   ],
   "properties": {
-    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "results": {
       "type": "array",
       "description": "Results in the request's refinements[] order; position carries no ranking. If any result is finalized, every result MUST be finalized; under inventory_hold semantics a finalize batch either creates every requested hold or none, and under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics, or a draft hold_policy with available false) it commits every requested proposal's terms or none, with no inventory hold placed for those entries. An extend_hold batch either extends every requested hold or none. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
@@ -64,34 +66,6 @@
             "allOf": [{ "$ref": "/schemas/core/product-change-map.json" }],
             "description": "Requested product actions not satisfied by every returned draft. This is a subset of the request product_changes map and is valid only on partial or unable results."
           },
-          "unsatisfied_installment_changes": {
-            "allOf": [{ "$ref": "/schemas/core/installment-change-set.json" }],
-            "x-status": "experimental",
-            "x-added-in": "3.3.0",
-            "description": "Experimental (media_buy.installment_selection). Requested installment actions not satisfied by every returned draft, each entry repeated exactly as the request carried it. This is a subset of the request installment_changes list and is valid only on partial or unable results, whose reason_code is constraint_unsatisfiable."
-          },
-          "drifted_pins": {
-            "x-added-in": "3.3.0",
-            "type": "array",
-            "description": "Pins from the source proposal's commercial_terms.definition_pins[] whose published definition no longer resolves to the pinned content_digest, in the pins' canonical order. Required on, and valid only with, reason_code definition_changed.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "pin": {
-                  "$ref": "/schemas/core/definition-pin.json",
-                  "description": "The drifted pin exactly as carried by the source proposal."
-                },
-                "current_content_digest": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{64}$",
-                  "description": "Lowercase-hex SHA-256 the definition resolves to now. Omitted only when the entry was withdrawn from a successfully fetched, validated document."
-                }
-              },
-              "required": ["pin"],
-              "additionalProperties": false
-            },
-            "minItems": 1
-          },
           "suggestions": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
@@ -121,8 +95,7 @@
                 { "required": ["reason_code"] },
                 { "required": ["reason"] },
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] },
-                { "required": ["unsatisfied_installment_changes"] }
+                { "required": ["unsatisfied_product_changes"] }
               ]
             }
           },
@@ -157,8 +130,7 @@
                 { "required": ["reason_code"] },
                 { "required": ["reason"] },
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] },
-                { "required": ["unsatisfied_installment_changes"] }
+                { "required": ["unsatisfied_product_changes"] }
               ]
             }
           },
@@ -176,27 +148,13 @@
         "allOf": [
           {
             "if": {
-              "properties": { "reason_code": { "const": "definition_changed" } },
-              "required": ["reason_code"]
-            },
-            "then": {
-              "properties": { "outcome": { "const": "unable" } },
-              "required": ["drifted_pins"]
-            },
-            "else": {
-              "not": { "required": ["drifted_pins"] }
-            }
-          },
-          {
-            "if": {
               "properties": { "reason_code": { "const": "constraint_unsatisfiable" } },
               "required": ["reason_code"]
             },
             "then": {
               "anyOf": [
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] },
-                { "required": ["unsatisfied_installment_changes"] }
+                { "required": ["unsatisfied_product_changes"] }
               ]
             }
           }
@@ -233,9 +191,6 @@
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },
-    "status": { "type": "string", "enum": ["completed", "submitted"] },
-    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-    "message": { "type": "string", "maxLength": 2000 },
     "expected_confirmation_at": {
       "type": "string",
       "format": "date-time",
@@ -244,8 +199,7 @@
     },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
-    "ext": { "$ref": "/schemas/core/ext.json" },
-    "replayed": { "type": "boolean", "const": true }
+    "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "dependencies": {
     "collections": ["products"]

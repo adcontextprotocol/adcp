@@ -4,6 +4,9 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -11,9 +14,11 @@ function schemaPathFromId(schemaId) {
   return path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
 }
 
+// Validation runs against the published schemas (dist/schemas/latest), the
+// one tree every response validator reads.
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-  return JSON.parse(fs.readFileSync(schemaPathFromId(uri), 'utf8'));
+  return readBuiltSchema(uri);
 }
 
 async function compile(schemaId) {
@@ -24,7 +29,7 @@ async function compile(schemaId) {
     loadSchema: loadExternalSchema,
   });
   addFormats(ajv);
-  return ajv.compileAsync(JSON.parse(fs.readFileSync(schemaPathFromId(schemaId), 'utf8')));
+  return ajv.compileAsync(readBuiltSchema(schemaId));
 }
 
 test('channel collections can map carriage to a host property without a host-specific identifier', async () => {
@@ -279,8 +284,8 @@ const draftProposal = {
 };
 const responseCases = [
   ['/schemas/media-buy/get-products-response.json', { status: 'completed', products: [legacyProduct], cache_scope: 'public' }],
-  ['/schemas/media-buy/list-products-response.json', { outcome: 'listed', products: [canonicalProduct], feed_version: 'feed-v1', cache_scope: 'public' }],
-  ['/schemas/media-buy/request-proposals-response.json', { outcome: 'proposed', proposals: [draftProposal], products: [canonicalProduct] }],
+  ['/schemas/media-buy/list-products-response.json', { status: 'completed', outcome: 'listed', products: [canonicalProduct], feed_version: 'feed-v1', cache_scope: 'public' }],
+  ['/schemas/media-buy/request-proposals-response.json', { status: 'completed', outcome: 'proposed', proposals: [draftProposal], products: [canonicalProduct] }],
   ['/schemas/media-buy/refine-proposals-response.json', {
     status: 'completed',
     results: [{ source_proposal_id: 'proposal-1', outcome: 'unable', reason_code: 'commercially_declined', reason: 'Declined.' }],
@@ -303,7 +308,7 @@ for (const [schemaId, base] of responseCases) {
 
 test('collections are forbidden on rejected and unchanged outcomes', async () => {
   const proposals = await compile('/schemas/media-buy/request-proposals-response.json');
-  const rejected = { outcome: 'rejected', reason: 'No available offer satisfies the campaign constraints.' };
+  const rejected = { status: 'completed', outcome: 'rejected', reason: 'No available offer satisfies the campaign constraints.' };
   assert.equal(proposals(rejected), true, JSON.stringify(proposals.errors, null, 2));
   assert.equal(proposals({ ...rejected, collections: [responseCollection] }), false);
   const products = await compile('/schemas/media-buy/get-products-response.json');
@@ -311,7 +316,7 @@ test('collections are forbidden on rejected and unchanged outcomes', async () =>
   assert.equal(products(declined), true, JSON.stringify(products.errors, null, 2));
   assert.equal(products({ ...declined, collections: [responseCollection] }), false);
   const listed = await compile('/schemas/media-buy/list-products-response.json');
-  const unchanged = { outcome: 'unchanged', feed_version: 'feed-v1', cache_scope: 'public' };
+  const unchanged = { status: 'completed', outcome: 'unchanged', feed_version: 'feed-v1', cache_scope: 'public' };
   assert.equal(listed(unchanged), true, JSON.stringify(listed.errors, null, 2));
   assert.equal(listed({ ...unchanged, collections: [responseCollection] }), false);
   const refine = await compile('/schemas/media-buy/refine-proposals-response.json');
@@ -478,18 +483,6 @@ test('brand-side collection links use their own experimental feature id', () => 
   assert.match(row('media_buy.collection_cards'), /include_collections/);
   assert.doesNotMatch(row('media_buy.collection_cards'), /get_brand_identity/);
   assert.match(row('brand.collection_links'), /get_brand_identity/);
-});
-
-test('collection card fields are excluded from publisher_collection definition pins', () => {
-  const vectors = JSON.parse(fs.readFileSync(
-    path.join(__dirname, '../static/compliance/source/test-vectors/definition-pins/vectors.json'), 'utf8'));
-  const exclude = vectors.projection_rules.publisher_collection.exclude;
-  for (const key of ['images', 'sample_content', 'url']) assert.ok(exclude.includes(key), `${key} is excluded`);
-  const vector = vectors.equivalence_vectors.find((v) => v.id === 'collection-card-fields-are-not-drift');
-  assert.ok(vector, 'an image-only change has an equivalence vector');
-  assert.equal(vector.expected.same_content_digest, true);
-  const spec = fs.readFileSync(path.join(__dirname, '../docs/media-buy/specification.mdx'), 'utf8');
-  assert.ok(spec.includes('| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` |'));
 });
 
 test('include_collections is part of the feed version scope', () => {

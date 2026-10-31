@@ -352,8 +352,9 @@ replaces materialized serving assets and cannot be treated as digest-neutral lib
 localized representation-set contract must define locale topology inside the
 pre-binding revision and selected-output projections explicitly.
 
-Revision support does not add staged activation or revision history. A newly
-accepted content revision follows the ordinary creative update and review
+Revision support does not add staged activation or revision history. Unless
+the seller applies the change under [live creative updates](#live-creative-updates),
+a newly accepted content revision follows the ordinary creative update and review
 lifecycle, and prior approval does not transfer to changed content. The
 buyer-initiated transition is acknowledged on this response rather than a
 `creative.status_changed` webhook; subsequent seller/system review transitions
@@ -363,10 +364,9 @@ A revised creative under re-review is ineligible for delivery like any other
 `pending_review` creative until it re-reaches `approved`. Other creatives
 assigned to the same package are unaffected and continue under the seller's
 ordinary selection behavior. A package that relies only on the revised creative
-therefore has a serving gap by default; buyers that need zero-gap replacement
-can sync the candidate under a new `creative_id` and change assignments after
-approval. Staged activation of a replacement under the same identity is outside
-this revision contract.
+therefore has a serving gap by default. A seller that declares
+`creative.live_updates` with `serving: "staged"` keeps the prior version serving
+instead; see [live creative updates](#live-creative-updates).
 
 Creatives produced through [`build_creative`](/docs/creative/task-reference/build_creative)
 become buyer-authored revision state when the buyer accepts and syncs the
@@ -374,6 +374,79 @@ returned manifest, choosing the `creative_id` and minting (or omitting) the
 `revision_id`. Seller-side drafts before that sync boundary are outside AdCP's
 revision history; seller transformation and transcoding after the boundary do
 not mint buyer revision IDs.
+
+### Live creative updates
+
+<Note>Experimental in 3.3. Sellers that implement it list `creative.live_updates` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#creative).</Note>
+
+A buyer changes a creative that is serving by syncing it again under the same `creative_id`. It does not pause packages, mint a new ID, or swap assignments. The seller declares which changes it applies in place and how the creative serves while it decides each one, and refuses the rest with one precise error.
+
+A creative is **live** when its `status` is `approved` and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state. A paused package still counts: on many ad servers a trafficked creative is fixed whether or not its line is paused. So does a buy that has not started, so a declaring seller may refuse before launch a change that an undeclared seller would accept. A creative that is not live, including one in `processing`, `pending_review`, `suspended`, or `rejected`, takes any change as an ordinary upsert. Liveness is evaluated against the state before the request: assignment changes in the same request do not affect it.
+
+**Change kinds.** Buyer and seller classify a sync item by diffing it against the version of the creative that serves, after applying ordinary upsert semantics, so both compute the same answer:
+
+| Kind | Changed fields |
+|---|---|
+| `click_through` | A `url` asset with `url_type: "clickthrough"` |
+| `trackers` | A `url` asset with `url_type` `tracker_pixel` or `tracker_script`, or a `pixel_tracker`, `vast_tracker`, or `daast_tracker` asset |
+| `format` | `format_id`, `format_kind`, or `format_option_ref` |
+| `asset_content` | Any other field of [canonical revision content](#creative-revisions), including future ones: any other asset (markup or VAST that embeds clicks or trackers included), `component_assets`, `localization`, `representation_selection`, `inputs`, `provenance`, `rights`, `industry_identifiers` |
+
+Adding, removing, and changing an asset all count. `name` and `tags` are not a kind: a declaring seller always accepts changes to them on a live creative, without review. `status`, `weight`, and placement fields keep their own rules.
+
+**Edit or swap.** An in-place change keeps one `creative_id`, so delivery, measurement, and frequency keep accumulating under one identity. That fits changes to the same ad: a tracker, a click-through, a corrected asset. A change that makes it a different ad belongs on a new `creative_id` swapped in with an `assignment_operations` `replace`, which separates reporting and frequency and gives the old creative a defined end. The protocol does not draw that line by content. The seller draws it through what it lists in `in_place`: a seller that treats wholesale content replacement as a new ad leaves `asset_content` out, or declares it `paused_for_review`, and refuses or pauses it. Syncing a new `creative_id` stays available to every buyer, declaring seller or not.
+
+**Out of scope in this experiment.** Dynamic creatives, whose content and landing URL vary per impression by design (for example DCO driven by `variables`, catalog items, or macros), have no single "after" for a seller to review, so the change-kind diff does not apply to them. The experiment does not define how a seller reviews or stages a change to one. A declaring seller MAY refuse an in-place change to a dynamic creative with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported), naming `asset_content`, and the buyer syncs a new `creative_id`. Audience is not a creative change: it is targeting on the package. Rotation and weight belong to the assignment and placement. None is a change kind, and nothing in this section changes them.
+
+**Serving modes.** For each kind it applies in place, the seller declares one mode. `in_place` has at most one entry per kind.
+
+| Mode | While the seller decides | Sync result |
+|---|---|---|
+| `uninterrupted` | The seller decides inside the `sync_creatives` call, for every assignment. | Accepted: `action: "updated"`, `status: "approved"`, and the changed creative serves. Refused on review grounds: the item fails with [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected), and the creative and its serving are unchanged. |
+| `staged` | The approved prior version keeps serving under the same `creative_id`. The change is reviewed as a staged update. | `action: "updated"`, `status` of the version that keeps serving, and `staged_update`. |
+| `paused_for_review` | The creative enters `pending_review` and does not serve until approved: the ordinary revision lifecycle above. | `action: "updated"`, `status: "pending_review"` or `"processing"`. |
+
+Modes rank from least to most disruptive: `uninterrupted`, `staged` with `on_rejection: "keeps_prior"`, `staged` with `on_rejection: "stops"`, `paused_for_review`. When one item makes several kinds of change, the most disruptive applies, and the item is refused if any kind is refused. For `uninterrupted`, the seller's decision inside the call is its review of the change: prior approval still does not transfer to changed content, the seller re-approves it synchronously. A seller whose review is asynchronous, or split across publishers, cannot declare `uninterrupted` for kinds it reviews.
+
+**Before sending a change.** The `creative.live_updates` capability is a floor: each listed kind is accepted on every live creative in its listed mode or a less disruptive one. A listed kind MAY be accepted for creatives beyond the floor, for example on ad servers that allow more, and an unlisted kind MAY still be accepted for some creatives. For the exact outcome of one change, send it with `dry_run: true`: the seller returns the same mode or refusal it would apply, without changing anything; a dry-run `staged_update` carries the evaluation time as `staged_at`.
+
+**Staged updates.** While a staged update is pending:
+
+- The prior approved version is the only version that serves, on every assignment. `list_creatives` returns its `assets`, `revision_id`, and `status`, plus `staged_update` with the update's own `status` (`processing`, `pending_review`, or `rejected`), its `revision_id` when the sync supplied one, its `change_kinds`, and `staged_at`. Package rows in [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `creative_approvals[]` keep describing the version that serves.
+- The sync response's top-level `revision_id` echoes the request, so it names the staged revision, while the item's `status` describes the serving version.
+- A creative has at most one staged update. Syncing another staged change supersedes the pending one, which never serves. Syncing the content of a pending staged update again leaves it and its review unchanged; under a new `revision_id`, the seller rebinds `staged_update.revision_id` as it would rebind identical current content. Syncing the content of a rejected staged update resubmits it for review. Syncing content identical to the serving version withdraws the staged update, and the item returns `action: "updated"` without `staged_update`; so does a sync the seller applies in another mode, since its content no longer carries the staged change. Neither supersession nor withdrawal fires a webhook.
+- **Review is one decision across every assignment.** If review rejects the update for any package, the outcome is a rejection; the seller never promotes it on some assignments only.
+- **Approval promotes the update** on every assignment: its content and `revision_id` become the creative's current state, `staged_update` is removed, and the seller fires `creative.staged_update_changed` (see the notifications paragraph below) with `outcome: "promoted"`. The creative's status does not change, so `creative.status_changed` does not fire.
+- **Rejection** depends on the declared `on_rejection`. With `keeps_prior` (the default), the prior version keeps serving, `staged_update.status` becomes `rejected` with a `rejection_reason`, and the seller fires `creative.staged_update_changed` with `outcome: "rejected"` and `creative_status: "approved"`. With `stops`, the creative goes to `rejected` with the prior version's `assets` and `revision_id`, `staged_update` is removed, and the seller surfaces [impairments](/docs/media-buy/media-buys/lifecycle#health-and-impairments) on its buys as for any revocation. That is an ordinary `approved → rejected` transition (`reason_code: "policy_revocation"`) on `creative.status_changed`, and the seller also fires `creative.staged_update_changed` with `outcome: "rejected"` and `creative_status: "rejected"`.
+- **Any other transition discards it.** When the seller moves the creative out of `approved` (re-review, suspension, revocation, or archival) or the creative stops being live, the seller discards the staged update without a fire.
+- When the seller supports revisions, delivery rows carry the `revision_id` that actually served, so reporting splits at promotion while the `creative_id` join is unchanged.
+
+**Staged update notifications.** A staged outcome is not a status transition, so it is not reported on `creative.status_changed`: an `approved → approved` fire would fail the closed validator of a buyer on a release that predates live updates. The seller reports it on the separate experimental `creative.staged_update_changed` event ([`creative-staged-update-changed-webhook.json`](https://adcontextprotocol.org/schemas/latest/creative/creative-staged-update-changed-webhook.json)), and only to `notification_configs[]` entries whose `event_types[]` include it. A buyer that does not register it never receives it and reads the outcome from `staged_update` on [`list_creatives`](/docs/creative/task-reference/list_creatives#staged-update-readback). See [lifecycle webhooks](/docs/creative/specification#lifecycle-webhooks).
+
+**In every mode**, one `creative_id` is one creative. An accepted or promoted change applies to every assignment of the creative on every media buy, and the seller MUST NOT leave a prior version serving alongside the new one beyond the declared `max_propagation_seconds` (cache, SSAI, and exchange propagation). An assignment's own [`landing_page_url`](#assignment-landing-pages) or [`trackers`](#assignment-trackers) still apply on that assignment: a library `click_through` change does not reach an assignment that overrides it.
+
+**Refusal.** A declaring seller fails an item it does not apply in place to a live creative with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported), and leaves the creative, its review state, and its serving unchanged. Other items in the request still process. `error.details` SHOULD conform to [`error-details/creative-live-update-unsupported.json`](https://adcontextprotocol.org/schemas/latest/error-details/creative-live-update-unsupported.json): `refused_changes` and `live_package_ids`. To make the change anyway, sync it as a new `creative_id` and swap it in with an `assignment_operations` `replace` on each live package. A seller that does not declare `creative.live_updates` is not covered by this section: the original rule applies unchanged (creatives on active, non-paused packages cannot be updated, and the refusal is [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state)), so buyers handle both codes.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-response.json",
+  "status": "completed",
+  "creatives": [
+    {
+      "creative_id": "acme_hero_video",
+      "revision_id": "rev_2026_11_02",
+      "action": "updated",
+      "status": "approved",
+      "staged_update": {
+        "status": "pending_review",
+        "revision_id": "rev_2026_11_02",
+        "change_kinds": ["asset_content"],
+        "staged_at": "2026-11-02T15:04:00Z"
+      }
+    }
+  ]
+}
+```
 
 ### Native localization
 
@@ -1205,14 +1278,15 @@ If the seller needs a person to confirm a match, it returns the [`submitted` env
 | [`PACKAGE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-package-not-found)       | Package ID doesn't exist in media buy             | Verify `package_id`; for legacy package correlation use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) + package `context.buyer_ref` |
 | [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected)       | Creative failed content-policy, brand-safety, or accessibility review | Revise according to the applicable policy or validated accessibility criteria |
 | [`CREATIVE_LOCALE_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) | Assigned creative has no materialized variant accepted by the package's effective format `locale_policy`, lacks locale topology, or uses an ineligible `serve_default` | Supply a matching source/target variant, choose a compatible format option, or change the default policy |
-| [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state)           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
+| [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state)           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions). A seller that declares `creative.live_updates` refuses a change it does not apply in place with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported) instead; every other seller keeps this code and this rule. | Pause the package first, or create a new creative version        |
+| [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported) | A declaring seller does not apply this change in place to a live creative; `error.details.refused_changes` names the kinds | Sync the change as a new `creative_id` and `replace` it on each package in `error.details.live_package_ids` (see [Live creative updates](#live-creative-updates)) |
 | [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) | One or more `merge` assignment operations failed verification; `error.details.rejections[]` gives each one's `reason` (`content_mismatch`, `format_mismatch`, `not_on_package`, `not_supported`) | Act on each reason (see [Merging a seller-created copy](#merging-a-seller-created-copy)), then resubmit the remaining merges |
 
 Sellers that declare `creative_specs.vast_validation` of `document` or `wrapper` additionally validate `vast` assets at sync time (including `dry_run`) and can return [`VAST_PARSE_FAILED`](/docs/building/verification/compliance-catalog#error-code-vast-parse-failed), [`VAST_VERSION_MISMATCH`](/docs/building/verification/compliance-catalog#error-code-vast-version-mismatch), or [`VAST_WRAPPER_DEPTH_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-vast-wrapper-depth-exceeded). See [VAST Validation](/docs/creative/channels/video#vast-validation).
 
 ## Best practices
 
-1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #6).
+1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #6), except as #6 describes for a seller that declares `creative.live_updates`.
 
 2. **Rehearse seller acceptance first** - Use `dry_run: true` when you need to catch upload, upsert, assignment, account, policy, or format errors before mutating the seller's creative library. Use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) earlier in the workflow only for manifest-structure preflight or multi-target product comparison.
 
@@ -1222,7 +1296,7 @@ Sellers that declare `creative_specs.vast_validation` of `document` or `wrapper`
 
 5. **Brand identity** - For generative creatives, validate brand identity schema before syncing to avoid processing failures.
 
-6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, use `assignment_operations` to unassign or replace the creative, or create a new creative with a different `creative_id`.
+6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, use `assignment_operations` to unassign or replace the creative, or create a new creative with a different `creative_id`. The one exception is a seller that declares the experimental `creative.live_updates` capability: it applies the changes it lists to a live creative under the same `creative_id`, whether or not the package is paused, and refuses the rest with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported) (see [Live creative updates](#live-creative-updates)). Every other seller keeps the rule above and refuses with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state).
 
 ## Related tasks
 

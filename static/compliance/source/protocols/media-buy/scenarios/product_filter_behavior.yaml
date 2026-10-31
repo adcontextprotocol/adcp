@@ -20,12 +20,11 @@ narrative: |
   advertised in media_buy.buying_modes; an absent declaration defaults to brief.
   Refinement uses a product returned by the brief, independently of wholesale.
 
-  The controller seeds one matching product plus separate channel and delivery
-  type negative controls. This catches partial implementations: applying only
-  the channel predicate still leaks the delivery negative, and applying only
-  the delivery predicate still leaks the channel negative. Assertions use
-  membership and field values rather than requiring filtered and unfiltered
-  responses to differ.
+  The controller seeds a matching OLV product and a display-channel negative
+  control, both with non-guaranteed auction pricing. A separate request asks
+  for guaranteed OLV delivery and validates the delivery type of every result.
+  That request may return no products or seller-native guaranteed products;
+  neither outcome requires an auction-only seller to seed guaranteed inventory.
 
 agent:
   interaction_model: media_buy_seller
@@ -41,8 +40,9 @@ caller:
 
 prerequisites:
   description: |
-    The controller seeds one non-guaranteed OLV product, one non-guaranteed
-    display product, and one guaranteed OLV product, all transactable in USD.
+    The controller seeds one non-guaranteed OLV product and one non-guaranteed
+    display product, both transactable in USD. Guaranteed-delivery probes
+    accept valid empty results without provisioning guaranteed inventory.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -69,11 +69,6 @@ fixtures:
       channels: ["display"]
       format_ids:
         - id: "display_300x250"
-    - product_id: "filter_behavior_negative_delivery"
-      delivery_type: "guaranteed"
-      channels: ["olv"]
-      format_ids:
-        - id: "video_30s"
   pricing_options:
     - product_id: "filter_behavior_matching_olv"
       pricing_option_id: "filter_behavior_matching_olv_cpm"
@@ -85,18 +80,13 @@ fixtures:
       pricing_model: "cpm"
       currency: "USD"
       floor_price: 10.0
-    - product_id: "filter_behavior_negative_delivery"
-      pricing_option_id: "filter_behavior_negative_delivery_cpm"
-      pricing_model: "cpm"
-      currency: "USD"
-      fixed_price: 11.0
 
 phases:
   - id: brief_filters
     title: "Apply filters before brief curation"
     steps:
       - id: get_filtered_brief_products
-        title: "Exclude both negative controls from a curated result"
+        title: "Exclude the channel negative control from a curated result"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -118,12 +108,15 @@ phases:
             sandbox: true
           context:
             correlation_id: "product_filter_behavior--brief"
+            expected_negative_delivery_types: ["guaranteed"]
         expected: |
           Curate only from products satisfying every deterministic predicate.
           The brief itself states neither a channel nor a delivery type.
         context_outputs:
           - key: "filter_behavior_product_id"
             path: "products[0].product_id"
+          - key: "filter_behavior_brief_negative_delivery_types"
+            path: "context.expected_negative_delivery_types"
         validations: &matching_validations
           - check: response_schema
             description: "Response matches get-products-response.json"
@@ -137,7 +130,43 @@ phases:
             description: "Returned product has the requested delivery type"
           - check: field_absent
             path: "products[1]"
-            description: "Both independently non-matching products are excluded"
+            description: "The display-channel negative control is excluded"
+          - check: field_value
+            path: "context.expected_negative_delivery_types"
+            value: ["guaranteed"]
+            description: "The requested delivery-type comparand is echoed unchanged"
+
+      - id: get_filtered_brief_guaranteed_products
+        title: "Exclude non-guaranteed inventory from a guaranteed-delivery request"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "brief"
+          brief: "Curate premium inventory for outdoor enthusiasts."
+          filters: &guaranteed_filters
+            channels: ["olv"]
+            delivery_type: "guaranteed"
+            pricing_currencies: ["USD"]
+          account: *buyer_account
+          context:
+            correlation_id: "product_filter_behavior--brief_guaranteed"
+        expected: |
+          Return only guaranteed OLV products, or an empty product array when
+          none are offered. The seeded non-guaranteed OLV product must not
+          leak into this result even though it matches the channel filter.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "products"
+            description: "An unsupported delivery type produces a valid product array"
+          - check: all_fields_in_context_array
+            path: "products[*].delivery_type"
+            context_key: "filter_behavior_brief_negative_delivery_types"
+            description: "Every returned product satisfies the requested guaranteed delivery type"
 
   - id: wholesale_filters
     title: "Apply filters to the wholesale product feed"
@@ -147,7 +176,7 @@ phases:
     depends_on: []
     steps:
       - id: get_filtered_wholesale_products
-        title: "Exclude both negative controls from the wholesale feed"
+        title: "Exclude the channel negative control from the wholesale feed"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -159,9 +188,13 @@ phases:
           account: *buyer_account
           context:
             correlation_id: "product_filter_behavior--wholesale"
+            expected_negative_delivery_types: ["guaranteed"]
         expected: |
-          Return only the seeded non-guaranteed OLV product. Returning either
-          negative control reveals that at least one accepted predicate no-oped.
+          Return only the seeded non-guaranteed OLV product. Returning the
+          display-channel negative control reveals an ignored channel filter.
+        context_outputs:
+          - key: "filter_behavior_wholesale_negative_delivery_types"
+            path: "context.expected_negative_delivery_types"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json"
@@ -179,7 +212,39 @@ phases:
             description: "Returned wholesale product has the requested delivery type"
           - check: field_absent
             path: "products[1]"
-            description: "Both independently non-matching products are excluded"
+            description: "The display-channel negative control is excluded"
+          - check: field_value
+            path: "context.expected_negative_delivery_types"
+            value: ["guaranteed"]
+            description: "The requested delivery-type comparand is echoed unchanged"
+
+      - id: get_filtered_wholesale_guaranteed_products
+        title: "Apply the delivery predicate to the wholesale feed"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          filters: *guaranteed_filters
+          account: *buyer_account
+          context:
+            correlation_id: "product_filter_behavior--wholesale_guaranteed"
+        expected: |
+          Return only guaranteed OLV products, or an empty product array when
+          none are offered. Native guaranteed products are valid results; the
+          non-guaranteed seeded products must be excluded.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "products"
+            description: "An unsupported delivery type produces a valid product array"
+          - check: all_fields_in_context_array
+            path: "products[*].delivery_type"
+            context_key: "filter_behavior_wholesale_negative_delivery_types"
+            description: "Every wholesale product satisfies the requested guaranteed delivery type"
 
   - id: refine_filters
     title: "Apply replacement filters during refinement"

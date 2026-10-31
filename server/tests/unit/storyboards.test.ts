@@ -334,7 +334,7 @@ describe('wrapper contract', () => {
     const aliases: Array<{ alias: string; channel: RegExp; floor: string }> = [
       { alias: '3.0', channel: /^3\.0\.\d+$/, floor: '3.0.28' },
       { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.30' },
-      { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.5' },
+      { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.8' },
       { alias: '3.1-beta', channel: /^3\.1\.0-beta\.\d+$/, floor: '3.1.0-beta.7' },
       { alias: '3.1-rc', channel: /^3\.1\.0-rc\.\d+$/, floor: '3.1.0-rc.14' },
       { alias: '3.2-rc', channel: /^3\.2\.0-rc\.\d+$/, floor: '3.2.0-rc.7' },
@@ -695,8 +695,20 @@ describe('compareAdcpVersions', () => {
 });
 
 describe('getStoryboardsForVersion', () => {
-  it('preserves introduced storyboards for exact stable and prerelease versions', () => {
-    expect(getStoryboardsForVersion('3.1.18').length).toBe(getStoryboardsForVersion('3.1').length);
+  it('keeps exact stable snapshots pinned while line aliases advance', () => {
+    const frozen = getStoryboardsForVersion('3.1.18');
+    const current = getStoryboardsForVersion('3.1');
+    expect(frozen).toHaveLength(122);
+    expect(frozen.every(storyboard => storyboard.adcp_version === '3.1.18')).toBe(true);
+    expect(current.every(storyboard => storyboard.adcp_version === hostedComplianceTarget('3.1').version)).toBe(true);
+    for (const id of [
+      'media_buy_seller/canonical_custom_formats',
+      'media_buy_seller/canonical_experimental_formats',
+      'media_buy_seller/product_filter_behavior',
+    ]) {
+      expect(current.some(storyboard => storyboard.id === id)).toBe(true);
+      expect(frozen.some(storyboard => storyboard.id === id)).toBe(false);
+    }
     expect(getStoryboardsForVersion('3.2.0-beta.9').length).toBe(
       getStoryboardsForVersion('3.2-beta.9').length,
     );

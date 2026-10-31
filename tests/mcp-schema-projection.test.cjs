@@ -125,9 +125,6 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // measure 468,555 bytes / 457.57 KiB, within the existing 462 KiB ceiling.
 // Product service commitments (#8408) add report/poll request shapes. The
 // media-buy context measures 473,582 bytes / 462.48 KiB; bound it at 463 KiB.
-// Experimental purchase rights add rights-scope and two right-use values to the
-// purchase graph reached through buy_products (+941 bytes measured, 473,582 ->
-// 474,523 bytes / 463.4 KiB), bounded at 464 KiB.
 // 3.3.0-beta.1 window: the queued account, pricing, seller-terms and creative
 // PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
 // top of main). Bound at 476 KiB once for the window; resume per-PR bounding
@@ -1183,6 +1180,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     },
   };
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',
@@ -1192,6 +1190,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     }],
   }), true, JSON.stringify(validateProjectedListProducts.errors));
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',
@@ -1261,7 +1260,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // 21_151_775 to 21_294_989 bytes, still under the cap.
   // request_account change mode (#8543) puts the Account snapshot on resolved
   // requests, reached from request_account and list_accounts (23,090,968 bytes
-  // measured), so the cap moves to 23 MiB.
+  // measured), so the cap moves to 23 MiB. Composing the protocol envelope
+  // into every task response (every response bundles the envelope) also
+  // grows it; the 23 MiB cap holds both.
   assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);

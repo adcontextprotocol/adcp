@@ -6,9 +6,6 @@
   "type": "object",
   "allOf": [
     {
-      "$ref": "/schemas/core/version-envelope.json"
-    },
-    {
       "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
@@ -93,10 +90,6 @@
           "type": "string",
           "description": "State after this transition"
         },
-        "message": {
-          "type": "string",
-          "description": "Human-readable description of the transition"
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -147,7 +140,7 @@
     },
     {
       "title": "SimulationSuccess",
-      "description": "A simulate_delivery, simulate_budget_spend, simulate_later_proposal, catalog_item_availability_probe, compact_product_lifecycle_probe, compact_direct_buy_lifecycle_probe, definition_pin_probe, reporting_core_lifecycle_probe, or Reliable Reporting tier-probe operation succeeded. For delivery: simulated contains the metrics injected by this call (impressions/clicks/plays/reported_spend/conversions plus optional DOOH, reach, frequency, reach-window, and viewability values) and cumulative contains running totals or latest non-additive metric state. For budget: simulated contains spend_percentage/computed_spend/budget. For a later proposal: simulated contains proposal_id, opportunity_id, and later_reason of the created snapshot. For catalog availability: simulated reports seeded foreign identity, actual eligibility gates, processed expiry time, or delete/recreate generation rotation according to params.operation. For compact product lifecycle: simulated reports deterministic preparation through MediaBuy control/readback or strict post-deadline proposal expiry. For compact direct-buy lifecycle: simulated reports deterministic preparation. For reporting Core: simulated reports the fixed virtual time plus stable account, configuration, obligation, and revision identifiers created or advanced by the operation; prepare also reports the complete resolved configuration, period, expected_at, and recovery_deadline, restate_snapshot reports the new revision plus supersedes_reporting_revision_id, and restate_after_received additionally reports received_reporting_revision_id, restated_at, and stale_received_grace_deadline; advance_past_status_deadline reports expected_at, automated_recovery_window_seconds, and the crossed consumer_status_deadline; and advance_past_escalation reports issue_id, issue_opened_at, consumer_mismatch_escalation_seconds, consumer_mismatch_escalation_deadline, expected_recommended_action, and any still-future stale_received_grace_deadline. Reliable Reporting tier probes return the exact seeded ledger IDs, checkpoints, notification order, resource lifecycle evidence, and receipt bodies required by their storyboards. For definition pins: prepare reports prepared and the product_id, and mutate_definition reports ref_kind, the pinned reference, previous_content_digest, and current_content_digest, which are equal for a cosmetic mutation and different for a material one.",
+      "description": "A simulate_delivery, simulate_budget_spend, simulate_later_proposal, catalog_item_availability_probe, compact_product_lifecycle_probe, compact_direct_buy_lifecycle_probe, reporting_core_lifecycle_probe, or Reliable Reporting tier-probe operation succeeded. For delivery: simulated contains the metrics injected by this call (impressions/clicks/plays/reported_spend/conversions plus optional DOOH, reach, frequency, reach-window, and viewability values) and cumulative contains running totals or latest non-additive metric state. For budget: simulated contains spend_percentage/computed_spend/budget. For a later proposal: simulated contains proposal_id, opportunity_id, and later_reason of the created snapshot. For catalog availability: simulated reports seeded foreign identity, actual eligibility gates, processed expiry time, or delete/recreate generation rotation according to params.operation. For compact product lifecycle: simulated reports deterministic preparation through MediaBuy control/readback or strict post-deadline proposal expiry. For compact direct-buy lifecycle: simulated reports deterministic preparation. For reporting Core: simulated reports the fixed virtual time plus stable account, configuration, obligation, and revision identifiers created or advanced by the operation; prepare also reports the complete resolved configuration, period, expected_at, and recovery_deadline, restate_snapshot reports the new revision plus supersedes_reporting_revision_id, and restate_after_received additionally reports received_reporting_revision_id, restated_at, and stale_received_grace_deadline; advance_past_status_deadline reports expected_at, automated_recovery_window_seconds, and the crossed consumer_status_deadline; and advance_past_escalation reports issue_id, issue_opened_at, consumer_mismatch_escalation_seconds, consumer_mismatch_escalation_deadline, expected_recommended_action, and any still-future stale_received_grace_deadline. Reliable Reporting tier probes return the exact seeded ledger IDs, checkpoints, notification order, resource lifecycle evidence, and receipt bodies required by their storyboards.",
       "type": "object",
       "properties": {
         "success": {
@@ -163,9 +156,6 @@
           "type": "object",
           "description": "Running totals across all simulation calls (simulate_delivery only)",
           "additionalProperties": true
-        },
-        "message": {
-          "type": "string"
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -239,10 +229,9 @@
               "description": "Arm the seller will emit on the next forced operation response. 'unable' (experimental, media_buy.hold_policy; added in 3.3) is the per-entry refine_proposals finalize outcome registered by force_hold_unavailable: the named draft returns unable with reason_code hold_unavailable, its otherwise-eligible batch siblings return unable with reason_code batch_aborted, no committed proposal is created and no hold is placed."
             },
             "task_id": {
-              "type": "string",
-              "maxLength": 128,
               "description": "Echo of the registered task_id. Present only when arm is 'submitted' (the arm that emits a task envelope).",
-              "x-entity": "task"
+              "allOf": [{ "$ref": "/schemas/core/task-id.json" }],
+              "maxLength": 128
             },
             "evaluation_id": {
               "type": "string",
@@ -373,10 +362,6 @@
             }
           ]
         },
-        "message": {
-          "type": "string",
-          "description": "Human-readable acknowledgement."
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -432,10 +417,6 @@
         "success": {
           "type": "boolean",
           "const": true
-        },
-        "message": {
-          "type": "string",
-          "description": "Human-readable acknowledgement."
         },
         "context": {
           "$ref": "/schemas/core/context.json"

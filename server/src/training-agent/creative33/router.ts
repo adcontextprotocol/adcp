@@ -26,8 +26,8 @@ import {
 } from './catalog.js';
 
 export const CREATIVE33_ROUTE = CREATIVE33_MCP_ROUTE;
-export const CREATIVE33_WIRE_VERSION = '3.3-beta.0';
-export const CREATIVE33_BUNDLE_VERSION = '3.3.0-beta.0';
+export const CREATIVE33_WIRE_VERSION = '3.3-beta.1';
+export const CREATIVE33_BUNDLE_VERSION = '3.3.0-beta.1';
 const NAMESPACE = 'adcp-training-agent:creative33';
 const logger = createLogger('training-agent-creative33');
 const TOOLS = new Set([

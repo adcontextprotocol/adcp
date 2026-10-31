@@ -11,6 +11,9 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { ensureBuiltSchemas, readBuiltSchema, builtSchemaFiles } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
@@ -27,17 +30,11 @@ const ENTITY_TYPE = {
 function loadAjv() {
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);
-  const walk = dir => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith('.json')) {
-        const schema = JSON.parse(fs.readFileSync(full, 'utf8'));
-        if (schema.$id && !ajv.getSchema(schema.$id)) ajv.addSchema(schema);
-      }
-    }
-  };
-  walk(SCHEMAS);
+  // The published schemas (dist/schemas/latest), with `/schemas/...` ids.
+  for (const file of builtSchemaFiles()) {
+    const schema = readBuiltSchema(file);
+    if (schema.$id && !ajv.getSchema(schema.$id)) ajv.addSchema(schema);
+  }
   return ajv;
 }
 
@@ -131,14 +128,14 @@ test('list_collections request: selectors, filters and pagination, strict', () =
 
 test('list_collections response: listed and unchanged arms', () => {
   const card = { publisher_domain: 'novacreators.example', collection_id: 'kitchen_lab', name: 'Kitchen Lab' };
-  const listed = { outcome: 'listed', collections: [card], pagination: { has_more: false }, collections_version: 'cc_1', cache_scope: 'public' };
+  const listed = { status: 'completed', outcome: 'listed', collections: [card], pagination: { has_more: false }, collections_version: 'cc_1', cache_scope: 'public' };
   assert.equal(responseSchema(listed), true, JSON.stringify(responseSchema.errors));
   assert.equal(responseSchema({ ...listed, collections: [] }), true, 'an empty page is listed');
   const { collections: _c, ...noCollections } = listed;
   assert.equal(responseSchema(noCollections), false, 'listed requires collections');
   const { publisher_domain: _d, ...unscoped } = card;
   assert.equal(responseSchema({ ...listed, collections: [unscoped] }), false, 'entries require publisher_domain');
-  const unchanged = { outcome: 'unchanged', collections_version: 'cc_1', cache_scope: 'account' };
+  const unchanged = { status: 'completed', outcome: 'unchanged', collections_version: 'cc_1', cache_scope: 'account' };
   assert.equal(responseSchema(unchanged), true, JSON.stringify(responseSchema.errors));
   assert.equal(responseSchema({ ...unchanged, collections: [card] }), false, 'unchanged carries no collections');
   assert.equal(responseSchema({ ...unchanged, pagination: { has_more: false } }), false, 'unchanged carries no page');

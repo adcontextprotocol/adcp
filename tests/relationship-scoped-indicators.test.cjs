@@ -6,6 +6,9 @@ const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '..', 'static', 'schemas', 'source');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) {
@@ -15,7 +18,7 @@ async function loadExternalSchema(uri) {
   if (schemaPath !== SCHEMA_BASE_DIR && !schemaPath.startsWith(SCHEMA_BASE_DIR + path.sep)) {
     throw new Error('Schema ref escapes base directory: ' + uri);
   }
-  return JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  return readBuiltSchema(uri);
 }
 
 async function compile(relativePath) {
@@ -26,8 +29,7 @@ async function compile(relativePath) {
     loadSchema: loadExternalSchema
   });
   addFormats(ajv);
-  const schema = JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, relativePath), 'utf8'));
-  return ajv.compileAsync(schema);
+  return ajv.compileAsync(readBuiltSchema(`/schemas/${relativePath}`));
 }
 
 function assertValid(validate, payload) {

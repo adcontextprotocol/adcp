@@ -9,6 +9,7 @@
  * `TestControllerStore` bound to our JSONB-persisted `SessionState`.
  */
 
+import { promoteStagedUpdate, stagedOnRejection } from './live-creative-updates.js';
 import {
   TestControllerError,
   SESSION_ENTRY_CAP,
@@ -874,6 +875,62 @@ async function emitCreativeStatusChanged(
   }
 }
 
+/**
+ * Experimental (creative.live_updates): report the review outcome of a staged
+ * update to subscribers that registered `creative.staged_update_changed`. The
+ * creative's status does not transition on a staged outcome, so this never
+ * rides on `creative.status_changed`.
+ */
+async function emitCreativeStagedUpdateChanged(
+  sessionKey: string,
+  principal: string | undefined,
+  creative: CreativeState,
+  outcome: 'promoted' | 'rejected',
+  creativeStatus: string,
+  rejectionReason?: string,
+): Promise<void> {
+  const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.staged_update_changed', principal, creative.accountId, creative.accountRef);
+  if (subscribers.length === 0) return;
+  const firedAt = new Date().toISOString();
+  const notificationId = `su_${creative.creativeId}_${randomUUID()}`;
+  for (const subscriber of subscribers) {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: notificationId,
+      notification_type: 'creative.staged_update_changed',
+      fired_at: firedAt,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+      creative_id: creative.creativeId,
+      outcome,
+      ...(outcome === 'rejected' && rejectionReason && { rejection_reason: rejectionReason }),
+      creative_status: creativeStatus,
+      observed_at: firedAt,
+      initiator: 'seller',
+    };
+    const activityBase = {
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      fired_at: firedAt,
+      notification_type: 'creative.staged_update_changed',
+      payload_size_bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+    } as const;
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: 'creative.staged_update_changed',
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
+    } catch (err) {
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, undefined, err);
+    }
+  }
+}
+
 function recordCreativeWebhookActivity(
   creative: CreativeState,
   record: NonNullable<CreativeState['webhookActivity']>[number],
@@ -964,6 +1021,46 @@ function createStore(
       }
 
       const prev = creative.status;
+      let stagedRejectionStops = false;
+      // A pending staged update is the review in flight: approved promotes it,
+      // rejected rejects it under the seller's on_rejection policy.
+      // A rejected staged update is not under review: forcing a status then
+      // acts on the serving version as usual.
+      if (creative.stagedUpdate?.status === 'pending_review' && prev === 'approved' && (status === 'approved' || status === 'rejected')) {
+        if (status === 'rejected' && !rejectionReason) {
+          throw new TestControllerError('INVALID_PARAMS', 'rejection_reason is required when status = rejected', prev);
+        }
+        if (status === 'rejected' && stagedOnRejection() === 'stops') {
+          delete creative.stagedUpdate;
+          stagedRejectionStops = true;
+        } else {
+          if (status === 'approved') promoteStagedUpdate(creative);
+          else creative.stagedUpdate = { ...creative.stagedUpdate, status: 'rejected', rejectionReason };
+          const stagedAccountId = creative.accountId
+            ?? resolveAccountIdForRef(sessionKey, principal, creative.accountRef);
+          const outcome = status === 'approved' ? 'promoted' : 'rejected';
+          if (stagedAccountId) {
+            upsertSharedAccountCreative(stagedAccountId, creative);
+            const change = recordAccountChange(principal, {
+              resource: { type: 'creative', account_id: stagedAccountId, resource_id: creativeId },
+              action: 'updated',
+              origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+              changed_paths: outcome === 'promoted' ? ['/manifest', '/staged_update'] : ['/staged_update'],
+              repair: { task: 'list_creatives' },
+              reason: outcome === 'promoted' ? 'review_passed' : 'review_failure',
+              summary: `Connected training platform ${outcome} a staged creative update.`,
+            });
+            await emitAccountChangeRecordedWebhook(principal, change);
+          }
+          await emitCreativeStagedUpdateChanged(sessionKey, principal, creative, outcome, 'approved', rejectionReason);
+          return {
+            success: true,
+            previous_state: prev,
+            current_state: 'approved',
+            message: `Staged update for creative ${creativeId} ${outcome}`,
+          };
+        }
+      }
       if (prev === status) {
         return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} is already ${status}` };
       }
@@ -975,6 +1072,8 @@ function createStore(
       }
 
       creative.status = status;
+      // Leaving approved discards a pending or rejected staged update.
+      if (prev === 'approved' && status !== 'approved') delete creative.stagedUpdate;
       if (status === 'archived') {
         enforceMapCap(session.complyExtensions.forcedCreativeTerminalStates, creativeId, 'creative terminal states');
         session.complyExtensions.forcedCreativeTerminalStates.set(creativeId, status);
@@ -1005,6 +1104,12 @@ function createStore(
         await emitAccountChangeRecordedWebhook(principal, change);
       }
       await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
+      // Under on_rejection stops the creative also leaves approved, which is
+      // an ordinary status transition fired above; the staged outcome is
+      // reported separately to subscribers that asked for it.
+      if (stagedRejectionStops) {
+        await emitCreativeStagedUpdateChanged(sessionKey, principal, creative, 'rejected', status, rejectionReason);
+      }
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
 

@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.3.0-beta.0",
+  "adcp_version": "3.3.0-beta.2",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -280,10 +280,6 @@
           "$ref": "/schemas/core/audience-evidence-target.json",
           "description": "Experimental. Buyer-named audience and minimum evidence value inside audience-evidence requirements"
         },
-        "definition-pin": {
-          "$ref": "/schemas/core/definition-pin.json",
-          "description": "Seller-authored integrity pin over one third-party-published definition referenced by commercial terms"
-        },
         "audience-size": {
           "$ref": "/schemas/core/audience-size.json",
           "description": "Count of people reported as a range with a stated precision (lower_bound, upper_bound, precision, optional as_of)"
@@ -376,10 +372,6 @@
         "installment-deadlines": {
           "$ref": "/schemas/core/installment-deadlines.json",
           "description": "Booking, cancellation, and material submission deadlines for an installment"
-        },
-        "installment-change-set": {
-          "$ref": "/schemas/core/installment-change-set.json",
-          "description": "Installment-level include and omit actions for a proposal refinement"
         },
         "material-deadline": {
           "$ref": "/schemas/core/material-deadline.json",
@@ -524,6 +516,14 @@
         "creative-revision-id": {
           "$ref": "/schemas/core/creative-revision-id.json",
           "description": "Buyer-assigned immutable input-content revision identity scoped to a creative"
+        },
+        "live-update-policy": {
+          "$ref": "/schemas/core/live-update-policy.json",
+          "description": "Which kinds of change a seller applies in place to a live creative, and how the creative serves while each is decided"
+        },
+        "creative-staged-update": {
+          "$ref": "/schemas/core/creative-staged-update.json",
+          "description": "A change to a live creative accepted in staged mode: the prior version serves until the seller promotes it"
         },
         "property": {
           "$ref": "/schemas/core/property.json",
@@ -801,6 +801,26 @@
           "$ref": "/schemas/core/pricing-option.json",
           "description": "A pricing model option offered by a publisher for a product"
         },
+        "task-working": {
+          "$ref": "/schemas/core/task-working.json",
+          "description": "Working task payload: status working. Every working response body composes it"
+        },
+        "task-input-required": {
+          "$ref": "/schemas/core/task-input-required.json",
+          "description": "Input-required task payload: status input-required. Every input-required response body composes it"
+        },
+        "task-submitted": {
+          "$ref": "/schemas/core/task-submitted.json",
+          "description": "Submitted task acknowledgement: status submitted with a task_id. Every submitted response body and branch composes it"
+        },
+        "task-id": {
+          "$ref": "/schemas/core/task-id.json",
+          "description": "Unique, non-empty identifier of an asynchronous AdCP task: the one definition of task_id"
+        },
+        "task-message": {
+          "$ref": "/schemas/core/task-message.json",
+          "description": "Human-readable task summary, at most 2,000 characters: the one definition of a task-level message"
+        },
         "protocol-envelope": {
           "$ref": "/schemas/core/protocol-envelope.json",
           "description": "Standard envelope structure added by protocol layer (MCP, A2A, REST) that wraps task response payloads with protocol-level fields like status, context_id, task_id, and message"
@@ -972,6 +992,10 @@
         "indicators-changed-webhook": {
           "$ref": "/schemas/core/indicators-changed-webhook.json",
           "description": "Account-level invalidation payload for a semantic indicator snapshot change"
+        },
+        "proposal-offered-webhook": {
+          "$ref": "/schemas/core/proposal-offered-webhook.json",
+          "description": "Account-level invalidation payload for a seller offer against an accepted media buy. Experimental."
         },
         "warning": {
           "$ref": "/schemas/core/warning.json",
@@ -1198,6 +1222,10 @@
           "$ref": "/schemas/core/optimization-goal.json",
           "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
         },
+        "vendor-metric-provenance": {
+          "$ref": "/schemas/core/vendor-metric-provenance.json",
+          "description": "Experimental collection-mechanism provenance for one vendor_metric_values row, joined on (vendor, metric_id, qualifier)"
+        },
         "vendor-metric-optimization": {
           "$ref": "/schemas/core/vendor-metric-optimization.json",
           "description": "Product-level capability declaration for vendor-attested metric optimization (attention, brand lift, emissions, retail-media partner metrics)"
@@ -1362,6 +1390,14 @@
           "$ref": "/schemas/enums/later-proposal-reason.json",
           "description": "Why the seller created a later proposal (experimental)"
         },
+        "proposal-initiator": {
+          "$ref": "/schemas/enums/proposal-initiator.json",
+          "description": "Which party originated a proposal (buyer or seller). Experimental."
+        },
+        "offer-reason": {
+          "$ref": "/schemas/enums/offer-reason.json",
+          "description": "Why a seller offered a change to an accepted media buy. Experimental."
+        },
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
           "description": "Machine-readable terminal proposal feedback"
@@ -1369,10 +1405,6 @@
         "seller-policy-decline-reason": {
           "$ref": "/schemas/enums/seller-policy-decline-reason.json",
           "description": "Machine-readable seller-policy reason for declining a MediaBuy control shape"
-        },
-        "definition-pin-ref-kind": {
-          "$ref": "/schemas/enums/definition-pin-ref-kind.json",
-          "description": "Kinds of third-party-published definition a definition pin can cover"
         },
         "proposal-refinement-reason": {
           "$ref": "/schemas/enums/proposal-refinement-reason.json",
@@ -1405,6 +1437,14 @@
         "creative-merge-rejection-reason": {
           "$ref": "/schemas/enums/creative-merge-rejection-reason.json",
           "description": "Why a seller rejected a sync_creatives merge assignment operation"
+        },
+        "creative-change-kind": {
+          "$ref": "/schemas/enums/creative-change-kind.json",
+          "description": "Kind of change a sync_creatives item makes to a creative (click_through, trackers, asset_content, format)"
+        },
+        "live-update-serving-mode": {
+          "$ref": "/schemas/enums/live-update-serving-mode.json",
+          "description": "How a live creative serves while a seller decides an in-place change (uninterrupted, staged, paused_for_review)"
         },
         "audience-size-precision": {
           "$ref": "/schemas/enums/audience-size-precision.json",
@@ -2997,10 +3037,6 @@
           "$ref": "/schemas/brand/rights-pricing-option.json",
           "description": "Pricing option for licensable rights"
         },
-        "rights-scope": {
-          "$ref": "/schemas/brand/rights-scope.json",
-          "description": "What a rights grant covers — uses, grant window, and exclusivity — shared by rights-terms and media-buy purchases"
-        },
         "rights-terms": {
           "$ref": "/schemas/brand/rights-terms.json",
           "description": "Terms returned with a rights grant — coverage, restrictions, revocation, and credentials"
@@ -3142,5 +3178,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.3.0-beta.0"
+  "published_version": "3.3.0-beta.2"
 }

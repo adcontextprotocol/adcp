@@ -9,6 +9,7 @@
  * mounted at the parent training-agent router level, not here.
  */
 
+import { liveUpdatesCapability } from '../live-creative-updates.js';
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -1301,6 +1302,12 @@ function projectTenantCapabilities(
         // requires the matching experimental_features declaration.
         if (!experimentalFeatures.includes('account.change_feed')) {
           experimentalFeatures.push('account.change_feed');
+        }
+        // Live creative updates (experimental, #8404) need the library and
+        // the media buys that make a creative live, so only /sales declares.
+        structured.creative.live_updates = liveUpdatesCapability();
+        if (!experimentalFeatures.includes('creative.live_updates')) {
+          experimentalFeatures.push('creative.live_updates');
         }
       }
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'

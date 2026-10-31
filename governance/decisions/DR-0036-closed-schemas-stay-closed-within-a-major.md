@@ -5,7 +5,7 @@ class: normative
 status: proposed
 date: 2026-10-27
 decided_by: pending WG ratification
-refs: ["#8501", "PR #8502", "#8518", "PR #8523", "PR #8524", "DR-0009", "DR-0019", "DR-0024", "DR-0034"]
+refs: ["#8501", "PR #8502", "#8518", "PR #8531", "PR #8547", "DR-0009", "DR-0019", "DR-0024", "DR-0034"]
 supersedes: DR-0019  # in part: "adding an optional field to a closed schema is a minor change"
 dissent: none recorded
 ---
@@ -58,18 +58,33 @@ text, and the correction brings it back in line. A correction that
 reopens a schema makes it open from the correction's release. From then on, a
 minor may add to it as to any open schema.
 
+**A correction may also tighten a bound, the other way a schema can contradict
+its text:** it accepted a value that the published text already excluded. No
+conforming peer sends that value, so the tighter bound rejects nothing a
+conforming peer sends. Each such correction names the location, the bound and
+its value, and the check accepts exactly that bound there. Any other
+tightening still fails.
+
+**Likewise, a correction may newly require a name that the published text
+already required** of every conforming instance. The check compares composed
+`required` sets (a node's own names and those of its `allOf` entries), so a
+name required through a new `allOf` entry counts. Each such correction names
+the location and the name, and the check accepts exactly that name there.
+
 Each correction is recorded in this section, with its source text and every
 location it changes. The additive-minor check reads the same locations from
 `scripts/lint-additive-minor-corrections.json`. It accepts exactly the listed
 additions, and it fails on an entry that this section doesn't list. So a new
 correction needs a change to this record.
 
-Two corrections are recorded:
+Four corrections are recorded:
 
 | Correction | Source text | Ships in | Check entries |
 |---|---|---|---|
 | (a) Reopen the 3.2 proposal flow | DR-0019 | 3.3.0, and a 3.2.x patch | The table under (a) |
-| (b) Declare the `adcp_version` echo on closed task responses | `docs/reference/versioning.mdx` | 3.3.0 (#8523), and a 3.2.x patch (#8524) | Added by #8523/#8524 |
+| (b) Compose the protocol envelope on every task response | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | The table under (b): `status` newly required |
+| (c) `task_id` identifies a task | `core/protocol-envelope.json`, `core/tasks-get-request.json`, 3.2.7 `core/compact-task-submitted.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (c) |
+| (d) `message` is bounded | 3.2.7 `core/compact-task-submitted.json`, `core/compact-task-input-required.json` and the compact and submitted responses; `core/protocol-envelope.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (d) |
 
 #### (a) Reopen the 3.2 proposal flow
 
@@ -135,18 +150,161 @@ only when its served release is 3.3 or later (DR-0024). A request carries them
 only when the negotiated release is 3.3 or later. A request that names only the
 major is served the oldest supported release (DR-0034), so it never gets them.
 
-#### (b) Declare the `adcp_version` echo on closed task responses
+#### (b) Compose the protocol envelope on every task response
 
-`docs/reference/versioning.mdx` requires the echo on every response:
-"`adcp_version` on every response tells the buyer which release the seller
-actually served." The same page requires each response to validate against the
-served release's schema. Several closed task responses rejected the key, so a
-conforming seller could not meet both rules (#8518).
+On MCP and REST, the protocol envelope's fields sit next to the body fields at
+the response root. The published spec text requires a response to carry them:
 
-This correction declares `adcp_version` on those responses. #8523 implements it
-for 3.3, and #8524 for a 3.2.x patch. This record doesn't implement it. Its
-check entries, with property `adcp_version`, and their rows in this section are
-added by #8523/#8524.
+- `core/protocol-envelope.json`, as published in 3.2.7: "The `status` field is
+  REQUIRED on every task response envelope". Its notes add: "Task response
+  schemas (e.g., get-products-response.json) define ONLY the body fields;
+  protocol-layer fields live on this envelope."
+- `docs/reference/versioning.mdx`: "`adcp_version` on every response tells the
+  buyer which release the seller actually served."
+
+Several task responses did not compose the envelope, and some response roots
+and status branches were published closed, so they rejected `status`,
+`adcp_version`, and the other envelope fields. A conforming seller could not
+meet both the envelope and the response schema (#8518).
+
+This correction composes `core/protocol-envelope.json` through the root
+`allOf` of every task response and async status payload, and every response
+root and status branch is open, so the envelope's fields validate where the
+envelope declares them. No build step adds them: the source and published
+schemas agree. 3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
+
+It changes no closed schema. Each response root or status branch that was
+still closed is reopened:
+
+- The 3.2 proposal-flow response roots and branches are reopened by (a).
+- The `list_collections`, `list_proposals`, `get_media_buy_issue` and
+  `report_media_buy_issue` responses are first published in 3.3, so no earlier
+  release closed them. They open under DR-0019, which keeps response roots
+  open.
+- The `get_reporting_status` failure branches were closed in 3.2.7, but the
+  schema was `x-status: experimental` there. This record's scope rule exempts
+  a schema that was experimental in the release that closed it, so they open
+  under DR-0019 too.
+
+Closed value objects and rows inside response bodies stay as they are.
+
+Composing the envelope makes `status` required on the responses and async
+status payloads that did not require it in 3.2.7. The envelope already
+required it there ("The `status` field is REQUIRED on every task response
+envelope"), so a conforming response carried it. The check compares composed
+`required` sets, a node's own names plus those of its `allOf` entries, and
+accepts `status` at these locations:
+
+| Schema | Pointer | Required | Reason |
+|---|---|---|---|
+| `core/compact-task-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `core/compact-task-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `creative/sync-creatives-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `creative/sync-creatives-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/accept-proposal-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/accept-proposal-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/accept-proposal-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/build-creative-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/build-creative-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/buy-products-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/buy-products-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/buy-products-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/control-media-buy-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/control-media-buy-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/control-media-buy-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/create-media-buy-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/create-media-buy-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/decline-proposals-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/decline-proposals-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/decline-proposals-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/get-products-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/get-products-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/list-products-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/media-buy-commitment-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/refine-proposals-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/refine-proposals-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/refine-proposals-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/request-proposals-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/request-proposals-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/request-proposals-response.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/sync-catalogs-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/sync-catalogs-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/update-media-buy-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `media-buy/update-media-buy-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `signals/get-signals-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+
+#### (c) `task_id` identifies a task
+
+A `task_id` is the handle a caller polls and a webhook references. The
+published text says so:
+
+- `core/protocol-envelope.json`: "Unique identifier for tracking asynchronous
+  operations. Present when a task requires extended processing time. Used to
+  query task status and retrieve results when complete."
+- `core/tasks-get-request.json` requires `task_id`: "Unique identifier of the
+  task to retrieve".
+- 3.2.7 published `core/compact-task-submitted.json` with `task_id`
+  `{"type": "string", "minLength": 1}`.
+
+An empty string identifies no task and cannot be polled, yet most `task_id`
+declarations accepted it. This correction gives `task_id` one definition,
+`core/task-id.json` (`type: string`, `minLength: 1`), that every declaration
+refers to, so a `task_id` is never empty. A submitted response requires it
+through one schema, `core/task-submitted.json` (`status: submitted` and a
+required `task_id`), which every submitted response body and branch composes
+through `allOf`. 3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
+
+The check accepts `minLength: 1` at these locations:
+
+| Schema | Pointer | Bound | Reason |
+|---|---|---|---|
+| `core/protocol-envelope.json` | `/properties/task_id` | `minLength: 1` | The envelope's `task_id`, on every task response. |
+| `core/mcp-webhook-payload.json` | `/properties/task_id` | `minLength: 1` | The task a webhook notification reports on. |
+| `core/tasks-get-request.json` | `/properties/task_id` | `minLength: 1` | The task `tasks/get` retrieves. |
+| `core/tasks-get-response.json` | `/properties/task_id` | `minLength: 1` | The task `tasks/get` returns. |
+| `core/tasks-list-request.json` | `/properties/filters/properties/task_ids/items` | `minLength: 1` | A task named in the `tasks/list` filter. |
+| `core/tasks-list-response.json` | `/properties/tasks/items/properties/task_id` | `minLength: 1` | A task `tasks/list` returns. |
+| `protocol/get-task-status-request.json` | `/properties/task_id` | `minLength: 1` | The task `get_task_status` retrieves. |
+| `protocol/list-tasks-request.json` | `/properties/filters/properties/task_ids/items` | `minLength: 1` | A task named in the `list_tasks` filter. |
+| `protocol/list-tasks-response.json` | `/properties/tasks/items/properties/task_id` | `minLength: 1` | A task `list_tasks` returns. |
+
+`compliance/comply-test-controller-request.json` and
+`compliance/comply-test-controller-response.json` refer to the same definition
+and keep their own `maxLength: 128`. The other declarations carry the 4.0
+bound only as `x-max-length-4.0: 128`.
+
+#### (d) `message` is bounded
+
+A task's `message` is seller text that a receiver displays or passes to an
+agent. 3.2.7 published it with `maxLength: 2000` on
+`core/compact-task-submitted.json` and `core/compact-task-input-required.json`
+(`"message": { "type": "string", "maxLength": 2000 }`), on the compact
+proposal-flow responses, and on the submitted payloads of the async tasks.
+3.2.7's envelope, MCP webhook payload and response wrapper declared no bound,
+so the bound a receiver could rely on depended on the task and on the
+delivery path. The envelope also tells receivers to treat `message` as
+untrusted input.
+
+This correction gives `message` one definition, `core/task-message.json`
+(`type: string`, `maxLength: 2000`), that every
+task-level `message` refers to: the envelope, the MCP webhook payload and the
+response wrapper. No task schema restates the bound. A seller whose text is
+longer MUST truncate it rather than fail the task.
+
+Unlike (c), this is not a value the published text already excluded on every
+path: the envelope, webhook and wrapper accepted a longer `message`. It
+tightens those three to the bound 3.2.7 already published elsewhere, at the
+same 2,000, so every delivery path gives one guarantee. `core/error.json`,
+`core/warning.json` and messages inside task bodies keep their own bounds.
+3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
+
+The check accepts `maxLength: 2000` at these locations:
+
+| Schema | Pointer | Bound | Reason |
+|---|---|---|---|
+| `core/protocol-envelope.json` | `/properties/message` | `maxLength: 2000` | The envelope's `message`, on every task response. |
+| `core/mcp-webhook-payload.json` | `/properties/message` | `maxLength: 2000` | The `message` of a webhook notification. |
+| `core/response.json` | `/properties/message` | `maxLength: 2000` | The response wrapper's `message`. |
 
 ## Rationale
 

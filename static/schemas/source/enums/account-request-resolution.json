@@ -8,8 +8,8 @@
   "type": "string",
   "enum": ["matched", "created", "updated"],
   "enumDescriptions": {
-    "matched": "The seller linked the request to an account that already existed, such as an existing direct relationship with the advertiser, and granted the caller access to it. No seller account object was created.",
-    "created": "The seller created a new account for the request.",
+    "matched": "The seller linked the request to an account that already existed, such as an existing direct relationship with the advertiser, and granted the caller access to it. No seller account object was created. On a change request, the seller pointed to an account the caller already holds instead of changing the named account, which is unchanged.",
+    "created": "The seller created a new account for the request. On a change request, the seller opened a separate account with the requested change applied instead of changing the named account, which is unchanged; only when the change request set allow_separate_account: true.",
     "updated": "The request changed attributes on an existing account (it named account_id). The account keeps its account_id."
   }
 }

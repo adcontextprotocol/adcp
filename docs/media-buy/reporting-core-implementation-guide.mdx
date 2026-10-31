@@ -265,9 +265,9 @@ digest is intentionally retained).
 2. **Derive expected periods.** Calculate the same half-open intervals and
    `expected_at` timestamps. For a reporting subscription, each visible buy and
    resolved offering is owed the complete periods of the offering's schedule that
-   start on or after the first boundary at or after the latest of the subscription
-   version's `accepted_at`, the buy's `confirmed_at`, and the account's
-   `authorized_at`, and that overlap the buy's flight up to its stop time (the
+   start on or after the first boundary at or after the later of the subscription
+   version's `accepted_at` and the account's `authorized_at`, that end after the
+   buy's `confirmed_at`, and that overlap the buy's flight up to its stop time (the
    earliest of `end_time`, `cancellation.canceled_at`, and `completed_at`, as of
    each period's `scope_resolved_at`). Subtract the exceptions in
    `subscription_coverage`, and read `expected_at` timing from each obligation's
@@ -360,8 +360,9 @@ it. A seller that lists `sync_principal` in `configuration_tasks` and advertises
 3. The buyer computes coverage without asking. Each confirmed buy it can see
    through `get_media_buys`, for each resolved offering, is owed the complete
    periods of the offering's published schedule that start on or after the first
-   boundary at or after the latest of the subscription version's `accepted_at`, the
-   buy's `confirmed_at`, and the account's `authorized_at`. The periods must also
+   boundary at or after the later of the subscription version's `accepted_at` and the
+   account's `authorized_at`, and that end after the buy's `confirmed_at`, so the
+   period in which the buy is confirmed is owed in full. The periods must also
    overlap the buy's flight up to its stop time (the earliest of `end_time`,
    `canceled_at`, and `completed_at`), and are never clipped.
    `get_reporting_status` returns only the exceptions in `subscription_coverage[]`,

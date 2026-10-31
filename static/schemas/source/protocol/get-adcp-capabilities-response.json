@@ -44,9 +44,6 @@
       }
     },
     {
-      "$ref": "/schemas/core/version-envelope.json"
-    },
-    {
       "$ref": "/schemas/core/protocol-envelope.json"
     },
     {
@@ -94,6 +91,24 @@
         "properties": {
           "experimental_features": {
             "contains": { "const": "measurement.core" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "creative": {
+            "required": ["live_updates"]
+          }
+        },
+        "required": ["creative"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "creative.live_updates" }
           }
         },
         "required": ["experimental_features"]
@@ -416,32 +431,6 @@
         "properties": {
           "experimental_features": {
             "contains": { "const": "media_buy.collection_catalog" }
-          }
-        },
-        "required": ["experimental_features"]
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "media_buy": {
-            "properties": {
-              "proposal_refinement": {
-                "properties": {
-                  "supported_dimensions": { "contains": { "const": "installment_changes" } }
-                },
-                "required": ["supported_dimensions"]
-              }
-            },
-            "required": ["proposal_refinement"]
-          }
-        },
-        "required": ["media_buy"]
-      },
-      "then": {
-        "properties": {
-          "experimental_features": {
-            "contains": { "const": "media_buy.installment_selection" }
           }
         },
         "required": ["experimental_features"]
@@ -1807,10 +1796,10 @@
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; installment_changes (experimental, media_buy.installment_selection) covers installment_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
-                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "installment_changes", "alternatives", "criteria"]
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
               },
               "uniqueItems": true
             },
@@ -2776,7 +2765,7 @@
           "properties": {
             "publisher_domains": {
               "type": "array",
-              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.\n\n**Non-exhaustive routing hint.** Unlike the sibling `primary_channels` and `primary_countries` allowlists, this list is NOT exhaustive and a buyer MUST NOT treat a publisher's absence from it as evidence that the seller is unauthorized for that publisher, whether or not it is marked complete. Each publisher's own adagents.json remains the authority; resolve it for the publisher named on a product rather than denying anything this list omits. When the list is truncated, the seller MUST set `publisher_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each publisher's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent. A seller that mirrors \"every publisher whose adagents.json names me\" is reflecting third-party-controlled content into a document whose size gates signing-key discovery. Sellers MUST NOT mirror this list unbounded: select the publishers you actually represent, keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
+              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.\n\n**Non-exhaustive routing hint.** Unlike the sibling `primary_channels` and `primary_countries` allowlists, this list is NOT exhaustive and a buyer MUST NOT treat a publisher's absence from it as evidence that the seller is unauthorized for that publisher, whether or not it is marked complete. Each publisher's own adagents.json remains the authority; resolve it for the publisher named on a product rather than denying anything this list omits. When the list is truncated, the seller MUST set `publisher_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each publisher's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent. A seller that mirrors \"every publisher whose adagents.json names me\" is reflecting third-party-controlled content into a document whose size gates signing-key discovery under the deprecated RFC 9421 profile. Sellers MUST NOT mirror this list unbounded: select the publishers you actually represent, keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
               "items": {
                 "type": "string",
                 "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
@@ -2875,7 +2864,7 @@
         },
         "data_provider_domains": {
           "type": "array",
-          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.\n\n**Non-exhaustive routing hint.** This list is NOT exhaustive and a buyer MUST NOT treat a provider's absence from it as evidence that the agent may not resell that provider, whether or not it is marked complete. Each provider's own adagents.json remains the authority. When the list is truncated, the agent MUST set `data_provider_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each data provider's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent — the same trust direction as `media_buy.portfolio.publisher_domains`, and the same inflation vector into a document whose size gates signing-key discovery. Agents MUST NOT mirror this list unbounded: keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
+          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.\n\n**Non-exhaustive routing hint.** This list is NOT exhaustive and a buyer MUST NOT treat a provider's absence from it as evidence that the agent may not resell that provider, whether or not it is marked complete. Each provider's own adagents.json remains the authority. When the list is truncated, the agent MUST set `data_provider_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each data provider's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent — the same trust direction as `media_buy.portfolio.publisher_domains`, and the same inflation vector into a document whose size gates signing-key discovery under the deprecated RFC 9421 profile. Agents MUST NOT mirror this list unbounded: keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
@@ -3234,6 +3223,22 @@
           "default": false,
           "x-added-in": "3.3.0"
         },
+        "live_updates": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Which kinds of change this agent applies in place to a live creative through sync_creatives under the same creative_id, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. This declaration is a floor: every listed kind is accepted on every live creative in the listed serving mode or a less disruptive one (uninterrupted < staged < paused_for_review). An unlisted kind may still be accepted for some creatives; a sync_creatives dry_run returns the exact outcome of one change. A declaring agent MUST refuse a change it does not apply in place with CREATIVE_LIVE_UPDATE_UNSUPPORTED (not INVALID_STATE), and MUST always accept changes to name and tags. Requires has_creative_library: true. Omitted: the agent makes no claim about live creatives.",
+          "allOf": [
+            { "$ref": "/schemas/core/live-update-policy.json" }
+          ],
+          "properties": {
+            "max_propagation_seconds": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Upper bound, in seconds, between the moment an in-place change is applied or a staged update is promoted and the moment no assignment serves the prior version anywhere (ad-server, CDN, SSAI, and exchange caches). Omitted: the agent makes no bound claim, and buyers SHOULD assume the prior version may serve briefly."
+            }
+          }
+        },
         "supports_assignment_trackers": {
           "type": "boolean",
           "description": "When true, this agent accepts trackers on creative assignments in create_media_buy, update_media_buy, and sync_creatives, fires them in addition to the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits, and returns the assignment-scoped tracker list in list_creatives and get_media_buys readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
@@ -3545,6 +3550,17 @@
               "supports_assignment_trackers": { "const": true }
             },
             "required": ["supports_assignment_trackers"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "required": ["live_updates"]
           },
           "then": {
             "properties": {
