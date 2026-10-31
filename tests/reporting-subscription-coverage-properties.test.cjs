@@ -233,7 +233,7 @@ forAll('an extension never makes an elapsed period owed', r => {
   extended.buys[0] = {
     ...buy,
     end_time: iso(Date.parse(buy.end_time) + r.int(1, 6 * 24) * HOUR),
-    prior_flights: [{ replaced_at: iso(replacedAt), start_time: buy.start_time, end_time: buy.end_time, ...(buy.canceled_at ? { canceled_at: buy.canceled_at } : {}) }],
+    flight_history: [{ recorded_at: iso(replacedAt), start_time: buy.start_time, stop_time: buy.canceled_at && Date.parse(buy.canceled_at) < Date.parse(buy.end_time) ? buy.canceled_at : buy.end_time }],
   };
   delete extended.buys[0].canceled_at;
   const resolvedBefore = rows => rows.filter(row => Date.parse(row.period_end) < replacedAt).map(row => JSON.stringify(row));

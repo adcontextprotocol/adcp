@@ -55,15 +55,16 @@ const wire = {
   gap: ajv.compile({ $ref: '/schemas/core/reporting-subscription-coverage.json#/properties/gaps/items' }),
   cutover: ajv.compile({ $ref: '/schemas/core/reporting-subscription-coverage.json#/properties/timezone_cutovers/items' }),
   inactive: ajv.compile({ $ref: '/schemas/core/reporting-subscription-state.json#/properties/inactive_intervals' }),
+  flightHistory: ajv.compile({ $ref: '/schemas/core/media-buy.json#/properties/flight_history' }),
 };
 
 /** Every wire object in a case's input, with its validator. */
 function wireObjects(input) {
   const out = [];
   input.versions.forEach((version, index) => out.push([`versions[${index}].configuration`, wire.configuration, version.configuration]));
-  input.offerings.forEach((offering, index) => {
-    const { available_from: _from, withdrawn_at: _until, ...published } = offering;
-    out.push([`offerings[${index}]`, wire.offering, published]);
+  input.offerings.forEach((offering, index) => out.push([`offerings[${index}]`, wire.offering, offering]));
+  input.buys.forEach((buy, index) => {
+    if (buy.flight_history) out.push([`buys[${index}].flight_history`, wire.flightHistory, buy.flight_history]);
   });
   (input.coverage?.excluded ?? []).forEach((entry, index) => out.push([`coverage.excluded[${index}]`, wire.excluded, entry]));
   (input.coverage?.gaps ?? []).forEach((entry, index) => out.push([`coverage.gaps[${index}]`, wire.gap, entry]));
@@ -124,12 +125,11 @@ test('wire objects in each input validate against the AdCP schemas', () => {
   }
 });
 
-test('non_wire_inputs lists exactly the non-wire fields a case uses', () => {
+test('every input field is on the wire', () => {
+  // Offering availability and flight history are published (adcp#8618), so no case needs buyer-retained state.
   for (const vector of vectors.cases) {
-    const used = [];
-    if (vector.input.buys.some(buy => buy.prior_flights !== undefined)) used.push('buys[].prior_flights');
-    if (vector.input.offerings.some(o => o.available_from !== undefined || o.withdrawn_at !== undefined)) used.push('offerings[].available_from/withdrawn_at');
-    assert.deepEqual(vector.non_wire_inputs ?? [], used, vector.id);
+    assert.equal(vector.non_wire_inputs, undefined, vector.id);
+    for (const buy of vector.input.buys) assert.equal(buy.prior_flights, undefined, `${vector.id}: use flight_history`);
   }
 });
 

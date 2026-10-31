@@ -98,6 +98,23 @@
       "x-added-in": "3.3.0",
       "description": "When the seller moved the buy to completed; present when status is completed. Sellers advertising media_buy.reporting_subscriptions MUST populate it for completed buys, because a buy that completes before end_time stops being owed reporting at this instant."
     },
+    "flight_history": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "maxItems": 64,
+      "description": "Retroactive flight edits, oldest first, so a buyer can recompute which periods a reporting subscription owed (media_buy.reporting_subscriptions). The buy's flight runs from start_time to its stop time, as the reporting-subscription.json coverage rule defines it. An edit is retroactive when the start_time or stop time before or after it is earlier than the instant the seller recorded it. Each entry carries the flight in force before that edit. The flight in force at an instant X is the one in the earliest entry recorded after X, or the current flight when no entry is. Edits whose before and after values all lie after recorded_at change no elapsed period, so they are not listed. Sellers advertising media_buy.reporting_subscriptions MUST list every retroactive edit recorded within the last status_retention_days; an older entry MAY be dropped, because it governs only periods that ended before it was recorded. At most 64 entries are retained: a seller MUST refuse a retroactive edit that would exceed that with INVALID_STATE, and an edit it cannot refuse, such as one observed on a connected platform, it applies from the instant it records it (no start_time or stop time earlier than recorded_at), which needs no entry.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "recorded_at": { "type": "string", "format": "date-time", "description": "When the seller recorded the edit, or ingested it when it was observed on a connected platform. Flight values change at this instant for every period resolved after it." },
+          "start_time": { "type": "string", "format": "date-time", "description": "start_time in force before the edit." },
+          "stop_time": { "type": "string", "format": "date-time", "description": "Stop time in force before the edit." }
+        },
+        "required": ["recorded_at", "start_time", "stop_time"],
+        "additionalProperties": false
+      }
+    },
     "total_budget": {
       "type": "number",
       "description": "Hard aggregate lifetime budget amount",

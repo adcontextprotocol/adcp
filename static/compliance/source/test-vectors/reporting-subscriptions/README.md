@@ -84,8 +84,9 @@ checks that evaluation against zic(8) output for the same release.
 For each case:
 
 1. Build your SDK's coverage input from `input`. `case.schema.json` says where
-   each field comes from on the wire. Fields listed in `non_wire_inputs` are
-   ones a buyer must retain itself.
+   each field comes from on the wire. Every field is on the wire, including
+   offering availability (`available_from`, `withdrawn_at`) and a buy's
+   `flight_history`, so a buyer needs no state of its own.
 2. When the case has `expected_error`, assert your SDK raises that `code`
    with that `detail`.
 3. Otherwise compare your rows with `expected`, and your grouped obligations

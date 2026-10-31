@@ -321,10 +321,16 @@ function flightOf(values, label) {
   return { start, stop: Math.min(...stops) };
 }
 
-/** Flight values in effect at an instant: a prior value applies before its replaced_at. */
+/**
+ * Flight values in effect at an instant, from the buy's flight_history (core/media-buy.json): "The flight in force
+ * at an instant X is the one in the earliest entry recorded after X, or the current flight when no entry is."
+ */
 function flightTimeline(buy) {
-  const priors = (buy.prior_flights ?? [])
-    .map((prior, index) => ({ until: instant(prior.replaced_at, `prior_flights[${index}].replaced_at`), flight: flightOf(prior, `prior_flights[${index}]`) }))
+  const priors = (buy.flight_history ?? [])
+    .map((entry, index) => ({
+      until: instant(entry.recorded_at, `flight_history[${index}].recorded_at`),
+      flight: { start: instant(entry.start_time, `flight_history[${index}].start_time`), stop: instant(entry.stop_time, `flight_history[${index}].stop_time`) },
+    }))
     .sort((a, b) => a.until - b.until);
   const current = flightOf(buy, buy.media_buy_id);
   return at => (priors.find(prior => at < prior.until) ?? { flight: current }).flight;
