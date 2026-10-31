@@ -1218,6 +1218,14 @@ skip_result:
                               # canonical_detail_sub_reasons below.
   canonical_detail_sub_reasons:
     not_applicable:
+      force_scenario_unsupported:
+        description: |
+          A comply_test_controller call to a force_* scenario returned
+          success: false with error: UNKNOWN_SCENARIO. Grade the call
+          not_applicable before its authored validations, with an empty
+          validations array. Detail MUST name force_scenario_unsupported and
+          the requested scenario. Apply forced_scenario_cascade below when
+          the skipped call is stateful.
       rate_limit_not_triggered:
         spec_source: test-kits/rate-limit-trip-runner.yaml
         description: |
@@ -1700,13 +1708,32 @@ cascade_rules:
     still applies because the structural condition — no peer available to
     establish substitute state — is identical. A sole-stateful-step
     `not_applicable` that cascades to all downstream phases would collapse
-    useful coverage; the exemption prevents this regardless of the specific
-    skip detail. Dashboard consumers should read both `reason` and `detail`
+    useful coverage; the exemption prevents this except for unavailable
+    controlled forcing, as defined in forced_scenario_cascade below.
+    Dashboard consumers should read both `reason` and `detail`
     rather than inferring the cause from whether downstream phases ran.
 
     References: adcp-client#1146 (original `not_applicable` exemption);
     adcp-client#1545 (extension to `missing_tool` / `missing_test_controller`);
     adcp-client-python#550 (adopter pattern that surfaced the cross-runner gap).
+  forced_scenario_cascade: |
+    A stateful comply_test_controller force_* call that grades not_applicable
+    with detail force_scenario_unsupported did not establish the controlled
+    state required by its dependent observations. The runner MUST NOT apply
+    sole_stateful_step_exemption to this skip. It MUST skip subsequent
+    stateful steps in the same phase and stateful steps in phases depending
+    on it, including through intermediate skipped phases, before dispatch or
+    authored validation. These dependent skips MUST grade not_applicable,
+    cite the unsupported force step, and receive no executed-step or
+    validation credit. They MUST NOT grade prerequisite_failed solely
+    because optional forcing is unavailable.
+
+    Explicitly independent phases and any_of branch-set alternatives retain
+    their existing dependency semantics. Genuine failures take precedence
+    over this neutral coverage gap, and successful forcing does not suppress
+    observation failures. Other not_applicable, missing_tool and
+    missing_test_controller skips retain the ordinary exemption and
+    substitution rules above.
   branch_set_cascade_exemption: |
     When two or more phases share the same `branch_set.id` with `any_of`
     semantics, the runner MUST NOT cascade `prerequisite_failed` from one peer
