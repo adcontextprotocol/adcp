@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AdCP extensions</title>
+<style>
+:root{color-scheme:light;--bg:#fbfaf7;--panel:#ffffff;--ink:#1d1f24;--muted:#5d6370;--line:#e3e0d8;--accent:#1f5fbf;--code:#f2efe8;
+--ok:#1d7a46;--ok-bg:#e3f4ea;--warn:#9a5b00;--warn-bg:#fdf0d9;--bad:#b42318;--bad-bg:#fde7e4;--co:#6941c6;--co-bg:#efe9fb}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:32px 16px 64px;min-width:0}
+a{color:var(--accent)}code{font:0.88em/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{background:var(--code);padding:12px;border-radius:6px;overflow-x:auto}pre code{padding:0;background:none}
+h1{font-size:1.9rem;line-height:1.2;margin:0 0 6px}h2{margin-top:2.2em;padding-top:.6em;border-top:1px solid var(--line);font-size:1.35rem}
+h3{margin-top:1.8em;font-size:1.1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.crumb{font-size:.9rem;color:var(--muted);margin-bottom:18px}.lede{color:var(--muted);margin:0 0 20px}
+.meta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:0 0 24px}
+.meta dt{color:var(--muted);font-size:.9rem}.meta dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.table-wrap{overflow-x:auto;margin:12px 0;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:.93rem}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}td:first-child code,td:nth-child(2) code{white-space:nowrap;overflow-wrap:normal}td:first-child a{white-space:nowrap}th{color:var(--muted);font-weight:600;font-size:.85rem}
+.badge{display:inline-block;font-size:.72rem;font-weight:600;line-height:1;padding:4px 7px;border-radius:999px;vertical-align:middle;white-space:nowrap;background:var(--code);color:var(--muted)}
+.level-must{background:var(--bad-bg);color:var(--bad)}.level-should{background:var(--warn-bg);color:var(--warn)}
+.st-covered{background:var(--ok-bg);color:var(--ok)}.st-failing,.st-uncovered{background:var(--bad-bg);color:var(--bad)}.co{background:var(--co-bg);color:var(--co)}
+.rule-head{margin:1.6em 0 .4em;font-size:1.02rem;line-height:1.5}.rule-head .src{font-size:.8rem;font-weight:400;margin-left:6px}.rule-id{font-family:ui-monospace,Menlo,monospace;text-decoration:none;margin-right:4px}
+.enforced{font-size:.9rem;color:var(--muted);border-left:3px solid var(--line);padding-left:10px}.enforced span{font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}.card h2{border:none;margin:0 0 4px;padding:0;font-size:1.15rem}
+.card p{margin:6px 0;color:var(--muted);font-size:.92rem}.small{font-size:.85rem;color:var(--muted)}
+footer{margin-top:48px;font-size:.85rem;color:var(--muted)}
+@media (max-width:600px){.meta{grid-template-columns:minmax(0,1fr)}.meta dt{margin-top:6px}h1{font-size:1.5rem}}
+</style>
+</head>
+<body>
+<main>
+
+<h1>AdCP extensions</h1>
+<p class="lede">Extension specs, each pinned by its digest. Each extension carries its fields (JSON Schema), its rules (a normative spec with rule IDs), declarative constraints where possible, conformance storyboards, and non-normative reference code. The digest covers all five.</p>
+<div class="cards">
+<div class="card">
+  <h2><a href="daypart-codes.html">daypart-codes</a> <span class="small">2.6.0</span></h2>
+  <p>AcmeTV daypart codes</p>
+  <p><code>https://ext.acmetv.example.com/adcp/daypart-codes</code></p>
+  <p><code>sha256:06d49beb19d14969…</code></p>
+  <p><span class="badge">vendor</span> <span class="badge st-covered">3/3 rules covered</span> <span class="badge">MUST 3/3</span> <span class="badge">1 storyboards</span></p>
+  <p class="small"><code>pricing_option</code> (buying (pricing layer))</p>
+</div>
+<div class="card">
+  <h2><a href="linear-tv-indexed-cpp.html">linear-tv-indexed-cpp</a> <span class="small">1.5.0</span></h2>
+  <p>Indexed cost per point, with a market index fixed after booking</p>
+  <p><code>https://extensions.adcontextprotocol.org/linear-tv-indexed-cpp</code></p>
+  <p><code>sha256:52f80ee6d7a35c6a…</code></p>
+  <p><span class="badge">candidate</span> <span class="badge st-covered">14/14 rules covered</span> <span class="badge">MUST 13/13</span> <span class="badge">4 storyboards</span></p>
+  <p class="small"><code>pricing_model#indexed_cpp</code> (buying (pricing layer)) <code>media_buy_state</code> (buying (execution layer)) <code>capabilities</code> (kernel (core))</p>
+</div>
+<div class="card">
+  <h2><a href="makegood-units.html">makegood-units</a> <span class="small">1.5.0</span></h2>
+  <p>Make-good units (pre-agreed, capped, zero-cost replacements)</p>
+  <p><code>https://extensions.adcontextprotocol.org/makegood-units</code></p>
+  <p><code>sha256:0debf79a73907c27…</code></p>
+  <p><span class="badge">candidate</span> <span class="badge st-covered">22/22 rules covered</span> <span class="badge">MUST 21/21</span> <span class="badge">5 storyboards</span></p>
+  <p class="small"><code>commercial_terms</code> (buying (commitment layer)) <code>media_buy_state</code> (buying (execution layer)) <code>task#request_makegood</code> (kernel (core))</p>
+</div>
+<div class="card">
+  <h2><a href="rate-card-index.html">rate-card-index</a> <span class="small">1.5.0</span></h2>
+  <p>Rate card: base x ordered indices + premiums</p>
+  <p><code>https://extensions.adcontextprotocol.org/rate-card-index</code></p>
+  <p><code>sha256:a24ab2ac52822783…</code></p>
+  <p><span class="badge">candidate</span> <span class="badge st-covered">9/9 rules covered</span> <span class="badge">MUST 9/9</span> <span class="badge">3 storyboards</span></p>
+  <p class="small"><code>pricing_option</code> (buying (pricing layer)) <code>commercial_terms</code> (buying (commitment layer))</p>
+</div>
+<div class="card">
+  <h2><a href="seller-adjustable-terms.html">seller-adjustable-terms</a> <span class="small">1.6.0</span></h2>
+  <p>Seller adjustable terms (pre-authorized unilateral changes)</p>
+  <p><code>https://extensions.adcontextprotocol.org/seller-adjustable-terms</code></p>
+  <p><code>sha256:41d05441540d02b8…</code></p>
+  <p><span class="badge">candidate</span> <span class="badge st-covered">18/18 rules covered</span> <span class="badge">MUST 17/17</span> <span class="badge">5 storyboards</span></p>
+  <p class="small"><code>commercial_terms</code> (buying (commitment layer)) <code>media_buy_state</code> (buying (execution layer))</p>
+</div>
+</div>
+
+<footer><code>scripts/render-extension-docs.mjs</code> generates these pages from the registry copy of each uri@digest, and re-verifies every document on them against the sha256 that the extension digest pins.</footer>
+</main>
+</body>
+</html>

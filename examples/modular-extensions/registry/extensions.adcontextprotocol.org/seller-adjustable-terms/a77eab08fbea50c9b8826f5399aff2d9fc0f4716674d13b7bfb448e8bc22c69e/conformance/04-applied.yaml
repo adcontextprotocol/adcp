@@ -1,0 +1,230 @@
+id: seller_adjustable_terms/applied
+version: "1.0.0"
+title: "Applied changes stay inside the accepted allowances"
+category: extension_conformance
+extension: seller-adjustable-terms
+summary: "The creator is ill and video 1 moves 5 days; the buyer verifies the change. A second shift of 4 days goes past the allowance and is reported."
+narrative: |
+  After signing, the creator is ill. The seller moves video 1 by 5 days, start and end
+  together, writes the readback, and announces the revision on the core change feed. The
+  buyer verifies each change against the accepted allowance. The storyboard then plays a
+  seller that breaks each bound, and finally a seller that moves video 1 another 4 days:
+  9 days from the accepted value, past the 7-day allowance.
+
+fixture: creator_network
+buyer:
+  extensions: [seller-adjustable-terms, makegood-units]
+
+phases:
+  - id: buy
+    title: "Buy the two videos"
+    steps:
+      - { id: request_proposals, title: "Request a draft proposal", task: request_proposals, expect: { ok: true } }
+      - { id: finalize, title: "Finalize", task: refine_proposals, expect: { ok: true } }
+      - { id: accept, title: "Accept", task: accept_proposal, expect: { ok: true } }
+
+  - id: slip
+    title: "The seller moves video 1 inside the allowance"
+    steps:
+      - id: creator_unavailable
+        title: "The seller moves video 1 by 5 days"
+        task: seller_op
+        with: { op: creatorUnavailable, args: [{ $from: media_buy_id }, 0, 5] }
+        expect: { ok: true }
+      - id: read_back
+        title: "The buyer verifies both changes"
+        task: get_media_buys
+        covers: [SAT-R9, SAT-R10, SAT-R11, SAT-R14, SAT-R15]
+        expect:
+          ok: true
+          violations: 0
+          status: { ext: seller-adjustable-terms, point: media_buy_state, status: understood }
+          checks:
+            - path: media_buy.extensions_state.@seller-adjustable-terms.digest
+              equals: { $from: media_buy.accepted_proposal.commercial_terms.extensions.@seller-adjustable-terms.digest }
+            - path: media_buy.extensions_state.@seller-adjustable-terms.data.applied
+              length: 2
+            - path: media_buy.packages.0.start_time
+              equals: "2027-03-15T17:00:00Z"
+      - id: change_feed
+        title: "The revision is on the core change feed"
+        task: assert
+        covers: [SAT-R16]
+        expect:
+          checks:
+            - path: changes
+              some:
+                change_id: { $from: media_buy.extensions_state.@seller-adjustable-terms.data.applied.0.change_id }
+                resource_revision: { $from: media_buy.extensions_state.@seller-adjustable-terms.data.applied.0.revision }
+                changed_paths: { contains: /packages/0/start_time }
+            - path: changes
+              some:
+                change_id: { $from: media_buy.extensions_state.@seller-adjustable-terms.data.applied.1.change_id }
+                changed_paths: { contains: /packages/0/end_time }
+
+  - id: seller_breaks_an_allowance
+    title: "A seller that breaks an allowance is reported"
+    steps:
+      - id: unknown_allowance
+        title: "A change under an allowance the buyer never accepted"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@seller-adjustable-terms/data/applied/0/allowance_id, value: slip_any }
+        covers: [SAT-R10]
+        expect:
+          ok: true
+          violation_match: "allowance slip_any is not in the accepted terms"
+      - id: other_field
+        title: "A change to a field its allowance does not cover"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@seller-adjustable-terms/data/applied/0/path, value: /end_time }
+        covers: [SAT-R10]
+        expect:
+          ok: true
+          violation_match: "changed purchase 0 /end_time, allowance covers purchase 0 /start_time"
+      - id: wrong_direction
+        title: "A move earlier under a later-only allowance"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@seller-adjustable-terms/data/applied/0/value, value: "2027-03-08T17:00:00Z" }
+        covers: [SAT-R11]
+        expect:
+          ok: true
+          violation_match: "moved earlier; allowance is later-only"
+      - id: short_notice
+        title: "A change applied with less than the agreed notice"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@seller-adjustable-terms/data/applied/0/applied_at, value: "2027-03-09T12:00:00Z" }
+        covers: [SAT-R14]
+        expect:
+          ok: true
+          violation_match: "applied with less than 48 hours notice"
+      - id: start_without_end
+        title: "A start moved in a revision that leaves the end in place"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: remove, path: /media_buys/0/extensions_state/@seller-adjustable-terms/data/applied/1 }
+        covers: [SAT-R15]
+        expect:
+          ok: true
+          violation_match: "moves /start_time of purchase 0 without /end_time; start and end move in one revision"
+      - id: decrease_raises
+        title: "A budget change under a decrease allowance that raises the budget"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - op: append
+              path: /media_buys/0/accepted_proposal/commercial_terms/extensions/@seller-adjustable-terms/data/allowances
+              value: { allowance_id: zz_release_v2, purchase_index: 1, path: /budget, constraint: { kind: decrease, min: 6000, max_change_fraction: 0.25 } }
+            - op: append
+              path: /media_buys/0/extensions_state/@seller-adjustable-terms/data/applied
+              value: { adjustment_id: adj_budget, allowance_id: zz_release_v2, revision: 2, applied_at: "2027-03-01T09:00:00Z", reason: brand_request, purchase_index: 1, path: /budget, previous_value: 12000, value: 12500 }
+        covers: [SAT-R12]
+        expect:
+          ok: true
+          violation_match: "adj_budget \\(allowance zz_release_v2\\): not a decrease"
+      - id: decrease_too_far
+        title: "A decrease past max_change_fraction of the accepted value"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - op: append
+              path: /media_buys/0/accepted_proposal/commercial_terms/extensions/@seller-adjustable-terms/data/allowances
+              value: { allowance_id: zz_release_v2, purchase_index: 1, path: /budget, constraint: { kind: decrease, max_change_fraction: 0.25 } }
+            - op: append
+              path: /media_buys/0/extensions_state/@seller-adjustable-terms/data/applied
+              value: { adjustment_id: adj_budget, allowance_id: zz_release_v2, revision: 2, applied_at: "2027-03-01T09:00:00Z", reason: brand_request, purchase_index: 1, path: /budget, previous_value: 12000, value: 6000 }
+        covers: [SAT-R12]
+        expect:
+          ok: true
+          violation_match: "cumulative decrease 0.5 exceeds 0.25"
+      - id: not_an_alternate
+        title: "A targeting change to a value that is not an agreed alternate"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/accepted_proposal/commercial_terms/purchases/0/targeting_overlay, value: { geo_countries: [NL] } }
+            - op: append
+              path: /media_buys/0/accepted_proposal/commercial_terms/extensions/@seller-adjustable-terms/data/allowances
+              value:
+                allowance_id: zz_geo_v1
+                purchase_index: 0
+                path: /targeting_overlay
+                constraint: { kind: alternates, alternates: [{ label: Belgium, value: { geo_countries: [BE] } }] }
+            - op: append
+              path: /media_buys/0/extensions_state/@seller-adjustable-terms/data/applied
+              value: { adjustment_id: adj_geo, allowance_id: zz_geo_v1, revision: 2, applied_at: "2027-03-01T09:00:00Z", reason: brand_request, purchase_index: 0, path: /targeting_overlay, previous_value: { geo_countries: [NL] }, value: { geo_countries: [DE] } }
+        covers: [SAT-R13]
+        expect:
+          ok: true
+          violation_match: "adj_geo \\(allowance zz_geo_v1\\): value is not one of the agreed alternates"
+      - id: readback_other_digest
+        title: "Readback under a digest the buyer did not accept fails closed"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@seller-adjustable-terms/digest, value: { $digest: seller-adjustable-terms@1.1.0 } }
+        covers: [SAT-R9]
+        expect:
+          ok: false
+          error_code: EXTENSION_DIGEST_DIVERGENT
+
+  - id: grease
+    title: "GREASE: readback from an unknown extension"
+    steps:
+      - id: grease_ignore
+        title: "Unknown readback is ignored; the allowance readback is still verified"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          grease: { at: /media_buys/0/extensions_state, kind: extension-point }
+        covers: [SAT-R18]
+        expect:
+          ok: true
+          violations: 0
+          status:
+            - { ext: grease, point: media_buy_state, status: ignored }
+            - { ext: seller-adjustable-terms, point: media_buy_state, status: understood }
+
+  - id: past_the_allowance
+    title: "The seller moves video 1 again, past the allowance"
+    steps:
+      - id: rogue_shift
+        title: "The seller moves video 1 another 4 days"
+        task: seller_op
+        with: { op: rogueShift, args: [{ $from: media_buy_id }, 0, 4] }
+        expect: { ok: true }
+      - id: read_back_dispute
+        title: "The buyer counts from the accepted value and reports both changes"
+        task: get_media_buys
+        covers: [SAT-R11]
+        expect:
+          ok: true
+          violations: 2
+          violation_match: "moved 9 days from the accepted value; allowance max is 7 days"

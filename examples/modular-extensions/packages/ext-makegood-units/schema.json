@@ -1,0 +1,355 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Make-good Units Extension",
+  "definitions": {
+    "MakegoodTerms": {
+      "title": "Makegood Terms",
+      "type": "object",
+      "properties": {
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MakegoodRule"
+          },
+          "minItems": 1,
+          "description": "Unique by rule_id, ordered by rule_id (stable terms_digest).",
+          "x-adcp-validation": {
+            "unique_by": "rule_id",
+            "verifier_constraints": {
+              "makegood_rule_bounds": {
+                "purchase_index": "less_than_purchases_length",
+                "canonical_order": "ascending_rule_id",
+                "window": "fixed_duration_not_campaign",
+                "on_violation": "reject_proposal"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "rules"
+      ],
+      "additionalProperties": false
+    },
+    "MakegoodRule": {
+      "title": "Makegood Rule",
+      "type": "object",
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "purchase_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The purchase whose missed or short delivery this rule makes good."
+        },
+        "trigger": {
+          "type": "string",
+          "enum": [
+            "deliverable_missed",
+            "under_delivery"
+          ]
+        },
+        "max_units": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Most make-good units the seller may add under this rule over the life of the buy."
+        },
+        "window": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/duration.json",
+          "description": "A unit must start no later than this long after the purchase's accepted end_time."
+        },
+        "keep_same": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "product",
+              "creator",
+              "platform",
+              "format",
+              "show",
+              "daypart",
+              "market"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "Attributes the unit must share with the purchase it replaces."
+        },
+        "at_no_cost": {
+          "type": "boolean",
+          "const": true,
+          "description": "Units are zero-cost core packages (budget 0). Always true; a paid replacement is an offer."
+        }
+      },
+      "required": [
+        "rule_id",
+        "purchase_index",
+        "trigger",
+        "max_units",
+        "window",
+        "keep_same",
+        "at_no_cost"
+      ],
+      "additionalProperties": false
+    },
+    "MakegoodLedger": {
+      "title": "Makegood Ledger",
+      "type": "object",
+      "properties": {
+        "issued": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/IssuedMakegood"
+          },
+          "minItems": 1,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "makegood_within_rule": {
+                "rule": "resolves_to_accepted_rule_same_uri_and_digest",
+                "max_units": "issued_per_rule_lte_max_units",
+                "window": "unit_start_lte_purchase_end_time_plus_window",
+                "package": "resolves_in_media_buy_packages_with_budget_zero",
+                "keep_same": "evidence_original_equals_makegood_for_each_attribute",
+                "trigger": "reason_equals_rule_trigger",
+                "on_violation": "report_violation"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "issued"
+      ],
+      "additionalProperties": false
+    },
+    "IssuedMakegood": {
+      "title": "Issued Makegood",
+      "type": "object",
+      "properties": {
+        "makegood_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The media buy revision that added the unit."
+        },
+        "change_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "The account change feed record for that revision."
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "deliverable_missed",
+            "under_delivery"
+          ]
+        },
+        "package_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The zero-cost core package that carries the unit."
+        },
+        "evidence": {
+          "type": "object",
+          "description": "For each keep_same attribute: the value on the replaced purchase and on the unit.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "original": {
+                "type": "string"
+              },
+              "makegood": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "original",
+              "makegood"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "makegood_id",
+        "rule_id",
+        "revision",
+        "issued_at",
+        "reason",
+        "package_id",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "MakegoodRequest": {
+      "title": "Makegood Request",
+      "type": "object",
+      "description": "Arguments of request_makegood: the buyer asks the seller to issue a make-good unit under an accepted rule for a deliverable that was missed or under-delivered.",
+      "properties": {
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 255,
+          "description": "Repeating a request with the same key returns the first response."
+        },
+        "media_buy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "description": "The accepted make-good rule the request invokes."
+        },
+        "package_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The package of the missed or short deliverable: the package of the rule's purchase."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "deliverable_missed",
+            "under_delivery"
+          ]
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/context.json"
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "media_buy_id",
+        "rule_id",
+        "package_id",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "MakegoodResponse": {
+      "title": "Makegood Response",
+      "description": "Response of request_makegood: accepted, with the zero-cost package that carries the unit, or rejected, with a reason.",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/MakegoodAccepted"
+        },
+        {
+          "$ref": "#/definitions/MakegoodRejected"
+        }
+      ]
+    },
+    "MakegoodAccepted": {
+      "title": "Makegood Accepted",
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "https://adcontextprotocol.org/schemas/enums/task-status.json"
+        },
+        "outcome": {
+          "type": "string",
+          "const": "accepted"
+        },
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "makegood_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "package_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The zero-cost core package that carries the unit."
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The media buy revision that added the unit."
+        },
+        "change_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "The account change feed record for that revision."
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/context.json"
+        }
+      },
+      "required": [
+        "status",
+        "outcome",
+        "rule_id",
+        "makegood_id",
+        "package_id",
+        "revision",
+        "change_id"
+      ],
+      "additionalProperties": false
+    },
+    "MakegoodRejected": {
+      "title": "Makegood Rejected",
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "https://adcontextprotocol.org/schemas/enums/task-status.json"
+        },
+        "outcome": {
+          "type": "string",
+          "const": "rejected"
+        },
+        "rule_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "rejection": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "RULE_NOT_ACCEPTED",
+                "CAP_EXCEEDED"
+              ],
+              "description": "RULE_NOT_ACCEPTED: the rule is not in the accepted terms, or does not cover the named package. CAP_EXCEEDED: the rule's max_units are used up."
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/context.json"
+        }
+      },
+      "required": [
+        "status",
+        "outcome",
+        "rule_id",
+        "rejection"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

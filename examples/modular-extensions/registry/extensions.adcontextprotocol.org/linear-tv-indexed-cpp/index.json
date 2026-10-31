@@ -1,0 +1,95 @@
+{
+  "uri": "https://extensions.adcontextprotocol.org/linear-tv-indexed-cpp",
+  "versions": {
+    "1.0.0": {
+      "digest": "sha256:16fcd0a0ab06ba78ebfd57bc8243ba6131a739b1e01fbb2da54f71f8ac2f1a38",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/enums/channels.json": 1,
+          "/schemas/enums/demographic-system.json": 1
+        },
+        "points": {
+          "capabilities": 1,
+          "media_buy_state": 1,
+          "pricing_model": 1
+        }
+      }
+    },
+    "1.1.0": {
+      "digest": "sha256:a9dd336d7cabac8782c4d8f6f00d43c80f568e085f8076b4a75e4f222522d09d",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/enums/channels.json": 1,
+          "/schemas/enums/demographic-system.json": 1
+        },
+        "points": {
+          "capabilities": 1,
+          "media_buy_state": 1,
+          "pricing_model": 1
+        }
+      }
+    },
+    "1.2.0": {
+      "digest": "sha256:a67c2847287e547d6d015af456159d4017c139a11e96870462ef8201e9bc7276",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/enums/channels.json": 1,
+          "/schemas/enums/demographic-system.json": 1
+        },
+        "points": {
+          "capabilities": 1,
+          "media_buy_state": 1,
+          "pricing_model": 1
+        }
+      }
+    },
+    "1.3.0": {
+      "digest": "sha256:2473ba062a56cc802795c1a8a6c73345e6ace5b44c1a805553cca1a8f825abea",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/enums/channels.json": 1,
+          "/schemas/enums/demographic-system.json": 1
+        },
+        "points": {
+          "capabilities": 1,
+          "media_buy_state": 1,
+          "pricing_model": 1
+        }
+      }
+    },
+    "1.4.0": {
+      "digest": "sha256:391fdebb56041b9e54224bad7c06c5e84d35bb8d10949a700fd1c60c9a05aaf5",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/enums/channels.json": 1,
+          "/schemas/enums/demographic-system.json": 1
+        },
+        "points": {
+          "capabilities": 1,
+          "media_buy_state": 1,
+          "pricing_model": 1
+        }
+      }
+    },
+    "1.5.0": {
+      "digest": "sha256:52f80ee6d7a35c6a803f3967c13ab7005d60d1857993437e608caab0ddde2bd1",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/enums/channels.json": 1,
+          "/schemas/enums/demographic-system.json": 1
+        },
+        "points": {
+          "capabilities": 1,
+          "media_buy_state": 1,
+          "pricing_model": 1
+        }
+      }
+    }
+  }
+}

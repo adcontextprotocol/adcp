@@ -1,0 +1,97 @@
+{
+  "uri": "https://extensions.adcontextprotocol.org/makegood-units",
+  "versions": {
+    "1.0.0": {
+      "digest": "sha256:1f9a60c4dbf7e65354049d7e73f018150db4dd19922dc776db0b8059d599347d",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/context.json": 1,
+          "/schemas/core/duration.json": 1,
+          "/schemas/enums/task-status.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.1.0": {
+      "digest": "sha256:9f48d38d0b2761c7fa9f82b9c4b827b10b89787e00cf453a11e1254d04175159",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/context.json": 1,
+          "/schemas/core/duration.json": 1,
+          "/schemas/enums/task-status.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.2.0": {
+      "digest": "sha256:9422b6e407be4e7a61504fd65cf8914687dfd0ef4510e0da9e21b007004c5965",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/context.json": 1,
+          "/schemas/core/duration.json": 1,
+          "/schemas/enums/task-status.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.3.0": {
+      "digest": "sha256:25ac2637043b6e59a85d2aacafaf7ac9f5e521b9213f63e10a83f487ce8776d0",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/context.json": 1,
+          "/schemas/core/duration.json": 1,
+          "/schemas/enums/task-status.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1
+        }
+      }
+    },
+    "1.4.0": {
+      "digest": "sha256:db429e7d009bde2c19cc61b33ed62fe0a6cacd137222517d2bc56c9408f417b7",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/context.json": 1,
+          "/schemas/core/duration.json": 1,
+          "/schemas/enums/task-status.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1,
+          "task": 1
+        }
+      }
+    },
+    "1.5.0": {
+      "digest": "sha256:0debf79a73907c27500528c005c03948e3256a1128e2e74b25d58c7b6ac93bd4",
+      "requires": {
+        "core": ">=3.3 <5",
+        "core_types": {
+          "/schemas/core/context.json": 1,
+          "/schemas/core/duration.json": 1,
+          "/schemas/enums/task-status.json": 1
+        },
+        "points": {
+          "commercial_terms": 1,
+          "media_buy_state": 1,
+          "task": 1
+        }
+      }
+    }
+  }
+}

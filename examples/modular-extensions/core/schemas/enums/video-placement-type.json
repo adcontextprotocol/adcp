@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/video-placement-type.json",
+  "title": "Video Placement Type",
+  "description": "Declared video placement classification for OLV and other video inventory, using the IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native value names. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+  "type": "string",
+  "enum": [
+    "instream",
+    "accompanying_content",
+    "interstitial",
+    "standalone"
+  ],
+  "enumDescriptions": {
+    "instream": "OpenRTB 2.6 video.plcmt=1: video ads played before, during, or after streaming video content requested by the user.",
+    "accompanying_content": "OpenRTB 2.6 video.plcmt=2: video ads played with accompanying video content in a player associated with the page or app content.",
+    "interstitial": "OpenRTB 2.6 video.plcmt=3: video ads shown as an interstitial experience, typically between content or app states.",
+    "standalone": "OpenRTB 2.6 video.plcmt=4: video ads shown without associated video content, also called no-content or standalone video."
+  }
+}

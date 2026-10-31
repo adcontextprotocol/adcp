@@ -1,0 +1,193 @@
+id: makegood_units/readback
+version: "1.0.0"
+title: "A make-good unit stays inside its rule"
+category: extension_conformance
+extension: makegood-units
+summary: "Video 2 cannot be made; the seller cancels it and adds one zero-cost unit. The buyer verifies the unit against the signed rule."
+narrative: |
+  After signing, the creator cannot produce video 2. The seller cancels that package, adds
+  one zero-cost package for the same creator and platform, writes the ledger entry, and
+  announces the revision on the core change feed. The buyer reads the media buy back and
+  checks the unit against the accepted rule. The storyboard then plays a seller that
+  breaks each bound of the rule; the buyer reports a violation for each one.
+
+fixture: creator_network
+buyer:
+  extensions: [seller-adjustable-terms, makegood-units]
+
+phases:
+  - id: buy
+    title: "Buy the two videos"
+    steps:
+      - { id: request_proposals, title: "Request a draft proposal", task: request_proposals, expect: { ok: true } }
+      - { id: finalize, title: "Finalize", task: refine_proposals, expect: { ok: true } }
+      - { id: accept, title: "Accept", task: accept_proposal, expect: { ok: true } }
+
+  - id: makegood
+    title: "The seller issues a unit"
+    steps:
+      - id: deliverable_missed
+        title: "The seller cancels video 2 and adds a zero-cost unit"
+        task: seller_op
+        with:
+          op: deliverableMissed
+          args: [{ $from: media_buy_id }, 1]
+        expect:
+          ok: true
+      - id: read_back
+        title: "The buyer reads the media buy and verifies the unit"
+        task: get_media_buys
+        covers: [MG-R7, MG-R8, MG-R9, MG-R10, MG-R11, MG-R12, MG-R13]
+        expect:
+          ok: true
+          violations: 0
+          status: { ext: makegood-units, point: media_buy_state, status: understood }
+          checks:
+            - path: media_buy.extensions_state.@makegood-units.digest
+              equals: { $from: media_buy.accepted_proposal.commercial_terms.extensions.@makegood-units.digest }
+      - id: missed_package_canceled
+        title: "The missed deliverable is canceled in the revision that adds the unit"
+        task: assert
+        covers: [MG-R14]
+        expect:
+          checks:
+            - path: media_buy.packages.1.canceled
+              equals: true
+            - path: changes
+              some:
+                resource_revision: { $from: media_buy.extensions_state.@makegood-units.data.issued.0.revision }
+                changed_paths: { contains: /packages/1/canceled }
+      - id: unit_on_change_feed
+        title: "The unit is announced on the core change feed"
+        task: assert
+        covers: [MG-R15]
+        expect:
+          checks:
+            - path: changes
+              some:
+                change_id: { $from: media_buy.extensions_state.@makegood-units.data.issued.0.change_id }
+                resource_revision: { $from: media_buy.extensions_state.@makegood-units.data.issued.0.revision }
+
+  - id: seller_breaks_the_rule
+    title: "A seller that breaks the rule is reported"
+    steps:
+      - id: unknown_rule
+        title: "A unit under a rule the buyer never accepted"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@makegood-units/data/issued/0/rule_id, value: mg_bonus }
+        covers: [MG-R8]
+        expect:
+          ok: true
+          violation_match: "rule is not in the accepted terms"
+      - id: over_cap
+        title: "A second unit under a rule with max_units 1"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - op: append
+              path: /media_buys/0/extensions_state/@makegood-units/data/issued
+              value: { $from: media_buy.extensions_state.@makegood-units.data.issued.0 }
+        covers: [MG-R9]
+        expect:
+          ok: true
+          violation_match: "unit 2 exceeds max_units 1"
+      - id: outside_window
+        title: "A unit that starts after the window"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: shift_days, path: /media_buys/0/packages/2/start_time, days: 40 }
+        covers: [MG-R10]
+        expect:
+          ok: true
+          violation_match: "after the 30-days window"
+      - id: paid_unit
+        title: "A unit whose package has a budget"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/packages/2/budget, value: 2500 }
+        covers: [MG-R11]
+        expect:
+          ok: true
+          violation_match: "make-good units are zero-cost"
+      - id: missing_package
+        title: "A unit that points at no package of the buy"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@makegood-units/data/issued/0/package_id, value: pkg_elsewhere }
+        covers: [MG-R11]
+        expect:
+          ok: true
+          violation_match: "package pkg_elsewhere is not in this media buy"
+      - id: different_creator
+        title: "A unit with a different creator"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@makegood-units/data/issued/0/evidence/creator/makegood, value: "@other.creator" }
+        covers: [MG-R12]
+        expect:
+          ok: true
+          violation_match: "creator changed"
+      - id: wrong_reason
+        title: "A unit whose reason is not the rule's trigger"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@makegood-units/data/issued/0/reason, value: under_delivery }
+        covers: [MG-R13]
+        expect:
+          ok: true
+          violation_match: "does not match the rule trigger deliverable_missed"
+      - id: readback_other_digest
+        title: "Readback under a digest the buyer did not accept fails closed"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          mutate:
+            - { op: set, path: /media_buys/0/extensions_state/@makegood-units/digest, value: { $digest: makegood-units@1.0.0 } }
+        covers: [MG-R7]
+        expect:
+          ok: false
+          error_code: EXTENSION_DIGEST_DIVERGENT
+
+  - id: grease
+    title: "GREASE: readback from an unknown extension"
+    steps:
+      - id: grease_ignore
+        title: "Unknown readback is ignored; the make-good readback is still verified"
+        task: validate
+        with:
+          schema: media_buys
+          subject: media_buys_response
+          grease: { at: /media_buys/0/extensions_state, kind: extension-point }
+        covers: [MG-R16, MG-R17]
+        expected: |
+          The GREASE entry stands in for this extension's readback at a buyer that does not
+          hold the module: the buyer ignores it and keeps the media buy. The buyer still
+          verifies the makegood-units entry next to it.
+        expect:
+          ok: true
+          violations: 0
+          status:
+            - { ext: grease, point: media_buy_state, status: ignored }
+            - { ext: makegood-units, point: media_buy_state, status: understood }

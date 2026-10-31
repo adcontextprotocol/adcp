@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-delivery-method.json",
+  "title": "Reporting Delivery Method",
+  "x-status": "experimental",
+  "description": "Provider-neutral durable reporting delivery method. The caller may request protocol-managed provisioning or reuse an existing seller-issued binding. Transport names are open so new platforms do not require an AdCP enum change. Credentials, bearer profiles, and private keys MUST NOT appear. Sellers implementing this schema MUST advertise media_buy.reporting_delivery in experimental_features.",
+  "type": "object",
+  "definitions": {
+    "ReportingOrchestration": {
+      "title": "Reporting Orchestration",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": ["producer_managed", "consumer_managed"],
+      "description": "Party responsible for starting, configuring, and monitoring the delivery operation. Independent of destination ownership and the service that moves the data."
+    }
+  },
+  "oneOf": [
+    {
+      "title": "File transfer",
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string", "const": "file_transfer", "description": "Immutable file/object publication with a manifest-last commit boundary." },
+        "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$", "description": "Storage transport such as s3, gcs, azure_blob, or sftp." },
+        "orchestration": { "$ref": "#/definitions/ReportingOrchestration" },
+        "destination": { "$ref": "/schemas/core/reporting-write-destination.json" },
+        "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"], "description": "Physical file format." }
+      },
+      "required": ["pattern", "transport", "orchestration", "destination", "format"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Dataset share",
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string", "const": "dataset_share", "description": "Producer-hosted relation or share read through the intended recipient's access path." },
+        "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$", "description": "Sharing transport such as delta_sharing, snowflake_secure_sharing, or bigquery_authorized_view." },
+        "orchestration": { "$ref": "#/definitions/ReportingOrchestration" },
+        "destination": { "$ref": "/schemas/core/reporting-dataset-share-destination.json" }
+      },
+      "required": ["pattern", "transport", "orchestration", "destination"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Warehouse materialization",
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string", "const": "warehouse_materialization", "description": "Exact-revision publication into a warehouse relation or partition." },
+        "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$", "description": "Warehouse or transfer transport such as bigquery, snowflake, databricks_sql, or gam_bigquery_transfer." },
+        "orchestration": { "$ref": "#/definitions/ReportingOrchestration" },
+        "destination": { "$ref": "/schemas/core/reporting-write-destination.json" }
+      },
+      "required": ["pattern", "transport", "orchestration", "destination"],
+      "additionalProperties": false
+    }
+  ]
+}

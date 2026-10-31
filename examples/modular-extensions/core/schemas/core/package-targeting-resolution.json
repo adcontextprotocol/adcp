@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/package-targeting-resolution.json",
+  "title": "Package Targeting Resolution",
+  "description": "Execution details for targeting accepted on a booked Package. Product discovery modifications and response-level brief interpretation are not valid here. Additional execution dimensions may be added in future minor versions.",
+  "type": "object",
+  "properties": {
+    "demographics": {
+      "$ref": "/schemas/core/demographic-targeting-resolution.json",
+      "description": "Canonical demographic predicate and exact seller execution details. Include whenever demographic targeting was requested or applied."
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["demographics"],
+  "additionalProperties": false
+}

@@ -1,0 +1,346 @@
+{
+ "accounts": {
+  "purpose": "accounts, onboarding, principals, notifications, change feed",
+  "files": 52,
+  "sub_areas": {
+   "account": {
+    "cut_29": [
+     "account"
+    ],
+    "files": 22
+   },
+   "onboarding": {
+    "cut_29": [
+     "account-onboarding"
+    ],
+    "files": 6
+   },
+   "change-feed": {
+    "cut_29": [
+     "account-change-feed"
+    ],
+    "files": 4
+   },
+   "notifications": {
+    "cut_29": [
+     "notifications"
+    ],
+    "files": 11
+   },
+   "principal": {
+    "cut_29": [
+     "principal"
+    ],
+    "files": 9
+   }
+  },
+  "depends_on": [],
+  "used_edges": {}
+ },
+ "identity": {
+  "purpose": "brand identity (brand.json, claims), agent trust (trust.json, attestations)",
+  "files": 32,
+  "sub_areas": {
+   "brand": {
+    "cut_29": [
+     "brand"
+    ],
+    "files": 23
+   },
+   "trust": {
+    "cut_29": [
+     "agent-trust"
+    ],
+    "files": 9
+   }
+  },
+  "depends_on": [],
+  "used_edges": {}
+ },
+ "media-vocabulary": {
+  "purpose": "metrics, measurement terms, forecasts, demographics, identifiers, policy categories",
+  "files": 76,
+  "sub_areas": {
+   "metrics": {
+    "cut_29": [
+     "metrics"
+    ],
+    "files": 32
+   },
+   "policy": {
+    "cut_29": [
+     "policy"
+    ],
+    "files": 14
+   }
+  },
+  "depends_on": [],
+  "used_edges": {}
+ },
+ "creative": {
+  "purpose": "formats, assets, creative library, build, preview, rights",
+  "files": 221,
+  "sub_areas": {
+   "formats": {
+    "cut_29": [
+     "formats"
+    ],
+    "files": 130
+   },
+   "creative": {
+    "cut_29": [
+     "creative"
+    ],
+    "files": 80
+   },
+   "rights": {
+    "cut_29": [
+     "brand-rights"
+    ],
+    "files": 11
+   }
+  },
+  "depends_on": [
+   "accounts",
+   "identity",
+   "media-vocabulary",
+   "signals"
+  ],
+  "used_edges": {
+   "accounts": 3,
+   "identity": 20,
+   "media-vocabulary": 6,
+   "signals": 2
+  }
+ },
+ "signals": {
+  "purpose": "signals discovery and activation, audiences, events",
+  "files": 51,
+  "sub_areas": {
+   "signals": {
+    "cut_29": [
+     "signals"
+    ],
+    "files": 25
+   },
+   "audiences-events": {
+    "cut_29": [
+     "audiences-events"
+    ],
+    "files": 26
+   }
+  },
+  "depends_on": [
+   "identity",
+   "media-vocabulary"
+  ],
+  "used_edges": {
+   "identity": 5,
+   "media-vocabulary": 18
+  }
+ },
+ "reporting": {
+  "purpose": "reliable reporting pipelines and measurement",
+  "files": 57,
+  "sub_areas": {
+   "reliable-reporting": {
+    "cut_29": [
+     "reliable-reporting"
+    ],
+    "files": 50
+   },
+   "measurement": {
+    "cut_29": [
+     "measurement"
+    ],
+    "files": 7
+   }
+  },
+  "depends_on": [
+   "accounts",
+   "buying",
+   "media-vocabulary"
+  ],
+  "used_edges": {
+   "accounts": 3,
+   "buying": 0,
+   "media-vocabulary": 14
+  }
+ },
+ "governance": {
+  "purpose": "campaign governance, content standards, property and collection lists",
+  "files": 79,
+  "sub_areas": {
+   "campaign": {
+    "cut_29": [
+     "campaign-governance"
+    ],
+    "files": 23
+   },
+   "content-standards": {
+    "cut_29": [
+     "content-standards"
+    ],
+    "files": 17
+   },
+   "lists": {
+    "cut_29": [
+     "governance-lists"
+    ],
+    "files": 39
+   }
+  },
+  "depends_on": [
+   "accounts",
+   "buying",
+   "creative",
+   "identity",
+   "media-vocabulary"
+  ],
+  "used_edges": {
+   "accounts": 1,
+   "buying": 17,
+   "creative": 7,
+   "identity": 5,
+   "media-vocabulary": 12
+  }
+ },
+ "sponsored-intelligence": {
+  "purpose": "SI",
+  "files": 20,
+  "sub_areas": {
+   "si": {
+    "cut_29": [
+     "sponsored-intelligence"
+    ],
+    "files": 20
+   }
+  },
+  "depends_on": [],
+  "used_edges": {}
+ },
+ "trusted-match": {
+  "purpose": "TMP",
+  "files": 15,
+  "sub_areas": {
+   "tmp": {
+    "cut_29": [
+     "trusted-match"
+    ],
+    "files": 15
+   }
+  },
+  "depends_on": [
+   "buying",
+   "creative",
+   "identity",
+   "media-vocabulary",
+   "signals"
+  ],
+  "used_edges": {
+   "buying": 4,
+   "creative": 2,
+   "identity": 1,
+   "media-vocabulary": 1,
+   "signals": 2
+  }
+ },
+ "compliance-testing": {
+  "purpose": "test controller (leaf)",
+  "files": 4,
+  "sub_areas": {
+   "controller": {
+    "cut_29": [
+     "compliance-testing"
+    ],
+    "files": 4
+   }
+  },
+  "depends_on": [
+   "accounts",
+   "buying",
+   "creative",
+   "governance",
+   "identity",
+   "media-vocabulary",
+   "reporting",
+   "signals",
+   "sponsored-intelligence",
+   "trusted-match"
+  ],
+  "used_edges": {
+   "accounts": 1,
+   "buying": 4,
+   "creative": 5,
+   "governance": 0,
+   "identity": 0,
+   "media-vocabulary": 5,
+   "reporting": 0,
+   "signals": 1,
+   "sponsored-intelligence": 0,
+   "trusted-match": 0
+  }
+ },
+ "buying": {
+  "purpose": "product discovery, inventory, catalogs, targeting, proposals, media buys",
+  "files": 343,
+  "sub_areas": {
+   "products": {
+    "cut_29": [
+     "products"
+    ],
+    "files": 124
+   },
+   "inventory": {
+    "cut_29": [
+     "inventory"
+    ],
+    "files": 35
+   },
+   "catalogs": {
+    "cut_29": [
+     "catalogs"
+    ],
+    "files": 30
+   },
+   "targeting": {
+    "cut_29": [
+     "targeting"
+    ],
+    "files": 44
+   },
+   "proposals": {
+    "cut_29": [
+     "proposal-negotiation"
+    ],
+    "files": 37
+   },
+   "media-buy": {
+    "cut_29": [
+     "media-buy"
+    ],
+    "files": 55
+   },
+   "delivery": {
+    "cut_29": [
+     "delivery-reporting"
+    ],
+    "files": 18
+   }
+  },
+  "depends_on": [
+   "accounts",
+   "creative",
+   "identity",
+   "media-vocabulary",
+   "signals"
+  ],
+  "used_edges": {
+   "accounts": 20,
+   "creative": 63,
+   "identity": 9,
+   "media-vocabulary": 149,
+   "signals": 30
+  }
+ }
+}

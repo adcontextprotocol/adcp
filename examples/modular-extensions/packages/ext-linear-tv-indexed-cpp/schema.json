@@ -1,0 +1,265 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Linear TV Indexed CPP Extension",
+  "definitions": {
+    "IndexedCpp": {
+      "title": "Indexed CPP",
+      "description": "Rate per rating point = base_price x each index in order x the market index, rounded after each step as rounding says. The market index is unknown at booking: it is fixed by the seller at market_index.fixed_at, between floor and cap. ceiling_price is the rate at the cap, so the buyer knows the most it pays per point.",
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "object",
+          "properties": {
+            "demographic_system": {
+              "$ref": "https://adcontextprotocol.org/schemas/enums/demographic-system.json"
+            },
+            "demographic": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "demographic_system",
+            "demographic"
+          ],
+          "additionalProperties": false
+        },
+        "base_price": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Price per rating point before any index (Ster: basisjaarprijs)."
+        },
+        "indices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Index"
+          },
+          "maxItems": 32,
+          "description": "Indices fixed at booking, applied in order."
+        },
+        "market_index": {
+          "$ref": "#/definitions/MarketIndex"
+        },
+        "rounding": {
+          "$ref": "#/definitions/Rounding"
+        },
+        "ceiling_price": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "The rate at market_index.cap: the most the buyer pays per point."
+        },
+        "settlement": {
+          "type": "object",
+          "properties": {
+            "points_source": {
+              "$ref": "https://adcontextprotocol.org/schemas/enums/demographic-system.json",
+              "description": "The audience currency whose delivered rating points are invoiced."
+            },
+            "invoice": {
+              "type": "string",
+              "const": "delivered_points_x_fixed_rate"
+            }
+          },
+          "required": [
+            "points_source",
+            "invoice"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "audience",
+        "base_price",
+        "indices",
+        "market_index",
+        "rounding",
+        "ceiling_price",
+        "settlement"
+      ],
+      "additionalProperties": false,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "indexed_cpp_quote": {
+            "ceiling_price": "equals_rate_at_market_index_cap",
+            "bounds": "market_index_floor_lte_cap",
+            "scope": "host_product_channels_intersect_applies_to_channels",
+            "on_violation": "reject"
+          }
+        }
+      }
+    },
+    "Index": {
+      "title": "Booking Index",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "dimension": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(:[a-z][a-z0-9_]*)?$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "factor": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "dimension",
+        "value",
+        "factor"
+      ],
+      "additionalProperties": false
+    },
+    "MarketIndex": {
+      "title": "Market Index",
+      "type": "object",
+      "properties": {
+        "fixed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller fixes the index (Ster: the day after the request deadline)."
+        },
+        "floor": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "cap": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "The fixed index does not exceed this (Ster early requests: 100, so 1.0)."
+        }
+      },
+      "required": [
+        "fixed_at",
+        "cap"
+      ],
+      "additionalProperties": false
+    },
+    "Rounding": {
+      "title": "Indexed CPP Rounding",
+      "type": "object",
+      "properties": {
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "half_away_from_zero",
+            "half_even"
+          ]
+        }
+      },
+      "required": [
+        "decimals",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "IndexFixings": {
+      "title": "Index Fixings",
+      "type": "object",
+      "properties": {
+        "fixings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/IndexFixing"
+          },
+          "minItems": 1,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "index_fixing": {
+                "purchase": "names_a_purchase_priced_with_this_branch",
+                "index_bounds": "floor_lte_market_index_lte_cap",
+                "timing": "fixed_at_not_before_agreed_fixed_at",
+                "rate": "equals_rate_at_fixed_market_index",
+                "on_violation": "report_violation"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "fixings"
+      ],
+      "additionalProperties": false
+    },
+    "IndexFixing": {
+      "title": "Index Fixing",
+      "type": "object",
+      "properties": {
+        "purchase_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "market_index": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "rate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "The fixed rate per rating point that delivered points are invoiced at."
+        },
+        "fixed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "change_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "required": [
+        "purchase_index",
+        "market_index",
+        "rate",
+        "fixed_at",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "IndexedCppCapabilities": {
+      "title": "Indexed CPP Capabilities",
+      "type": "object",
+      "properties": {
+        "channels": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/enums/channels.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "points_sources": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/enums/demographic-system.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "channels",
+        "points_sources"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@adcp-ext/seller-adjustable-terms",
+  "version": "1.5.0",
+  "description": "AdCP extension module: seller adjustable terms (port of adcp#8102 with a kind discriminator).",
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./src/index.ts",
+  "files": ["index.mjs", "src/", "dist/bundle.json", "extension.lock.json", "extension.json", "schema.json"],
+  "adcpExtension": "./extension.lock.json",
+  "peerDependencies": { "@adcp/core": ">=3.3.0-0" }
+}

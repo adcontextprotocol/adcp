@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-place-resolver.json",
+  "title": "Geographic Place Resolver",
+  "description": "Machine-readable HTTP resolver for converting unresolved place names into seller-accepted stable identifiers or refreshing an existing identifier. Clients send an HTTPS GET to url using the query parameters in get-geo-place-resolution-request.json and validate a 200 application/json response against get-geo-place-resolution-response.json. Non-200 responses are errors, not empty results. Clients MUST apply SSRF protections. seller_credentials may be used only when url has the same origin as the seller's AdCP endpoint.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "HTTPS endpoint accepting the standard geo-place resolution query parameters."
+    },
+    "auth": {
+      "type": "string",
+      "enum": ["none", "seller_credentials"],
+      "description": "Authentication mode. seller_credentials means use the same authorization credentials as the seller's AdCP endpoint and is valid only for a same-origin resolver URL; credentials MUST NOT be forwarded cross-origin."
+    },
+    "protocol": {
+      "type": "string",
+      "const": "adcp_geo_place_resolver_v1",
+      "description": "Resolver request/response contract version."
+    }
+  },
+  "required": ["url", "auth", "protocol"],
+  "additionalProperties": false
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/daypart-time-granularity.json",
+  "title": "Daypart Time Granularity",
+  "description": "Finest time-of-day resolution a product can honor for daypart targeting. Ordered from coarsest to finest: hour (whole hours; start_hour/end_hour, or HH:00 start_time/end_time), quarter_hour (HH:00, HH:15, HH:30, HH:45), minute (any HH:MM). A product that declares a granularity also honors every coarser one. Experimental in AdCP 3.3.",
+  "type": "string",
+  "enum": ["hour", "quarter_hour", "minute"],
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}
