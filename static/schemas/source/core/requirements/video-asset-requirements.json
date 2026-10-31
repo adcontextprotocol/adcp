@@ -44,9 +44,9 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["mp4", "webm", "mov", "avi", "mkv"]
+        "enum": ["mp4", "webm", "mov", "avi", "mkv", "3gp", "mpeg", "m4v"]
       },
-      "description": "Accepted video container formats"
+      "description": "Accepted video container formats. The `3gp`, `mpeg`, and `m4v` values were added in AdCP 3.3. `mpeg` is an MPEG-1 or MPEG-2 program stream (`video/mpeg`), not an MPEG transport stream."
     },
     "codecs": {
       "type": "array",
