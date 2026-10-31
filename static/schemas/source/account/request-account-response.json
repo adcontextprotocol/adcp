@@ -78,6 +78,13 @@
           },
           "account_id": "acc_nova_pinnacle",
           "resolution": "created",
+          "account": {
+            "account_id": "acc_nova_pinnacle",
+            "name": "Nova Athletics via Pinnacle Media",
+            "status": "active",
+            "billing": "agent",
+            "payment_terms": "net_30"
+          },
           "created_at": "2026-10-18T09:05:00Z",
           "updated_at": "2026-10-18T09:05:00Z"
         }
