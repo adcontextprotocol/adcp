@@ -625,6 +625,34 @@ Reset with `prepare` before the negative fixture, then call:
 }
 ```
 
+### `reporting_subscription_probe`
+
+Experimental (`media_buy.reporting_subscriptions`). It drives the inputs that
+[reporting-subscription coverage](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage)
+depends on but a buyer can't change itself: the caller's grant on an account, the
+account's timezone, and the clock. A storyboard can then check, against a remote
+seller, that coverage, `accounts_unauthorized[]`, `gaps[]`, `timezone_cutovers[]`,
+and withheld periods follow the spec. Seed buys with `seed_media_buy`.
+
+The probe acts only on sandbox accounts and only on the authenticated caller's own
+grant. It runs on one virtual clock, `simulated_now`, which every authorization
+timestamp, cutover, period boundary, obligation, and delivery for the caller's
+sandbox accounts uses. A revoked account is unknown to every other task, as the spec
+requires, but the controller still accepts `regrant` and `advance_time` for it.
+
+| Operation | Params | Required observable result |
+|---|---|---|
+| **revoke_grant** | `account_id` | End the caller's authority for the account at `simulated_now`. The account reads as unknown to [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) and every other task. Each covering subscription lists it in `accounts_unauthorized[]` on [`get_principal`](/docs/protocol/get_principal), with `unauthorized_at` equal to `simulated_now`. Return `unauthorized_at`. |
+| **regrant** | `account_id` | Restore the grant at `simulated_now`. Before `unauthorized_at` plus `status_retention_days`, this continues the chain: `authorization.authorized_at` is unchanged, the account leaves `accounts_unauthorized[]`, and withheld periods are owed again. Later, it starts a new chain with `authorized_at` equal to `simulated_now`. Return `authorized_at`, `chain` (`continued` or `new`), and `regranted_at` when the chain continued. |
+| **reduce_grant** | `account_id`, `allowed_tasks` | Replace the caller's `allowed_tasks` on the account, with `read_only: false`, at `simulated_now`. A list that keeps `get_reporting_status` keeps the account covered (the wind-down grant). A list without it takes the account out of coverage. Tasks the list drops fail for the account with [`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient). Return the applied `allowed_tasks`. |
+| **set_account_timezone** | `account_id`, `timezone` | Change the account's timezone at `simulated_now`, as an applied account change: [`list_accounts`](/docs/accounts/tasks/list_accounts) shows the new `timezone` and a new `revision`. Account-timezone periods cut over at the first old-timezone boundary at or after the change, recorded in `timezone_cutovers[]`. Return `previous_timezone`, `timezone`, and the `effective_at` cutover instant for each affected offering. |
+| **advance_time** | `target_time` | Move `simulated_now` forward to `target_time`. Reject a time at or before the current `simulated_now`. Every period boundary crossed is processed as in production: obligations are committed, subscriptions resolve, deliveries are attempted, and authority is re-checked. Return the applied `simulated_now`. |
+
+Every successful response is a `SimulationSuccess` whose `simulated` object carries
+`simulated_now` and, except for `advance_time`, `account_id`. The operations are
+convergent: repeating one at the same `simulated_now` returns the same result, and
+none mutates state outside the caller's sandbox accounts.
+
 ### `force_create_media_buy_arm`
 
 Shapes the next [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) call from the caller's authenticated sandbox account into a specific response arm. v1 supports two arms: `submitted` (the async task envelope, no `media_buy_id` yet) and `input-required` (the errors-branch). Unlike `force_media_buy_status`, no entity transitions — there is no media buy yet — so the response carries `forced.arm` rather than `previous_state`/`current_state`.
