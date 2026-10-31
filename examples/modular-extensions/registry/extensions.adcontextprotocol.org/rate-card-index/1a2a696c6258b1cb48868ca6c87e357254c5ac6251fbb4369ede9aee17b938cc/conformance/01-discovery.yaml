@@ -1,0 +1,49 @@
+id: rate_card_index/discovery
+version: "1.0.0"
+title: "A rate card explains a binding core quote"
+category: extension_conformance
+extension: rate-card-index
+summary: "The sales house quotes core cpp with a card next to it; the buyer reproduces the quote from the card."
+narrative: |
+  A Dutch linear-TV sales house quotes prime time in core cpp at the published market
+  index, and puts its rate card next to the quote. The buyer installed rate-card-index
+  only. It evaluates the card locally and gets the seller's number. When the two differ,
+  the quote still binds.
+
+fixture: tv_sales_house
+buyer:
+  extensions: [rate-card-index]
+
+phases:
+  - id: discovery
+    title: "Discover the products"
+    steps:
+      - id: get_products
+        title: "The card on the cpp option reproduces fixed_price and price_breakdown"
+        task: get_products
+        covers: [RC-R2, RC-R3]
+        expect:
+          ok: true
+          status: { ext: rate-card-index, point: pricing_option, status: understood }
+          checks:
+            - path: products.0.pricing_options.0.fixed_price
+              present: true
+            - path: products.0.pricing_options.0.extensions
+              none: { must_understand: true }
+            - path: reports.0.extensions.@rate-card-index.evaluation.price
+              equals: { $from: products.0.pricing_options.0.fixed_price }
+            - path: reports.0.extensions.@rate-card-index.evaluation.price_breakdown
+              equals: { $from: products.0.pricing_options.0.price_breakdown }
+      - id: quote_differs
+        title: "A quote that differs from the card is a warning, and the option stays buyable"
+        task: validate
+        with:
+          schema: cpp_option
+          subject: products.0.pricing_options.0
+          mutate:
+            - { op: set, path: /fixed_price, value: 2100 }
+        covers: [RC-R4]
+        expect:
+          ok: true
+          warning_code: RATE_CARD_QUOTE_DIFFERS
+          status: { ext: rate-card-index, point: pricing_option, status: understood }

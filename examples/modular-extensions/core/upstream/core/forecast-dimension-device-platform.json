@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/forecast-dimension-device-platform.json",
+  "title": "Device Platform Forecast Dimension",
+  "description": "An operating-system or platform dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "device_platform",
+      "description": "Dimension family discriminator."
+    },
+    "device_platform": {
+      "$ref": "/schemas/enums/device-platform.json",
+      "description": "Operating system or platform for this forecast row."
+    }
+  },
+  "required": ["kind", "device_platform"],
+  "additionalProperties": false
+}

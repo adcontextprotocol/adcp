@@ -1,0 +1,46 @@
+id: makegood_units/negotiation
+version: "1.0.0"
+title: "Make-good rules reach only buyers that understand them"
+category: extension_conformance
+extension: makegood-units
+summary: "The seller projects the rules per buyer; a buyer without the module rejects terms that carry them."
+narrative: |
+  Two buyers ask the creator network for the same two sponsored videos. The first buyer
+  installed seller-adjustable-terms only. The seller sends it the buy without make-good
+  rules. The second buyer installed both extensions and receives the rules, pinned to the
+  exact digest it listed.
+
+fixture: creator_network
+buyer:
+  extensions: [seller-adjustable-terms]
+
+phases:
+  - id: projection
+    title: "Seller projection"
+    steps:
+      - id: buyer_without_module_gets_no_rules
+        title: "A buyer that did not list makegood-units gets the buy without rules"
+        task: request_proposals
+        covers: [MG-R2]
+        expected: |
+          The draft proposal carries the seller-adjustable-terms allowances and no
+          makegood-units entry. The buy itself is unchanged.
+        expect:
+          ok: true
+          checks:
+            - path: draft.commercial_terms.extensions.@makegood-units
+              absent: true
+            - path: draft.commercial_terms.extensions.@seller-adjustable-terms.digest
+              equals: { $digest: seller-adjustable-terms }
+            - path: draft.commercial_terms.purchases
+              length: 2
+      - id: task_declaration_ignored
+        title: "A buyer without the module ignores the seller's request_makegood declaration"
+        task: capabilities
+        covers: [MG-R18]
+        expected: |
+          The seller declares makegood-units with its task. The buyer holds no module for it, so
+          the task binding is ignored, not an error, and the buyer has no transport name to call.
+        expect:
+          ok: true
+          status: { ext: makegood-units, point: task, status: ignored }

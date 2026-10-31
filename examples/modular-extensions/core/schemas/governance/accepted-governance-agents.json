@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/accepted-governance-agents.json",
+  "title": "Accepted Governance Agents",
+  "description": "Seller-wide advisory acceptance matchers for buyer-bound governance agents. The union is permissive: a candidate satisfying any matcher is accepted by this declaration. The sync_governance response remains authoritative per account.",
+  "type": "object",
+  "properties": {
+    "any_of": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "discriminator": { "propertyName": "kind" },
+        "oneOf": [
+          {
+            "properties": {
+              "kind": { "type": "string", "const": "agent_url" },
+              "agent_url": { "type": "string", "format": "uri", "pattern": "^https://[^/?#@]+(?:/[^?#]*)?$", "maxLength": 2048, "description": "Exact canonical agent endpoint without userinfo, query, or fragment. Redirect targets, DNS aliases, and URLs asserted by the candidate do not satisfy this matcher." }
+            },
+            "required": ["kind", "agent_url"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "kind": { "type": "string", "const": "verification" },
+              "registry": { "type": "string", "format": "uri", "pattern": "^https://[^/?#@]+(?:/[^?#]*)?$", "maxLength": 2048, "description": "Seller-configured trusted verification registry without userinfo, query, or fragment. The candidate cannot supply or override this URL; fetches use the registry-resolution security contract." },
+              "role": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$", "description": "Role asserted by the trusted registry's verified record, never by candidate self-description." },
+              "adcp_version": { "type": "string", "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)$", "description": "Registry protocol version in canonical MAJOR.MINOR form." },
+              "verification_modes": {
+                "type": "array",
+                "items": { "type": "string", "enum": ["spec", "live"] },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "max_age_seconds": { "type": "integer", "minimum": 0, "description": "Maximum age of the registry evidence at binding time. Zero requires a fresh result. Evidence is pinned to the accepted binding; later registry drift does not silently revoke an existing binding." }
+            },
+            "required": ["kind", "registry", "role", "adcp_version", "verification_modes", "max_age_seconds"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": ["any_of"],
+  "additionalProperties": false
+}

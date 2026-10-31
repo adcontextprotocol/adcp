@@ -1,0 +1,17 @@
+{
+  "$comment": "SIMULATED future core release for the compatibility example. Additive: one new extension point, no type changes. Lists the kernel hooks too (capabilities, task).",
+  "adcp_version": "3.4.0",
+  "points": {
+    "capabilities": 1,
+    "task": 1,
+    "commercial_terms": 1,
+    "delivery_report": 1,
+    "media_buy_state": 1,
+    "pricing_model": 1,
+    "pricing_option": 1
+  },
+  "types": {
+    "default_major": 1,
+    "overrides": {}
+  }
+}

@@ -1,0 +1,2191 @@
+[
+ {
+  "file": "brand.json",
+  "ptr": "/definitions/brand/properties/collections/items/properties/publisher_domain",
+  "ids": [
+   "brand.collection_links"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (brand.collection_links). Publisher namespace that declares the collection in its adagents.json. collection_id is unique only within this namespace, so together they form the {publisher_domain, collection_ids} selector that products use.",
+  "added": "3.3.0",
+  "fid": "brand.collection_links"
+ },
+ {
+  "file": "sponsored-intelligence/si-get-offering-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Offering details, availability status, and optionally matching products. Use the offering_token in si_initiate_session for correlation.",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-initiate-session-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Brand agent's response to session initiation",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-get-offering-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Get offering details and availability before session handoff. Returns offering information, availability status, and optionally matching products based on context.",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-initiate-session-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Host initiates a session with a brand agent",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-send-message-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Send a message to the brand agent within an active session",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-ui-element.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Standard visual component that brand returns and host renders",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-sponsored-context-receipt.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Host receipt for sponsored context previously delivered into an SI host boundary. The receipt records what use mode the host accepted and what disclosure commitment it made; it does not claim that AdCP inspected hidden model reasoning.",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-send-message-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Brand agent's response to a user message",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-identity.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "User identity shared with brand agent (with explicit consent)",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-terminate-session-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Confirmation of session termination",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-sponsored-context.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Declaration attached to sponsored context delivered into an SI host boundary. Separates the economic accountability fact (`paying_principal`) from the host's receipt/acceptance record, which is carried separately by si-sponsored-context-receipt.json.",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-context-use.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Declared use mode for sponsored context crossing into a Sponsored Intelligence host boundary. This is a boundary declaration, not a claim that AdCP can inspect hidden model reasoning after the host receives the context.",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-capabilities.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Capabilities that a brand agent declares or a host supports",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "sponsored-intelligence/si-terminate-session-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Request to terminate an SI session. Naturally idempotent \u2014 `session_id` is the dedup boundary, and terminating an already-terminated session is a no-op that returns the same terminal state. No `idempotency_key` is needed on this request.",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "core/spot-reporting-capability.json",
+  "ptr": "/properties/available_statuses",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Spot lifecycle statuses this product reports in by_spot. Absent, or an empty array, means the seller reports only aired rows without a spot_status, the AdCP 3.2 behavior. When present, a status that is not listed is not reported: the absence of scheduled, preempted, or makegood rows then proves noth",
+  "added": null,
+  "fid": "media_buy.spot_lifecycle"
+ },
+ {
+  "file": "core/spot-reporting-capability.json",
+  "ptr": "/properties/supports_break_position",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Whether the seller populates break_position on by_spot rows. When false or absent, a row without break_position means the position is not reported, not that the spot ran outside a commercial break. Sellers MUST NOT emit this field to callers pinned below AdCP 3.3, or to callers with no declared pin.",
+  "added": null,
+  "fid": "media_buy.spot_lifecycle"
+ },
+ {
+  "file": "core/reporting-status-changed-webhook.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Account-anchored invalidation fired when a reporting obligation or configuration health state transitions in either direction \u2014 including purely clock-driven waiting-to-delayed and delayed-to-action_required transitions that no positive doorbell announces, and recovery back to healthy or complete. V",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-delivery-config-state.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Seller-resolved state for one caller/account-owned immutable reporting delivery configuration generation. It echoes the secret-free desired configuration and adds the durable binding and setup result. The seller MUST verify that the authenticated caller may disclose the selected feeds and media-buy ",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/audience-source.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.audience_activation"
+  ],
+  "anc_ids": [],
+  "desc": "External source reference for an audience: a pointer to buyer data that the seller ingests over a declared activation rail, instead of inline member deltas. The data never transits AdCP \u2014 the protocol carries the reference; ingestion happens on the vendor's rails. kind discriminates the entry. A buy",
+  "added": null,
+  "fid": "media_buy.audience_activation"
+ },
+ {
+  "file": "core/reporting-dataset-share-destination.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Recipient configuration for a producer-hosted reporting share. The caller either references an existing seller-issued immutable recipient/destination generation or asks the seller to provision one for the named recipient. A destination_ref is owned by the stable authenticated principal's relationshi",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-ledger-changed-webhook.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Optional account-anchored invalidation fired for every newly committed reporting revision or post-official adjustment, whether or not health changes. Valid in every reporting tier. Receivers repair from their own durable changes_after checkpoint through get_reporting_status; this event is never the ",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/canonical-proposal.json",
+  "ptr": "/properties/hold_policy",
+  "ids": [
+   "media_buy.hold_policy"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.hold_policy). On a draft, the binding policy for a successful finalize of this draft, derived by the seller from the allocated products when it created the draft: available is false if any allocated product's effective policy is non-holdable, min_duration and max_duration do ",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_policy"
+ },
+ {
+  "file": "core/canonical-proposal.json",
+  "ptr": "/properties/hold_placed_at",
+  "ids": [
+   "media_buy.hold_policy"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.hold_policy). When the seller placed this committed proposal's hold, which is when it created the committed proposal. Required on a committed proposal whose hold_policy.available is true; forbidden on drafts and when hold_policy.available is false. It MUST be no earlier than ",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_policy"
+ },
+ {
+  "file": "core/canonical-proposal.json",
+  "ptr": "/properties/hold_rank",
+  "ids": [
+   "media_buy.hold_ranking"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.hold_ranking). Advisory readback of the buyer's own position in the seller's queue of holds on the inventory this committed proposal holds: 1 is first position, and n means n - 1 other holds are ahead. A hold is ahead when its booking could prevent this one from booking; hold",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_ranking"
+ },
+ {
+  "file": "core/canonical-proposal.json",
+  "ptr": "/properties/holds",
+  "ids": [
+   "media_buy.hold_ranking",
+   "media_buy.installment_holds"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.installment_holds). Readback of the specific installments this committed proposal's hold covers. It describes the one hold that finalize placed, not separate holds: every entry was placed by the same all-or-none finalize, shares hold_placed_at and this proposal's expires_at, ",
+  "added": "3.3.0",
+  "fid": "media_buy.installment_holds"
+ },
+ {
+  "file": "core/reporting-verification.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Producer evidence for one materialization, with an explicit assurance profile. Native commit and manifest profiles prove a committed destination plus row counts and control totals without claiming full logical-content equality. canonical_digest adds exact logical equality and is required for billing",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/targeting-overlay-requirements.json",
+  "ptr": "/definitions/daypartRequirement/anyOf/1/properties/time_granularity",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Experimental in AdCP 3.3. Minimum time-of-day resolution that must remain selectable after discovery. Product support matches when its declared time_granularity is this value or finer.",
+  "added": "3.3.0",
+  "fid": "media_buy.daypart_granularity"
+ },
+ {
+  "file": "core/agent-reporting-destination.json",
+  "ptr": "/",
+  "ids": [
+   "protocol.principal"
+  ],
+  "anc_ids": [],
+  "desc": "Reusable, non-secret reporting destination owned by the authenticated caller's relationship with one seller. Exactly one delivery pattern per destination; pattern is the discriminator and matches the managed reporting delivery pattern vocabulary. It does not grant account authority: account/reportin",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "core/reporting-adjustment.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "One immutable post-official accounting-only correction to billing-purpose reporting evidence/control totals. It never edits rows, supersedes a revision, creates or changes invoices, calculates tax or FX, authorizes accounting entries, settles payment, or determines legal payment obligations.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-delivery-ready-webhook.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Compact account-anchored readiness doorbell registered through sync_accounts notification_configs using reporting.delivery_ready. Managed-delivery tier only: it names a materialization at a destination, so Core (API-delivered) configurations never fire it \u2014 Core consumers subscribe to reporting.stat",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-control-total.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "One profile-defined aggregate used to reconcile a reporting revision without rereading every row. Names and units are defined by the immutable report definition. Values use canonical strings so currency and large integer comparisons are exact across SDKs.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/principal-declarations.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Bounded, non-secret facts the authenticated caller declares about what it can consume from this seller. This is the buyer-declared half of capability negotiation: get_adcp_capabilities stays objective seller facts, declarations stay caller facts, and the seller-computed accepted intersection is the ",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "core/reporting-file-entry.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "One immutable data object committed by a reporting file manifest.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/agent-reporting-destination-state.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Seller readback for one caller-scoped reusable reporting destination. destination_ref is an opaque routing reference, not a credential or authorization grant. Account-level reporting configuration may use it only while the same authenticated principal remains authorized for that account.",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "core/placement-evidence.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Seller-attested evidence artifact proving a physical placement ran \u2014 a posting photograph for an OOH face, a tearsheet page for a print insertion. Channel-neutral: this record carries the artifact facts; what the artifact proves (posting, rotation, insertion) is declared by the containing record's e",
+  "added": null,
+  "fid": "UNREG:placement_evidence"
+ },
+ {
+  "file": "core/reporting-report-definition.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Immutable, inspectable semantic contract for how a reporting feed is produced and finalized. Its exact bytes are pinned by report_definition_sha256.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/principal-changed-webhook.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Caller-anchored webhook payload fired when the seller changes the authenticated caller's principal state through a seller-driven transition: a reporting destination moving between validating, ready, action_required, and rejected, a setup action nearing or passing its expiry, a proof invalidation, or",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "core/reporting-write-destination.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Storage or warehouse destination for durable reporting. The caller either references an existing seller-issued immutable destination generation or asks the seller to validate and bind a provider-native location. A destination_ref is owned by the stable authenticated principal's relationship with thi",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/targeting-overlay-support.json",
+  "ptr": "/definitions/daypartSupport/anyOf/1/properties/time_granularity",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Experimental in AdCP 3.3. Finest time-of-day resolution this product honors. Omission, and the legacy daypart_targets: true form, mean hour: whole-hour windows only. quarter_hour also honors start_time/end_time on HH:00, HH:15, HH:30, and HH:45; minute honors any HH:MM. A declared granularity includ",
+  "added": "3.3.0",
+  "fid": "media_buy.daypart_granularity"
+ },
+ {
+  "file": "core/reporting-obligation.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Period-level status joining what reporting was expected to any produced immutable revisions and delivery materializations. An obligation exists before its first revision or webhook, making missing-first-report detection possible. All nested revisions and materializations MUST match this obligation's",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-canonical-content-digest.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Cryptographic digest of logical reporting rows under an immutable canonicalization contract.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-reliability-statistics.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Observed, evidence-scoped reliability for one atomic reporting offering. Counts are supplied with percentiles so buyers can compare a short, consistently met SLA with a long nominal SLA and can see how often official reports require later adjustments.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-receipt.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Authenticated consumer evidence for one materialization. A receipt closes the knowledge gap between producer availability and consumer reconciliation. Buyer and governance consumers submit independently; neither consumer's receipt implies acceptance by another principal.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/seller-agent-ref.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Structured reference to a seller agent. The canonical identifier is the agent's URL as declared in the property publisher's adagents.json `authorized_agents[].url`. The optional `id` slot is reserved for a future registry-assigned stable identifier; it is not used today. This shape mirrors `format-i",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "core/product-identity.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.product_identity"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental product-scoped identity and reach-measurement facts. Absence is undeclared, not a claim that the product has persistent identifiers. Sellers implementing this surface MUST list media_buy.product_identity in experimental_features on get_adcp_capabilities. When persistent_identifier is fa",
+  "added": "3.2.0",
+  "fid": "media_buy.product_identity"
+ },
+ {
+  "file": "core/reporting-consumer-status.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "One immutable, authenticated consumer statement about whether the required reporting for an expected configuration period could actually be consumed. It is operational status, not measurement data, delivery totals, a billing receipt, or authority to overwrite the seller's obligation/revision ledger.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/hold-policy.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.hold_policy",
+   "media_buy.hold_ranking"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.hold_policy). Inventory-hold policy for a finalize. On a product it is a planning hint: what the seller generally offers for proposals that allocate the product, binding nothing. On a draft proposal it binds: it is what a successful finalize of that draft will get, derived by",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_policy"
+ },
+ {
+  "file": "core/hold-policy.json",
+  "ptr": "/properties/available",
+  "ids": [
+   "media_buy.delegated_composition"
+  ],
+  "anc_ids": [
+   "media_buy.hold_policy",
+   "media_buy.hold_ranking"
+  ],
+  "desc": "Whether a successful finalize places an inventory hold. true means an exclusive, first-position hold: until expires_at, no other buyer's hold or booking takes the held inventory. Ranked holds are declared by the separate rankable field (#8086); available is not reinterpreted, so available true witho",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_policy"
+ },
+ {
+  "file": "core/hold-policy.json",
+  "ptr": "/properties/min_duration",
+  "ids": [],
+  "anc_ids": [
+   "media_buy.hold_policy",
+   "media_buy.hold_ranking"
+  ],
+  "desc": "Minimum hold the seller promises. A successful finalize MUST set expires_at no earlier than the committed proposal's hold_placed_at plus this duration. A draft's min_duration MUST NOT exceed the max_duration of any allocated product that declares one.",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_policy"
+ },
+ {
+  "file": "core/hold-policy.json",
+  "ptr": "/properties/max_duration",
+  "ids": [],
+  "anc_ids": [
+   "media_buy.hold_policy",
+   "media_buy.hold_ranking"
+  ],
+  "desc": "Longest initial hold the seller will place at finalize: expires_at MUST NOT be later than the committed proposal's hold_placed_at plus this duration. A draft's max_duration MUST NOT exceed the max_duration of any allocated product that declares one.",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_policy"
+ },
+ {
+  "file": "core/hold-policy.json",
+  "ptr": "/properties/extendable",
+  "ids": [
+   "media_buy.hold_extension"
+  ],
+  "anc_ids": [
+   "media_buy.hold_policy",
+   "media_buy.hold_ranking"
+  ],
+  "desc": "Whether the seller accepts refine_proposals action extend_hold (experimental, media_buy.hold_extension, gated by get_adcp_capabilities media_buy.proposal_refinement.hold_extension) for a hold placed under this policy. Defaults to false: when false or absent, the seller declines extend_hold with hold",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_extension"
+ },
+ {
+  "file": "core/hold-policy.json",
+  "ptr": "/properties/max_total_duration",
+  "ids": [],
+  "anc_ids": [
+   "media_buy.hold_policy",
+   "media_buy.hold_ranking"
+  ],
+  "desc": "Ceiling on the total length of a hold placed under this policy, across the whole extension chain, measured from the original hold_placed_at (extended successors carry hold_placed_at forward). An extend_hold successor's expires_at MUST NOT exceed the original hold_placed_at plus this duration; an ext",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_extension"
+ },
+ {
+  "file": "core/hold-policy.json",
+  "ptr": "/properties/rankable",
+  "ids": [
+   "media_buy.hold_ranking"
+  ],
+  "anc_ids": [
+   "media_buy.hold_policy",
+   "media_buy.hold_ranking"
+  ],
+  "desc": "Experimental (media_buy.hold_ranking). Whether a successful finalize may place this hold behind other buyers' holds on the same inventory. false or absent (the default) keeps the exclusive, first-position meaning of available true: the seller places a first-position hold or returns hold_unavailable.",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_ranking"
+ },
+ {
+  "file": "core/reporting-delivery-method.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.reporting_delivery"
+  ],
+  "anc_ids": [],
+  "desc": "Provider-neutral durable reporting delivery method. The caller may request protocol-managed provisioning or reuse an existing seller-issued binding. Transport names are open so new platforms do not require an AdCP enum change. Credentials, bearer profiles, and private keys MUST NOT appear. Sellers i",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-materialization.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "One attempt to expose an immutable reporting revision through a configured durable delivery method. Automated retry creates a new materialization and attempt number while preserving reporting_revision_id. available is a verified producer-hosted pull/share claim; delivered is a verified recipient/des",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/evaluator-spec.json",
+  "ptr": "/",
+  "ids": [
+   "creative.evaluator"
+  ],
+  "anc_ids": [],
+  "desc": "Advisory buyer-attached pointer (#5280) declaring HOW produced build_creative variants should be evaluated and ranked. The rank-side of the get_creative_features feature oracle: the chosen form is the SOURCE of feature evaluation that yields creative-feature values for each leaf, `feature_requiremen",
+  "added": null,
+  "fid": "creative.evaluator"
+ },
+ {
+  "file": "core/delivery-metrics.json",
+  "ptr": "/properties/ooh_metrics",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Classic (static) OOH metrics \u2014 printed bulletins, posters, transit, and street furniture (only included for ooh campaigns). Experimental in AdCP 3.2. Static units have no play event: the delivery number is a period-level modeled audience estimate whose methodology tier is declared in estimation_basi",
+  "added": null,
+  "fid": "UNREG:ooh_metrics"
+ },
+ {
+  "file": "core/delivery-metrics.json",
+  "ptr": "/properties/print_metrics",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Print-specific metrics (only included for print campaigns). Experimental in AdCP 3.3. Report one object per installment (issue) on `by_installment` rows, which inherit this schema; the object is not meaningful at package, daily, or total grain. It describes one insertion per row and carries the proo",
+  "added": null,
+  "fid": "UNREG:print_metrics"
+ },
+ {
+  "file": "core/daypart-target.json",
+  "ptr": "/properties/start_time",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Experimental in AdCP 3.3. Start of the window (inclusive) as a 24-hour HH:MM civil clock time on the entry's timezone clock, such as '19:30'. Use for windows that do not fall on whole hours (linear TV programme junctions, quarter-hour schedules). Pair with end_time; mutually exclusive with start_hou",
+  "added": "3.3.0",
+  "fid": "media_buy.daypart_granularity"
+ },
+ {
+  "file": "core/daypart-target.json",
+  "ptr": "/properties/end_time",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Experimental in AdCP 3.3. End of the window (exclusive) as a 24-hour HH:MM civil clock time, such as '23:00'. Pair with start_time; mutually exclusive with start_hour and end_hour. end_time earlier than start_time means the window crosses midnight and ends at end_time on the following civil day (for",
+  "added": "3.3.0",
+  "fid": "media_buy.daypart_granularity"
+ },
+ {
+  "file": "core/reporting-reconciliation-mode.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Whether producer delivery evidence is sufficient or an authenticated consumer receipt is required.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-delivery-offering.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "One atomic combination a seller can honor. Buyers MUST NOT form a cross-product from separate capability arrays; each installed configuration selects one offering_id and values within that offering. A Core API-delivered offering requires no Managed external-materialization canonicalization code or c",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-verification-profile.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Assurance evidence used for one reporting materialization or receipt.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/canonical-product.json",
+  "ptr": "/properties/identity",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Experimental product-scoped identity and reach-measurement facts. See Product.identity for the cross-object delivery and frequency-cap rules.",
+  "added": "3.2.0",
+  "fid": "media_buy.product_identity"
+ },
+ {
+  "file": "core/canonical-product.json",
+  "ptr": "/properties/execution_requirements",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Experimental account resources a package on this product needs before it can be created. See Product.execution_requirements for completeness, binding, and rejection rules.",
+  "added": "3.2.0",
+  "fid": "media_buy.execution_requirements"
+ },
+ {
+  "file": "core/canonical-product.json",
+  "ptr": "/properties/hold_policy",
+  "ids": [
+   "media_buy.hold_policy"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.hold_policy). Planning hint: the inventory-hold policy the seller generally offers when finalizing a proposal that allocates this product, so buyers can plan before requesting one. It binds nothing; only a draft proposal's hold_policy binds, and the seller derives that from t",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_policy"
+ },
+ {
+  "file": "core/account.json",
+  "ptr": "/properties/reporting_delivery_configs",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Resolved durable reporting delivery configurations owned by the authenticated caller for this account. list_accounts MUST expose only the calling principal's set. State and seller-issued destination_ref are returned; credentials and bearer profiles MUST NOT appear. Any setup URL is a secret-free aut",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-adjustment-receipt.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Authenticated consumer acceptance or rejection of one exact post-official adjustment. It does not alter the original official revision or its receipt.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-status-issue.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Structured reporting condition that explains delayed or action_required health without exposing credentials, provider response bodies, or internal stack traces.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/product-filters.json",
+  "ptr": "/properties/audience_activation_methods",
+  "ids": [
+   "media_buy.audience_activation"
+  ],
+  "anc_ids": [],
+  "desc": "Filter to products whose audience_activation.methods matches at least one requested entry (OR across entries). Within an entry every specified field must match (AND); omitted optional fields are wildcards; directions matches on non-empty intersection, and a method that omits directions matches any r",
+  "added": null,
+  "fid": "media_buy.audience_activation"
+ },
+ {
+  "file": "core/response-collection.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.collection_cards",
+   "media_buy.collection_catalog"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Full collection object returned in a product or proposal response for a collection that a returned product's collections selector references, by list_collections, or in a collection_card.updated webhook (experimental, media_buy.collection_catalog). For the ",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "core/account-change-recorded-webhook.json",
+  "ptr": "/",
+  "ids": [
+   "account.change_feed"
+  ],
+  "anc_ids": [],
+  "desc": "Compact account-anchored invalidation fired after a material account change and its authoritative snapshot are readable. The payload is not current state and through_cursor is only a drain target; receivers continue from their own persisted list_account_changes cursor. Experimental in 3.2 (RFC #6810",
+  "added": null,
+  "fid": "account.change_feed"
+ },
+ {
+  "file": "core/audience-activation-method.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.audience_activation"
+  ],
+  "anc_ids": [],
+  "desc": "One way buyer audience data can reach a seller for targeting. The pattern field discriminates the entry; each pattern carries only its own fields. Two patterns are AdCP-canonical (sync_audiences, tmp_identity_match); the rest describe integration paths that move data outside the protocol while remai",
+  "added": null,
+  "fid": "media_buy.audience_activation"
+ },
+ {
+  "file": "core/reporting-schedule-offering.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Schedule constraint advertised by a seller. Unlike an installed reporting-schedule, an offering may resolve an account-specific upstream source timezone or let a billing-cycle configuration select its own anchor and IANA timezone.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-canonicalization-contract.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Executable, immutable contract for producing the canonical logical-report bytes hashed by reporting-canonical-content-digest.json. The fetched document uses application/vnd.adcp.reporting-canonicalization+json and is verified by SHA-256 before parsing.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/principal-declarations-state.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Seller readback of the caller's declarations: the declared facts echoed verbatim, the seller-computed accepted intersection that governs asynchronous interactions, the seller's selected async payload version, and the reason for anything declared but not accepted. accepted never contains a value abse",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "core/reporting-delivery-capabilities.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.reporting_delivery"
+  ],
+  "anc_ids": [],
+  "desc": "Reliable Reporting status and durable delivery support, advertised in three tiers over one data model. Core (supported: true) is the required tier: obligations, revisions, post-official adjustments, fixed RFC 8785/JCS revision-binding digests, the five health states, and get_reporting_status seller ",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-file-compression.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Physical compression applied to each data object listed by a reporting file manifest.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/collection.json",
+  "ptr": "/properties/images",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Pictures for a collection card (cover art, show poster, creator avatar). The first entry is the primary thumbnail. Display only, and excluded from publisher_collection definition pins.",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "core/collection.json",
+  "ptr": "/properties/sample_content",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Representative past installments or a sizzle reel, as published-post references. The platform URL implies the kind. Display only: not a creative, and not authorization to reuse the content; reference_authorization and identity_ref are not authorization here",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "core/collection.json",
+  "ptr": "/properties/url",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Canonical HTTPS page about this collection, operated by the publisher or selling agent, for example a creator profile with full analytics. Buyers link out to it for depth beyond the card, and MAY suppress the link-out when its host is neither the publisher'",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "One optimizer-ready assertion about a media buy, package, or creative. This is a compact projection of buyer- or measurement-provider analysis, not a transport for raw exposure logs, attribution models, or complete study datasets.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/baseline",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Expectation represented by performance_index = 1.0. Compact-contract producers MUST populate this field; it remains optional in the schema so existing 3.x request payloads remain valid.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/metric",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Metric this assertion describes. Omit only for holistic feedback that is not attributable to one metric.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/producer",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Brand that produced the analysis. The receiving orchestrator gateway verifies this reference against authenticated caller identity and preserves it during seller fan-out.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/methodology",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Producer-scoped methodology identifier such as geo_incrementality, media_mix_model, or deterministic_attribution.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/methodology_version",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Producer-defined version of the methodology used for this assertion.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/study_ref",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Opaque producer-assigned study or model-run reference. Receivers use it for correlation only and MUST NOT interpret it as an experiment-execution instruction.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/evidence",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Small inline evidence summary used to weight the assertion without transporting the full study.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/evidence_ref",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Provider-hosted evidence or result reference for parties authorized to inspect the full study.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/as_of",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "When the producer computed this assertion.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/final",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Whether the producer expects this assertion to be revised as data matures.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/performance-feedback-assertion.json",
+  "ptr": "/properties/supersedes_feedback_id",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Receiver-issued feedback_id of the earlier assertion this one replaces at the same hop.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "core/principal-state.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Complete principal-scoped standing configuration visible after sync or read. Secrets are never returned. The seller keys this state by its own agent identity and the stable authenticated caller principal. Each section is present when and only when the seller advertises it in principal.supported_sect",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "core/product.json",
+  "ptr": "/properties/hold_policy",
+  "ids": [
+   "media_buy.hold_policy"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.hold_policy). Planning hint: the inventory-hold policy the seller generally offers when finalizing a proposal that allocates this product, so buyers can plan before requesting one. It binds nothing. Proposal-level hold policy exists only in the compact lifecycle (request_prop",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_policy"
+ },
+ {
+  "file": "core/product.json",
+  "ptr": "/properties/identity",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "",
+  "added": "3.2.0",
+  "fid": "media_buy.product_identity"
+ },
+ {
+  "file": "core/product.json",
+  "ptr": "/properties/execution_requirements",
+  "ids": [
+   "media_buy.execution_requirements"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (`media_buy.execution_requirements`). Account resources a package on this product needs before `create_media_buy` succeeds. Every entry is required. Account-independent: it does not change `cache_scope` and carries no account resource IDs or names. When present, it plus the `required_co",
+  "added": "3.2.0",
+  "fid": "media_buy.execution_requirements"
+ },
+ {
+  "file": "core/product.json",
+  "ptr": "/properties/audience_activation",
+  "ids": [
+   "media_buy.audience_activation"
+  ],
+  "anc_ids": [],
+  "desc": "How buyer audience data can reach this product's targeting. Absence means undeclared \u2014 buyers SHOULD treat it as needs-clarification rather than non-support, except under an audience_activation_methods filter, where sellers MUST exclude undeclared products. Declare when the product accepts buyer aud",
+  "added": null,
+  "fid": "media_buy.audience_activation"
+ },
+ {
+  "file": "core/collection-distribution.json",
+  "ptr": "/properties/followers",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental in AdCP 3.3. Platform-reported number of follower or subscriber accounts for this collection on publisher_domain (the audience-size wording about people does not apply). Counts accounts, not de-duplicated people, so buyers MUST NOT sum it across distribution entries or read it as reach.",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "core/reporting-native-version-ref.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Credential-free, decoded provider-native immutable version reference, such as an S3 VersionId, GCS generation, table version, transaction, snapshot, manifest generation, job, or run. This is not URI-encoded or concatenated into an object_ref; URI-encode it only when constructing a provider request. ",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/wholesale-feed-event.json",
+  "ptr": "/oneOf/9",
+  "ids": [
+   "media_buy.collection_catalog"
+  ],
+  "anc_ids": [
+   "media_buy.collection_catalog"
+  ],
+  "desc": "collection_card.updated \u2014 experimental (media_buy.collection_catalog). Upsert: a collection card entered the seller's catalog for the applies_to scope, or any field of its copy changed. There is no separate created event. The payload carries the full post-change card, which replaces the mirror entry",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_catalog"
+ },
+ {
+  "file": "core/wholesale-feed-event.json",
+  "ptr": "/oneOf/10",
+  "ids": [
+   "media_buy.collection_catalog"
+  ],
+  "anc_ids": [
+   "media_buy.collection_catalog"
+  ],
+  "desc": "collection_card.removed \u2014 experimental (media_buy.collection_catalog). The seller no longer offers this card in the applies_to scope. It says only that this seller stopped offering the card: it does not mean the collection was retired or that authorization changed, which arrive as registry collectio",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_catalog"
+ },
+ {
+  "file": "core/wholesale-feed-event.json",
+  "ptr": "/oneOf/11",
+  "ids": [
+   "media_buy.collection_catalog"
+  ],
+  "anc_ids": [
+   "media_buy.collection_catalog"
+  ],
+  "desc": "collection_catalog.bulk_change \u2014 experimental (media_buy.collection_catalog). Fast-forward event when one operation touches more collection cards than per-card events can usefully carry (the wholesale feed threshold: more than 5% of the catalog or more than 100 cards, whichever is smaller), such as ",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_catalog"
+ },
+ {
+  "file": "core/reporting-schedule.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "The period and deadline contract from which reporting obligations are created. Every elapsed period produces an obligation even when it has zero rows or production fails, so a consumer can distinguish empty from missing.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/talent.json",
+  "ptr": "/properties/brand_ref",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Typed link to this person's brand in brand.json, for example a rights-holder brand with right_type talent. When brand_ref and brand_url are both present they MUST identify the same brand (brand_url's host equals brand_ref.domain), and brand_ref wins. Only d",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "core/reporting-file-object-ref.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Credential-free, destination-relative reference to one reporting data object. For an object store, this is the decoded object key relative to the configured destination, not an absolute URI and not a URI with a version query parameter. Providers URI-encode this value only when constructing their own",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-file-manifest.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Normative manifest for one completed file-transfer materialization. Producers write every data object first and publish this manifest last. Its appearance is the commit point: consumers MUST ignore unlisted objects and MUST NOT process the materialization before a digest-valid complete manifest is v",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-coverage.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Exact reporting-support denominator for one offering at one evaluation boundary. Coverage is independent of freshness, finality, and delivery health. It prevents a covered subset from being represented as a complete media-buy or campaign total.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-resource.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Secret-free authenticated descriptor for an exact reporting materialization. The descriptor MUST select immutable bytes or a provider-native immutable snapshot/version so an exact older revision never resolves to mutable latest state. Callers resolve access through the previously validated caller/ac",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-delivery-config.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.reporting_delivery"
+  ],
+  "anc_ids": [],
+  "desc": "Desired durable reporting delivery for one account. Entries are owned by (authenticated caller, account) and keyed by (delivery_config_id, delivery_config_version). The generation's feed, report definition, profile, scope, coverage requirement, finality, schedule, method, and immutable destination g",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "core/reporting-revision.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "One immutable emitted version of logical reporting content. The revision is destination-independent: one canonical revision may fan out through many caller/account-bound obligations and materializations, including file, warehouse, and dataset-share destinations. The report_definition_id plus period ",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "formats/canonical/video_hosted.json",
+  "ptr": "/properties/loudness",
+  "ids": [
+   "creative.broadcast_loudness"
+  ],
+  "anc_ids": [],
+  "desc": "Audio loudness delivery requirement for the video asset's audio track, typical for broadcast television. Experimental in AdCP 3.3: shape may change in a 3.x release with notice per docs/reference/experimental-status. Field semantics match `loudness_lufs`, `loudness_tolerance_db`, and `true_peak_dbfs",
+  "added": null,
+  "fid": "creative.broadcast_loudness"
+ },
+ {
+  "file": "brand/search-brands-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Brand stubs matching the search query. Each stub carries the public identity tier \u2014 enough to evaluate a brand and follow up with get_brand_identity (for full identity) or get_rights (for pricing). Rich authorized data (voice synthesis, high-res assets, tone guidelines) is not included.",
+  "added": null,
+  "fid": "UNREG:search_brands"
+ },
+ {
+  "file": "brand/acquire-rights-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Result of a rights acquisition request. Returns one of three rights_status values: acquired (with terms and generation credentials), pending_approval (requires rights holder review), or rejected (with reason). Uses discriminated union on `rights_status` field.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "brand/rights-pricing-option.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "A pricing option for licensable rights. Separate from media-buy pricing options \u2014 rights pricing includes period, impression caps, overage rates, and use-type scoping.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "brand/rights-terms.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Contractual terms for a rights grant. Shared between acquire_rights and update_rights responses.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "brand/update-rights-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Modify an existing rights grant \u2014 extend dates, adjust impression caps, change pricing, or pause/resume. Parallels update_media_buy. Only the fields provided are updated; omitted fields remain unchanged.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "brand/search-brands-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Discover brands on a brand agent's roster using a natural language query. Returns lightweight brand stubs \u2014 use get_brand_identity to fetch full identity data for a selected brand_id, and get_rights to fetch pricing options. Read-only; naturally idempotent.",
+  "added": null,
+  "fid": "UNREG:search_brands"
+ },
+ {
+  "file": "brand/update-rights-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Result of a rights update request. Returns updated terms and re-issued credentials on success, or errors if the update cannot be applied.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "brand/get-rights-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Search for licensable rights across a brand agent's roster. Returns matches with pricing. Discovery is natural-language-first \u2014 no taxonomy for categories. The agent interprets intent from the query and filters based on the buyer's brand compatibility.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "brand/get-brand-identity-response.json",
+  "ptr": "/oneOf/0/properties/collections",
+  "ids": [
+   "brand.collection_links"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (brand.collection_links). Collections this person or brand is associated with, mirroring the brand.json brand-level collections links, so a buyer can go from a person's identity to their channels without fetching the static file. Public, like brand.json. Each link names the collection b",
+  "added": "3.3.0",
+  "fid": "brand.collection_links"
+ },
+ {
+  "file": "brand/get-rights-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Licensable rights matching the search criteria, with pricing options. Each result is a complete snapshot of current availability (stateless, DDEX PIE pattern). Excluded results explain why they were filtered out.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "brand/acquire-rights-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Binding contractual request to acquire rights from a brand agent. Parallels create_media_buy \u2014 the buyer selects a pricing_option_id from a get_rights response and provides campaign details. The agent clears against existing contracts and returns terms, generation credentials, and disclosure require",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "enums/daypart-time-granularity.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Finest time-of-day resolution a product can honor for daypart targeting. Ordered from coarsest to finest: hour (whole hours; start_hour/end_hour, or HH:00 start_time/end_time), quarter_hour (HH:00, HH:15, HH:30, HH:45), minute (any HH:MM). A product that declares a granularity also honors every coar",
+  "added": "3.3.0",
+  "fid": "media_buy.daypart_granularity"
+ },
+ {
+  "file": "enums/governance-mode.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Operating mode for a governance agent. Controls whether findings block execution.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "enums/reporting-destination-setup-state.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Validation and setup state of a reusable reporting destination. Only ready destinations may be selected by a new account-level delivery configuration. ready is pattern-specific: file_transfer requires proven caller control of the normalized location plus a successful seller write-and-read-back probe",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "enums/right-use.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Types of rights usage that can be licensed through the brand protocol. Aligned with DDEX UseType direction for interoperability with music and media rights systems.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "enums/spot-status.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Lifecycle status of a by_spot row. Experimental in AdCP 3.3. A spot_id moves scheduled \u2192 aired or scheduled \u2192 preempted; a makegood is a separate row, with its own spot_id, that replaces a preempted spot.",
+  "added": null,
+  "fid": "media_buy.spot_lifecycle"
+ },
+ {
+  "file": "enums/creative-selection-strategy.json",
+  "ptr": "/",
+  "ids": [
+   "creative.signal_fanout"
+  ],
+  "anc_ids": [],
+  "desc": "How a creative agent samples which catalog items / signal conditions to produce creatives for when max_creatives is below the eligible count (#5262). Selection ordering surfaces on the existing rank/recommended fields of build_creative's creatives[].variants[]. This is a curated set, not an open ext",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "enums/delivery-recipient-cloud.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Cloud family hosting a delivery recipient's account, used together with region to disambiguate provider-native recipient identities.",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "enums/right-type.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Categories of intellectual property rights that can be licensed through the brand protocol.",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "enums/principal-kind.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Seller-resolved kind of the authenticated principal: an autonomous buyer-agent workload or an operator-side identity such as a person at the operator.",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "protocol/sync-principal-request.json",
+  "ptr": "/",
+  "ids": [
+   "protocol.principal"
+  ],
+  "anc_ids": [],
+  "desc": "This task begins after authentication: AdCP defines no credential-registration protocol, and the seller\u2019s authorization system (OAuth, API keys, signed requests, workload identity) issues and maps credentials before the first call. Declaratively synchronize selected sections of the authenticated pri",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "protocol/get-principal-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Result of reading the authenticated principal's identity and standing configuration. Current responses return a durable principal record with complete credential-free configuration and its version. Recognized responses return an existing durable principal identity before standing configuration exist",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "protocol/sync-principal-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Result of synchronizing selected sections of the principal's standing configuration. Applied responses return the complete current credential-free configuration. Validated dry-run responses report the would-be action without issuing durable identifiers. Failed responses deliberately cannot carry pri",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/adcp/properties/principal",
+  "ids": [
+   "protocol.principal"
+  ],
+  "anc_ids": [],
+  "desc": "Caller-scoped durable connection configuration accepted by this agent. This is the buyer-to-seller configuration half of negotiation, not a second seller capability document: the seller advertises its objective offering here, while each authenticated caller submits its desired webhooks and reusable ",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/adcp/properties/governance_enforcement",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Cross-role declaration that this agent enforces buyer-provided governance authorization when performing consequential tasks. This is distinct from the top-level `governance` capability block, which describes an agent that provides governance services. An agent can enforce governance without implemen",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/account/properties/change_feed",
+  "ids": [
+   "account.change_feed"
+  ],
+  "anc_ids": [],
+  "desc": "Whether the seller exposes a durable, ordered feed of material changes to authoritative account-scoped state. This is distinct from webhook_activity transport diagnostics and from current-state reads. Sellers claiming support MUST retain changes for at least 90 days after recording and MUST produce ",
+  "added": null,
+  "fid": "account.change_feed"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/media_buy/properties/proposal_refinement/properties/hold_semantics",
+  "ids": [
+   "media_buy.delegated_composition",
+   "media_buy.hold_policy"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.delegated_composition). What a successful finalize commits by default, for products and drafts that do not declare hold_policy (experimental, media_buy.hold_policy); it is not one setting for the whole agent. A product or draft hold_policy overrides it: a terms_only agent can",
+  "added": "3.3.0",
+  "fid": "media_buy.delegated_composition"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/media_buy/properties/proposal_refinement/properties/hold_extension",
+  "ids": [
+   "media_buy.hold_extension",
+   "media_buy.hold_policy"
+  ],
+  "anc_ids": [],
+  "desc": "Whether the seller accepts action extend_hold on refine_proposals (feature id media_buy.hold_extension). This is the agent-level gate for the action: buyers MUST NOT send extend_hold unless this is true, and a seller that does not declare it fails the unknown action with VALIDATION_ERROR. extend_hol",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_extension"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/media_buy/properties/performance_feedback",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Structured seller performance-feedback support beyond the legacy scalar contract. Presence means the seller accepts compact baseline/metric/provenance fields from a buyer orchestrator and returns a feedback_id.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/media_buy/properties/performance_feedback/properties/reports_application_status",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Whether provide_performance_feedback responses include an honest application_status of accepted, applied, or not_applied. accepted is explicitly not an application claim. Sellers that cannot determine optimizer disposition omit this claim or set it false.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/media_buy/properties/reporting_delivery",
+  "ids": [
+   "media_buy.reporting_delivery"
+  ],
+  "anc_ids": [],
+  "desc": "AdCP 3.2 Reliable Reporting capability. The affirmative machine answer to \u2018Do you support Reliable Reporting?\u2019 requires this block with supported: true and reliable_reporting_version: 1.0 plus media_buy.reporting_delivery in experimental_features. Core exposes seller get_reporting_status; during the",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/media_buy/properties/supports_exclusive_product_ids",
+  "ids": [
+   "media_buy.delegated_composition"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.delegated_composition). Declares that this seller honors criteria.product_ids_exclusive: when a request sets it, the listed product_ids are the complete composable universe, and every proposal purchase, echoed product, and seller-selected signal resolves within them \u2014 a brief",
+  "added": "3.3.0",
+  "fid": "media_buy.delegated_composition"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/media_buy/properties/execution/properties/trusted_match",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Trusted Match Protocol (TMP) support. Presence of this object indicates the seller has TMP infrastructure deployed. Check individual products via get_products for per-product TMP capabilities.",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/media_buy/properties/audience_targeting/properties/supported_activation_methods",
+  "ids": [
+   "media_buy.audience_activation"
+  ],
+  "anc_ids": [],
+  "desc": "Union of audience_activation.methods across the seller's products. Fast-fail discovery: a buyer reads this once and skips the catalog walk when nothing overlaps its pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates",
+  "added": null,
+  "fid": "media_buy.audience_activation"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/sponsored_intelligence",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Sponsored Intelligence protocol capabilities. Only present if sponsored_intelligence is in supported_protocols. SI agents handle conversational brand experiences.",
+  "added": null,
+  "fid": "sponsored_intelligence.core"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/brand/properties/rights",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Supports get_rights and acquire_rights for rights discovery and clearance",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/brand/properties/right_types",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Types of rights available through this agent",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/brand/properties/available_uses",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Rights uses available across this agent's roster",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/brand/properties/generation_providers",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "LLM/generation providers this agent can issue credentials for",
+  "added": null,
+  "fid": "brand.rights_lifecycle"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/creative/properties/supports_evaluator",
+  "ids": [
+   "creative.evaluator"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (x-status: experimental) \u2014 agents setting this true MUST also list `creative.evaluator` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts an advisory `evaluator` input (exemplar",
+  "added": null,
+  "fid": "creative.evaluator"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/creative/properties/multiplicity/properties/supports_signal_fanout",
+  "ids": [
+   "creative.signal_fanout"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (x-status: experimental) \u2014 agents setting this true MUST also list `creative.signal_fanout` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts signal_conditions[] (one distinct c",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/creative/properties/multiplicity/properties/max_signal_conditions_limit",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Ceiling on len(signal_conditions). Over-limit requests are CLAMPED (not rejected), like max_creatives_limit. Omitted means no advertised ceiling.",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/creative/properties/multiplicity/properties/selection_strategies",
+  "ids": [
+   "creative.signal_fanout"
+  ],
+  "anc_ids": [],
+  "desc": "Which selection_strategy values this agent supports when sampling max_creatives < items_total. Sibling to variant_dimensions. Part of the experimental signal-fanout surface (feature id `creative.signal_fanout`).",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/measurement_gateway",
+  "ids": [
+   "measurement.gateway"
+  ],
+  "anc_ids": [],
+  "desc": "Buyer-controlled task gateway between an orchestrator and measurement providers. In the first experimental tier, providers read buyer-approved cross-seller delivery through get_media_buy_delivery and return compact assertions through provide_performance_feedback, without receiving seller credentials",
+  "added": null,
+  "fid": "measurement.gateway"
+ },
+ {
+  "file": "protocol/get-adcp-capabilities-response.json",
+  "ptr": "/properties/measurement",
+  "ids": [
+   "measurement.core"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Agents implementing this block MUST list `measurement.core` in experimental_features. Re",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "protocol/get-principal-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Read the authenticated principal's seller-resolved identity and current standing configuration with this AdCP agent: the same caller-scoped state that sync_principal replaces, plus retained superseded and revoked destination generations. Identity is resolved from authenticated transport and MUST NOT",
+  "added": null,
+  "fid": "protocol.principal"
+ },
+ {
+  "file": "error-details/accessibility-violation.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Experimental recommended error.details shape for accessibility-related CREATIVE_REJECTED errors. Batches bounded diagnostic failures without minting a new top-level error code. Each pointer is rooted at the complete task request payload, matching core error pointer conventions. When the rejected man",
+  "added": null,
+  "fid": "UNREG:accessibility_violation"
+ },
+ {
+  "file": "media-buy/refine-proposals-request.json",
+  "ptr": "/properties/include_collections",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection the returned products' collections selectors reference. Sellers MUST NOT return collections unless this is true, and when it is true they SHOULD i",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "media-buy/provide-performance-feedback-response.json",
+  "ptr": "/oneOf/0/properties/feedback_id",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Receiver-issued identifier for this immutable assertion. Orchestrator gateways and sellers declaring media_buy.performance_feedback MUST return it; legacy sellers may omit it. The identifier is local to the receiving hop. Use it in supersedes_feedback_id when revising that hop's assertion.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "media-buy/provide-performance-feedback-response.json",
+  "ptr": "/oneOf/0/properties/application_status",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Optimizer disposition at response time, distinct from the protocol envelope's task status. accepted means stored and eligible for evaluation, not that optimizer use is guaranteed. applied means incorporated into the seller's optimization inputs. not_applied means evaluated but not incorporated. Sell",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "media-buy/provide-performance-feedback-response.json",
+  "ptr": "/oneOf/0/properties/status_reason",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Human-readable explanation when application_status is not_applied. May also explain material qualifications on accepted feedback.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "media-buy/provide-performance-feedback-response.json",
+  "ptr": "/oneOf/0/properties/received_at",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "When the receiving orchestrator gateway or seller stored the assertion.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "media-buy/provide-performance-feedback-response.json",
+  "ptr": "/oneOf/0/properties/applied_at",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "When the seller incorporated the assertion into its optimization inputs. Present only when application_status is applied.",
+  "added": null,
+  "fid": "measurement.core"
+ },
+ {
+  "file": "media-buy/list-collections-response.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.collection_catalog"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. One page of the selling agent's collection cards, or confirmation that the selected catalog has not changed. Entries are core/response-collection.json copies under the authority rules defined there and for include_collections: adagents.",
+  "added": null,
+  "fid": "media_buy.collection_catalog"
+ },
+ {
+  "file": "media-buy/sync-reporting-status-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Per-statement durable recording results. Successful readback proves that the seller recorded the authenticated consumer's status without treating it as seller-authored reporting evidence.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "media-buy/sync-reporting-status-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Submit the authenticated consumer's operational reporting status for expected configuration periods. This is a batched idempotent append-only sync over seller-hosted task transport, not a webhook registration, measurement-data feed, or billing receipt. Identity comes from authenticated transport; th",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "media-buy/list-products-response.json",
+  "ptr": "/properties/collections",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the collections selectors of products on this page. Sellers MUST NOT return this array unless the request set include_collections to true; when it is set, sellers SHOULD include every referenced collecti",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "media-buy/get-reporting-status-request.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.reporting_delivery"
+  ],
+  "anc_ids": [],
+  "desc": "Authoritative caller/account-isolated reporting reliability read. The authenticated caller identity comes only from transport authentication, never request fields. summary answers the operational question for independently selected delivery configurations/feeds; periods returns a cursor-paginated ob",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "media-buy/request-proposals-response.json",
+  "ptr": "/properties/collections",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the collections selectors of the returned products. Sellers MUST NOT return this array unless the request set include_collections to true; when it is set, sellers SHOULD include every referenced collecti",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "media-buy/build-creative-request.json",
+  "ptr": "/properties/signal_conditions",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Advisory keep-all PRODUCTION axis: produce one distinct creative group per signal condition, each kept and trafficked with its own signal targeting (e.g. a rain creative AND a sun creative). Sibling to max_creatives (catalog axis), NOT a variant_axis value (which is choose-among). Each item reuses S",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "media-buy/build-creative-request.json",
+  "ptr": "/properties/selection_strategy",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Governs HOW the agent samples when max_creatives < items_total (folds #5262). audience_relevance draws its ranking input from the SAME signal_ref pointers in signal_conditions / package targeting \u2014 NOT a parallel signals[] array. proximity takes a location input (geo shape TBD \u2014 WG open). inventory_",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "media-buy/build-creative-request.json",
+  "ptr": "/properties/evaluator",
+  "ids": [
+   "creative.evaluator"
+  ],
+  "anc_ids": [],
+  "desc": "Optional advisory evaluator (buyer-attached pointer, #5280) declaring how produced variants should be evaluated and ranked \u2014 the rank-side of the get_creative_features feature oracle. Experimental (x-status: experimental): the whole evaluator surface is new and unfrozen, and requires creative.suppor",
+  "added": null,
+  "fid": "creative.evaluator"
+ },
+ {
+  "file": "media-buy/product-discovery-criteria.json",
+  "ptr": "/properties/product_ids_exclusive",
+  "ids": [
+   "media_buy.delegated_composition"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.delegated_composition). On request_proposals and refine_proposals, when true, product_ids is the complete composable product universe for the request and its refinement lineage rather than a candidate hint: every proposal purchase, and every product echoed alongside proposals",
+  "added": "3.3.0",
+  "fid": "media_buy.delegated_composition"
+ },
+ {
+  "file": "media-buy/list-products-request.json",
+  "ptr": "/properties/include_collections",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection referenced by the collections selectors of products on the page. Sellers MUST NOT return collections unless this is true, and when it is true they",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "media-buy/sync-audiences-response.json",
+  "ptr": "/oneOf/0/properties/audiences/items/properties/source",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Echo of the external source feeding this audience (never credentials), present on externally sourced audiences in every response including discovery-only calls \u2014 the single pane invariant: externally sourced audiences appear in discovery identically to pushed ones, with the same status enum, match r",
+  "added": null,
+  "fid": "media_buy.audience_activation"
+ },
+ {
+  "file": "media-buy/proposal-refinement.json",
+  "ptr": "/oneOf/1",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "",
+  "added": "3.3.0",
+  "fid": "media_buy.hold_extension"
+ },
+ {
+  "file": "media-buy/get-products-response.json",
+  "ptr": "/properties/collections",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the collections selectors of the returned products. Sellers MUST NOT return this array unless the request set include_collections to true; when it is set, sellers SHOULD include every referenced collecti",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "media-buy/get-reporting-status-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Authoritative caller/account-isolated reporting status response. The view echoes the request and discriminates summary, periods, exact revision, and fatal error shapes. Seller obligation/revision state and separately attributed consumer status remain distinct but are compared in the caller-scoped he",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "media-buy/refine-proposals-response.json",
+  "ptr": "/properties/collections",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the collections selectors of the returned products. Sellers MUST NOT return this array unless the request set include_collections to true; when it is set, sellers SHOULD include every referenced collecti",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "media-buy/sync-reporting-receipts-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Per-receipt durable recording results for revisions and post-official adjustments. Successful readback lets a consumer prove the seller recorded its reconciliation outcome; failed results expose no cross-caller or cross-account resource metadata.",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "media-buy/list-collections-request.json",
+  "ptr": "/",
+  "ids": [
+   "media_buy.collection_cards",
+   "media_buy.collection_catalog"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. Read the selling agent's catalog of collection cards: look up specific collections by key, or browse with filters and pages. Returns the same core/response-collection.json copies, under the same authority rules, as include_collections o",
+  "added": null,
+  "fid": "media_buy.collection_catalog"
+ },
+ {
+  "file": "media-buy/get-media-buy-delivery-response.json",
+  "ptr": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/properties/spot_status",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Lifecycle status of this row. Absent means aired, which preserves AdCP 3.2 behavior. A scheduled row later becomes aired (same spot_id) or preempted. A makegood row is a separate airing, with its own spot_id, that carries replaces_spot_id; a planned replacement is a scheduled row that already carrie",
+  "added": null,
+  "fid": "media_buy.spot_lifecycle"
+ },
+ {
+  "file": "media-buy/get-media-buy-delivery-response.json",
+  "ptr": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/properties/scheduled_at",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "RFC 3339 timestamp of the planned airing slot. Required when spot_status is scheduled or preempted (for a preempted row, the last slot that was scheduled). The seller may move a scheduled spot until it airs, so the value can change between reports while spot_id does not; a buyer that needs the origi",
+  "added": null,
+  "fid": "media_buy.spot_lifecycle"
+ },
+ {
+  "file": "media-buy/get-media-buy-delivery-response.json",
+  "ptr": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/properties/replaces_spot_id",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "The spot_id of the preempted spot that this replacement airing replaces. Required when spot_status is makegood. A planned replacement carries it from the time it is scheduled, so the buyer sees the link before the spot airs; it keeps the value if it is then preempted, which preserves the chain back ",
+  "added": null,
+  "fid": "media_buy.spot_lifecycle"
+ },
+ {
+  "file": "media-buy/get-media-buy-delivery-response.json",
+  "ptr": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/by_spot/items/allOf/1/properties/break_position",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Where the spot ran inside its commercial break. Sellers declare support in supports_spot_breakdown.supports_break_position; omission means the position is not reported. On a scheduled row the value is the planned position and may change before airing.",
+  "added": null,
+  "fid": "media_buy.spot_lifecycle"
+ },
+ {
+  "file": "media-buy/sync-reporting-receipts-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Submit durable authenticated consumer reconciliation results for reporting materializations and post-official adjustments. This is a batched idempotent upsert, not an acknowledgement of mere webhook receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or governan",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "media-buy/get-products-request.json",
+  "ptr": "/properties/include_collections",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection the returned products' collections selectors reference. Sellers MUST NOT return collections unless this is true, and when it is true they SHOULD i",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "media-buy/request-proposals-request.json",
+  "ptr": "/properties/include_collections",
+  "ids": [
+   "media_buy.collection_cards"
+  ],
+  "anc_ids": [],
+  "desc": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection the returned products' collections selectors reference. Sellers MUST NOT return collections unless this is true, and when it is true they SHOULD i",
+  "added": "3.3.0",
+  "fid": "media_buy.collection_cards"
+ },
+ {
+  "file": "media-buy/build-creative-response.json",
+  "ptr": "/oneOf/2/properties/creatives/items/properties/signal_condition",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "When this creative group was produced by fanning out over signal_conditions, the SignalTargeting condition this group is FOR (e.g. weather=rain). Sibling to catalog_item_ref. Carries the SAME signal_ref identity the sales-side package targeting uses, so a sales agent can structurally match condition",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "media-buy/build-creative-response.json",
+  "ptr": "/oneOf/2/properties/creatives/items/properties/variants/items/properties/eval",
+  "ids": [
+   "creative.evaluator"
+  ],
+  "anc_ids": [],
+  "desc": "Optional per-leaf evaluation block populated when the request supplied an `evaluator` and the agent advertises creative.supports_evaluator. Experimental (x-status: experimental) \u2014 part of the evaluator surface; sellers populating it MUST list `creative.evaluator` in experimental_features. The rank-s",
+  "added": null,
+  "fid": "creative.evaluator"
+ },
+ {
+  "file": "media-buy/build-creative-response.json",
+  "ptr": "/oneOf/2/properties/selection_strategy_applied",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Echoes the selection_strategy the agent applied when max_creatives sampling occurred (mirrors keep_mode_applied). Present when the request set selection_strategy. The ranking itself shows in the rank/recommended on creatives[].variants[].",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "media-buy/build-creative-response.json",
+  "ptr": "/oneOf/3/properties/estimate/properties/conditions_total",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Signal-fan-out conditions axis count (len(signal_conditions)). Present when signal_conditions was sent so leaves_total = items_to_produce \u00d7 conditions_total \u00d7 variants_per_item is legible before spend.",
+  "added": null,
+  "fid": "creative.signal_fanout"
+ },
+ {
+  "file": "governance/report-plan-adjustment-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Append-only adjustment lifecycle result and attributed plan accounting state.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/get-plan-audit-logs-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Governance state and audit trail for one or more plans.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/sync-plans-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/check-governance-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side); planned_delivery or delivery_metrics with governance_context = execution or lifecycle check (committed, service-side). Propo",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/report-plan-outcome-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent) that manages the plan. Sellers report delivery data via check_governance with phase 'delivery', not via this task.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/report-plan-adjustment-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Two-party append-only adjustment lifecycle. The authenticated seller reports commercial evidence; the authenticated plan owner later accepts or disputes that exact record. Reporting alone never changes net cost or headroom.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/report-plan-outcome-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. The authenticated reporter must match the caller on the original approved intent, purchase_type must match that intent, and only one terminal settlement is allowed across a",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/check-governance-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Governance agent's response to a check request. Only an approved verdict authorizes execution. Conditions are an intent-phase counterproposal and never carry authorization context; the caller must adjust and re-check.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/sync-plans-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Response from syncing campaign plans. Returns status and active validation categories for each plan.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "governance/get-plan-audit-logs-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Retrieve governance state and audit trail for one or more plans.",
+  "added": null,
+  "fid": "governance.campaign"
+ },
+ {
+  "file": "trust/v1/trust.json",
+  "ptr": "/",
+  "ids": [
+   "identity.trust_json"
+  ],
+  "anc_ids": [],
+  "desc": "An organization's agent trust record, hosted at /.well-known/trust.json on the organization's own host. Protocol-neutral core: the agents the organization runs (agents[]), the authority it delegates to others (grants[]), and the grants it has accepted from others (acknowledgements[]). Protocol-speci",
+  "added": null,
+  "fid": "identity.trust_json"
+ },
+ {
+  "file": "trust/v1/trust-acknowledgements.json",
+  "ptr": "/",
+  "ids": [
+   "identity.trust_json"
+  ],
+  "anc_ids": [],
+  "desc": "Bulk acknowledgements referenced from trust.json acknowledgements_url, for organizations (e.g. ad networks and SSPs) that accept thousands of grants. Kept off the signature-verification fetch path. Every entry follows the trust.json acknowledgement rules: agent_url MUST be an agents[] entry in the r",
+  "added": null,
+  "fid": "identity.trust_json"
+ },
+ {
+  "file": "trusted-match/context-match-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Router-to-publisher shape of the Context Match response. The router collects offers and non-keyed signals from provider responses, and preserves provider-local targeting pairs under signals_by_provider using the publisher-assigned provider_id from registration. Flattened signals.targeting_kvs is a p",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/provider-registration.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning. Endpoint URLs MUST be validated agains",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/publisher-targeting-kv-config.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Publisher-owned deployment configuration that maps each context provider's local targeting keys to the publisher's ad-server targeting destinations on one surface. The mapping never travels on either Trusted Match protocol hop. Providers emit `{key, value}` pairs in their own vocabulary, the router ",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/error.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Error response from a TMP provider or router. Returned instead of a normal response when the provider cannot process the request. Distinguishes errors from empty results (an empty offers array is a valid response meaning no matches, not an error).",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/identity-match-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Router-to-publisher shape of the Identity Match response. The router collects each identity agent's ordered TMPX chunks (see provider-identity-match-response.json) and forwards them under the emitting `provider_id`, preserving provider attribution and chunk order. Each chunk is a provider-declared `",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/context-match-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Sent by publisher to router or provider to evaluate packages against contextual signals. The provider uses its synced package set for the placement. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id. Extension fields (ext, context) are intentionally",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/tmpx-chunk.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "A single provider TMPX chunk \u2014 the provider-local `slot_id` (declared at registration in `tmpx_slots`) and its opaque URL-safe `value`. Same shape on both hops of the Identity Match response: providers emit `tmpx_chunks[]` on the provider\u2192router shape, the router forwards them under `tmpx_providers[",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/provider-context-match-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Provider-to-router shape of the Context Match response. A context provider returns offers, optional cache guidance, and response-level signals using its own targeting vocabulary in signals.targeting_kvs. The router attributes those targeting pairs using the publisher-assigned provider_id from regist",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/available-package.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "A package available for contextual matching. Synced to providers at media buy creation time \u2014 not sent per request. Providers cache this metadata and use it when evaluating context match requests for the placement. The `seller_agent` field binds the package to the originating seller agent; providers",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/identity-match-request.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provi",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/offer-price.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Lightweight price for a TMP offer. Used when the product supports variable pricing and the buyer specifies a price at match time.",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/publisher-tmpx-config.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Publisher-owned deployment configuration that maps each identity provider's TMPX slots to the ad-server macro names (or targeting keys, VAST substitutions, DOOH play-log fields) the publisher wants those chunks fired into on this surface. Mapping is authored by the publisher \u2014 the same operator who ",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/offer.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "A buyer's response to a context match request. Generalizes package activation \u2014 a simple activation is an offer with just package_id. A rich response includes brand, price, summary, and optionally an inline creative manifest.",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "trusted-match/provider-identity-match-response.json",
+  "ptr": "/",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Provider-to-router shape of the Identity Match response. An identity agent returns eligibility, the per-package serve-window throttle, and \u2014 when it mints one \u2014 an ordered list of TMPX chunks. Each chunk pairs a provider-local `slot_id` (declared at registration in `tmpx_slots`) with an opaque URL-s",
+  "added": null,
+  "fid": "trusted_match.core"
+ },
+ {
+  "file": "account/sync-accounts-request.json",
+  "ptr": "/properties/accounts/items/properties/reporting_delivery_configs",
+  "ids": [
+   "media_buy.reporting_delivery"
+  ],
+  "anc_ids": [],
+  "desc": "Caller-owned desired state for durable reporting delivery on this account. Declarative replacement is scoped to (authenticated caller, resolved account): omission leaves that caller's set unchanged; [] deactivates that caller's set and starts grant revocation; another caller's entries MUST NOT be re",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "account/sync-accounts-response.json",
+  "ptr": "/oneOf/0/properties/accounts/items/properties/reporting_delivery_configs",
+  "ids": [],
+  "anc_ids": [],
+  "desc": "Resolved caller-owned durable reporting delivery configurations after declarative replacement. Each item echoes desired state and reports validation/setup state plus the seller-issued destination_ref when resolved. A setup action may direct an authenticated user to complete a provider grant or Open ",
+  "added": null,
+  "fid": "media_buy.reporting_delivery"
+ },
+ {
+  "file": "account/list-account-changes-request.json",
+  "ptr": "/",
+  "ids": [
+   "account.change_feed"
+  ],
+  "anc_ids": [],
+  "desc": "Read a durable, ordered feed of material changes to AdCP-visible state for one account. Use a latest checkpoint before snapshot bootstrap, then drain from that cursor to close the bootstrap race. Experimental in 3.2 (RFC #6810): sellers implementing this task MUST list account.change_feed in experim",
+  "added": null,
+  "fid": "account.change_feed"
+ },
+ {
+  "file": "account/list-account-changes-response.json",
+  "ptr": "/",
+  "ids": [
+   "account.change_feed"
+  ],
+  "anc_ids": [],
+  "desc": "Durable account change feed page. cursor is always present, including for an empty page at the tail; ordinary pagination-response semantics do not apply. Experimental in 3.2 (RFC #6810): sellers returning this response MUST list account.change_feed in experimental_features.",
+  "added": null,
+  "fid": "account.change_feed"
+ }
+]

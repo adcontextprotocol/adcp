@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/macro-processing-operation.json",
+  "title": "Macro Processing Operation",
+  "description": "The next authorized operation on the current source token.",
+  "type": "string",
+  "enum": ["translate_to_native", "resolve_value", "preserve"],
+  "enumDescriptions": {
+    "translate_to_native": "Replace the current token with a declared downstream-native token; no concrete runtime value is inserted at this step.",
+    "resolve_value": "Insert the concrete runtime value using the declared encoding contract.",
+    "preserve": "Leave the source bytes unchanged because no safe local operation is established."
+  }
+}

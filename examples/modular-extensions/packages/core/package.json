@@ -1,0 +1,8 @@
+{
+  "name": "@adcp/core",
+  "version": "3.3.0-example",
+  "description": "Generated AdCP core types. Knows extension points, never extensions.",
+  "type": "module",
+  "types": "./src/index.ts",
+  "dependencies": {}
+}

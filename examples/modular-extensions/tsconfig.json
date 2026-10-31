@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@adcp/core": [
+        "packages/core/src/index.ts"
+      ],
+      "@adcp-ext/rate-card-index": [
+        "packages/ext-rate-card-index/src/index.ts"
+      ],
+      "@adcp-ext/seller-adjustable-terms": [
+        "packages/ext-seller-adjustable-terms/src/index.ts"
+      ],
+      "@acmetv/adcp-ext-daypart-codes": [
+        "packages/acmetv-ext-daypart-codes/src/index.ts"
+      ],
+      "@adcp-ext/makegood-units": [
+        "packages/ext-makegood-units/src/index.ts"
+      ],
+      "@adcp-ext/linear-tv-indexed-cpp": [
+        "packages/ext-linear-tv-indexed-cpp/src/index.ts"
+      ]
+    },
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "test/types/**/*.ts",
+    "examples/*/*.ts",
+    "examples/*/adcp-sdk/**/*.ts",
+    "test/apps/*/adcp-sdk/**/*.ts",
+    "lib/*.d.mts"
+  ]
+}
