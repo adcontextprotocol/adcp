@@ -748,3 +748,12 @@ test('a seller never delivers outside the flight, make-goods included', () => {
   assert.match(rule, /A canceled or completed buy is not extended/);
   assert.match(read('enums/makegood-remedy.json').enumDescriptions.additional_delivery, /delivery_within_flight/);
 });
+
+test('account-level billing configurations follow the stub and delivery-within-flight rules', () => {
+  const rule = read('core/reporting-delivery-config.json')['x-adcp-validation'].billing_continuity;
+  assert.match(rule, /the handoff is a cutover as reporting-subscription\.json cutover defines it/);
+  assert.match(rule, /owed as one stub obligation whose stub is true/);
+  assert.match(rule, /MUST NOT deliver on a buy in that account outside the buy's flight/);
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].delivery_within_flight, /or holding an active billing generation of an account-level reporting_delivery_configs entry/);
+  assert.match(read('core/reporting-obligation.json').properties.stub.description, /or an account-level billing configuration/);
+});

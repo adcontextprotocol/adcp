@@ -703,8 +703,9 @@ obligation is the period end, matching how each obligation freezes its `media_bu
 only periods not yet resolved. Reinstating or extending a buy after a period has
 elapsed never makes that period owed retroactively.
 
-**Delivery stays inside the flight.** A seller advertising subscriptions MUST NOT
-deliver on a buy outside its flight, so every delivered impression falls in an owed
+**Delivery stays inside the flight.** A seller advertising subscriptions, or with an
+active account-level billing configuration for the account, MUST NOT deliver on a buy
+outside its flight, so every delivered impression falls in an owed
 period. To deliver past the stop time, including a make-good under `makegood_policy`
 remedy `additional_delivery`, it first extends `end_time` on the buy, before that
 delivery starts, so the added periods are still unresolved and become owed. A canceled
@@ -743,7 +744,11 @@ to the incoming schedule's first boundary, whose obligation carries `stub: true`
 the example above, a billing feed owes a stub from 05:00Z to 08:00Z, then regular
 new-timezone days from 08:00Z. A stub is an ordinary obligation otherwise: it is due
 at its end plus the offering's `delivery_sla`, and receipts and consumer statuses key
-on its exact period. Pacing and analytics feeds leave the stretch unowed.
+on its exact period. Pacing and analytics feeds leave the stretch unowed. The same
+rule, and the delivery-within-flight rule, apply to an account-level billing
+configuration from [`sync_accounts`](/docs/accounts/tasks/sync_accounts): a new
+generation or an account timezone change hands its billing over as a cutover, with a
+stub when E isn't an incoming boundary.
 
 - **New version.** A new `subscription_version` gets its own `accepted_at`, which is T.
   Scope changes count, so adding an account starts a new version. For an account in
