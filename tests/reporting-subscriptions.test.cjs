@@ -112,7 +112,7 @@ test('selector requires stable attributes and closes match and dimensions', () =
 
 test('billing subscriptions are official and receipt-reconciled', () => {
   const v = validate('/schemas/core/reporting-subscription.json');
-  const billing = { ...allAccounts, selector: { feed_purpose: 'billing', period_duration: 'P1M', required_finality: 'official' }, reconciliation_mode: 'consumer_receipt' };
+  const billing = { ...allAccounts, selector: { feed_purpose: 'billing', period_duration: 'P1M', required_finality: 'official', dimensions: ['package'] }, reconciliation_mode: 'consumer_receipt' };
   assert.ok(v(billing), JSON.stringify(v.errors));
   assert.equal(v({ ...billing, reconciliation_mode: 'delivery_only' }), false, 'billing without receipts');
   assert.equal(v({ ...billing, selector: { ...billing.selector, required_finality: 'snapshot' } }), false, 'billing snapshots');
@@ -143,13 +143,13 @@ test('lost authority is reported in the caller\'s own subscription state', () =>
   const state = validate('/schemas/core/reporting-subscription-state.json');
   const current = { subscription_id: 'analytics-daily', subscription_version: 1, state: 'active', accepted_at: '2026-11-01T00:00:00Z', configuration: allAccounts };
   const revoked = { account_id: 'acc_7', unauthorized_at: '2026-11-20T09:00:00Z', last_owed_period_end: '2026-11-20T05:00:00Z', withheld_period_count: 1, withheld_reporting_obligation_ids: ['obl_1'] };
-  assert.ok(state({ ...current, accounts_unauthorized: [revoked] }), JSON.stringify(state.errors));
+  assert.ok(state({ ...current, accounts_unauthorized: [revoked], accounts_unauthorized_count: 1 }), JSON.stringify(state.errors));
   const { withheld_period_count: _w, ...noCount } = revoked;
-  assert.equal(state({ ...current, accounts_unauthorized: [noCount] }), false, 'withheld_period_count required');
-  assert.equal(state({ ...current, accounts_unauthorized: [{ ...revoked, covered: [] }] }), false, 'no current account data');
+  assert.equal(state({ ...current, accounts_unauthorized: [noCount], accounts_unauthorized_count: 1 }), false, 'withheld_period_count required');
+  assert.equal(state({ ...current, accounts_unauthorized: [{ ...revoked, covered: [] }], accounts_unauthorized_count: 1 }), false, 'no current account data');
   const caps = read('core/reporting-delivery-capabilities.json').properties.subscriptions.properties.backfill_on_regrant.description;
   assert.match(caps, /no gap is recorded/);
-  assert.ok(state({ ...current, prior_versions: [{ subscription_version: 1, accepted_at: '2026-10-01T00:00:00Z', superseded_at: '2026-11-01T00:00:00Z' }] }), JSON.stringify(state.errors));
+  assert.ok(state({ ...current, prior_versions: [{ subscription_version: 1, accepted_at: '2026-10-01T00:00:00Z', superseded_at: '2026-11-01T00:00:00Z' }], prior_versions_count: 1 }), JSON.stringify(state.errors));
 });
 
 test('revocation refuses receipts and statuses; winding down uses a reduced grant', () => {
@@ -325,7 +325,7 @@ test('match exact is the default with dimensions and resolves only an equal brea
   assert.deepEqual(match.enum, ['exact', 'finest', 'all']);
   assert.equal(match.default, undefined, 'the default depends on dimensions, so it is described, not declared');
   assert.match(match.description, /Defaults to exact when dimensions is present and finest when it is absent/);
-  assert.match(match.description, /Billing subscriptions SHOULD use exact/);
+  assert.match(match.description, /Billing subscriptions MUST use exact with dimensions/);
 
   const offerings = [
     { offering_id: 'pkg', dimensions: ['package'] },
@@ -368,7 +368,7 @@ test('replace_account_configs ends only the caller\'s own configs, where the sub
 
 test('scope versions, operator filter, alignment, and path safety', () => {
   const schema = read('core/reporting-subscription.json');
-  assert.match(schema.properties.subscription_version.description, /scope, exclude_account_ids, or operator_domains change/);
+  assert.match(schema.properties.subscription_version.description, /the scope kind \(all_authorized_accounts or account_ids\), or operator_domains change/);
   const v = validate('/schemas/core/reporting-subscription.json');
   assert.ok(v({ ...allAccounts, operator_domains: ['pinnacle-media.example'] }), JSON.stringify(v.errors));
   assert.equal(v({ ...allAccounts, operator_domains: ['Not A Domain'] }), false, 'operator domains are lowercase domains');
@@ -397,10 +397,12 @@ test('coverage readback: per-package exceptions, timezone cutovers, discoverable
 
   const state = validate('/schemas/core/reporting-subscription-state.json');
   const current = { subscription_id: 'analytics-daily', subscription_version: 2, state: 'active', accepted_at: '2026-11-01T00:00:00Z', configuration: allAccounts };
-  assert.ok(state({ ...current, accounts_with_exceptions: [{ account_id: 'acc_1', reasons: ['capacity', 'offering_unsupported'] }] }), JSON.stringify(state.errors));
-  assert.equal(state({ ...current, accounts_with_exceptions: [{ account_id: 'acc_1', reasons: [] }] }), false, 'reasons required');
+  assert.ok(state({ ...current, accounts_with_exceptions: [{ account_id: 'acc_1', reasons: ['capacity', 'offering_unsupported'] }], accounts_with_exceptions_count: 1 }), JSON.stringify(state.errors));
+  assert.equal(state({ ...current, accounts_with_exceptions: [{ account_id: 'acc_1', reasons: [] }], accounts_with_exceptions_count: 1 }), false, 'reasons required');
   const prior = Array.from({ length: 40 }, (_, i) => ({ subscription_version: i + 1, accepted_at: '2026-10-01T00:00:00Z', superseded_at: '2026-10-02T00:00:00Z' }));
-  assert.ok(state({ ...current, prior_versions: prior }), 'prior_versions is not capped at 16');
+  assert.equal(state({ ...current, prior_versions: prior, prior_versions_count: 40 }), false, 'prior_versions is bounded inline');
+  assert.ok(state({ ...current, prior_versions: prior.slice(0, 16), prior_versions_count: 40 }), 'the 16 newest inline, the rest paged');
+  assert.equal(state({ ...current, prior_versions: prior.slice(0, 1) }), false, 'a listed prior_versions needs its count');
   assert.match(read('core/reporting-subscription-state.json').properties.accounts_unauthorized.description, /fresh coverage start from authorized_at with no gap claimed/);
 });
 
@@ -587,7 +589,7 @@ test('cutovers never double count and leave at most a sub-period stretch when bo
 });
 
 test('readback exception reasons stay in sync with the coverage enum', () => {
-  const state = read('core/reporting-subscription-state.json').properties.accounts_with_exceptions.items.properties.reasons.items.enum;
+  const state = read('core/reporting-subscription-state.json').definitions.ReportingSubscriptionAccountExceptions.properties.reasons.items.enum;
   const coverage = read('core/reporting-subscription-coverage.json').definitions.ReportingSubscriptionExclusionReason.enum;
   assert.deepEqual(state, coverage);
 });
@@ -627,7 +629,9 @@ test('readback lists inactive intervals; coverage entries can be per offering', 
 });
 
 test('prior_versions carry the configuration each version had', () => {
-  const item = read('core/reporting-subscription-state.json').properties.prior_versions.items;
+  const state = read('core/reporting-subscription-state.json');
+  assert.equal(state.properties.prior_versions.items.$ref, '#/definitions/ReportingSubscriptionPriorVersion');
+  const item = state.definitions.ReportingSubscriptionPriorVersion;
   assert.equal(item.properties.configuration.$ref, '/schemas/core/reporting-subscription.json');
   assert.match(item.properties.configuration.description, /Sellers MUST include it/);
 });
@@ -756,4 +760,128 @@ test('account-level billing configurations follow the stub and delivery-within-f
   assert.match(rule, /MUST NOT deliver on a buy in that account outside the buy's flight/);
   assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].delivery_within_flight, /or holding an active billing generation of an account-level reporting_delivery_configs entry/);
   assert.match(read('core/reporting-obligation.json').properties.stub.description, /or an account-level billing configuration/);
+});
+
+// Determinism and scale (3.3.0-beta.3).
+// Reference admission: sticky, ordered by (authorized_at, account_id byte order), accounts without buys count.
+function admit(admitted, candidates, max) {
+  const inCoverage = new Set(candidates.map(c => c.account_id));
+  const kept = admitted.filter(id => inCoverage.has(id));
+  const order = [...candidates].sort((a, b) => Date.parse(a.authorized_at) - Date.parse(b.authorized_at) || Buffer.compare(Buffer.from(a.account_id), Buffer.from(b.account_id)));
+  for (const c of order) if (kept.length < max && !kept.includes(c.account_id)) kept.push(c.account_id);
+  return kept;
+}
+
+test('max_accounts admission is sticky and ordered by authorized_at then account_id', () => {
+  const rule = read('core/reporting-subscription.json')['x-adcp-validation'].admission;
+  assert.match(rule, /whether or not they have covered buys/);
+  assert.match(rule, /ordered by coverage start, which for this purpose is the account's authorization\.authorized_at, then by account_id in byte order/);
+  assert.match(rule, /never displaced by a candidate that sorts before it/);
+  assert.match(rule, /a principal's subscriptions with the same scope and limit admit the same accounts/);
+  assert.match(read('core/reporting-delivery-capabilities.json').properties.subscriptions.properties.max_accounts.description, /accounts without covered buys count/);
+
+  const t1 = [{ account_id: 'acc_b', authorized_at: '2026-11-01T00:00:00Z' }, { account_id: 'acc_a', authorized_at: '2026-11-01T00:00:00Z' }, { account_id: 'acc_c', authorized_at: '2026-10-01T00:00:00Z' }];
+  const first = admit([], t1, 2);
+  assert.deepEqual(first, ['acc_c', 'acc_a'], 'earliest grant first, ties by byte order');
+  const t2 = [...t1, { account_id: 'acc_0', authorized_at: '2026-09-01T00:00:00Z' }];
+  assert.deepEqual(admit(first, t2, 2), ['acc_c', 'acc_a'], 'an earlier-sorting newcomer waits');
+  assert.deepEqual(admit(first, t2.filter(c => c.account_id !== 'acc_a'), 2), ['acc_c', 'acc_0'], 'a freed place goes to the next in order');
+  assert.ok(Buffer.compare(Buffer.from('acc_B'), Buffer.from('acc_a')) < 0, 'byte order, not locale order');
+});
+
+test('resolution is per package and fixed per (buy, version) until withdrawal; billing uses exact with dimensions', () => {
+  const v = read('core/reporting-subscription.json')['x-adcp-validation'];
+  assert.match(v.selection, /Resolution is per package/);
+  assert.match(v.selection, /stays fixed for that \(buy, version\) until the resolved offering is withdrawn/);
+  assert.match(v.selection, /An offering the seller adds later, or a product catalog change, never re-resolves it/);
+  assert.match(v.selection, /The buy owes the union: every offering any of its packages resolves/);
+
+  const vs = validate('/schemas/core/reporting-subscription.json');
+  const billing = { ...allAccounts, selector: { feed_purpose: 'billing', period_duration: 'P1M', required_finality: 'official', dimensions: ['package'] }, reconciliation_mode: 'consumer_receipt' };
+  assert.ok(vs(billing), JSON.stringify(vs.errors));
+  assert.ok(vs({ ...billing, selector: { ...billing.selector, match: 'exact' } }), JSON.stringify(vs.errors));
+  const { dimensions: _d, ...noDims } = billing.selector;
+  assert.equal(vs({ ...billing, selector: noDims }), false, 'billing needs dimensions');
+  assert.equal(vs({ ...billing, selector: { ...billing.selector, match: 'finest' } }), false, 'billing needs exact');
+  assert.equal(vs({ ...billing, selector: { ...billing.selector, match: 'all' } }), false, 'billing needs exact');
+});
+
+test('destination_overrides route accounts inside one subscription', () => {
+  const vs = validate('/schemas/core/reporting-subscription.json');
+  const overrides = [
+    { account_ids: ['acc_nova'], destination_id: 'nova-bucket', path_template: 'nova/{period_start}' },
+    { operator_domains: ['pinnacle-media.example'], destination_id: 'pinnacle-bucket', path_template: 'p/{account_id}/{period_start}' },
+  ];
+  assert.ok(vs({ ...allAccounts, destination_overrides: overrides }), JSON.stringify(vs.errors));
+  assert.equal(vs({ ...allAccounts, destination_overrides: [{ destination_id: 'x' }] }), false, 'an override selects accounts');
+  assert.equal(vs({ ...allAccounts, destination_overrides: [{ account_ids: ['a'], operator_domains: ['b.example'], destination_id: 'x' }] }), false, 'one selector per entry');
+  assert.equal(vs({ ...allAccounts, destination_overrides: [{ operator_domains: ['b.example'], destination_id: 'x', path_template: 'flat/{period_start}' }] }), false, 'a multi-account override partitions by {account_id}');
+  const { destination: _d, ...apiOnly } = allAccounts;
+  assert.equal(vs({ ...apiOnly, destination_overrides: overrides }), false, 'overrides need a destination');
+  const schema = read('core/reporting-subscription.json');
+  assert.equal(schema.properties.destination_overrides['x-status'], 'experimental');
+  assert.match(schema.properties.destination_overrides.description, /same pattern and transport as destination/);
+  assert.match(schema.properties.subscription_version.description, /destination \(including destination_overrides\)/);
+  assert.match(read('protocol/sync-principal-request.json')['x-adcp-validation'].reporting_subscriptions, /destination_overrides destination_id is absent/);
+});
+
+test('membership edits apply in place as excluded_by_buyer intervals', () => {
+  const schema = read('core/reporting-subscription.json');
+  assert.match(schema.properties.subscription_version.description, /Membership edits, adding or removing account_ids and changing exclude_account_ids, apply in place/);
+  assert.match(schema['x-adcp-validation'].membership, /never as a new version/);
+  assert.match(schema['x-adcp-validation'].membership, /from the first boundary at or after accepted_at until the first boundary at or after T/);
+  assert.match(read('core/reporting-subscription-coverage.json').definitions.ReportingSubscriptionExclusionReason.description, /removing it from account_ids/);
+  assert.match(read('media-buy/get-reporting-status-response.json').properties.subscription_coverage.description, /removed from in place/);
+  const v = validate('/schemas/core/reporting-subscription-coverage.json');
+  // Removed at T = Nov 10 12:00Z on a UTC-5 daily feed: the entry opens at E = Nov 11 05:00Z.
+  assert.ok(v({ subscription_id: 's', subscription_version: 3, status: 'excluded', excluded: [{ reason: 'excluded_by_buyer', from: '2026-11-11T05:00:00Z' }] }), JSON.stringify(v.errors));
+  // Added at T = Nov 10 12:00Z to a version accepted Nov 1: closed entry for the time before it joined.
+  assert.ok(v({ subscription_id: 's', subscription_version: 3, status: 'active', excluded: [{ reason: 'excluded_by_buyer', from: '2026-11-01T05:00:00Z', until: '2026-11-11T05:00:00Z' }] }), JSON.stringify(v.errors));
+});
+
+test('several pacing or analytics subscriptions per purpose; one billing', () => {
+  const precedence = read('core/reporting-subscription.json')['x-adcp-validation'].precedence;
+  assert.match(precedence, /billing allows one active subscription per account/);
+  assert.match(precedence, /Pacing and analytics allow several/);
+  assert.match(precedence, /the one with the lowest subscription_id in byte order owes it/);
+  assert.match(read('protocol/sync-principal-request.json')['x-adcp-validation'].reporting_subscriptions, /two active billing subscriptions at the same scope level/);
+  const v = validate('/schemas/core/reporting-subscription-coverage.json');
+  const entry = { media_buy_id: 'mb_1', reason: 'overridden', from: '2026-11-03T05:00:00Z', package_ids: ['pkg_1'], overridden_by: { subscription_id: 'pacing-a' } };
+  assert.ok(v({ subscription_id: 'pacing-b', subscription_version: 1, status: 'active', excluded: [entry] }), JSON.stringify(v.errors));
+});
+
+test('per-account state is bounded inline and paged through get_principal', () => {
+  const req = validate('/schemas/protocol/get-principal-request.json');
+  assert.ok(req({ reporting_subscription_page: { subscription_id: 'analytics-daily', list: 'accounts_with_exceptions', pagination: { max_results: 100 } } }), JSON.stringify(req.errors));
+  assert.equal(req({ reporting_subscription_page: { subscription_id: 'analytics-daily', list: 'accounts' } }), false, 'closed list names');
+  const schema = read('protocol/get-principal-request.json');
+  for (const keyword of ['oneOf', 'anyOf', 'if', 'not']) assert.equal(schema.properties[keyword], undefined);
+
+  const res = validate('/schemas/protocol/get-principal-response.json');
+  const current = { kind: 'current', principal_id: 'pr_1', principal_kind: 'buyer_agent', configuration_version: 'v1', configuration: { reporting_subscriptions: [] } };
+  const page = { subscription_id: 'analytics-daily', list: 'accounts_unauthorized', accounts_unauthorized: [{ account_id: 'acc_7', unauthorized_at: '2026-11-20T09:00:00Z', withheld_period_count: 0 }], pagination: { has_more: false } };
+  assert.ok(res({ status: 'completed', result: { ...current, reporting_subscription_page: page } }), JSON.stringify(res.errors));
+  assert.equal(res({ status: 'completed', result: { ...current, reporting_subscription_page: { ...page, list: 'prior_versions' } } }), false, 'the property named by list is present');
+
+  const state = read('core/reporting-subscription-state.json');
+  assert.equal(state.properties.prior_versions.maxItems, 16);
+  assert.equal(state.properties.accounts_with_exceptions.maxItems, 1000);
+  assert.deepEqual(state.dependencies, { prior_versions: ['prior_versions_count'], accounts_with_exceptions: ['accounts_with_exceptions_count'], accounts_unauthorized: ['accounts_unauthorized_count'] });
+});
+
+test('a partial grant keeps coverage and refuses the missing reconciliation task with SCOPE_INSUFFICIENT', () => {
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].coverage, /Coverage depends on that task alone: a partial grant without sync_reporting_receipts or sync_reporting_status keeps the account covered/);
+  for (const [file, task] of [['media-buy/sync-reporting-receipts-request.json', 'sync_reporting_receipts'], ['media-buy/sync-reporting-status-request.json', 'sync_reporting_status']]) {
+    const rule = read(file)['x-adcp-validation'].after_revocation;
+    assert.match(rule, new RegExp(`A partial grant is not a loss of authority: when the caller's authorization for the account lists get_reporting_status but not ${task}`), file);
+    assert.match(rule, /SCOPE_INSUFFICIENT, never the unknown-identifier shape/, file);
+  }
+  assert.match(read('media-buy/sync-reporting-receipts-request.json')['x-adcp-validation'].after_revocation, /the pending receipt is the buyer's, never a seller delay/);
+});
+
+test('managed-delivery row schemas declare account_id for subscription delivery', () => {
+  const rule = read('core/reporting-delivery-offering.json')['x-adcp-validation'].subscription_rows;
+  assert.match(rule, /declares account_id as a required string property, and whose primary_keys include account_id/);
+  assert.match(rule, /Core offerings, delivered per account through the API transports, are exempt/);
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].destination, /whose primary_keys include account_id/);
 });

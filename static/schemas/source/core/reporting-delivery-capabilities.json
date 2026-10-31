@@ -49,7 +49,7 @@
         "max_accounts": {
           "type": "integer",
           "minimum": 1,
-          "description": "Most accounts one subscription serves. Beyond it the seller excludes accounts with reason capacity, deterministically, and reports which. Absent means no declared limit."
+          "description": "Most accounts one subscription serves. Admission is sticky and ordered by the account's authorization.authorized_at, then account_id in byte order, the same for every subscription of a principal, and accounts without covered buys count (reporting-subscription.json admission). Waiting accounts carry a capacity exception. Absent means no declared limit."
         },
         "backfill_on_regrant": {
           "type": "boolean",

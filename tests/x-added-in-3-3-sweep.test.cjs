@@ -129,6 +129,7 @@ const PROPERTIES_3_3 = [
   ['core/media-buy.json', ['properties', 'cancellation_effective_at']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'cancellation_effective_at']],
   ['core/reporting-obligation.json', ['properties', 'stub']],
+  ['protocol/get-principal-response.json', ['properties', 'result', 'oneOf', 0, 'properties', 'reporting_subscription_page']],
   ['core/reporting-delivery-offering.json', ['properties', 'standard_dimensions']],
   ['core/reporting-delivery-offering.json', ['properties', 'unmapped_dimensions']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']],

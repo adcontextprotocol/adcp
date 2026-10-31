@@ -12,7 +12,7 @@
       "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["offering_unsupported", "capacity", "overridden", "excluded_by_buyer", "action_required"],
-      "description": "offering_unsupported: no offering matching the selector is available on this account's or buy's products. capacity: refused for a seller limit such as max_accounts. overridden: the caller's own sync_accounts delivery config, or its own account_ids subscription replacing an all-accounts one, takes this account and feed_purpose. excluded_by_buyer: listed in exclude_account_ids. action_required: the account is not served until pending_action completes; account-level only."
+      "description": "offering_unsupported: no offering matching the selector is available on this account's or buy's products. capacity: refused for a seller limit such as max_accounts. overridden: the caller's own sync_accounts delivery config, or its own account_ids subscription replacing an all-accounts one, takes this account and feed_purpose; or, at buy level with package_ids, another of its pacing or analytics subscriptions with a lower subscription_id resolved the same offering for those packages. excluded_by_buyer: the buyer took the account out, in place, by listing it in exclude_account_ids or removing it from account_ids, or it joined account_ids after the version's accepted_at (reporting-subscription.json membership). action_required: the account is not served until pending_action completes; account-level only."
     }
   },
   "properties": {
@@ -50,7 +50,7 @@
             "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingPackageId" },
             "minItems": 1,
             "uniqueItems": true,
-            "description": "With media_buy_id and reason offering_unsupported: only these packages lack a matching offering. The buy stays covered for its other packages; these are removed from its coverage rather than its periods."
+            "description": "With media_buy_id and reason offering_unsupported: only these packages lack a matching offering. With reason overridden: only these packages resolved an offering another subscription of the caller owes. The buy stays covered for its other packages; these are removed from its coverage rather than its periods."
           },
           "overridden_by": {
             "type": "object",
@@ -77,7 +77,7 @@
           },
           {
             "if": { "required": ["package_ids"] },
-            "then": { "required": ["media_buy_id"], "properties": { "reason": { "const": "offering_unsupported" } } }
+            "then": { "required": ["media_buy_id"], "properties": { "reason": { "enum": ["offering_unsupported", "overridden"] } } }
           }
         ],
         "additionalProperties": false

@@ -751,7 +751,9 @@ generation or an account timezone change hands its billing over as a cutover, wi
 stub when E isn't an incoming boundary.
 
 - **New version.** A new `subscription_version` gets its own `accepted_at`, which is T.
-  Scope changes count, so adding an account starts a new version. For an account in
+  Changing the scope kind or `operator_domains` counts. Membership edits don't: adding
+  or removing `account_ids`, or changing `exclude_account_ids`, applies in place and is
+  recorded per account as an `excluded_by_buyer` interval (see below). For an account in
   both versions the old version is outgoing and the new one incoming. An account that
   is new in the new version follows the ordinary start rule. Earlier versions stay
   in the readback as `prior_versions`, each with its `accepted_at`, `superseded_at`,
@@ -764,9 +766,17 @@ stub when E isn't an incoming boundary.
   incoming. When `replace_account_configs` ends a configuration, the configuration is
   outgoing and the subscription incoming. The `overridden` exception's `from` and
   `until` are the E instants.
-- **Resolution change.** If the seller adds an offering that changes the resolution, the
-  old offering is outgoing and the new one incoming, so the change never touches a
-  period already started.
+- **Resolution change.** Resolution is per package and fixed for a (buy, version) pair
+  from when the pair first resolves, at the later of the version's `accepted_at` and the
+  buy's `confirmed_at`. A newly added offering never changes it. Within a version only
+  withdrawal of the resolved offering does: the package re-resolves, the old offering
+  is outgoing and the new one incoming, so the change never touches a period already
+  started.
+- **Membership edit.** Removing an account from `account_ids`, or adding it to
+  `exclude_account_ids`, opens an `excluded_by_buyer` entry from E. Adding it back
+  closes the entry at the first boundary at or after the edit. An account that joins
+  after `accepted_at` with no open entry gets a closed entry from the version's first
+  boundary to the first boundary at or after it joined, so earlier periods aren't owed.
 - **Different offerings on each side.** With `match: all`, or a resolution change, the
   outgoing and incoming sides can resolve different offerings. E is then computed per
   incoming offering: an offering present on both sides hands off at the end of its own
@@ -797,7 +807,8 @@ Summary and periods responses add `subscription_coverage[]`: one entry per calle
 subscription whose scope includes the account. A deactivated subscription stays listed
 only while it still has retained obligations for the account, with `status: "inactive"`
 and its `deactivated_at`: periods that started before then stay owed, and no later ones
-are. After that its entry is omitted. The revision view never carries it. When the account's
+are. After that its entry is omitted. A subscription the account was removed from in place
+stays listed, `status: "excluded"`, while its `excluded_by_buyer` entry is retained. The revision view never carries it. When the account's
 offerings have different period boundaries, `excluded[]`, `gaps[]`, and
 `timezone_cutovers[]` entries can carry an `offering_id`, each with that offering's
 cutover instants; an entry without one applies to every offering.
@@ -836,8 +847,8 @@ lack a matching offering: the buy stays covered for its other packages.
 |---|---|
 | `offering_unsupported` | No offering matching the selector is available on this account's products, or this buy's. |
 | `capacity` | The seller refused for a limit such as `subscriptions.max_accounts`. |
-| `overridden` | The principal's own more specific registration takes this account and feed purpose; `overridden_by` names that `delivery_config_id` or `subscription_id`, never another principal's. |
-| `excluded_by_buyer` | The account is in the subscription's `exclude_account_ids`. |
+| `overridden` | The principal's own more specific registration takes this account and feed purpose; `overridden_by` names that `delivery_config_id` or `subscription_id`, never another principal's. At buy level with `package_ids`, another of its pacing or analytics subscriptions with a lower `subscription_id` resolved the same offering for those packages. |
+| `excluded_by_buyer` | The buyer took the account out in place, through `exclude_account_ids` or by removing it from `account_ids`, or the account joined `account_ids` after `accepted_at`. |
 | `action_required` | The seller serves the account only after `pending_action` completes. |
 
 `status` summarizes what is in effect now. It is `action_required` (with
@@ -878,6 +889,13 @@ data.
   account is unavailable to every task, including
   [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
   and [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
+- **Partial grants.** Coverage depends only on `get_reporting_status` in
+  `allowed_tasks`. A grant that lists it but not `sync_reporting_receipts` or
+  `sync_reporting_status` keeps the account covered and readable. The seller refuses
+  the missing task for that account with
+  [`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient),
+  not as an unknown identifier. A billing obligation the buyer can't receipt stays
+  receipt-pending, and the missing receipt is the buyer's, never a seller delay.
 - **Winding down instead of revoking.** A seller that wants a buyer to finish
   reconciling after a relationship ends, for example after an agency change, keeps
   a reduced grant instead of revoking: an `authorization` whose `allowed_tasks`
