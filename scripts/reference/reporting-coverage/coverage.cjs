@@ -314,7 +314,9 @@ function authorized(chains, period, backfill) {
 function flightOf(values, label) {
   const start = instant(values.start_time, `${label}.start_time`);
   const stops = [instant(values.end_time, `${label}.end_time`)];
-  if (values.canceled_at !== undefined) stops.push(instant(values.canceled_at, `${label}.canceled_at`));
+  // coverage: "the cancellation's delivery stop (cancellation_effective_at, or cancellation.canceled_at when it is absent)"
+  if (values.cancellation_effective_at !== undefined) stops.push(instant(values.cancellation_effective_at, `${label}.cancellation_effective_at`));
+  else if (values.canceled_at !== undefined) stops.push(instant(values.canceled_at, `${label}.canceled_at`));
   if (values.completed_at !== undefined) stops.push(instant(values.completed_at, `${label}.completed_at`));
   return { start, stop: Math.min(...stops) };
 }

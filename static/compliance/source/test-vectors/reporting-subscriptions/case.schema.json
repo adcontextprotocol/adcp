@@ -353,6 +353,10 @@
                 "$ref": "#/definitions/instant",
                 "description": "cancellation.canceled_at."
               },
+              "cancellation_effective_at": {
+                "$ref": "#/definitions/instant",
+                "description": "cancellation_effective_at, the delivery stop under the cancellation. When present it, not canceled_at, is the cancellation's term in the stop time."
+              },
               "completed_at": {
                 "$ref": "#/definitions/instant"
               },
