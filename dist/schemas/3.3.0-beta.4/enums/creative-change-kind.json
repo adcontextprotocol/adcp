@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/creative-change-kind.json",
+  "title": "Creative Change Kind",
+  "description": "A kind of change a sync_creatives item makes to a creative, classified from the item's diff against the version of the creative that serves. Buyer and seller compute the same classification, so a buyer can tell before it sends a change which live-update rules apply. Fields excluded from canonical revision content (name, tags, status, weight, placement_refs, placement_ids) are not a change kind.",
+  "type": "string",
+  "enum": [
+    "click_through",
+    "trackers",
+    "asset_content",
+    "format"
+  ],
+  "enumDescriptions": {
+    "click_through": "A url asset with url_type clickthrough was added, removed, or changed.",
+    "trackers": "A url asset with url_type tracker_pixel or tracker_script, or a pixel_tracker, vast_tracker, or daast_tracker asset, was added, removed, or changed.",
+    "asset_content": "Any other asset was added, removed, or changed, including markup or VAST that embeds clicks or trackers; or localization or representation_selection changed.",
+    "format": "format_id, format_kind, or format_option_ref changed."
+  },
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}
