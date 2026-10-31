@@ -278,7 +278,7 @@ test('the buyer computes the first owed period from accepted_at, authorized_at, 
 
 test('a buy stops being owed at the earliest of end_time, canceled_at, and completed_at, as resolved per period', () => {
   const rule = read('core/reporting-subscription.json')['x-adcp-validation'].coverage;
-  assert.match(rule, /the earliest of end_time, cancellation\.canceled_at, and completed_at/);
+  assert.match(rule, /the earliest of end_time, the cancellation's delivery stop \(cancellation_effective_at, or cancellation\.canceled_at when it is absent\), and completed_at/);
   assert.match(rule, /evaluated at each period's scope_resolved_at/);
   assert.match(rule, /an elapsed period never becomes owed retroactively/);
   assert.match(rule, /so is the period containing the stop time/);
@@ -670,4 +670,90 @@ test('period arithmetic and cutover edge cases are pinned (3.3.0-beta.3)', () =>
   assert.ok(schedule({ ...cycle, period_duration: 'P1M' }), JSON.stringify(schedule.errors));
   for (const d of ['PT1H', 'P0DT6H']) assert.equal(schedule({ ...cycle, period_duration: d }), false, `billing_cycle ${d}`);
   assert.ok(schedule({ alignment: 'account_timezone', period_duration: 'PT1H', delivery_sla: 'PT1H' }), 'sub-daily stays valid for local alignments');
+});
+
+// Billing cutovers (3.3.0-beta.3): a billing feed owes the sub-period stretch as a stub.
+function billingCutover(T, outOffsetH, inOffsetH, days = 2) {
+  const c = cutover(T, outOffsetH, inOffsetH, days);
+  const stub = c.uncovered > 0 ? { start: c.E, end: c.firstIn } : null;
+  return { ...c, stub };
+}
+
+test('a billing cutover owes the unaligned stretch as one stub, so billable time is contiguous', () => {
+  const rule = read('core/reporting-subscription.json')['x-adcp-validation'].cutover;
+  assert.match(rule, /When the incoming side is a billing feed, that stretch is owed instead, as one stub period \[E, first incoming boundary after E\)/);
+  assert.match(rule, /A pacing or analytics stretch stays unowed/);
+  assert.match(rule, /account timezone changes, including on billing offerings/);
+
+  // Account moves from UTC-5 to UTC-8 at 12:00Z on a daily billing feed.
+  const moved = billingCutover('2026-11-10T12:00:00Z', -5, -8);
+  assert.deepEqual(moved.stub, { start: '2026-11-11T05:00:00.000Z', end: '2026-11-11T08:00:00.000Z' });
+  // Owed billing time: outgoing periods end at E, the stub covers [E, firstIn), incoming periods start at firstIn.
+  assert.equal(Date.parse(moved.stub.start), Date.parse(moved.E), 'the stub starts where the outgoing schedule ends');
+  assert.equal(Date.parse(moved.stub.end), moved.incoming[0], 'the first regular incoming period starts where the stub ends');
+  // Moving west to east leaves a longer stretch, still shorter than one period, still owed.
+  const east = billingCutover('2026-11-10T12:00:00Z', -8, -5);
+  assert.equal(east.stub.start, '2026-11-11T08:00:00.000Z');
+  assert.equal(east.stub.end, '2026-11-12T05:00:00.000Z');
+  assert.ok(Date.parse(east.stub.end) - Date.parse(east.stub.start) < DAY);
+  assert.equal(billingCutover('2026-11-10T12:00:00Z', -5, -5).stub, null, 'shared boundaries need no stub');
+
+  const coverage = read('core/reporting-subscription-coverage.json').properties.timezone_cutovers.description;
+  assert.match(coverage, /except on a billing offering, where it is owed as one stub period/);
+  assert.match(read('core/reporting-schedule.json')['x-adcp-validation'].period_generation, /The one owed period off this grid is a billing cutover stub/);
+  assert.match(read('core/reporting-consumer-status.json')['x-adcp-validation'].expected_period, /the exact period of a billing stub obligation/);
+});
+
+test('obligations flag a billing stub, and only billing obligations can be stubs', () => {
+  const field = read('core/reporting-obligation.json').properties.stub;
+  assert.equal(field.const, true);
+  assert.equal(field['x-status'], 'experimental');
+  assert.equal(field['x-added-in'], '3.3.0');
+  assert.ok(!read('core/reporting-obligation.json').required.includes('stub'));
+  const v = validate('/schemas/core/reporting-obligation.json');
+  const rule = read('core/reporting-obligation.json').allOf.find(r => r.if && JSON.stringify(r.if) === JSON.stringify({ required: ['stub'] }));
+  assert.ok(rule, 'stub is constrained to billing');
+  assert.deepEqual(rule.then, { properties: { feed_purpose: { const: 'billing' } } });
+  assert.ok(v, 'obligation schema compiles');
+});
+
+test('the stop time is the cancellation delivery stop, not when the cancellation was recorded', () => {
+  for (const [file, keys] of [
+    ['core/media-buy.json', ['properties', 'cancellation_effective_at']],
+    ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'cancellation_effective_at']],
+  ]) {
+    const field = keys.reduce((o, k) => o[k], read(file));
+    assert.equal(field.format, 'date-time', file);
+    assert.equal(field['x-status'], 'experimental', file);
+    assert.equal(field['x-added-in'], '3.3.0', file);
+    assert.match(field.description, /MUST populate it/, file);
+    assert.match(field.description, /Buyers use cancellation\.canceled_at when it is absent/, file);
+  }
+  assert.deepEqual(read('core/media-buy.json').properties.cancellation.required, ['canceled_at', 'canceled_by'], 'cancellation stays unchanged');
+  assert.equal(read('core/media-buy.json').properties.cancellation.properties.effective_at, undefined, 'the closed cancellation object gains nothing');
+
+  // Canceled on Nov 3 at 15:00Z with a notice period: delivery stops Nov 5 at 12:00Z.
+  const base = { acceptedAt: '2026-11-01T00:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', startTime: '2026-11-02T14:20:00Z', endTime: '2026-11-10T05:00:00Z', offsetHours: -5 };
+  const recorded = expectedPeriods({ ...base, canceledAt: '2026-11-03T15:00:00Z' });
+  const effective = expectedPeriods({ ...base, canceledAt: '2026-11-05T12:00:00Z' });
+  assert.equal(recorded.length, 2, 'stopping at the recorded instant would drop the notice period');
+  assert.deepEqual(effective, ['2026-11-02T05:00:00.000Z', '2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-05T05:00:00.000Z'], 'delivery through the notice period stays owed');
+});
+
+test('a seller never delivers outside the flight, make-goods included', () => {
+  const rule = read('core/reporting-subscription.json')['x-adcp-validation'].delivery_within_flight;
+  assert.match(rule, /MUST NOT deliver on a buy outside its flight/);
+  assert.match(rule, /makegood_policy additional_delivery/);
+  assert.match(rule, /first extends end_time, recorded on the buy and advancing its revision before that delivery starts/);
+  assert.match(rule, /A canceled or completed buy is not extended/);
+  assert.match(read('enums/makegood-remedy.json').enumDescriptions.additional_delivery, /delivery_within_flight/);
+});
+
+test('account-level billing configurations follow the stub and delivery-within-flight rules', () => {
+  const rule = read('core/reporting-delivery-config.json')['x-adcp-validation'].billing_continuity;
+  assert.match(rule, /the handoff is a cutover as reporting-subscription\.json cutover defines it/);
+  assert.match(rule, /owed as one stub obligation whose stub is true/);
+  assert.match(rule, /MUST NOT deliver on a buy in that account outside the buy's flight/);
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].delivery_within_flight, /or holding an active billing generation of an account-level reporting_delivery_configs entry/);
+  assert.match(read('core/reporting-obligation.json').properties.stub.description, /or an account-level billing configuration/);
 });

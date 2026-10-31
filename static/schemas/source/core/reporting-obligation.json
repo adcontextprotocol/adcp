@@ -44,6 +44,13 @@
     "feed_purpose": {
       "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
     },
+    "stub": {
+      "type": "boolean",
+      "const": true,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Present, and true, only on a billing stub: the stretch [E, first incoming boundary after E) that a cutover hands to a billing feed whose schedule has no boundary at E (reporting-subscription.json cutover), on a billing reporting subscription or an account-level billing configuration (reporting-delivery-config.json billing_continuity). Its period starts off the schedule's grid and is shorter than one schedule period. It is otherwise an ordinary obligation: expected_at is period.end plus schedule.delivery_sla, and revisions, receipts, and consumer status key on its exact period. Absent on every other obligation."
+    },
     "reporting_profile": {
       "type": "string",
       "minLength": 1,
@@ -219,6 +226,10 @@
     "issues"
   ],
   "allOf": [
+    {
+      "if": { "required": ["stub"] },
+      "then": { "properties": { "feed_purpose": { "const": "billing" } } }
+    },
     {
       "if": { "properties": { "consumer_status_count": { "minimum": 1 } }, "required": ["consumer_status_count"] },
       "then": { "required": ["current_consumer_status_id"] },

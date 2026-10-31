@@ -194,6 +194,13 @@
             },
             "additionalProperties": false
           },
+          "cancellation_effective_at": {
+            "type": "string",
+            "format": "date-time",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Present only when status is canceled: when delivery stops under the cancellation. It equals cancellation.canceled_at when delivery stops at once, and is later when the seller keeps delivering through a notice period (the product's cancellation_policy.notice_period) or to the end of a committed unit. Not later than end_time. Sellers advertising media_buy.reporting_subscriptions MUST populate it, because subscription reporting is owed through the period containing this instant, not the instant the cancellation was recorded. Buyers use cancellation.canceled_at when it is absent."
+          },
           "completed_at": {
             "type": "string",
             "format": "date-time",

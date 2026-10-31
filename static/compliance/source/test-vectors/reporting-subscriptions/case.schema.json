@@ -353,6 +353,10 @@
                 "$ref": "#/definitions/instant",
                 "description": "cancellation.canceled_at."
               },
+              "cancellation_effective_at": {
+                "$ref": "#/definitions/instant",
+                "description": "cancellation_effective_at, the delivery stop under the cancellation. When present it, not canceled_at, is the cancellation's term in the stop time."
+              },
               "completed_at": {
                 "$ref": "#/definitions/instant"
               },
@@ -494,6 +498,11 @@
         },
         "period_end": {
           "$ref": "#/definitions/z_instant"
+        },
+        "stub": {
+          "type": "boolean",
+          "const": true,
+          "description": "Present, and true, on a billing cutover stub: the stretch [E, first incoming boundary) a cutover hands to a billing feed whose schedule has no boundary at E (core/reporting-obligation.json stub)."
         }
       },
       "additionalProperties": false
@@ -520,6 +529,11 @@
         },
         "period_end": {
           "$ref": "#/definitions/z_instant"
+        },
+        "stub": {
+          "type": "boolean",
+          "const": true,
+          "description": "Present, and true, on a billing cutover stub: the stretch [E, first incoming boundary) a cutover hands to a billing feed whose schedule has no boundary at E (core/reporting-obligation.json stub)."
         },
         "media_buy_ids": {
           "type": "array",

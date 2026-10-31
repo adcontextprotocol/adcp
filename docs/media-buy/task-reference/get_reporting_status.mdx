@@ -680,9 +680,12 @@ periods that:
 2. end after the buy's `confirmed_at`, when the seller committed to it, so the period
    in which the buy is confirmed is owed in full; and
 3. overlap the buy's flight, from its `start_time` to its **stop time**. The stop time
-   is the earliest of `end_time`, `cancellation.canceled_at`, and `completed_at`,
+   is the earliest of `end_time`, the cancellation's delivery stop, and `completed_at`,
    which sellers advertising `media_buy.reporting_subscriptions` populate for every
-   completed buy.
+   completed buy. The delivery stop is `cancellation_effective_at`, the instant
+   delivery stops under the cancellation. It is later than `canceled_at`, the instant
+   the cancellation was recorded, when the seller delivers through a notice period.
+   Those sellers populate it; buyers use `canceled_at` when it is absent.
 
 Periods are never clipped. A subscription accepted or authorized mid-period begins at
 the next boundary, as for an account-level configuration. A buy confirmed mid-period is
@@ -690,7 +693,7 @@ owed that period in full, as the account-level ledger includes any buy confirmed
 period's end: a buy confirmed at 10:00 on its start day owes that whole day on a daily
 feed, and one confirmed on November 12 owes all of November on a monthly billing feed.
 The period containing the stop time is also owed in full.
-A buy canceled mid-period owes that period and none after it, and a buy canceled before its flight starts owes nothing. A buy confirmed on
+A buy whose cancellation stops delivery mid-period owes that period and none after it, and a buy whose delivery stops before its flight starts owes nothing. A buy confirmed on
 November 1 with a December 1 start owes nothing before December 1. Every buy has an
 `end_time`, so there is no open-ended case.
 
@@ -700,8 +703,17 @@ obligation is the period end, matching how each obligation freezes its `media_bu
 only periods not yet resolved. Reinstating or extending a buy after a period has
 elapsed never makes that period owed retroactively.
 
+**Delivery stays inside the flight.** A seller advertising subscriptions, or with an
+active account-level billing configuration for the account, MUST NOT deliver on a buy
+outside its flight, so every delivered impression falls in an owed
+period. To deliver past the stop time, including a make-good under `makegood_policy`
+remedy `additional_delivery`, it first extends `end_time` on the buy, before that
+delivery starts, so the added periods are still unresolved and become owed. A canceled
+or completed buy isn't extended: its make-good goes on a subsequent buy in the same
+account.
+
 So a buyer derives every expected period from its own visible buys (`confirmed_at`,
-`start_time`, `end_time`, `canceled_at`, `completed_at`), the subscription's
+`start_time`, `end_time`, `cancellation_effective_at`, `completed_at`), the subscription's
 `accepted_at`, the account's `authorized_at`, and the offering's published schedule.
 It then subtracts the exceptions below. A period that remains is owed: a missing
 report there is the seller's to explain.
@@ -718,11 +730,25 @@ outgoing schedule to an incoming one follows one rule:
 
 No period is owed twice. When the incoming schedule has no boundary at E, the stretch
 from E to its first boundary after E is owed under neither schedule. That stretch is
-shorter than one incoming period, and empty when the two schedules share boundaries:
-same alignment and timezone, with one period length dividing the other. For example,
+shorter than one incoming period. It is empty exactly when E is also an incoming
+boundary: always when the schedules share alignment, timezone, and anchor and the
+incoming period length divides the outgoing one (daily to hourly), but not when moving
+to a coarser schedule (hourly to daily), where E can fall mid-day. For example,
 moving a daily feed from UTC-5 to UTC-8 at 12:00Z ends the old schedule at 05:00Z the
 next day; the first owed new-timezone day starts at 08:00Z, and 05:00Z to 08:00Z is not
 owed.
+
+**Billing stubs.** A billing feed can't leave billable hours unreported, so when the
+incoming side is a billing feed the stretch is owed instead: one **stub** period from E
+to the incoming schedule's first boundary, whose obligation carries `stub: true`. In
+the example above, a billing feed owes a stub from 05:00Z to 08:00Z, then regular
+new-timezone days from 08:00Z. A stub is an ordinary obligation otherwise: it is due
+at its end plus the offering's `delivery_sla`, and receipts and consumer statuses key
+on its exact period. Pacing and analytics feeds leave the stretch unowed. The same
+rule, and the delivery-within-flight rule, apply to an account-level billing
+configuration from [`sync_accounts`](/docs/accounts/tasks/sync_accounts): a new
+generation or an account timezone change hands its billing over as a cutover, with a
+stub when E isn't an incoming boundary.
 
 - **New version.** A new `subscription_version` gets its own `accepted_at`, which is T.
   Scope changes count, so adding an account starts a new version. For an account in
@@ -756,7 +782,8 @@ owed.
 - **Account timezone change.** For account-timezone periods, the old timezone's
   schedule is outgoing. The E instant is listed as `effective_at` in
   `timezone_cutovers[]`, with the old zone as `previous_timezone`, and `list_accounts`
-  shows the new `timezone` and `revision`. When the account's offerings have different
+  shows the new `timezone` and `revision`. On a billing offering the stretch from
+  `effective_at` to the first new-timezone boundary is a stub. When the account's offerings have different
   boundaries, the seller lists one entry per `offering_id`.
 
 Each obligation names the `offering_id` and `report_definition_id` it used, and that

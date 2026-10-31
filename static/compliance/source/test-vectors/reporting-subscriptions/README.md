@@ -96,8 +96,8 @@ For each case:
 
 | Group | What the cases check |
 |---|---|
-| Start bound and flights | The later of `accepted_at` and `authorized_at`, the confirmation period owed in full, the stop-time period owed in full, cancellation, completion, empty flights, late confirmation, and flight values as of each period end (extension and reinstatement never add an elapsed period). |
-| Cutovers | New versions on aligned and misaligned schedules, a version change on a boundary, two cutovers inside one period, deactivation, reactivation (including after a schedule change made while inactive), and resolution changes. Compound changes at one instant: a version change with a timezone change, a reactivation, a deactivation, or a revocation. |
+| Start bound and flights | The later of `accepted_at` and `authorized_at`, the confirmation period owed in full, the stop-time period owed in full, cancellation (including delivery through a notice period to `cancellation_effective_at`), completion, empty flights, late confirmation, and flight values as of each period end (extension and reinstatement never add an elapsed period). |
+| Cutovers | New versions on aligned and misaligned schedules, a billing cutover that owes a stub period, a version change on a boundary, two cutovers inside one period, deactivation, reactivation (including after a schedule change made while inactive), and resolution changes. Compound changes at one instant: a version change with a timezone change, a reactivation, a deactivation, or a revocation. |
 | Authority | Revocation, re-grant with and without `backfill_on_regrant`, expired `accounts_unauthorized` entries, a re-grant exactly at the retention limit, and chains of three and four grants. |
 | Exceptions | `excluded[]` and `gaps[]` remove periods by start, offering-scoped entries (including `max_accounts` capacity on offerings with different boundaries), `package_ids` entries, precedence. |
 | Selection | `exact`, `finest`, and `all`, byte-order ties, unmapped and unknown dimensions, finality, purpose, duration, destination, product eligibility, per-product resolution, and `period_timezone` matching. |

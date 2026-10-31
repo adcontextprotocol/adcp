@@ -10,7 +10,7 @@
     "invoice_adjustment"
   ],
   "enumDescriptions": {
-    "additional_delivery": "Seller extends or adds impressions to compensate for the shortfall. Delivery is like-for-like on the same campaign or a subsequent campaign within the same account.",
+    "additional_delivery": "Seller extends or adds impressions to compensate for the shortfall. Delivery is like-for-like on the same campaign or a subsequent campaign within the same account. A seller advertising media_buy.reporting_subscriptions delivers it only inside a buy's flight: it extends end_time before delivering past the buy's stop time, or delivers on a subsequent buy (reporting-subscription.json delivery_within_flight).",
     "credit": "Seller issues a credit toward future media buys on the same account.",
     "invoice_adjustment": "Seller reduces the invoice for the current media buy to reflect actual delivered value."
   }
