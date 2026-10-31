@@ -1,0 +1,130 @@
+{
+  "framework_id": "eu_ai_act",
+  "x-status": "experimental",
+  "version": "0.1.0",
+  "name": "EU AI Act (Regulation (EU) 2024/1689) — Annex III evidence",
+  "description": "Draft projection of EU AI Act obligations for Annex III high-risk ad-targeting decisions (credit, insurance, recruitment) onto the evidence AdCP campaign governance already produces. Arts. 10, 12, and 14 are provider design obligations: a deployer's governance stack can surface evidence for them but does not discharge them. Art. 26 is deployer-side. Prototype of the framework-mapping registry entry format (#3959): not a legal checklist or conformity assessment, with no CI enforcement or PolicyEntry back-references yet.",
+  "source_url": "https://eur-lex.europa.eu/eli/reg/2024/1689/oj",
+  "source_name": "European Parliament and Council",
+  "jurisdictions": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"],
+  "selector_syntax": "rfc9535_jsonpath",
+  "shared_evidence": [
+    {
+      "evidence_id": "annex_iii_policy",
+      "kind": "policy_evaluated",
+      "policy_id": "eu_ai_act_annex_iii",
+      "description": "Check entries on the plan whose policies_evaluated includes the Annex III registry policy."
+    }
+  ],
+  "applies_when": [
+    { "evidence": "annex_iii_policy", "op": "non_empty" }
+  ],
+  "applies_when_note": "Heuristic only, and it can over-include: eu_ai_act_annex_iii also lists pharmaceutical_advertising, which is not an Annex III category. Annex III classification is the deployer's legal determination.",
+  "requirements": [
+    {
+      "requirement_id": "art_10_data_governance",
+      "framework_section": "Art. 10",
+      "title": "Data and data governance",
+      "requirement_text": "Input data used by a high-risk system is subject to data-governance practices, including examination of data for possible biases and handling of special categories of personal data.",
+      "protocol_scope": "partial",
+      "evidence_sources": [
+        { "evidence_id": "special_category_policy", "kind": "policy_evaluated", "policy_id": "eu_gdpr_special_category_targeting" }
+      ],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "special_category_policy", "op": "non_empty" }
+        ]
+      },
+      "gap_closure": "Restricted-attribute screening is evidenced; dataset provenance, quality, and representativeness are not. Closing this needs the agent self-declaration work (Track 2), not a field on the audit log."
+    },
+    {
+      "requirement_id": "art_10_2_bias_examination",
+      "framework_section": "Art. 10(2)(f)-(g)",
+      "title": "Bias examination and mitigation artifacts",
+      "requirement_text": "Training, validation, and testing data are examined for biases likely to affect health, safety, or fundamental rights, and appropriate measures are taken to detect, prevent, and mitigate them.",
+      "protocol_scope": "out",
+      "evidence_sources": [],
+      "gap_closure": "Bias-testing artifacts come from the provider's model lifecycle and stay out of protocol. A declarative pointer to them could ride on the agent self-declaration work (Track 2)."
+    },
+    {
+      "requirement_id": "art_12_record_keeping",
+      "framework_section": "Art. 12",
+      "title": "Automatic recording of events (governance decision log)",
+      "requirement_text": "A high-risk system technically allows automatic recording of events (logs) over its lifetime so its operation can be traced.",
+      "protocol_scope": "in",
+      "evidence_sources": [
+        { "evidence_id": "check_entries", "kind": "audit_field", "selector": "$.entries[?@.type == 'check']" }
+      ],
+      "classifier": {
+        "satisfied_when": [
+          { "evidence": "check_entries", "op": "non_empty" },
+          { "evidence": "check_entries", "op": "all_have_fields", "value": ["timestamp", "caller", "verdict", "plan_hash"] }
+        ],
+        "partial_when": [
+          { "evidence": "check_entries", "op": "non_empty" }
+        ]
+      },
+      "gap_closure": "Evidences the governance agent's decision log, not the logs of the underlying system. Retention is evidenced separately by Art. 26(6). Requires include_entries: true on get_plan_audit_logs."
+    },
+    {
+      "requirement_id": "art_14_human_oversight",
+      "framework_section": "Art. 14",
+      "title": "Human oversight",
+      "requirement_text": "A high-risk system is designed so natural persons can effectively oversee it, including intervening on or overriding its output.",
+      "protocol_scope": "in",
+      "evidence_sources": [
+        { "evidence_id": "plan_human_review", "kind": "plan_field", "selector": "$.human_review_required" },
+        { "evidence_id": "check_entries", "kind": "audit_field", "selector": "$.entries[?@.type == 'check']" },
+        { "evidence_id": "human_reviewed_count", "kind": "audit_field", "selector": "$.summary.statuses.human_reviewed" },
+        { "evidence_id": "escalations", "kind": "audit_field", "selector": "$.summary.escalations[*]" }
+      ],
+      "classifier": {
+        "satisfied_when": [
+          { "evidence": "plan_human_review", "op": "eq", "value": true },
+          { "evidence": "check_entries", "op": "all_have_fields", "value": ["reviewed_by", "reviewed_at"] },
+          { "evidence": "check_entries", "op": "all_field_eq", "field": "mode", "value": "enforce" },
+          { "evidence": "escalations", "op": "all_have_fields", "value": ["resolution", "resolved_at"] }
+        ],
+        "partial_when": [
+          { "evidence": "human_reviewed_count", "op": "gt", "value": 0 }
+        ]
+      },
+      "gap_closure": "A plan with human_review_required: true obliges the governance agent to escalate every action, so every check entry must show a reviewer and run in enforce mode; one unreviewed or audit-mode check drops the row to partial. human_review_required lives on the plan, not on get_plan_audit_logs, so it needs the hash-matched plan supplement. Reviewer competence and the review workflow are outside the protocol."
+    },
+    {
+      "requirement_id": "art_14_4_automation_bias_monitoring",
+      "framework_section": "Art. 14(4)(b)",
+      "title": "Awareness of automation bias",
+      "requirement_text": "Persons assigned to oversight remain aware of the tendency to over-rely on the system's output.",
+      "protocol_scope": "partial",
+      "evidence_sources": [
+        { "evidence_id": "escalation_rate", "kind": "audit_field", "selector": "$.summary.drift_metrics.escalation_rate" },
+        { "evidence_id": "escalation_rate_min", "kind": "audit_field", "selector": "$.summary.drift_metrics.thresholds.escalation_rate_min" }
+      ],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "escalation_rate", "op": "present" },
+          { "evidence": "escalation_rate_min", "op": "present" },
+          { "evidence": "escalation_rate", "op": "gte", "value_ref": "escalation_rate_min" }
+        ]
+      },
+      "gap_closure": "The escalation rate is a proxy for whether overseers stay engaged, not evidence of their awareness of automation bias, and the threshold is operator-configured (a minimum of 0 passes trivially). The row stays partial; going further needs a human-factors attestation outside the protocol."
+    },
+    {
+      "requirement_id": "art_26_6_log_retention",
+      "framework_section": "Art. 26(6)",
+      "title": "Deployer log retention",
+      "requirement_text": "Deployers keep the logs automatically generated by the high-risk system, to the extent under their control, for a period appropriate to the intended purpose and at least six months.",
+      "protocol_scope": "partial",
+      "evidence_sources": [
+        { "evidence_id": "retention_statement", "kind": "operator_attestation", "selector": "$.retention_statement" }
+      ],
+      "classifier": {
+        "partial_when": [
+          { "evidence": "retention_statement", "op": "present" }
+        ]
+      },
+      "gap_closure": "get_plan_audit_logs carries no retention period or chain-of-custody guarantee. A retention statement supplied by the exporting operator is an assertion, not protocol evidence, so this row cannot exceed partial until a governance agent can state retention on the wire."
+    }
+  ]
+}
