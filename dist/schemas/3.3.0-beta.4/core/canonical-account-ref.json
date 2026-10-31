@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/canonical-account-ref.json",
+  "title": "Canonical Account Reference",
+  "description": "Compact advertiser-account reference for canonical 3.2 tools. Uses either the seller/storefront account_id, which is the account's identity, or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator; its optional brand.countries, operator_unit.id, currency, timezone, and sandbox fields are account attributes that act as lookup filters, matched as in account-ref.json. A natural key resolves only when exactly one of the caller's accounts matches; otherwise the seller returns ACCOUNT_AMBIGUOUS. brand.countries does not target delivery; operator_unit.name is display metadata and never filters.",
+  "type": "object",
+  "anyOf": [
+    {
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "account"
+        }
+      },
+      "required": [
+        "account_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "brand": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/brand-key.json"
+        },
+        "operator": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "operator_unit": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/operator-unit.json",
+          "description": "Optional operator-owned business unit, agency seat, or platform account. An account attribute: id acts as a lookup filter; name is display metadata and never filters."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 transaction currency when the advertiser object is currency-bound. An account attribute that acts as a lookup filter; all media buys on the account use it. Omit for per-media-buy currency selection."
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Account timezone. An account attribute that acts as a lookup filter, sent only for buyer-selected account_fixed accounts."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "brand",
+        "operator"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "account_id": "acc_nova_nl"
+    },
+    {
+      "brand": {
+        "domain": "nova-athletics.example",
+        "countries": [
+          "NL"
+        ]
+      },
+      "operator": "nova-athletics.example",
+      "operator_unit": {
+        "id": "234284238",
+        "name": "Nova EMEA"
+      },
+      "currency": "EUR",
+      "timezone": "Europe/Amsterdam"
+    }
+  ]
+}
