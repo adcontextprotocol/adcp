@@ -323,6 +323,9 @@ REQUIRED_EXACT_CURRENT_SALES=(
   # Experimental 3.3 account requests: exact counts pin the training agent's
   # deterministic branches (separate-account refusal, matched, buyer sign-up).
   "account_requests:36:3"
+  # Experimental 3.3 reporting subscriptions over the sandbox clock.
+  "media_buy_seller/reporting_subscription_coverage:36:1"
+  "media_buy_seller/reporting_subscription_capacity:16:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"

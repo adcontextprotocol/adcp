@@ -1,0 +1,1035 @@
+id: media_buy_seller/reporting_subscription_coverage
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Reporting subscription coverage over time"
+category: media_buy_seller
+summary: "Registers a principal-level reporting subscription and drives it over a sandbox clock: several periods, a version cutover onto misaligned boundaries, deactivation and reactivation, a wind-down grant, revocation and re-grant within and after retention, and an account timezone change across a DST transition. At each read the owed periods computed from wire state must equal the seller's obligations."
+track: media_buy
+
+requires_all_capabilities:
+  - path: "media_buy.reporting_delivery.subscriptions.supported"
+    equals: true
+  - path: "experimental_features"
+    contains: "media_buy.reporting_subscriptions"
+  - path: "compliance_testing.scenarios"
+    contains: "reporting_subscription_probe"
+
+requires:
+  - controller
+
+required_tools:
+  - sync_principal
+  - get_principal
+  - get_reporting_status
+  - sync_accounts
+  - list_accounts
+  - comply_test_controller
+
+narrative: |
+  Experimental (`media_buy.reporting_subscriptions`). A reporting subscription
+  is registered once on the principal and follows the caller's account
+  authority. A buyer computes the periods it is owed from the wire alone: the
+  subscription versions and `inactive_intervals` on `get_principal`, the
+  account's `authorization` and `timezone` on `list_accounts`, the buys on
+  `get_media_buys`, the offerings on `get_adcp_capabilities`, and the
+  exceptions in `get_reporting_status` `subscription_coverage`. Each read
+  checks that set against the seller's obligations with `owed_periods_match`.
+
+  The storyboard first moves the sandbox clock to a fixed instant, so every
+  timestamp after it is deterministic. It opens one sandbox account in
+  New York time and seeds one confirmed buy, then:
+
+  - registers an hourly UTC pacing subscription and cuts it over, mid-day, to
+    a daily account-timezone analytics version. The hourly period running at
+    the cutover is owed in full; the stretch from its end to the next New York
+    midnight is owed under neither version.
+  - deactivates and reactivates it. Periods that started before deactivation
+    stay owed; nothing that starts while it is inactive is.
+  - reduces the grant to the reconciliation tasks. The account stays covered,
+    and a dropped task is refused with SCOPE_INSUFFICIENT.
+  - revokes the grant. The account is unknown to get_reporting_status and is
+    listed under accounts_unauthorized. A re-grant within status_retention_days
+    continues the chain (authorized_at stays, regranted_at records it); without
+    backfill the interval becomes a gap.
+  - revokes again past the retention window. The later re-grant is a fresh
+    start with a new authorized_at and no gap.
+  - changes the account's timezone across the November DST transition. Periods
+    switch at the first old-timezone boundary at or after the change, listed in
+    timezone_cutovers.
+
+  `owed_periods_match` comes from the @adcp/sdk runner. Until a released
+  runner implements it, it grades not_applicable; the steps also carry
+  deterministic checks for this storyboard's fixed inputs.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - reporting_subscriptions
+  examples:
+    - "Sellers that deliver reporting to a buyer's principal-level subscription"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller advertises media_buy.reporting_delivery.subscriptions, the
+    media_buy.reporting_subscriptions feature, and the reporting_subscription_probe
+    controller scenario, and offers an hourly UTC pacing feed and a daily
+    account-timezone analytics feed (API-delivered) on its products. The
+    sandbox clock starts before 2030-06-01, so the account's grant begins
+    before the subscription's first version. A per-run operator unit keeps the
+    account fresh. No test kit is declared, so the runner sends the brand the
+    steps author.
+
+phases:
+  - id: setup
+    title: "Fix the clock, open an account, and find a product"
+    steps:
+      - id: read_subscription_capability
+        title: "Read the subscription capability"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: coverage_unit_id
+            generate: uuid_v4
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_value
+            path: "media_buy.reporting_delivery.subscriptions.supported"
+            value: true
+            description: "Seller advertises principal-level reporting subscriptions"
+          - check: field_contains
+            path: "adcp.principal.supported_sections[*]"
+            value: "reporting_subscriptions"
+            description: "sync_principal accepts the reporting_subscriptions section"
+          - check: field_contains
+            path: "media_buy.reporting_delivery.configuration_tasks[*]"
+            value: "sync_principal"
+            description: "Reporting registrations are accepted through sync_principal"
+          - check: field_present
+            path: "media_buy.reporting_delivery.offerings[0].standard_dimensions"
+            description: "Offerings publish their breakdown in the standard vocabulary"
+
+      - id: open_coverage_account
+        title: "Open a sandbox account in New York time"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_coverage_open_account"
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "$context.coverage_unit_id"
+                name: "Coverage run"
+              timezone: "America/New_York"
+              billing: "operator"
+              sandbox: true
+        context_outputs:
+          - name: coverage_account_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: response_schema
+            description: "Provisioning response matches the canonical schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The sandbox account resolves without review"
+
+      - id: fix_clock
+        title: "Move the sandbox clock to the storyboard's start"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-01T00:00:00Z"
+        validations:
+          - check: field_value
+            path: "simulated.simulated_now"
+            value: "2030-06-01T00:00:00.000Z"
+            description: "The sandbox clock is at the storyboard's start"
+
+      - id: read_coverage_account
+        title: "Read the account's authorization"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+        context_outputs:
+          - name: coverage_authorized_at
+            path: "accounts[0].authorization.authorized_at"
+        validations:
+          - check: response_schema
+            description: "Account readback matches list-accounts-response.json"
+          - check: field_present
+            path: "accounts[0].authorization.authorized_at"
+            description: "The caller's grant says when it began"
+          - check: field_value
+            path: "accounts[0].timezone"
+            value: "America/New_York"
+            description: "The account keeps the timezone the buyer selected"
+
+      - id: find_product
+        title: "Find a product to buy"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory for an outdoor gear campaign"
+          account:
+            account_id: "$context.coverage_account_id"
+        context_outputs:
+          - name: coverage_product_id
+            path: "products[0].product_id"
+        validations:
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product is offered"
+
+  - id: hourly_then_daily
+    title: "Several periods across a version cutover onto misaligned boundaries"
+    depends_on: [setup]
+    steps:
+      - id: subscribe_hourly
+        title: "Subscribe to hourly UTC pacing"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_coverage_subscribe_hourly"
+          configuration:
+            reporting_subscriptions:
+              - subscription_id: "coverage-feed"
+                subscription_version: 1
+                active: true
+                scope:
+                  account_ids: ["$context.coverage_account_id"]
+                selector:
+                  feed_purpose: "pacing"
+                  period_duration: "PT1H"
+                  required_finality: "snapshot"
+                reconciliation_mode: "delivery_only"
+        validations:
+          - check: response_schema
+            description: "The applied response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].accepted_at"
+            value: "2030-06-01T00:00:00.000Z"
+            description: "Version 1 is accepted on the sandbox clock"
+
+      - id: seed_confirmed_buy
+        title: "Seed a confirmed buy for June 2 to June 20"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "seed_media_buy"
+          params:
+            media_buy_id: "mb_coverage_june"
+            fixture:
+              status: "active"
+              start_time: "2030-06-02T04:00:00Z"
+              end_time: "2030-06-20T04:00:00Z"
+              packages:
+                - package_id: "pkg_coverage_june"
+                  product_id: "$context.coverage_product_id"
+                  budget: 5000
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller seeds the buy"
+
+      - id: advance_to_cutover
+        title: "Advance to mid-day on June 2"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-02T15:30:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: cut_over_to_daily
+        title: "Cut over to daily account-timezone analytics"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_coverage_cut_over"
+          configuration:
+            reporting_subscriptions:
+              - subscription_id: "coverage-feed"
+                subscription_version: 2
+                active: true
+                scope:
+                  account_ids: ["$context.coverage_account_id"]
+                selector:
+                  feed_purpose: "analytics"
+                  period_duration: "P1D"
+                  required_finality: "official"
+                  alignment: "account_timezone"
+                reconciliation_mode: "delivery_only"
+        validations:
+          - check: response_schema
+            description: "The applied response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].prior_versions[0].superseded_at"
+            value: "2030-06-02T15:30:00.000Z"
+            description: "Version 1 is superseded at the cutover"
+          - check: field_present
+            path: "result.configuration.reporting_subscriptions[0].prior_versions[0].configuration.selector"
+            description: "The prior version keeps its configuration, so a buyer can recompute it"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].prior_versions_count"
+            value: 1
+            description: "The prior version is counted"
+
+      - id: advance_past_cutover
+        title: "Advance to June 6"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-06T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: read_cutover_periods
+        title: "Read the owed periods across the cutover"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "periods"
+          delivery_config_ids: ["coverage-feed"]
+          pagination:
+            max_results: 100
+        validations:
+          - check: response_schema
+            description: "The periods view matches get-reporting-status-response.json"
+          - check: owed_periods_match
+            subscription_id: "coverage-feed"
+            description: "The owed set computed from wire state equals the seller's obligations"
+            severity: advisory
+            expires_after_version: "17.0.0"
+          - check: array_length
+            path: "periods"
+            value: 15
+            description: "Twelve hourly periods through the one running at the cutover, then June 3 to 5 in New York"
+          - check: field_value
+            path: "periods[11].period.end"
+            value: "2030-06-02T16:00:00Z"
+            description: "The hourly period running at the cutover is owed in full"
+          - check: field_value
+            path: "periods[12].period.start"
+            value: "2030-06-03T04:00:00Z"
+            description: "16:00Z to New York midnight is owed under neither version"
+          - check: field_value
+            path: "subscription_coverage[0].status"
+            value: "active"
+            description: "The subscription covers the account"
+
+  - id: deactivate_and_reactivate
+    title: "Deactivate and reactivate"
+    depends_on: [hourly_then_daily]
+    steps:
+      - id: deactivate
+        title: "Omit the subscription to deactivate it"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_coverage_deactivate"
+          configuration:
+            reporting_subscriptions: []
+        validations:
+          - check: response_schema
+            description: "The applied response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].state"
+            value: "inactive"
+            description: "The omitted subscription stays readable as inactive"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].deactivated_at"
+            value: "2030-06-06T12:00:00.000Z"
+            description: "Deactivation is a cutover at this instant"
+
+      - id: advance_while_inactive
+        title: "Advance two days while inactive"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-08T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: reactivate
+        title: "Reactivate version 2"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_coverage_reactivate"
+          configuration:
+            reporting_subscriptions:
+              - subscription_id: "coverage-feed"
+                subscription_version: 2
+                active: true
+                scope:
+                  account_ids: ["$context.coverage_account_id"]
+                selector:
+                  feed_purpose: "analytics"
+                  period_duration: "P1D"
+                  required_finality: "official"
+                  alignment: "account_timezone"
+                reconciliation_mode: "delivery_only"
+        validations:
+          - check: response_schema
+            description: "The applied response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].inactive_intervals[0].reactivated_at"
+            value: "2030-06-08T12:00:00.000Z"
+            description: "The readback lists the inactive interval"
+
+      - id: advance_after_reactivation
+        title: "Advance to June 10"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-10T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: read_reactivated_periods
+        title: "Read the owed periods across the inactive interval"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "periods"
+          delivery_config_ids: ["coverage-feed"]
+          pagination:
+            max_results: 100
+        validations:
+          - check: response_schema
+            description: "The periods view matches get-reporting-status-response.json"
+          - check: owed_periods_match
+            subscription_id: "coverage-feed"
+            description: "The owed set computed from wire state equals the seller's obligations"
+            severity: advisory
+            expires_after_version: "17.0.0"
+          - check: array_length
+            path: "periods"
+            value: 17
+            description: "June 6 started before deactivation and stays owed; June 7 and 8 started while inactive; June 9 is owed after reactivation"
+          - check: field_value
+            path: "periods[15].period.start"
+            value: "2030-06-06T04:00:00Z"
+            description: "The period running at deactivation is owed in full"
+          - check: field_value
+            path: "periods[16].period.start"
+            value: "2030-06-09T04:00:00Z"
+            description: "Coverage resumes at the first boundary after reactivation"
+
+  - id: wind_down_grant
+    title: "A wind-down grant keeps the account covered"
+    depends_on: [deactivate_and_reactivate]
+    steps:
+      - id: reduce_to_reconciliation
+        title: "Reduce the grant to reconciliation tasks"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "reduce_grant"
+            account_id: "$context.coverage_account_id"
+            allowed_tasks: ["get_reporting_status", "sync_reporting_status", "list_accounts"]
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller reduces the grant"
+
+      - id: covered_under_wind_down
+        title: "The account stays readable and covered"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "summary"
+          delivery_config_ids: ["coverage-feed"]
+        validations:
+          - check: response_schema
+            description: "The summary matches get-reporting-status-response.json"
+          - check: field_value
+            path: "subscription_coverage[0].status"
+            value: "active"
+            description: "Coverage depends on get_reporting_status in the grant alone"
+
+      - id: receipts_refused_under_wind_down
+        title: "A task the grant drops is refused, not unknown"
+        task: sync_reporting_receipts
+        schema_ref: "media-buy/sync-reporting-receipts-request.json"
+        response_schema_ref: "media-buy/sync-reporting-receipts-response.json"
+        doc_ref: "/media-buy/task-reference/sync_reporting_receipts"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_coverage_receipt_refused"
+          account:
+            account_id: "$context.coverage_account_id"
+          receipts:
+            - reporting_receipt_id: "rcpt_wind_down_probe_0001"
+              reporting_obligation_id: "obligation_probe"
+              reporting_revision_id: "revision_probe"
+              reporting_materialization_id: "materialization_probe"
+              status: "accepted"
+              verification_profile: "manifest_checksums"
+              observed_row_count: 0
+              observed_control_totals: []
+              observed_at: "2030-06-10T12:00:00Z"
+              observed_manifest_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        validations:
+          - check: error_code
+            value: "SCOPE_INSUFFICIENT"
+            description: "sync_reporting_receipts is outside the reduced grant"
+
+  - id: revoke_and_regrant
+    title: "Revoke, then re-grant within and after retention"
+    depends_on: [wind_down_grant]
+    steps:
+      - id: revoke
+        title: "Revoke the grant"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "revoke_grant"
+            account_id: "$context.coverage_account_id"
+        validations:
+          - check: field_value
+            path: "simulated.unauthorized_at"
+            value: "2030-06-10T12:00:00.000Z"
+            description: "Authority ends on the sandbox clock"
+
+      - id: revoked_is_unknown
+        title: "The revoked account is unknown to get_reporting_status"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "summary"
+        validations:
+          - check: field_value
+            path: "status"
+            value: "failed"
+            description: "The account reads as unknown, like any unauthorized identifier"
+
+      - id: revoked_is_listed
+        title: "The subscription lists the account as unauthorized"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        stateful: false
+        sample_request: {}
+        validations:
+          - check: response_schema
+            description: "The readback matches get-principal-response.json"
+          - check: field_equals_context
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized[0].account_id"
+            context_key: "coverage_account_id"
+            description: "A revoked grant reads differently from a seller that stopped publishing"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized[0].unauthorized_at"
+            value: "2030-06-10T12:00:00.000Z"
+            description: "The entry says when authority ended"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized_count"
+            value: 1
+            description: "The total is present with the list"
+
+      - id: advance_within_retention
+        title: "Advance two days"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-12T13:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: regrant_within_retention
+        title: "Re-grant within status_retention_days"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "regrant"
+            account_id: "$context.coverage_account_id"
+        validations:
+          - check: field_value
+            path: "simulated.chain"
+            value: "continued"
+            description: "The re-grant continues the chain"
+          - check: field_value
+            path: "simulated.regranted_at"
+            value: "2030-06-12T13:00:00.000Z"
+            description: "The re-grant instant is recorded"
+
+      - id: regranted_authorization
+        title: "authorized_at stays at the chain start"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+        validations:
+          - check: field_equals_context
+            path: "accounts[0].authorization.authorized_at"
+            context_key: "coverage_authorized_at"
+            description: "A re-grant within retention keeps authorized_at"
+          - check: field_value
+            path: "accounts[0].authorization.regranted_at"
+            value: "2030-06-12T13:00:00.000Z"
+            description: "regranted_at records the re-grant"
+
+      - id: advance_after_regrant
+        title: "Advance to June 14"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-14T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+  - id: gap_without_backfill
+    title: "Without backfill, the revoked interval is a gap"
+    depends_on: [revoke_and_regrant]
+    requires_capability:
+      path: "media_buy.reporting_delivery.subscriptions.backfill_on_regrant"
+      equals: false
+    steps:
+      - id: read_gap
+        title: "Read the gap the re-grant left"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "periods"
+          delivery_config_ids: ["coverage-feed"]
+          pagination:
+            max_results: 100
+        validations:
+          - check: response_schema
+            description: "The periods view matches get-reporting-status-response.json"
+          - check: owed_periods_match
+            subscription_id: "coverage-feed"
+            description: "The owed set computed from wire state equals the seller's obligations"
+            severity: advisory
+            expires_after_version: "17.0.0"
+          - check: field_value
+            path: "subscription_coverage[0].gaps[0].from"
+            value: "2030-06-10T04:00:00.000Z"
+            description: "The gap starts at the last boundary at or before unauthorized_at"
+          - check: field_value
+            path: "subscription_coverage[0].gaps[0].until"
+            value: "2030-06-13T04:00:00.000Z"
+            description: "The gap ends at the first boundary at or after the re-grant"
+
+  - id: no_gap_with_backfill
+    title: "With backfill, the revoked interval stays owed"
+    depends_on: [revoke_and_regrant]
+    requires_capability:
+      path: "media_buy.reporting_delivery.subscriptions.backfill_on_regrant"
+      equals: true
+    steps:
+      - id: read_backfilled
+        title: "Read the periods across the backfilled interval"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "periods"
+          delivery_config_ids: ["coverage-feed"]
+          pagination:
+            max_results: 100
+        validations:
+          - check: response_schema
+            description: "The periods view matches get-reporting-status-response.json"
+          - check: owed_periods_match
+            subscription_id: "coverage-feed"
+            description: "The owed set computed from wire state equals the seller's obligations"
+            severity: advisory
+            expires_after_version: "17.0.0"
+          - check: field_absent
+            path: "subscription_coverage[0].gaps"
+            description: "With backfill_on_regrant no gap is recorded"
+          - check: field_contains
+            path: "periods[*].period.start"
+            value: "2030-06-11T04:00:00Z"
+            description: "A period inside the revoked interval is owed"
+
+  - id: fresh_chain_after_retention
+    title: "A re-grant after retention is a fresh start"
+    depends_on: [revoke_and_regrant]
+    steps:
+      - id: revoke_again
+        title: "Revoke the grant again"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "revoke_grant"
+            account_id: "$context.coverage_account_id"
+        validations:
+          - check: field_value
+            path: "simulated.unauthorized_at"
+            value: "2030-06-14T12:00:00.000Z"
+            description: "Authority ends again"
+
+      - id: advance_past_retention
+        title: "Advance past status_retention_days"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-10-25T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: regrant_after_retention
+        title: "Re-grant after the retention window"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "regrant"
+            account_id: "$context.coverage_account_id"
+        validations:
+          - check: field_value
+            path: "simulated.chain"
+            value: "new"
+            description: "A re-grant after retention starts a new chain"
+          - check: field_value
+            path: "simulated.authorized_at"
+            value: "2030-10-25T12:00:00.000Z"
+            description: "The new chain starts at the re-grant"
+
+  - id: timezone_change_across_dst
+    title: "An account timezone change across the November DST transition"
+    depends_on: [fresh_chain_after_retention]
+    steps:
+      - id: seed_november_buy
+        title: "Seed a confirmed buy across the DST transition"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "seed_media_buy"
+          params:
+            media_buy_id: "mb_coverage_november"
+            fixture:
+              status: "active"
+              start_time: "2030-10-27T04:00:00Z"
+              end_time: "2030-11-07T08:00:00Z"
+              packages:
+                - package_id: "pkg_coverage_november"
+                  product_id: "$context.coverage_product_id"
+                  budget: 5000
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller seeds the buy"
+
+      - id: advance_to_timezone_change
+        title: "Advance past the fall-back transition"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-11-04T18:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: change_timezone
+        title: "Move the account to Los Angeles time"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "set_account_timezone"
+            account_id: "$context.coverage_account_id"
+            timezone: "America/Los_Angeles"
+        validations:
+          - check: field_value
+            path: "simulated.previous_timezone"
+            value: "America/New_York"
+            description: "The change reports the previous zone"
+
+      - id: read_timezone_account
+        title: "list_accounts shows the new timezone"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+        validations:
+          - check: field_value
+            path: "accounts[0].timezone"
+            value: "America/Los_Angeles"
+            description: "The account shows its new timezone"
+
+      - id: advance_after_timezone_change
+        title: "Advance past the end of the buy"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-11-08T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: read_timezone_periods
+        title: "Read the owed periods across DST and the timezone change"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "periods"
+          delivery_config_ids: ["coverage-feed"]
+          pagination:
+            max_results: 100
+        validations:
+          - check: response_schema
+            description: "The periods view matches get-reporting-status-response.json"
+          - check: owed_periods_match
+            subscription_id: "coverage-feed"
+            description: "The owed set computed from wire state equals the seller's obligations"
+            severity: advisory
+            expires_after_version: "17.0.0"
+          - check: field_value
+            path: "subscription_coverage[0].timezone_cutovers[0].effective_at"
+            value: "2030-11-05T05:00:00.000Z"
+            description: "Periods switch at the first old-timezone boundary at or after the change"
+          - check: field_value
+            path: "subscription_coverage[0].timezone_cutovers[0].previous_timezone"
+            value: "America/New_York"
+            description: "The cutover names the previous zone, so a buyer recovers the old schedule"
+          - check: field_contains
+            path: "periods[*].period.end"
+            value: "2030-11-04T05:00:00Z"
+            description: "The fall-back day, November 3, runs 25 hours and ends at New York midnight in standard time"
+          - check: field_contains
+            path: "periods[*].period.start"
+            value: "2030-11-05T08:00:00Z"
+            description: "Los Angeles days start at Los Angeles midnight; 05:00Z to 08:00Z is owed under neither zone"

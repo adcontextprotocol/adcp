@@ -65,6 +65,7 @@ import {
   isIdentitylessControllerRef,
 } from './v6-account-helpers.js';
 import { callerGrantRevoked } from './account-sandbox.js';
+import { subscriptionReportingView } from './subscription-coverage-service.js';
 import { registerSharedPublicBrandPartitionForAccountId, rehydrateAccountById } from './account-handlers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
@@ -92,7 +93,7 @@ import {
   runWithSessionContext,
   sessionKeyFromArgs,
 } from './state.js';
-import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
+import { supportsAccountSurfaces33, supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -1275,6 +1276,11 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
     const session = await getSession(sessionKeyFromArgs(sessionArgs, 'open', undefined, undefined, principal));
     const reportingProducts = new Map(buildCatalog().map(entry => [entry.product.product_id, entry.product]));
     for (const [productId, product] of session.configuredProducts) reportingProducts.set(productId, product);
+    // 3.3: principal-level reporting subscriptions add their obligations and
+    // exceptions, on the caller's sandbox clock.
+    const subscriptionOverlay = supportsAccountSurfaces33(version.servedVersion)
+      ? await subscriptionReportingView({ mode: 'open', principal, servedAdcpVersion: version.servedVersion }, accountId)
+      : undefined;
     const response = await getReportingStatusForAccountDurably(
       req as unknown as Parameters<typeof getReportingStatusForAccountDurably>[0],
       principal,
@@ -1300,6 +1306,7 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
           };
         }),
       })),
+      subscriptionOverlay,
     );
     return supportsReliableReporting(version.servedVersion)
       ? validateReliableReportingResponse(response)

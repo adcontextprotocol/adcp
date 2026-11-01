@@ -2949,6 +2949,11 @@ export async function findCallerAccount(ctx: TrainingContext, accountId: string)
   return restored;
 }
 
+/** The natural reference an account's session partition and durable binding use. */
+export function callerAccountRef(state: AccountState): AccountRef {
+  return reportingAccountRef(state);
+}
+
 /** The account's wire shape, with its revision and current attributes. */
 export function callerAccountWire(state: AccountState): Record<string, unknown> {
   return { ...accountStateToWire(state), revision: state.revision ?? 1 };

@@ -65,7 +65,12 @@ import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.j
 import { PUBLISHERS } from '../publishers.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
-import { PRINCIPAL_CAPABILITY, SELLER_WEBHOOK_SIGNING_ALGORITHMS } from '../principal.js';
+import { PRINCIPAL_CAPABILITY, PRINCIPAL_SECTIONS_33, SELLER_WEBHOOK_SIGNING_ALGORITHMS } from '../principal.js';
+import {
+  REPORTING_SUBSCRIPTIONS_FEATURE,
+  SUBSCRIPTIONS_CAPABILITY,
+  subscriptionOfferings,
+} from '../reporting-subscriptions.js';
 import { ACCOUNT_REQUESTS_CAPABILITY, ACCOUNT_REQUESTS_FEATURE } from '../account-requests.js';
 import { grantFor, grantPermits, loadSandbox } from '../account-sandbox.js';
 
@@ -1146,6 +1151,9 @@ function projectTenantCapabilities(
         },
       };
       structured.adcp.principal = structuredClone(PRINCIPAL_CAPABILITY);
+      if (supportsAccountSurfaces33(servedVersion)) {
+        (structured.adcp.principal as { supported_sections: string[] }).supported_sections = [...PRINCIPAL_SECTIONS_33];
+      }
       const principalFeatures = Array.isArray(structured.experimental_features)
         ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
         : [];
@@ -1349,6 +1357,18 @@ function projectTenantCapabilities(
         const legacyReporting = structured.media_buy.reporting_delivery as Record<string, unknown>;
         for (const field of ['reliable_reporting_version', 'revision_content_task', 'managed_delivery', 'reconciled_billing', 'receipt_task', 'resource_retention_days', 'authorization_revocation_seconds']) delete legacyReporting[field];
         if (Array.isArray(legacyReporting.offerings)) legacyReporting.offerings = legacyReporting.offerings.filter(offering => !('method' in (offering as Record<string, unknown>)));
+      }
+      const reportingDelivery = structured.media_buy.reporting_delivery as Record<string, unknown> | undefined;
+      if (reportingDelivery && supportsAccountSurfaces33(servedVersion)) {
+        // Experimental 3.3 principal-level reporting subscriptions: register
+        // through sync_principal (or account-level sync_accounts), and every
+        // offering publishes its breakdown in the standard vocabulary.
+        reportingDelivery.configuration_tasks = ['sync_principal', 'sync_accounts'];
+        reportingDelivery.subscriptions = structuredClone(SUBSCRIPTIONS_CAPABILITY);
+        reportingDelivery.offerings = subscriptionOfferings();
+        if (!experimentalFeatures.includes(REPORTING_SUBSCRIPTIONS_FEATURE)) {
+          experimentalFeatures.push(REPORTING_SUBSCRIPTIONS_FEATURE);
+        }
       }
       if (!supportsGetProductsRejected(servedVersion)) {
         delete structured.media_buy.lifecycle_tools;

@@ -661,4 +661,4 @@ function expectedSubscriptionPeriods(input) {
   };
 }
 
-module.exports = { expectedSubscriptionPeriods, CoverageInputError, instant, format, byteCompare };
+module.exports = { expectedSubscriptionPeriods, resolvePackage, CoverageInputError, instant, format, byteCompare };

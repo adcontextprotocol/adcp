@@ -959,6 +959,8 @@ function buildProduct(
         'pacing-hourly-core',
         'analytics-daily-managed',
         'billing-daily-reconciled',
+        // Advertised on the 3.3 wire for principal-level reporting subscriptions.
+        'analytics-daily-account-tz',
       ],
       available_metrics: pub.reportingMetrics as NonNullable<Product['reporting_capabilities']>['available_metrics'],
       date_range_support: 'date_range' as const,

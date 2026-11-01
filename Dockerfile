@@ -188,6 +188,11 @@ COPY --from=builder /app/docs ./docs
 # from the same Mintlify configuration used by the docs site.
 COPY --from=builder /app/docs.json ./docs.json
 
+# The reporting-subscription coverage reference model and its pinned tzdata.
+# The training agent computes subscription obligations with it
+# (server/src/training-agent/reporting-coverage-model.ts).
+COPY --from=builder /app/scripts/reference/reporting-coverage ./scripts/reference/reporting-coverage
+
 # Skill docs read at runtime by Addie's ask_about_adcp_task / call_adcp_task loader.
 COPY --from=builder /app/skills ./skills
 

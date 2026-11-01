@@ -28,6 +28,7 @@ import {
   type SandboxDocument,
 } from './account-sandbox.js';
 import { advanceAccountRequestsForCaller } from './account-requests.js';
+import { timezoneCutoverInstants } from './reporting-subscriptions.js';
 import type { TrainingContext } from './types.js';
 
 type Json = Record<string, unknown>;
@@ -36,21 +37,6 @@ export const REPORTING_SUBSCRIPTION_PROBE = 'reporting_subscription_probe';
 
 const OPERATIONS = ['revoke_grant', 'regrant', 'reduce_grant', 'set_account_timezone', 'advance_time'] as const;
 type Operation = typeof OPERATIONS[number];
-
-/** Per-offering cutover instants for an account timezone change, supplied by
- * the reporting-subscription layer (the offerings whose periods follow the
- * account timezone). */
-export type TimezoneCutoverResolver = (
-  previousTimezone: string,
-  timezone: string,
-  atMs: number,
-) => Array<{ offering_id: string; effective_at: string }>;
-
-let timezoneCutoverResolver: TimezoneCutoverResolver = () => [];
-
-export function setTimezoneCutoverResolver(resolver: TimezoneCutoverResolver): void {
-  timezoneCutoverResolver = resolver;
-}
 
 /** Hook run after `advance_time` moves the clock, so seller-side work due by
  * the new instant happens then (account request reviews, subscription
@@ -159,7 +145,7 @@ export async function handleReportingSubscriptionProbe(
       previous_timezone: repeated?.previous_timezone ?? previous,
       timezone,
       timezone_cutovers: repeated
-        ? timezoneCutoverResolver(repeated.previous_timezone, timezone, Date.parse(nowIso))
+        ? timezoneCutoverInstants(repeated.previous_timezone, timezone, Date.parse(nowIso))
         : [],
     }, `Account ${accountId} already uses ${timezone}`);
   }
@@ -172,6 +158,6 @@ export async function handleReportingSubscriptionProbe(
     account_id: accountId,
     previous_timezone: previous,
     timezone,
-    timezone_cutovers: timezoneCutoverResolver(previous, timezone, Date.parse(nowIso)),
+    timezone_cutovers: timezoneCutoverInstants(previous, timezone, Date.parse(nowIso)),
   }, `Account ${accountId} timezone changed from ${previous} to ${timezone}`);
 }

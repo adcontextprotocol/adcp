@@ -1754,7 +1754,10 @@
 #                query_upstream_traffic scenario — see "upstream_traffic" section below),
 #                "canonical_format_satisfaction" (asserts create_media_buy package
 #                selectors against prior get_products format_options[] context — see
-#                "Canonical format satisfaction" section below))
+#                "Canonical format satisfaction" section below),
+#                "owed_periods_match" (compares the periods a reporting
+#                subscription owes, computed from wire state, with the
+#                seller's obligations — see "Owed periods" section below))
 # severity: string (optional, default "required"): "required" | "advisory".
 #                A "required" validation failure fails the step and contributes
 #                to steps_failed; this is the default. An "advisory" failure
@@ -2022,6 +2025,51 @@
 #     - check: canonical_format_satisfaction
 #       value: false
 #       description: "Bare image selector lacks the dimensions required by the fixed product"
+#
+# Owed periods — use `check: owed_periods_match` (experimental,
+# media_buy.reporting_subscriptions):
+#   Applies only to get_reporting_status steps with view: periods for one
+#   account. The runner computes the periods one reporting subscription owes
+#   that account from wire state alone and compares them with the seller's
+#   obligations for that subscription in the response. Before grading it reads,
+#   as the same authenticated caller:
+#     - get_principal: the subscription's current version (accepted_at,
+#       configuration), prior_versions (paging reporting_subscription_page
+#       when prior_versions_count exceeds the inline list), deactivated_at, and
+#       inactive_intervals;
+#     - list_accounts for the account: authorization.authorized_at and
+#       regranted_at, timezone, and operator;
+#     - get_media_buys for the account: confirmed_at, start_time, end_time,
+#       cancellation_effective_at (or cancellation.canceled_at), completed_at,
+#       flight_history, and packages[].reporting_delivery_offering_ids;
+#     - get_adcp_capabilities: media_buy.reporting_delivery offerings (with
+#       standard_dimensions, available_from, withdrawn_at),
+#       status_retention_days, and subscriptions.backfill_on_regrant;
+#     - and, from this response, the subscription's subscription_coverage
+#       entry (excluded[], gaps[], timezone_cutovers[]).
+#   It applies the coverage rule of core/reporting-subscription.json (the rule
+#   the canonical vectors in test-vectors/reporting-subscriptions/ pin) with
+#   now = ledger_as_of, and keeps periods that start at or after
+#   scope.ledger_retained_from and fall inside the request's period when one is
+#   set. It passes when the owed set equals the response's obligations whose
+#   delivery_config_id is the subscription_id: one obligation per
+#   (delivery_config_version, offering_id, period.start, period.end), with the
+#   same media_buy_ids and stub flag, compared as instants. A response with
+#   pagination.has_more true fails as unverifiable; request a page large enough
+#   for the window. Runners that do not implement the check grade it
+#   not_applicable (forward compatibility); storyboards declare it advisory
+#   until runner support ships.
+#
+#   Fields:
+#     check: owed_periods_match
+#     subscription_id: string     # the subscription whose obligations are compared
+#
+#   Example:
+#     - check: owed_periods_match
+#       subscription_id: "analytics-daily"
+#       severity: advisory
+#       expires_after_version: "17.0.0"
+#       description: "The owed set computed from wire state equals the seller's obligations"
 #
 # Cross-step integrity — use `check: refs_resolve`:
 #   `refs_resolve` asserts every ref in a source set resolves to a member of a

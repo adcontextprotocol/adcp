@@ -33,6 +33,8 @@ requires_scenarios:
   - media_buy_seller/read_filter_behavior
   - media_buy_seller/list_creatives_filter_behavior
   - media_buy_seller/account_change_feed
+  - media_buy_seller/reporting_subscription_coverage
+  - media_buy_seller/reporting_subscription_capacity
   - media_buy_seller/targeting_aware_discovery
   - media_buy_seller/geo_place_targeting
   - media_buy_seller/geo_region_all_values_support
