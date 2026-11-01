@@ -240,11 +240,24 @@ function resolvePackage(pkg, version, offeringsById, at) {
   return including.filter(offering => mapped(offering).size === most).slice(0, 1).map(offering => offering.offering_id);
 }
 
-function inScope(config, account) {
+/**
+ * Whether the version's scope selects the account. Membership edits apply in
+ * place (reporting-subscription.json membership): "A removed or newly excluded
+ * account opens an excluded_by_buyer entry from E, so periods that started
+ * before T stay owed in full", and the readback configuration already shows
+ * the edited membership. So an account the coverage records an
+ * excluded_by_buyer entry for stays in scope as far as account_ids and
+ * exclude_account_ids go, and its excluded_by_buyer windows remove the periods
+ * from E. The scope kind and operator_domains are versioned, so they still apply.
+ */
+function inScope(config, account, membershipEdited) {
   const scope = config.scope;
   let selected;
-  if (scope.account_ids !== undefined) selected = scope.account_ids.includes(account.account_id);
-  else selected = scope.all_authorized_accounts === true && !(config.exclude_account_ids ?? []).includes(account.account_id);
+  if (scope.account_ids !== undefined) selected = membershipEdited || scope.account_ids.includes(account.account_id);
+  else {
+    selected = scope.all_authorized_accounts === true
+      && (membershipEdited || !(config.exclude_account_ids ?? []).includes(account.account_id));
+  }
   if (!selected) return false;
   if (config.operator_domains !== undefined) return config.operator_domains.includes(account.operator);
   return true;
@@ -348,11 +361,15 @@ function overlapsFlight(period, flight) {
 function exceptionWindows(coverage) {
   const windows = [];
   for (const [index, entry] of (coverage?.excluded ?? []).entries()) {
-    // "these are removed from its coverage rather than its periods": package_ids entries remove packages, not periods.
-    if (entry.package_ids !== undefined) continue;
+    // package_ids entries remove packages from the buy's coverage, not periods:
+    // "The buy stays covered for its other packages". When the entry names
+    // every package of the buy that resolves an offering, nothing keeps the buy
+    // covered for that offering, so its periods starting in [from, until) are
+    // removed (see excepted()).
     windows.push({
       mediaBuyId: entry.media_buy_id,
       offeringId: entry.offering_id,
+      ...(entry.package_ids !== undefined && { packageIds: new Set(entry.package_ids) }),
       from: instant(entry.from, `excluded[${index}].from`),
       until: entry.until === undefined ? Infinity : instant(entry.until, `excluded[${index}].until`),
     });
@@ -367,10 +384,17 @@ function exceptionWindows(coverage) {
   return windows;
 }
 
-function excepted(windows, buyId, offeringId, period) {
+/**
+ * resolvingPackages: the buy's packages that resolve the offering on the side
+ * that owns the period. A package_ids window removes the period only when it
+ * names every one of them.
+ */
+function excepted(windows, buyId, offeringId, period, resolvingPackages) {
   return windows.some(window =>
     (window.mediaBuyId === undefined || window.mediaBuyId === buyId) &&
     (window.offeringId === undefined || window.offeringId === offeringId) &&
+    (window.packageIds === undefined
+      || (resolvingPackages.size > 0 && [...resolvingPackages].every(id => window.packageIds.has(id)))) &&
     period.start >= window.from && period.start < window.until);
 }
 
@@ -412,6 +436,20 @@ function normalizeVersions(input) {
   return versions;
 }
 
+/** Version numbers whose span an excluded_by_buyer entry overlaps: membership edits apply in place to them. */
+function membershipEditedVersions(coverage, versions) {
+  const edited = new Set();
+  for (const [index, entry] of (coverage?.excluded ?? []).entries()) {
+    if (entry.reason !== 'excluded_by_buyer') continue;
+    const from = instant(entry.from, `excluded[${index}].from`);
+    const until = entry.until === undefined ? Infinity : instant(entry.until, `excluded[${index}].until`);
+    for (const version of versions) {
+      if (from < version.endsAt && until > version.acceptedAt) edited.add(version.number);
+    }
+  }
+  return edited;
+}
+
 /** inactive_intervals plus a current deactivated_at, as [from, until) windows. */
 function inactiveWindows(input) {
   const windows = (input.inactive_intervals ?? []).map((interval, index) => ({
@@ -436,13 +474,18 @@ function sideAt(t, ctx, buy) {
   const version = ctx.versions.find(candidate => t >= candidate.acceptedAt && t < candidate.endsAt);
   if (version === undefined) return null;
   if (ctx.inactive.some(window => t >= window.from && t < window.until)) return null;
-  if (!inScope(version.config, ctx.input.account)) return null;
+  if (!inScope(version.config, ctx.input.account, ctx.editedVersions.has(version.number))) return null;
   const ids = new Set();
+  const packagesByOffering = new Map();
   for (const pkg of buy.packages) {
     // selection: "Resolution is per package ... A package resolves when its (buy, subscription_version) pair
     // first does, at the later of the version's accepted_at and the buy's confirmed_at ... and the result stays
     // fixed for that (buy, version) until the resolved offering is withdrawn."
-    for (const id of stickyResolution(pkg, version, buy, ctx, t)) ids.add(id);
+    for (const id of stickyResolution(pkg, version, buy, ctx, t)) {
+      ids.add(id);
+      if (!packagesByOffering.has(id)) packagesByOffering.set(id, new Set());
+      packagesByOffering.get(id).add(pkg.package_id);
+    }
   }
   const offerings = new Map();
   for (const id of [...ids].sort(byteCompare)) {
@@ -450,7 +493,7 @@ function sideAt(t, ctx, buy) {
     if (!ctx.schedules.has(key)) ctx.schedules.set(key, scheduleFor(ctx.offeringsById.get(id), version, ctx.input, ctx.zonesUsed));
     offerings.set(id, ctx.schedules.get(key));
   }
-  return { version, offerings };
+  return { version, offerings, packagesByOffering };
 }
 
 /**
@@ -522,6 +565,9 @@ function expectedSubscriptionPeriods(input) {
   const margin = 2 * longest + 3 * DAY;
   const ctx = {
     input,
+    // An excluded_by_buyer entry records an in-place membership edit for the account, within the version in
+    // effect over its window; that version keeps the account in scope (see inScope).
+    editedVersions: membershipEditedVersions(input.coverage, versions),
     versions,
     offeringsById,
     inactive,
@@ -615,7 +661,7 @@ function expectedSubscriptionPeriods(input) {
             authorized(chains, period, input.backfill_on_regrant === true) &&
             period.end > confirmedAt && // "that end after the buy's confirmed_at"
             overlapsFlight(period, flightAt(period.end)) && // "scope_resolved_at is the period end"
-            !excepted(windows, buy.media_buy_id, offeringId, period);
+            !excepted(windows, buy.media_buy_id, offeringId, period, side.packagesByOffering.get(offeringId) ?? new Set());
           if (owed) {
             rows.push({
               subscription_version: side.version.number,
