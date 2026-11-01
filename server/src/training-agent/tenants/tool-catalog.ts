@@ -25,6 +25,7 @@ import {
   atLeastAdcpVersion,
   REPORTING_STATUS_ADCP_VERSION,
   supportsAccountChangeFeed,
+  TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33,
 } from '../types.js';
 
 export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
@@ -37,6 +38,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'],
   list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'],
   list_account_changes: ['sales'],
+  request_account: ['sales'],
 
   // sales
   sync_catalogs: ['sales', 'si'],
@@ -146,6 +148,7 @@ export function toolsForTenant(
     .map(([tool]) => tool)
     .filter(tool => {
       const negotiatedVersion = options.storyboardCompat?.version ?? options.adcpVersion;
+      if (tool === 'request_account' && !TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33) return false;
       if (
         tool === 'list_account_changes'
         && !supportsAccountChangeFeed(negotiatedVersion ?? '3.2-beta.5')
@@ -171,6 +174,7 @@ export function toolsForTenant(
         || tool === 'accept_proposal'
         || tool === 'control_media_buy'
         || tool === 'list_account_changes'
+        || tool === 'request_account'
       ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
       if (

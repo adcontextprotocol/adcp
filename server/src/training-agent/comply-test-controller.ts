@@ -39,6 +39,7 @@ import type {
 import {
   atLeastAdcpVersion,
   supportsAccountChangeFeed,
+  supportsAccountSurfaces33,
   supportsGetProductsRejected,
   supportsReliableReporting,
   supportsSalesFixedRate,
@@ -93,6 +94,9 @@ import {
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
 import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
+import { resetSandbox } from './account-sandbox.js';
+import { resetAccountRequests } from './account-requests.js';
+import { handleReportingSubscriptionProbe, REPORTING_SUBSCRIPTION_PROBE } from './subscription-probe.js';
 import {
   taskRegistryNamespaceForTenant,
   type TaskRegistryTenant,
@@ -1625,6 +1629,7 @@ function createStore(
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
   'reset_state',
+  'reporting_subscription_probe',
   'expire_account_change_cursor',
   'force_create_media_buy_arm',
   'force_media_buy_confirmation',
@@ -2337,7 +2342,20 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ctx.moduleId,
       targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
     );
+  if (scenario === REPORTING_SUBSCRIPTION_PROBE) {
+    if (ctx.storyboardCompat?.version === '3.0' || !supportsAccountSurfaces33(ctx.servedAdcpVersion)) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'reporting_subscription_probe is an experimental AdCP 3.3 scenario',
+      };
+    }
+    return handleReportingSubscriptionProbe(params, ctx);
+  }
   if (scenario === 'reset_state') {
+    // The caller's sandbox clock, grants, and account requests reset too.
+    await resetSandbox(ctx.principal);
+    await resetAccountRequests(ctx);
     // These stores intentionally use the same keys as their public handlers,
     // which differ from the principal-aware controller-fixture session above.
     const accountSessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);

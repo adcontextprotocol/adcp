@@ -64,6 +64,7 @@ import {
   assertDiscoveryAccountProvisioned,
   isIdentitylessControllerRef,
 } from './v6-account-helpers.js';
+import { callerGrantRevoked } from './account-sandbox.js';
 import { registerSharedPublicBrandPartitionForAccountId, rehydrateAccountById } from './account-handlers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
@@ -1262,7 +1263,8 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
     }
     const principal = ctx.authInfo?.clientId;
     const reportingAccount = await resolveReportingAccountDurably(principal, requestedAccount);
-    if (!reportingAccount) {
+    // A revoked grant makes the account unknown to this caller.
+    if (!reportingAccount || await callerGrantRevoked(principal, reportingAccount.accountId)) {
       return validateReliableReportingResponse(reportingStatusUnavailable(req.view));
     }
     const accountId = reportingAccount.accountId;

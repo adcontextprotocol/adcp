@@ -1,9 +1,19 @@
 import { z } from 'zod';
-import { TOOL_REQUEST_SCHEMAS } from '@adcp/sdk/schemas';
+import { TOOL_INPUT_SHAPES, TOOL_REQUEST_SCHEMAS } from '@adcp/sdk/schemas';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleListAccountChanges, handleListAccounts, handleSyncGovernance } from '../account-handlers.js';
+import {
+  accountRequestsForListAccounts,
+  handleRequestAccount,
+  listAccountsWantsRequests,
+} from '../account-requests.js';
 import { resolveServedAdcpVersion } from '../task-handlers.js';
-import { supportsAccountChangeFeed, type TrainingContext, type ToolArgs } from '../types.js';
+import {
+  supportsAccountChangeFeed,
+  supportsAccountSurfaces33,
+  type TrainingContext,
+  type ToolArgs,
+} from '../types.js';
 
 const SYNC_GOVERNANCE_SCHEMA = TOOL_REQUEST_SCHEMAS.sync_governance.shape;
 
@@ -14,12 +24,42 @@ function listAccountsSchema(storyboardCompat?: TrainingContext['storyboardCompat
     : { ...baseShape, account };
 }
 
+/** list_accounts, plus the caller's account requests on the 3.3 wire. */
+async function listAccountsWithRequests(args: ToolArgs, ctx: TrainingContext): Promise<object> {
+  const accounts = await handleListAccounts(args, ctx) as Record<string, unknown>;
+  if (!supportsAccountSurfaces33(ctx.servedAdcpVersion) || !listAccountsWantsRequests(args)) return accounts;
+  if (Array.isArray(accounts.errors) && !Array.isArray(accounts.accounts)) return accounts;
+  return { ...accounts, ...await accountRequestsForListAccounts(args, ctx) };
+}
+
+// The SDK's request_account input shape predates allow_separate_account; MCP
+// input parsing drops undeclared keys, so declare it here.
+const REQUEST_ACCOUNT_SCHEMA = {
+  ...TOOL_INPUT_SHAPES.request_account!,
+  allow_separate_account: z.boolean().optional(),
+};
+
+export function requestAccountTool() {
+  return customToolFor(
+    'request_account',
+    'Open an advertiser account (the seller matches or creates it) or change one by account_id, possibly after human review. Experimental (account.requests).',
+    REQUEST_ACCOUNT_SCHEMA,
+    handleRequestAccount,
+    {
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      enforceIdempotency: true,
+      payloadErrorsAsSuccess: true,
+      gatesOwnRelease: true,
+    },
+  );
+}
+
 export function listAccountsTool(storyboardCompat?: TrainingContext['storyboardCompat']) {
   return customToolFor(
     'list_accounts',
     'List accounts accessible to the authenticated agent. Supports status and sandbox filtering with cursor-based pagination.',
     listAccountsSchema(storyboardCompat),
-    handleListAccounts,
+    listAccountsWithRequests,
     {
       annotations: { readOnlyHint: true, idempotentHint: true },
       ...(storyboardCompat && { trainingContext: { storyboardCompat } }),

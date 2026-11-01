@@ -320,6 +320,9 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/governance_conditions:12:0"
   "media_buy_seller/governance_denied:11:0"
   "media_buy_seller/governance_denied_recovery:10:0"
+  # Experimental 3.3 account requests: exact counts pin the training agent's
+  # deterministic branches (separate-account refusal, matched, buyer sign-up).
+  "account_requests:36:3"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"
