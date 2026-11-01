@@ -809,6 +809,13 @@ jobs:
             "media_buy_seller/governance_conditions:12:0"
             "media_buy_seller/governance_denied:11:0"
             "media_buy_seller/governance_denied_recovery:10:0"
+            # Experimental 3.3 account requests (candidate wire only). The
+            # three skips are the peer branches the training agent's
+            # deterministic seller policy does not take: exact counts pin that
+            # it refuses with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT and opens a
+            # separate account on opt-in, matches a duplicating change, and
+            # hands sign-up to the buyer.
+            "account_requests:36:3"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"

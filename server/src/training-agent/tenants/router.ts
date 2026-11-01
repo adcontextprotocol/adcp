@@ -54,7 +54,7 @@ import {
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
-import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsAccountSurfaces33, TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getIdentityBaseUrl } from '../config.js';
 import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
 import { omitFieldsAddedAfterRelease, servedReleaseEnum } from '../served-release-fields.js';
@@ -66,6 +66,8 @@ import { PUBLISHERS } from '../publishers.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
 import { PRINCIPAL_CAPABILITY, SELLER_WEBHOOK_SIGNING_ALGORITHMS } from '../principal.js';
+import { ACCOUNT_REQUESTS_CAPABILITY, ACCOUNT_REQUESTS_FEATURE } from '../account-requests.js';
+import { grantPermits, loadSandbox } from '../account-sandbox.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -268,9 +270,13 @@ function salesComplyScenarios(
   const current = supportsSalesFixedRate(servedVersion)
     ? withReporting
     : withReporting.filter(scenario => scenario !== 'force_media_buy_confirmation');
-  return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withChangeFeed = supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...current, 'expire_account_change_cursor']
     : current;
+  // Experimental 3.3: grants, account timezone, and the sandbox clock.
+  return supportsAccountSurfaces33(servedVersion)
+    ? [...withChangeFeed, 'reporting_subscription_probe']
+    : withChangeFeed;
 }
 
 function salesCapabilityScenarios(
@@ -615,6 +621,9 @@ function tenantMcpHandler(
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
         return;
       }
+      if (await tryRefuseByAccountGrant(req, res, principal, storyboardCompat)) {
+        return;
+      }
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -665,6 +674,72 @@ function withStableAccountIdScope<T>(
     : runWithAccountIdAliasScope(principal, fn);
 }
 
+/** Tools that answer for a revoked or reduced grant themselves, or that are
+ * not account-scoped tasks. */
+const GRANT_SELF_ENFORCING_TOOLS: ReadonlySet<string> = new Set([
+  'comply_test_controller',
+  'get_adcp_capabilities',
+  'list_accounts',
+  'request_account',
+  'sync_accounts',
+]);
+
+/**
+ * Enforce the caller's sandbox grant (account-sandbox.ts) on account-scoped
+ * tasks. A revoked account is unknown, exactly as an account the caller never
+ * held; a reduced grant refuses the tasks it drops with SCOPE_INSUFFICIENT.
+ * Grants change only through the reporting_subscription_probe controller
+ * scenario, so a caller that never used it is never refused here.
+ */
+async function tryRefuseByAccountGrant(
+  req: Request,
+  res: Response,
+  principal: string | undefined,
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+): Promise<boolean> {
+  if (storyboardCompat?.version === '3.0') return false;
+  if (req.body?.method !== 'tools/call') return false;
+  const name = req.body?.params?.name;
+  if (typeof name !== 'string' || GRANT_SELF_ENFORCING_TOOLS.has(name)) return false;
+  const args = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  const account = args.account as { account_id?: unknown } | undefined;
+  const accountId = typeof account?.account_id === 'string' ? account.account_id : undefined;
+  if (!accountId) return false;
+  // Grants change only through the 3.3 controller scenario. A process that
+  // never serves the 3.3 wire skips the per-call sandbox read.
+  const version = resolveServedAdcpVersion(args);
+  if (!TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33 && !(version.ok && supportsAccountSurfaces33(version.servedVersion))) {
+    return false;
+  }
+  const sandbox = await runWithSessionContext(() => loadSandbox(principal));
+  const grant = sandbox.doc.grants[accountId];
+  if (!grant) return false;
+  let error: Parameters<typeof adcpError>[1] & { code: string };
+  if (grant.unauthorized_at) {
+    // get_reporting_status answers an unknown account with its own
+    // unavailable shape; it checks the grant itself.
+    if (name === 'get_reporting_status') return false;
+    error = { code: 'ACCOUNT_NOT_FOUND', message: 'Account not found.', field: 'account', recovery: 'correctable' };
+  } else if (!grantPermits(grant, name)) {
+    error = {
+      code: 'SCOPE_INSUFFICIENT',
+      message: `Your grant on this account does not include ${name}.`,
+      field: 'account',
+      recovery: 'correctable',
+      details: { task: name },
+    };
+  } else {
+    return false;
+  }
+  const { code, ...rest } = error;
+  res.json({
+    jsonrpc: '2.0',
+    id: req.body.id ?? null,
+    result: adcpError(code, rest, args.context),
+  });
+  return true;
+}
+
 async function tryHandleLocalComplyScenario(
   req: Request,
   res: Response,
@@ -701,6 +776,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'reliable_reporting_reconciled_billing_probe'
     && rawArgs.scenario !== 'query_account_governance_binding'
     && rawArgs.scenario !== 'force_media_buy_confirmation'
+    && rawArgs.scenario !== 'reporting_subscription_probe'
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
@@ -721,6 +797,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'reliable_reporting_reconciled_billing_probe'
       || rawArgs.scenario === 'query_account_governance_binding'
       || rawArgs.scenario === 'force_media_buy_confirmation'
+      || rawArgs.scenario === 'reporting_subscription_probe'
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -1089,6 +1166,16 @@ function projectTenantCapabilities(
         // /mcp and /mcp-strict* routes do not declare the capability.
         stable_account_id: true,
       };
+      if (tenantId === 'sales' && supportsAccountSurfaces33(servedVersion)) {
+        // Experimental account requests (request_account, account_requests[]
+        // on list_accounts, and the caller-anchored account_request.changed).
+        structured.account.requests = structuredClone(ACCOUNT_REQUESTS_CAPABILITY);
+        const features = Array.isArray(structured.experimental_features)
+          ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
+          : [];
+        if (!features.includes(ACCOUNT_REQUESTS_FEATURE)) features.push(ACCOUNT_REQUESTS_FEATURE);
+        structured.experimental_features = features;
+      }
       const governanceTasks: Record<string, Array<{
         task: string;
         modes: Array<'signed_context' | 'online_execution_check'>;

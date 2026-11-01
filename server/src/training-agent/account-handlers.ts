@@ -9,7 +9,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
 import { AdcpError, type WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
-import { atLeastAdcpVersion, TRAINING_AGENT_CURRENT_ADCP_VERSION } from './types.js';
+import { atLeastAdcpVersion, supportsAccountSurfaces33, TRAINING_AGENT_CURRENT_ADCP_VERSION } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import {
   getSession,
@@ -41,6 +41,13 @@ import {
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
 import { createLogger } from '../logger.js';
+import {
+  authorizationFor,
+  ensureGrant,
+  isRevoked,
+  loadSandbox,
+  sandboxNowIso,
+} from './account-sandbox.js';
 import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
 import {
   UnsupportedReportingFeatureError,
@@ -150,6 +157,13 @@ interface AccountState {
   notificationConfigs: NotificationConfigState[];
   notificationConfigsTouched?: boolean;
   syncedAt: string;
+  /** Optimistic-concurrency revision (account.json `revision`). Absent means 1. */
+  revision?: number;
+  /** Attribute values changed after opening (request_account changes, the
+   * reporting_subscription_probe timezone change). The store keeps the account
+   * under the attributes it opened with, so its session partition and durable
+   * binding never move; the wire shows these values instead. */
+  attributeOverrides?: { countries?: string[]; timezone?: string };
 }
 
 export interface TrainingAccountChange {
@@ -761,8 +775,11 @@ interface AccountWireShape {
   rate_card?: string;
   credit_limit?: { amount: number; currency: string };
   sandbox?: true;
+  billing_entity?: Record<string, unknown>;
   notification_configs?: Array<Record<string, unknown>>;
   reporting_delivery_configs?: Array<Record<string, unknown>>;
+  revision?: number;
+  authorization?: Record<string, unknown>;
 }
 
 function accountStateToWire(account: AccountState): AccountWireShape {
@@ -776,7 +793,9 @@ function accountStateToWire(account: AccountState): AccountWireShape {
   // reaches the buyer.
   const wireBrand: { domain: string; brand_id?: string; countries?: string[] } = { domain: account.brand.domain };
   if (account.brand.brand_id !== undefined) wireBrand.brand_id = account.brand.brand_id;
-  if (account.brand.countries !== undefined) wireBrand.countries = [...account.brand.countries];
+  const countries = account.attributeOverrides?.countries ?? account.brand.countries;
+  if (countries !== undefined) wireBrand.countries = [...countries];
+  const timezone = account.attributeOverrides?.timezone ?? account.timezone;
   const wire: AccountWireShape = {
     account_id: account.accountId,
     name: displayName,
@@ -785,12 +804,17 @@ function accountStateToWire(account: AccountState): AccountWireShape {
     operator: account.operator,
     ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
     ...(account.currency && { currency: account.currency }),
-    ...(account.timezone && { timezone: account.timezone }),
+    ...(timezone && { timezone }),
     billing: account.billing,
     account_scope: account.accountScope,
     status: account.status,
     payment_terms: account.paymentTerms,
   };
+  if (account.billingEntity) {
+    // Bank details are write-only.
+    const { bank: _bank, ...billingEntity } = account.billingEntity as Record<string, unknown>;
+    wire.billing_entity = billingEntity;
+  }
   if (account.rateCard) wire.rate_card = account.rateCard;
   if (account.creditLimit) wire.credit_limit = account.creditLimit;
   if (account.sandbox) wire.sandbox = true;
@@ -1928,6 +1952,11 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         continue;
       }
 
+      if (changedPaths.some(path => path !== '/notification_configs' && path !== '/reporting_delivery_configs')) {
+        // A persisted settings change advances the account revision; caller
+        // configuration (webhooks, reporting configs) does not.
+        nextAccountState.revision = (existing.revision ?? 1) + 1;
+      }
       Object.assign(existing, nextAccountState);
       if (changedPaths.length > 0) {
         const change = recordAccountChange(ctx.principal, {
@@ -2187,6 +2216,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         ? true
         : existing?.notificationConfigsTouched,
       syncedAt: now,
+      revision: existing?.revision ?? 1,
+      ...(existing?.attributeOverrides && { attributeOverrides: structuredClone(existing.attributeOverrides) }),
     };
     const provisioningChangedPaths = existing
       ? [
@@ -2221,6 +2252,9 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       );
     }
     accounts.set(key, state);
+    if (!existing && supportsAccountSurfaces33(ctx.servedAdcpVersion)) {
+      await recordCallerAccountGrant(ctx.principal, accountId);
+    }
     const reportingDeliveryConfigs = await reportingConfigurationStatesForAccountDurably(ctx.principal, accountId);
     const currentWire = JSON.stringify(accountStateToWire(state));
     if (!existing || previousWire !== currentWire) {
@@ -2392,6 +2426,25 @@ export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): 
     accounts = req.sandbox
       ? accounts.filter(a => a.sandbox === true)
       : accounts.filter(a => !a.sandbox);
+  }
+  // 3.3: each account carries the caller's authorization (with the chain
+  // start the reporting-subscription coverage rule reads) and its revision. A
+  // revoked account is unknown, so it is not listed.
+  const accountSurfaces33 = supportsAccountSurfaces33(ctx.servedAdcpVersion);
+  const sandbox = accountSurfaces33 ? await loadSandbox(ctx.principal) : undefined;
+  if (sandbox) {
+    accounts = accounts.filter(account => !isRevoked(sandbox.doc, account.account_id));
+    const revisions = new Map(scopedAccounts.map(account => [account.accountId, account.revision ?? 1]));
+    let recorded = false;
+    accounts = accounts.map(account => {
+      recorded = ensureGrant(sandbox.doc, account.account_id, sandboxNowIso(sandbox.doc)) || recorded;
+      return {
+        ...account,
+        revision: revisions.get(account.account_id) ?? 1,
+        authorization: authorizationFor(sandbox.doc.grants[account.account_id]!),
+      };
+    });
+    if (recorded) sandbox.save();
   }
 
   const totalMatching = accounts.length;
@@ -2845,4 +2898,201 @@ export async function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext)
   }
 
   return { accounts: results };
+}
+
+// ── Experimental 3.3 account requests: caller-scoped account access ──
+//
+// request_account (account-requests.ts) and the reporting_subscription_probe
+// controller scenario open and change accounts through these helpers, so an
+// account they touch is the same AccountState sync_accounts and list_accounts
+// use. Attribute changes that would move the store key (countries, timezone)
+// are kept in `attributeOverrides`: the account keeps its account_id, session
+// partition, media buys, and durable binding.
+
+export type CallerAccountState = AccountState;
+
+/** Record the caller's default grant on an account it just opened. */
+export async function recordCallerAccountGrant(principal: string | undefined, accountId: string): Promise<void> {
+  const sandbox = await loadSandbox(principal);
+  if (ensureGrant(sandbox.doc, accountId, sandboxNowIso(sandbox.doc))) sandbox.save();
+}
+
+/** Every account the caller holds, live or durably bound. */
+export async function callerAccountStates(ctx: TrainingContext): Promise<AccountState[]> {
+  const byId = new Map(accountsForPrincipal(ctx.principal).map(account => [account.accountId, account]));
+  for (const binding of await listReportingAccountsDurably(ctx.principal)) {
+    if (byId.has(binding.accountId)) continue;
+    const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
+    if (restored) byId.set(restored.accountId, restored);
+  }
+  return [...byId.values()];
+}
+
+/** The account the caller holds under `accountId`, loaded into its live map. */
+export async function findCallerAccount(ctx: TrainingContext, accountId: string): Promise<AccountState | undefined> {
+  const live = findAccountByIdAcrossSessions(accountId, ctx.principal);
+  if (live) return live;
+  const binding = await resolveReportingAccountDurably(ctx.principal, { account_id: accountId });
+  if (!binding || binding.accountId !== accountId) return undefined;
+  const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
+  if (!restored) return undefined;
+  const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
+  getAccountMap(sessionKey, ctx.principal).set(accountKey(
+    restored.brand,
+    restored.operator,
+    restored.operatorUnit,
+    restored.currency,
+    restored.sandbox,
+    restored.timezone,
+  ), restored);
+  return restored;
+}
+
+/** The account's wire shape, with its revision and current attributes. */
+export function callerAccountWire(state: AccountState): Record<string, unknown> {
+  return { ...accountStateToWire(state), revision: state.revision ?? 1 };
+}
+
+/** Effective (wire) attributes used to compare accounts. */
+export function callerAccountAttributes(state: AccountState): {
+  domain: string;
+  brand_id?: string;
+  countries: string[];
+  operator: string;
+  operator_unit_id?: string;
+  currency?: string;
+  timezone?: string;
+  sandbox: boolean;
+} {
+  return {
+    domain: state.brand.domain,
+    ...(state.brand.brand_id !== undefined && { brand_id: state.brand.brand_id }),
+    countries: [...(state.attributeOverrides?.countries ?? state.brand.countries ?? [])].sort(),
+    operator: state.operator,
+    ...(state.operatorUnit?.id !== undefined && { operator_unit_id: state.operatorUnit.id }),
+    ...(state.currency !== undefined && { currency: state.currency }),
+    ...((state.attributeOverrides?.timezone ?? state.timezone) !== undefined && {
+      timezone: state.attributeOverrides?.timezone ?? state.timezone,
+    }),
+    sandbox: state.sandbox,
+  };
+}
+
+export interface CallerAccountPatch {
+  countries?: string[];
+  timezone?: string;
+  billing?: string;
+  billingEntity?: Record<string, unknown>;
+  paymentTerms?: string;
+  status?: string;
+}
+
+/**
+ * Apply attribute changes to an account the caller holds, as one persisted
+ * settings change: the revision advances, the durable binding is refreshed,
+ * and the change is recorded in the account change feed. Returns the changed
+ * paths (empty when nothing changed, in which case the revision is kept).
+ */
+export async function updateCallerAccount(
+  ctx: TrainingContext,
+  accountId: string,
+  patch: CallerAccountPatch,
+  options: { summary: string; idempotencyKey?: string; bumpRevision?: boolean } = { summary: 'Account changed.' },
+): Promise<{ state: AccountState; changedPaths: string[] } | undefined> {
+  const state = await findCallerAccount(ctx, accountId);
+  if (!state) return undefined;
+  const changedPaths: string[] = [];
+  const effective = callerAccountAttributes(state);
+  if (patch.countries !== undefined
+    && JSON.stringify([...patch.countries].sort()) !== JSON.stringify(effective.countries)) {
+    state.attributeOverrides = { ...state.attributeOverrides, countries: [...patch.countries] };
+    changedPaths.push('/brand/countries');
+  }
+  if (patch.timezone !== undefined && patch.timezone !== effective.timezone) {
+    state.attributeOverrides = { ...state.attributeOverrides, timezone: patch.timezone };
+    changedPaths.push('/timezone');
+  }
+  if (patch.billing !== undefined && patch.billing !== state.billing) {
+    state.billing = patch.billing;
+    changedPaths.push('/billing');
+  }
+  if (patch.billingEntity !== undefined
+    && JSON.stringify(patch.billingEntity) !== JSON.stringify(state.billingEntity ?? null)) {
+    state.billingEntity = structuredClone(patch.billingEntity);
+    changedPaths.push('/billing_entity');
+  }
+  if (patch.paymentTerms !== undefined && patch.paymentTerms !== state.paymentTerms) {
+    state.paymentTerms = patch.paymentTerms;
+    changedPaths.push('/payment_terms');
+  }
+  if (patch.status !== undefined && patch.status !== state.status) {
+    state.status = patch.status;
+    changedPaths.push('/status');
+  }
+  if (changedPaths.length === 0) return { state, changedPaths };
+  if (options.bumpRevision !== false) state.revision = (state.revision ?? 1) + 1;
+  state.syncedAt = new Date().toISOString();
+  await bindReportingAccountDurably(
+    ctx.principal,
+    state.accountId,
+    reportingAccountRef(state),
+    state as unknown as Record<string, unknown>,
+  );
+  const change = recordAccountChange(ctx.principal, {
+    resource: { type: 'account', account_id: state.accountId, resource_id: state.accountId },
+    action: 'updated',
+    origin: { kind: 'adcp' },
+    ...(options.idempotencyKey && { idempotency_key: options.idempotencyKey }),
+    changed_paths: changedPaths,
+    repair: { task: 'list_accounts' },
+    summary: options.summary,
+  });
+  await emitAccountChangeRecordedWebhook(ctx.principal, change);
+  return { state, changedPaths };
+}
+
+export interface OpenCallerAccountInput {
+  brand: { domain: string; brand_id?: string; countries?: string[] };
+  operator: string;
+  operator_unit?: OperatorUnit;
+  currency?: string;
+  timezone?: string;
+  sandbox?: boolean;
+  billing: string;
+  billing_entity?: Record<string, unknown>;
+  payment_terms?: string;
+}
+
+/**
+ * Open an account for the caller through the sync_accounts provisioning path,
+ * then make it active: an account request resolves to a usable account. Returns
+ * the provisioned state, or the provisioning errors.
+ */
+export async function openCallerAccount(
+  ctx: TrainingContext,
+  input: OpenCallerAccountInput,
+  idempotencyKey: string,
+): Promise<{ state: AccountState } | { errors: Array<Record<string, unknown>> }> {
+  const result = await handleSyncAccounts({
+    idempotency_key: idempotencyKey,
+    accounts: [structuredClone(input)],
+  } as unknown as ToolArgs, ctx) as { accounts?: Array<Record<string, unknown>>; errors?: Array<Record<string, unknown>> };
+  const row = result.accounts?.[0];
+  const accountId = typeof row?.account_id === 'string' ? row.account_id : undefined;
+  if (!accountId) {
+    const errors = (row?.errors as Array<Record<string, unknown>> | undefined) ?? result.errors ?? [];
+    return { errors: errors.length > 0 ? errors : [{ code: 'INVALID_REQUEST', message: 'The account could not be opened.' }] };
+  }
+  const state = await findCallerAccount(ctx, accountId);
+  if (!state) return { errors: [{ code: 'SERVICE_UNAVAILABLE', message: 'The opened account could not be read back.', recovery: 'transient' }] };
+  if (state.status !== 'active') {
+    state.status = 'active';
+    await bindReportingAccountDurably(
+      ctx.principal,
+      state.accountId,
+      reportingAccountRef(state),
+      state as unknown as Record<string, unknown>,
+    );
+  }
+  return { state };
 }

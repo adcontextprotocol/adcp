@@ -238,6 +238,21 @@ export function supportsAccountChangeFeed(servedVersion: string | undefined): bo
   return major > 3 || (major === 3 && minor >= 2);
 }
 
+/** First wire checkpoint carrying the experimental 3.3 account and reporting
+ * surfaces the training agent serves: account requests (`account.requests`),
+ * `authorization.authorized_at` / `regranted_at`, and principal-level
+ * reporting subscriptions (`media_buy.reporting_subscriptions`). */
+export const ACCOUNT_SURFACES_33_ADCP_VERSION = '3.3-beta' as const;
+
+export function supportsAccountSurfaces33(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, ACCOUNT_SURFACES_33_ADCP_VERSION);
+}
+
+/** Whether this process registers the experimental 3.3 account tools on its
+ * ordinary routes: only when it can serve the 3.3 wire (the trusted
+ * storyboard candidate mode). The 3.3 identity route registers them too. */
+export const TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33 = supportsAccountSurfaces33(TRAINING_AGENT_CANDIDATE_ADCP_VERSION);
+
 /** An AdCP release version (`3.2`, `3.1-rc.4`, `3.0.28`), parsed. */
 export interface ParsedAdcpReleaseVersion {
   raw: string;
