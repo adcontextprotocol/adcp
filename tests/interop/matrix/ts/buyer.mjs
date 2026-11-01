@@ -182,7 +182,18 @@ async function owed(client, args, state) {
 
   // get_reporting_status treats an account the caller lost authority over as unknown.
   let status = { periods: [], subscription_coverage: [] };
-  if (listed) status = await data('get_reporting_status', client.getReportingStatus({ account: { account_id: accountId }, view: 'periods' }));
+  if (listed) {
+    // Periods are paged (at most 100 per page); read every page of one ledger snapshot.
+    status = await data('get_reporting_status', client.getReportingStatus({ account: { account_id: accountId }, view: 'periods', pagination: { max_results: 100 } }));
+    const periods = [...(status.periods ?? [])];
+    let cursor = status.pagination?.has_more ? status.pagination.cursor : undefined;
+    while (cursor) {
+      const page = await data('get_reporting_status', client.getReportingStatus({ account: { account_id: accountId }, view: 'periods', pagination: { max_results: 100, cursor } }));
+      periods.push(...(page.periods ?? []));
+      cursor = page.pagination?.has_more ? page.pagination.cursor : undefined;
+    }
+    status = { ...status, periods };
+  }
   const coverageEntry = (status.subscription_coverage ?? []).find(item => item.subscription_id === subscriptionId);
   const coverage = {};
   for (const key of ['excluded', 'gaps', 'timezone_cutovers']) if (coverageEntry?.[key]?.length) coverage[key] = coverageEntry[key];

@@ -155,10 +155,25 @@ async def owed(client: ADCPClient, args: dict[str, Any], state: State) -> dict[s
         raise RuntimeError(f"get_principal has no reporting subscription {subscription_id!r}")
     accounts = data_of(await client.list_accounts(ListAccountsRequest()), "list_accounts").get("accounts", [])
     account = next((a for a in accounts if a.get("account_id") == account_id), None)
+    # Periods are paged (at most 100 per page); read every page of one ledger snapshot.
     status = data_of(
-        await client.get_reporting_status(GetReportingStatusRequest(account={"account_id": account_id}, view="periods")),
+        await client.get_reporting_status(
+            GetReportingStatusRequest(account={"account_id": account_id}, view="periods", pagination={"max_results": 100})
+        ),
         "get_reporting_status",
     )
+    periods = list(status.get("periods") or [])
+    cursor = (status.get("pagination") or {}).get("cursor") if (status.get("pagination") or {}).get("has_more") else None
+    while cursor:
+        page = data_of(
+            await client.get_reporting_status(
+                GetReportingStatusRequest(account={"account_id": account_id}, view="periods", pagination={"max_results": 100, "cursor": cursor})
+            ),
+            "get_reporting_status",
+        )
+        periods.extend(page.get("periods") or [])
+        cursor = (page.get("pagination") or {}).get("cursor") if (page.get("pagination") or {}).get("has_more") else None
+    status["periods"] = periods
     buys = data_of(await client.get_media_buys(GetMediaBuysRequest(account={"account_id": account_id})), "get_media_buys").get("media_buys", []) if account else []
 
     # Remembered wire observations.

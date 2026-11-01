@@ -469,7 +469,8 @@ function generateScenario(seed) {
     // per account as excluded_by_buyer intervals.
     const last = versions[versions.length - 1];
     const accepted = Date.parse(last.accepted_at);
-    const edit = Math.max(accepted + HOUR, at(-0.3, 0.6));
+    // An edit the readback reports has already happened: before now.
+    const edit = Math.min(Math.max(accepted + HOUR, at(-0.3, 0.6)), Date.parse(input.now) - HOUR);
     const kind = r.pick(['removed', 'readded', 'joined_late']);
     const excluded = (coverage.excluded ??= []);
     if (kind === 'removed') {
