@@ -809,6 +809,10 @@ stub when E isn't an incoming boundary.
   closes the entry at the first boundary at or after the edit. An account that joins
   after `accepted_at` with no open entry gets a closed entry from the version's first
   boundary to the first boundary at or after it joined, so earlier periods aren't owed.
+  The readback `configuration` already shows the edited membership, so it no longer
+  names a removed account. When you compute coverage, keep an account that has an
+  `excluded_by_buyer` entry in the scope of the versions the entry spans, and let the
+  entry remove periods from E: periods that started before the removal stay owed.
 - **Different offerings on each side.** With `match: all`, or a resolution change, the
   outgoing and incoming sides can resolve different offerings. E is then computed per
   incoming offering: an offering present on both sides hands off at the end of its own
@@ -872,8 +876,11 @@ cutover instants; an entry without one applies to every offering.
 Each `excluded[]` entry removes the periods whose start falls in `[from, until)`.
 Both values are cutover instants (E above), and an entry without `until` is still in
 effect. `action_required` entries are account-level only. An entry without `media_buy_id` applies to the whole account.
-An `offering_unsupported` entry with `package_ids` means only those packages of the buy
-lack a matching offering: the buy stays covered for its other packages.
+An entry with `package_ids` (reason `offering_unsupported` or `overridden`) removes only
+those packages from the buy's coverage: the buy stays covered for its other packages.
+When the entry names every package of the buy that resolves an offering (with
+`offering_id`, that offering), nothing keeps the buy covered for it, so the buy's
+periods for that offering that start in `[from, until)` are not owed.
 
 | `reason` | Removes periods because |
 |---|---|
