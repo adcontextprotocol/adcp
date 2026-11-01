@@ -242,6 +242,16 @@ describe('request_account: changing', () => {
     expect((await readAccount(accountId))?.payment_terms).toBe('net_30');
   });
 
+  it('keeps an open review when a later change is refused', async () => {
+    const accountId = await openAccount({ operator_unit: { id: 'seat-a' } });
+    const pending = await request({ account_id: accountId, revision: 1, payment_terms: 'net_60' });
+    expect(pending.request.state).toBe('in_review');
+    const refused = await request({ account_id: accountId, operator_unit: { id: 'seat-b' } });
+    expect(refused.request).toMatchObject({ state: 'rejected', errors: [{ code: 'ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT' }] });
+    const still = await listRequests({ request_ids: [pending.request.request_id] });
+    expect(still.account_requests[0].state).toBe('in_review');
+  });
+
   it('applies reviewed payment terms with effective_at when the account did not change', async () => {
     const accountId = await openAccount();
     const pending = await request({ account_id: accountId, revision: 1, payment_terms: 'net_60' });

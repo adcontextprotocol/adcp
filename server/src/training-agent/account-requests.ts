@@ -674,19 +674,23 @@ async function handleChange(
     updated_at: nowIso,
   };
   // A new change request supersedes this caller's open change request for
-  // the same account; it never touches another caller's requests.
-  const superseded = loaded.doc.requests.find(existing => existing.kind === 'change'
+  // the same account; it never touches another caller's requests. Only a
+  // change the seller accepts or reviews supersedes: a refused change leaves
+  // the open request in review.
+  const open = loaded.doc.requests.find(existing => existing.kind === 'change'
     && existing.state === 'in_review'
     && existing.requested.account_id === account.accountId);
-  if (superseded) {
-    reject(superseded, {
+  const finish = (result: StoredRequest): { record: StoredRequest; superseded?: StoredRequest } => {
+    if (!open || result.state === 'rejected') return { record: result };
+    reject(open, {
       code: 'CONFLICT',
       message: 'A newer change request for this account superseded this one.',
       recovery: 'correctable',
-      details: { superseded_by: record.request_id },
+      details: { superseded_by: result.request_id },
     }, nowIso);
-    delete superseded.change;
-  }
+    delete open.change;
+    return { record: result, superseded: open };
+  };
 
   if (change.operator_unit !== undefined && change.operator_unit.id !== attributes.operator_unit_id) {
     if (args.allow_separate_account !== true) {
@@ -696,7 +700,7 @@ async function handleChange(
         recovery: 'correctable',
         field: 'operator_unit',
       }, nowIso);
-      return { record, ...(superseded && { superseded }) };
+      return finish(record);
     }
     const targetCountries = change.countries ?? attributes.countries;
     const targetTimezone = change.timezone ?? attributes.timezone;
@@ -716,7 +720,7 @@ async function handleChange(
     if (existing) {
       // The change would duplicate an account the caller already holds.
       resolve(record, 'matched', existing.accountId, nowIso);
-      return { record, ...(superseded && { superseded }) };
+      return finish(record);
     }
     const wire = callerAccountWire(account);
     const opened = await openCallerAccount(ctx, {
@@ -745,7 +749,7 @@ async function handleChange(
     resolve(record, resolution, created.accountId, nowIso, resolution === 'created'
       ? { not_carried_over: separateAccountConfigs(account, wire) }
       : {});
-    return { record, ...(superseded && { superseded }) };
+    return finish(record);
   }
 
   if (change.countries !== undefined && !sameCountries(change.countries, attributes.countries)) {
@@ -764,7 +768,7 @@ async function handleChange(
       });
     if (duplicate) {
       resolve(record, 'matched', duplicate.accountId, nowIso);
-      return { record, ...(superseded && { superseded }) };
+      return finish(record);
     }
   }
 
@@ -777,12 +781,12 @@ async function handleChange(
       kind: 'credit_application',
       message: 'Credit is reviewing the requested payment terms. The account keeps its current terms until the review completes.',
     };
-    return { record, ...(superseded && { superseded }) };
+    return finish(record);
   }
 
   const applied = await applyChange(ctx, loaded.sandbox.doc, account, change, args.idempotency_key);
   resolve(record, 'updated', account.accountId, nowIso, applied);
-  return { record, ...(superseded && { superseded }) };
+  return finish(record);
 }
 
 export async function handleRequestAccount(args: ToolArgs, ctx: TrainingContext): Promise<object> {
