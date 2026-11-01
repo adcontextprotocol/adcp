@@ -54,7 +54,8 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
+import { packageReportingOfferingIds } from './package-reporting-offerings.js';
+import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
 import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
@@ -17071,6 +17072,25 @@ async function handleCreateMediaBuyUnlocked(
   };
 }
 
+/**
+ * The media buys get_media_buys shows the caller for one account, without
+ * the compliance-fixture fallback a broad empty read returns. Reporting
+ * subscription coverage reads buys through this, so it covers exactly the
+ * buys the caller can see.
+ */
+export async function mediaBuysVisibleForAccount(account: AccountRef, ctx: TrainingContext): Promise<MediaBuyState[]> {
+  const req = { account } as GetMediaBuysArgs;
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const own = Array.from(session.mediaBuys.values());
+  if (own.length > 0) return own;
+  const ownerSession = await findSessionMatching(candidate => (
+    Array.from(candidate.mediaBuys.values()).some(mediaBuy => accountRefVisibleToRequest(mediaBuy.accountRef, account, ctx))
+  ));
+  return ownerSession
+    ? Array.from(ownerSession.mediaBuys.values()).filter(mediaBuy => accountRefVisibleToRequest(mediaBuy.accountRef, account, ctx))
+    : [];
+}
+
 export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = {
     ...(args as unknown as GetMediaBuysArgs),
@@ -17157,6 +17177,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
     paginationBlock = { has_more: false, total_count: buys.length };
   }
 
+  const subscriptionFields = supportsAccountSurfaces33(ctx.servedAdcpVersion);
   return {
     media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb, session);
@@ -17210,9 +17231,20 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             reason: mb.cancellationReason,
           },
         }),
+        // 3.3 reporting subscriptions: the training agent stops delivery when
+        // it records a cancellation, and a completed buy completed at its end.
+        ...(subscriptionFields && mb.canceledAt && { cancellation_effective_at: mb.canceledAt }),
+        ...(subscriptionFields && status === 'completed' && { completed_at: mb.endTime }),
         packages: mb.packages.map(pkg => {
           const pkgData = {
             package_id: pkg.packageId,
+            ...(subscriptionFields && {
+              reporting_delivery_offering_ids: packageReportingOfferingIds(
+                mb,
+                pkg,
+                session.configuredProducts as unknown as Map<string, { reporting_capabilities?: unknown }>,
+              ),
+            }),
             ...(pkg.legacyOmitProductId ? {} : { product_id: pkg.productId }),
             ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
             ...(pkg.dailyBudgetCap !== undefined && { daily_budget_cap: pkg.dailyBudgetCap }),

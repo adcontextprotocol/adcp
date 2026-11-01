@@ -816,6 +816,13 @@ jobs:
             # separate account on opt-in, matches a duplicating change, and
             # hands sign-up to the buyer.
             "account_requests:36:3"
+            # Experimental 3.3 reporting subscriptions over the sandbox clock.
+            # owed_periods_match grades not_applicable until the released
+            # runner implements it; the steps also pin deterministic values.
+            # The one skip is the backfill_on_regrant: true phase, which this
+            # seller (backfill false) does not take.
+            "media_buy_seller/reporting_subscription_coverage:36:1"
+            "media_buy_seller/reporting_subscription_capacity:16:0"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"

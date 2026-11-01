@@ -3631,10 +3631,23 @@ function snapshotFromCursor(
 }
 
 /** First-class SDK handler body for get_reporting_status. */
+/** Principal-level reporting subscription obligations and exceptions for one
+ * account (subscription-coverage-service.ts), joined onto the account ledger. */
+export interface ReportingSubscriptionOverlay {
+  nowMs: number;
+  records: Array<Record<string, unknown>>;
+  coverage: Array<Record<string, unknown>>;
+  generations: Array<{ delivery_config_id: string; delivery_config_version: number; feed_purpose: string; offering_id: string }>;
+  configIds: string[];
+  mediaBuyIds: string[];
+  finality: string[];
+}
+
 export function getReportingStatusForAccount(
   params: TrainingGetReportingStatusRequest,
   principal: string | undefined,
   accountId: string,
+  subscriptions?: ReportingSubscriptionOverlay,
 ): TrainingGetReportingStatusResponse {
   const request = params;
   const ledger = ledgerFor(principal, accountId);
@@ -3659,7 +3672,7 @@ export function getReportingStatusForAccount(
   // Opaque server-held cursors pin both ledger_as_of and the complete resource
   // set. Callers cannot forge timestamps/offsets or observe concurrent writes
   // halfway through a paginated snapshot.
-  const nowMs = snapshot?.nowMs ?? (ledger.virtualNow ? parseInstant(ledger.virtualNow) : Date.now());
+  const nowMs = snapshot?.nowMs ?? (ledger.virtualNow ? parseInstant(ledger.virtualNow) : subscriptions?.nowMs ?? Date.now());
   if (params.period && !(parseInstant(params.period.start) < parseInstant(params.period.end))) return unavailable(params.view);
   const retainedFromMs = floorHour(nowMs) - RETENTION_DAYS * 24 * HOUR_MS;
   // A fully expired query has no retained ledger material.
@@ -3673,7 +3686,8 @@ export function getReportingStatusForAccount(
   const current = [...ledger.configs.values()];
   const active = current.filter(entry => activeWindowAt(entry, nowMs) !== undefined);
   const requestedConfigIds = params.delivery_config_ids;
-  if (requestedConfigIds?.some(id => !ledger.history.some(entry => entry.config.delivery_config_id === id))) {
+  if (requestedConfigIds?.some(id => !ledger.history.some(entry => entry.config.delivery_config_id === id)
+    && !subscriptions?.configIds.includes(id))) {
     return unavailable(params.view);
   }
   const configs = requestedConfigIds
@@ -3694,13 +3708,23 @@ export function getReportingStatusForAccount(
   const knownMediaBuyIds = new Set([
     ...ledger.mediaBuyCandidates.keys(),
     ...[...ledger.obligationCoverage.values()].flatMap(coverage => coverage.media_buy_ids),
+    ...(subscriptions?.mediaBuyIds ?? []),
   ]);
   if (params.media_buy_ids?.some(id => !knownMediaBuyIds.has(id))) return unavailable(params.view);
   // The period-scoped denominator, before the caller's content filters. It is
   // what consumer-status diagnosis compares against, so a filter cannot retire
   // an open mismatch or fabricate one for an obligation it merely hid.
-  const periodScopedRecords = recordsFor(principal, accountId, configs, nowMs)
-    .filter(record => withinHalfOpenPeriod(record, params.period));
+  // Subscription obligations join the ledger's own: the same retention
+  // window, period, and delivery_config_ids filters apply.
+  const subscriptionRecords: LedgerRecord[] = (subscriptions?.records ?? [])
+    .map(obligation => ({ obligation: obligation as unknown as ReportingObligation }))
+    .filter(record => parseInstant(record.obligation.period.start) >= retainedFromMs)
+    .filter(record => !requestedConfigIds || requestedConfigIds.includes(record.obligation.delivery_config_id));
+  const periodScopedRecords = [...recordsFor(principal, accountId, configs, nowMs), ...subscriptionRecords]
+    .filter(record => withinHalfOpenPeriod(record, params.period))
+    .sort((a, b) => a.obligation.period.start.localeCompare(b.obligation.period.start));
+  const subscriptionGenerations = (subscriptions?.generations ?? [])
+    .filter(generation => !requestedConfigIds || requestedConfigIds.includes(generation.delivery_config_id));
   const records = periodScopedRecords
     .filter(record => !params.media_buy_ids
       || params.media_buy_ids.some(id => record.obligation.media_buy_ids.includes(id)))
@@ -3801,12 +3825,16 @@ export function getReportingStatusForAccount(
     ...consumerProjection.standaloneIssues,
   ];
   const periodEnd = params.period ? parseInstant(params.period.end) : floorHour(nowMs);
+  const subscriptionStarts = subscriptionRecords.map(record => parseInstant(record.obligation.period.start));
   const periodStart = params.period
     ? parseInstant(params.period.start)
-    : configs.length > 0
-      ? Math.max(retainedPeriodBoundaryMs, Math.min(...configs.map(config => floorHour(parseInstant(config.activatedAt) + HOUR_MS - 1))))
+    : configs.length > 0 || subscriptionStarts.length > 0
+      ? Math.max(retainedFromMs, Math.min(
+        ...configs.map(config => Math.max(retainedPeriodBoundaryMs, floorHour(parseInstant(config.activatedAt) + HOUR_MS - 1))),
+        ...subscriptionStarts,
+      ))
       : floorHour(nowMs) - HOUR_MS;
-  const scopeClosed = configs.length === 0 || periodEnd < nowMs;
+  const scopeClosed = (configs.length === 0 && subscriptionGenerations.length === 0) || periodEnd < nowMs;
   const recordHealth = projectedRecords.length === 0 && !scopeClosed
     ? 'waiting'
     : worstHealth(projectedRecords);
@@ -3830,13 +3858,22 @@ export function getReportingStatusForAccount(
     scope_closed: scopeClosed,
     ...(params.media_buy_ids && { media_buy_ids: [...params.media_buy_ids].sort() }),
     all_accessible_media_buys: params.media_buy_ids === undefined,
-    delivery_config_generations: configs.map(entry => ({
-      delivery_config_id: entry.config.delivery_config_id,
-      delivery_config_version: entry.config.delivery_config_version,
-      feed_purpose: entry.config.feed_purpose,
-    })),
-    feed_purposes: [...new Set(configs.map(entry => entry.config.feed_purpose))],
-    finality: [...new Set(configs.map(entry => entry.config.required_finality))],
+    delivery_config_generations: [
+      ...configs.map(entry => ({
+        delivery_config_id: entry.config.delivery_config_id,
+        delivery_config_version: entry.config.delivery_config_version,
+        feed_purpose: entry.config.feed_purpose,
+      })),
+      ...subscriptionGenerations,
+    ],
+    feed_purposes: [...new Set([
+      ...configs.map(entry => entry.config.feed_purpose),
+      ...subscriptionGenerations.map(generation => generation.feed_purpose),
+    ])],
+    finality: [...new Set([
+      ...configs.map(entry => entry.config.required_finality),
+      ...(subscriptionGenerations.length > 0 ? subscriptions?.finality ?? [] : []),
+    ])],
     ledger_retained_from: iso(retainedFromMs),
     coverage_complete: periodStart >= retainedPeriodBoundaryMs,
   };
@@ -3865,6 +3902,9 @@ export function getReportingStatusForAccount(
     ...(!scopeClosed && nextExpectedAt(configs, nowMs) && { next_expected_at: nextExpectedAt(configs, nowMs) }),
     obligation_counts: counts,
     issues,
+    ...(subscriptions && subscriptions.coverage.length > 0 && {
+      subscription_coverage: structuredClone(subscriptions.coverage),
+    }),
   };
   if (params.view === 'summary') {
     const futurePeriodStart = health === 'complete' ? nextScheduledPeriodStart(configs, nowMs) : undefined;
@@ -3954,6 +3994,34 @@ export function getReportingStatusForAccount(
       total_count: resources.length,
     },
   } as TrainingGetReportingStatusResponse;
+}
+
+/** Every delivery_config_id the caller uses on any account (in-process ledgers). */
+export function deliveryConfigIdsForPrincipal(principal: string | undefined): Set<string> {
+  const scope = principal && principal.length > 0 ? principal : 'anonymous';
+  const ids = new Set<string>();
+  for (const [key, ledger] of ledgers) {
+    if (key.split('\u001f')[0] !== scope) continue;
+    for (const stored of ledger.history) ids.add(stored.config.delivery_config_id);
+  }
+  return ids;
+}
+
+/** The caller's active account-level configurations on one account, for subscription precedence. */
+export function activeAccountReportingConfigs(
+  principal: string | undefined,
+  accountId: string,
+  atMs: number,
+): Array<{ delivery_config_id: string; feed_purpose: string; activated_at: string }> {
+  const ledger = ledgers.get(callerScope(principal, accountId));
+  if (!ledger) return [];
+  return [...ledger.configs.values()]
+    .filter(stored => activeWindowAt(stored, atMs) !== undefined)
+    .map(stored => ({
+      delivery_config_id: stored.config.delivery_config_id,
+      feed_purpose: stored.config.feed_purpose,
+      activated_at: activeWindowAt(stored, atMs)!.start,
+    }));
 }
 
 export function clearReportingReliabilityStore(): void {
@@ -4094,13 +4162,14 @@ export async function getReportingStatusForAccountDurably(
     knownAt: string;
     packages?: ReportingPackageApplicability[];
   }>,
+  subscriptions?: ReportingSubscriptionOverlay,
 ): Promise<TrainingGetReportingStatusResponse> {
   // A status read may commit the first frozen all_media_buys denominator for
   // an elapsed period, so it is a durable ledger mutation even though the
   // protocol task itself is read-only.
   return await withDurableReportingLedger(principal, accountId, true, () => {
     setReportingMediaBuyCandidates(principal, accountId, mediaBuyCandidates);
-    return getReportingStatusForAccount(params, principal, accountId);
+    return getReportingStatusForAccount(params, principal, accountId, subscriptions);
   });
 }
 
@@ -4447,6 +4516,20 @@ export const TRAINING_REPORTING_SOURCE_CALENDAR_OFFERING = {
     period_timezone: 'America/New_York',
     delivery_sla: 'PT4H' as const,
   },
+};
+
+/**
+ * API-delivered (Core) daily analytics on the account's own calendar day.
+ * Advertised on the 3.3 wire for principal-level reporting subscriptions,
+ * whose coverage follows account timezone changes; account-level
+ * reporting_delivery_configs do not select it.
+ */
+export const TRAINING_REPORTING_ACCOUNT_TIMEZONE_OFFERING = {
+  ...TRAINING_REPORTING_CORE_OFFERING,
+  offering_id: 'analytics-daily-account-tz',
+  feed_purpose: 'analytics' as const,
+  schedule: { period_duration: 'P1D', alignment: 'account_timezone' as const, delivery_sla: 'PT4H' },
+  supported_finality: ['official'] as ['official'],
 };
 
 export const TRAINING_REPORTING_RECONCILED_OFFERING = {

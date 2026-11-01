@@ -16,6 +16,7 @@ import {
   RETAINED_SCHEMA_BUNDLE,
 } from '../training-agent/schema-compat.js';
 import { SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION } from '../training-agent/types.js';
+import { coverageModelHasZone, resolveCoverageModelDir } from '../training-agent/reporting-coverage-model.js';
 
 const schemaRoot = resolveRetainedSchemaRoot();
 const indexPath = path.join(schemaRoot, 'index.json');
@@ -42,3 +43,10 @@ if (resolvedVersion !== SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION) {
 console.log(
   `Training-agent runtime schema verified: ${resolvedVersion} -> ${schemaRoot}`,
 );
+
+// Reporting-subscription coverage runs the spec's reference model at runtime.
+const coverageModelDir = resolveCoverageModelDir();
+if (!coverageModelHasZone('America/New_York')) {
+  throw new Error(`Reporting coverage reference model at ${coverageModelDir} is missing its pinned tzdata`);
+}
+console.log(`Training-agent reporting coverage model verified: ${coverageModelDir}`);

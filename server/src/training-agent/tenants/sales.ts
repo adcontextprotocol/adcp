@@ -211,6 +211,20 @@ const SYNC_CATALOGS_SCHEMA = {
   ext: z.any().optional(),
 };
 
+// The SDK's get_principal input shape predates the experimental 3.3
+// reporting_subscription_page; MCP input parsing drops undeclared keys.
+const GET_PRINCIPAL_SCHEMA = {
+  ...TOOL_INPUT_SHAPES.get_principal!,
+  reporting_subscription_page: z.object({
+    subscription_id: z.string().min(1).max(64).regex(/^[A-Za-z0-9_.:-]{1,64}$/),
+    list: z.enum(['accounts_with_exceptions', 'accounts_unauthorized', 'prior_versions']),
+    pagination: z.object({
+      max_results: z.number().int().min(1).max(100).optional(),
+      cursor: z.string().min(1).max(1024).optional(),
+    }).optional(),
+  }).strict().optional(),
+};
+
 export function buildSalesTenantConfig(
   host: string,
   options: {
@@ -328,7 +342,7 @@ export function buildSalesTenantConfig(
             get_principal: customToolFor(
               'get_principal',
               'Read the authenticated caller\'s seller-resolved identity, standing configuration, version, and destination setup states.',
-              TOOL_INPUT_SHAPES.get_principal!,
+              GET_PRINCIPAL_SCHEMA,
               getPrincipalLegacy,
               { annotations: { readOnlyHint: true, idempotentHint: true } },
             ),
