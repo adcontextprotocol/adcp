@@ -2938,6 +2938,451 @@
       ]
     },
     {
+      "id": "package-exclusion-names-every-resolving-package",
+      "name": "package exclusion names every resolving package",
+      "origin": "adcp",
+      "rule": "adcp#8678: an overridden entry for mb_1 names pkg_1, the only package that resolves off_a_pkg. Nothing keeps the buy covered for that offering, so its periods starting at or after 11-04 are removed; 11-03 stays owed.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#exceptions"
+      ],
+      "timezones": [],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-11-01T12:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {
+                "all_authorized_accounts": true
+              },
+              "selector": {
+                "feed_purpose": "analytics",
+                "period_duration": "P1D",
+                "required_finality": "official",
+                "dimensions": [
+                  "package"
+                ]
+              },
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {
+          "account_id": "acct_1",
+          "timezone": "America/New_York",
+          "grants": [
+            {
+              "authorized_at": "2026-10-01T00:00:00Z"
+            }
+          ]
+        },
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-11-02T15:00:00Z",
+            "start_time": "2026-11-03T00:00:00Z",
+            "end_time": "2026-11-06T00:00:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_1",
+                "reporting_delivery_offering_ids": [
+                  "off_a_pkg"
+                ]
+              }
+            ]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ]
+          }
+        ],
+        "now": "2026-12-01T00:00:00Z",
+        "coverage": {
+          "excluded": [
+            {
+              "reason": "overridden",
+              "media_buy_id": "mb_1",
+              "package_ids": [
+                "pkg_1"
+              ],
+              "overridden_by": {
+                "subscription_id": "analytics-daily-2"
+              },
+              "from": "2026-11-04T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z",
+          "media_buy_ids": [
+            "mb_1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "package-exclusion-names-some-resolving-packages",
+      "name": "package exclusion names some resolving packages",
+      "origin": "adcp",
+      "rule": "adcp#8678: mb_1 has pkg_1 and pkg_2, both resolving off_a_pkg; an offering_unsupported entry names only pkg_1. The buy stays covered for off_a_pkg through pkg_2, so every period stays owed.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#exceptions"
+      ],
+      "timezones": [],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-11-01T12:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {
+                "all_authorized_accounts": true
+              },
+              "selector": {
+                "feed_purpose": "analytics",
+                "period_duration": "P1D",
+                "required_finality": "official",
+                "dimensions": [
+                  "package"
+                ]
+              },
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {
+          "account_id": "acct_1",
+          "timezone": "America/New_York",
+          "grants": [
+            {
+              "authorized_at": "2026-10-01T00:00:00Z"
+            }
+          ]
+        },
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-11-02T15:00:00Z",
+            "start_time": "2026-11-03T00:00:00Z",
+            "end_time": "2026-11-06T00:00:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_1",
+                "reporting_delivery_offering_ids": [
+                  "off_a_pkg"
+                ]
+              },
+              {
+                "package_id": "pkg_2",
+                "reporting_delivery_offering_ids": [
+                  "off_a_pkg"
+                ]
+              }
+            ]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ]
+          }
+        ],
+        "now": "2026-12-01T00:00:00Z",
+        "coverage": {
+          "excluded": [
+            {
+              "reason": "offering_unsupported",
+              "media_buy_id": "mb_1",
+              "package_ids": [
+                "pkg_1"
+              ],
+              "from": "2026-11-04T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-06T00:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z",
+          "media_buy_ids": [
+            "mb_1"
+          ]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z",
+          "media_buy_ids": [
+            "mb_1"
+          ]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-05T00:00:00Z",
+          "period_end": "2026-11-06T00:00:00Z",
+          "media_buy_ids": [
+            "mb_1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "membership-removal-keeps-earlier-periods",
+      "name": "membership removal keeps earlier periods",
+      "origin": "adcp",
+      "rule": "adcp#8678: the account was removed from account_ids in place, so the readback scope no longer names it, and an excluded_by_buyer entry opens at E = 11-05. Periods that started before the removal stay owed in full (11-03, 11-04); 11-05 is not.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/membership",
+        "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded",
+        "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ],
+      "timezones": [],
+      "input": {
+        "subscription_id": "analytics-daily",
+        "versions": [
+          {
+            "subscription_version": 1,
+            "accepted_at": "2026-11-01T12:00:00Z",
+            "configuration": {
+              "subscription_id": "analytics-daily",
+              "subscription_version": 1,
+              "active": true,
+              "scope": {
+                "account_ids": [
+                  "acct_other"
+                ]
+              },
+              "selector": {
+                "feed_purpose": "analytics",
+                "period_duration": "P1D",
+                "required_finality": "official",
+                "dimensions": [
+                  "package"
+                ]
+              },
+              "reconciliation_mode": "delivery_only"
+            }
+          }
+        ],
+        "account": {
+          "account_id": "acct_1",
+          "timezone": "America/New_York",
+          "grants": [
+            {
+              "authorized_at": "2026-10-01T00:00:00Z"
+            }
+          ]
+        },
+        "buys": [
+          {
+            "media_buy_id": "mb_1",
+            "confirmed_at": "2026-11-02T15:00:00Z",
+            "start_time": "2026-11-03T00:00:00Z",
+            "end_time": "2026-11-06T00:00:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_1",
+                "reporting_delivery_offering_ids": [
+                  "off_a_pkg"
+                ]
+              }
+            ]
+          }
+        ],
+        "offerings": [
+          {
+            "offering_id": "off_a_pkg",
+            "feed_purpose": "analytics",
+            "report_definition_id": "rd_off_a_pkg",
+            "report_definition_uri": "https://seller.example/report-definitions/off_a_pkg.json",
+            "report_definition_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reporting_profile": {
+              "id": "adcp.delivery.v1",
+              "version": "1.0.0",
+              "schema_uri": "https://seller.example/schemas/delivery.json",
+              "schema_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+              "schema_ref_policy": "local_fragment_only",
+              "grain": "daily",
+              "primary_keys": [
+                "account_id",
+                "package_id"
+              ]
+            },
+            "schedule": {
+              "period_duration": "P1D",
+              "alignment": "utc",
+              "delivery_sla": "PT6H"
+            },
+            "supported_finality": [
+              "official"
+            ],
+            "reconciliation_mode": "delivery_only",
+            "standard_dimensions": [
+              "package"
+            ]
+          }
+        ],
+        "now": "2026-12-01T00:00:00Z",
+        "coverage": {
+          "excluded": [
+            {
+              "reason": "excluded_by_buyer",
+              "from": "2026-11-05T00:00:00Z"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z"
+        },
+        {
+          "subscription_version": 1,
+          "media_buy_id": "mb_1",
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z"
+        }
+      ],
+      "expected_obligations": [
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-03T00:00:00Z",
+          "period_end": "2026-11-04T00:00:00Z",
+          "media_buy_ids": [
+            "mb_1"
+          ]
+        },
+        {
+          "subscription_version": 1,
+          "offering_id": "off_a_pkg",
+          "period_start": "2026-11-04T00:00:00Z",
+          "period_end": "2026-11-05T00:00:00Z",
+          "media_buy_ids": [
+            "mb_1"
+          ]
+        }
+      ]
+    },
+    {
       "id": "max-accounts-capacity-exception",
       "name": "max_accounts capacity exception",
       "origin": "adcp-client#3505",

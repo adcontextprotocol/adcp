@@ -97,12 +97,12 @@
       "raised_by": "both",
       "dispatched": "not_applicable",
       "recovery": "correctable",
-      "raised_when": "Coverage cannot be computed because the input lacks a value the rule needs. detail names it.",
+      "raised_when": "Coverage cannot be computed because the input lacks a value the rule reads. detail names it. Raised only when computing the owed set reads the value, never merely because the value appears in, or is missing from, the input: a schedule's zone or anchor is read when an offering using that schedule resolves for a confirmed buy in a version, a timezone_cutovers entry is read when an account_timezone offering resolves (whether or not a period under the old zone is owed), standard_dimensions is read for each candidate offering a package lists, and status_retention_days is read when a grant follows a revocation. A value no resolved schedule or candidate reads never raises.",
       "message_fix": "Supply the missing value; the message names the version configuration, zone, or field.",
       "details": {
         "missing_account_timezone": "An account_timezone offering resolves and the account has no timezone (list_accounts timezone).",
         "missing_source_timezone": "An account_resolved source_timezone offering resolves and the seller-resolved zone (the obligation's period.source_timezone) is not known.",
-        "missing_previous_timezone": "A timezone_cutovers entry has no previous_timezone, which sellers MUST include.",
+        "missing_previous_timezone": "An account_timezone offering resolves and a timezone_cutovers entry that applies to it has no previous_timezone, which sellers MUST include.",
         "missing_standard_dimensions": "A candidate offering does not publish standard_dimensions, which sellers advertising subscriptions MUST publish.",
         "missing_status_retention_days": "A grant was revoked and re-granted later, and status_retention_days, which decides whether the re-grant continues the chain, is not known.",
         "missing_version_configuration": "A version whose obligations matter has no configuration (prior_versions[].configuration, which sellers MUST include).",
@@ -116,7 +116,7 @@
       "raised_by": "both",
       "dispatched": "not_applicable",
       "recovery": "correctable",
-      "raised_when": "Coverage cannot be computed because a value the rule reads is malformed. detail names it.",
+      "raised_when": "Coverage cannot be computed because a value the rule reads is malformed. detail names it. As for COVERAGE_INPUT_INCOMPLETE, raised only when computing the owed set reads the value: a malformed zone on an offering no package resolves to, or on a schedule no resolved offering uses, never raises.",
       "message_fix": "Correct the value; the message names the field and the rule it breaks.",
       "details": {
         "invalid_timezone": "A zone a schedule reads is not an IANA zone or link name (reporting-schedule.json iana_timezone); a numeric offset is not one.",

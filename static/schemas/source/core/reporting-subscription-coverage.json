@@ -50,7 +50,7 @@
             "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingPackageId" },
             "minItems": 1,
             "uniqueItems": true,
-            "description": "With media_buy_id and reason offering_unsupported: only these packages lack a matching offering. With reason overridden: only these packages resolved an offering another subscription of the caller owes. The buy stays covered for its other packages; these are removed from its coverage rather than its periods."
+            "description": "With media_buy_id and reason offering_unsupported: only these packages lack a matching offering. With reason overridden: only these packages resolved an offering another subscription of the caller owes. The buy stays covered for its other packages; these are removed from its coverage rather than its periods. When the entry names every package of the buy that resolves an offering (with offering_id, that offering), nothing keeps the buy covered for it, so the buy's periods for that offering that start in [from, until) are not owed."
           },
           "overridden_by": {
             "type": "object",
