@@ -33,8 +33,9 @@ function referenceOne(input) {
 }
 
 class Worker {
-  constructor(name, command, args) {
+  constructor(name, command, args, { timeoutMs = 10 * 60_000 } = {}) {
     this.name = name;
+    this.timeoutMs = timeoutMs;
     this.child = spawn(command, [...args, '--lines'], { env: env.childEnv(), stdio: ['pipe', 'pipe', 'pipe'] });
     this.stderr = '';
     this.child.stderr.on('data', chunk => {
@@ -43,25 +44,45 @@ class Worker {
     this.waiting = [];
     this.exited = null;
     readline.createInterface({ input: this.child.stdout, crlfDelay: Infinity }).on('line', line => {
+      // Answers are JSON arrays; anything else an SDK prints to stdout is noise, kept with stderr.
+      let results;
+      try {
+        results = JSON.parse(line);
+      } catch {
+        this.stderr = `${this.stderr}[stdout] ${line}\n`.slice(-20_000);
+        return;
+      }
+      if (!Array.isArray(results)) {
+        this.stderr = `${this.stderr}[stdout] ${line}\n`.slice(-20_000);
+        return;
+      }
       const next = this.waiting.shift();
-      if (next) next.resolve(line);
+      if (next) next.settle(results);
     });
     this.child.on('exit', code => {
       this.exited = code;
-      for (const pending of this.waiting.splice(0)) pending.reject(new Error(`${name} worker exited ${code}: ${this.stderr}`));
+      for (const pending of this.waiting.splice(0)) pending.fail(new Error(`${name} worker exited ${code}: ${this.stderr}`));
     });
   }
 
   run(inputs) {
     if (this.exited !== null) return Promise.reject(new Error(`${this.name} worker exited ${this.exited}: ${this.stderr}`));
     return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        // A hung batch poisons the FIFO, so the worker is killed rather than skipped.
+        this.child.kill('SIGKILL');
+        reject(new Error(`${this.name} worker gave no answer for a batch of ${inputs.length} within ${this.timeoutMs} ms: ${this.stderr.slice(-2000)}`));
+      }, this.timeoutMs);
       this.waiting.push({
-        resolve: line => {
-          const results = JSON.parse(line);
-          if (!Array.isArray(results) || results.length !== inputs.length) reject(new Error(`${this.name}: expected ${inputs.length} results`));
+        settle: results => {
+          clearTimeout(timer);
+          if (results.length !== inputs.length) reject(new Error(`${this.name}: expected ${inputs.length} results, got ${results.length}`));
           else resolve(results);
         },
-        reject,
+        fail: error => {
+          clearTimeout(timer);
+          reject(error);
+        },
       });
       this.child.stdin.write(`${JSON.stringify(inputs)}\n`);
     });

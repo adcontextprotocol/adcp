@@ -20,7 +20,9 @@
  * At each checkpoint the buyer computes owed periods from wire reads only, with
  * its own SDK, and the harness asserts zero discrepancies against the seller's
  * own obligations (control op) and against the obligations the seller serves on
- * get_reporting_status. Then the account-request script runs: open (matched,
+ * get_reporting_status, over periods that ended inside status_retention_days (exceptions and
+ * obligations are retained that long, so older periods are nobody's to reconcile). Then the
+ * account-request script runs: open (matched,
  * created, pending with a pending action, ambiguous, rejected, repeat open),
  * approval through the seller, refresh, and changes resolving updated, created
  * (separate account), in review then updated, and rejected.
@@ -39,6 +41,8 @@ const { startSeller, control, buyer } = require('./procs.cjs');
 const ACCOUNT = 'acct_1';
 const SUBSCRIPTION_ID = 'analytics-daily';
 const START = '2026-09-01T00:00:00Z';
+/** Both sellers advertise status_retention_days 30 (CONTRACT.txt). */
+const RETENTION_DAYS = 30;
 
 function args() {
   const out = {};
@@ -148,17 +152,22 @@ async function runPair(buyerSdk, sellerSdk, root) {
     try {
       const owed = await call('owed', { subscription_id: SUBSCRIPTION_ID, account_id: ACCOUNT, now });
       const sellerRows = (await control(seller, { op: 'obligations', principal: token, account_id: ACCOUNT, subscription_id: SUBSCRIPTION_ID })).rows;
-      entry.buyer_rows = owed.rows.length;
-      entry.seller_rows = sellerRows.length;
-      entry.wire_rows = owed.wire_obligations.length;
-      const vsSeller = compareRows(owed.rows, sellerRows);
-      const vsWire = compareRows(owed.rows, owed.wire_obligations);
+      // Exceptions and obligations are retained for status_retention_days, so neither side has to
+      // account for periods that ended before the retention window; compare only inside it.
+      const cutoff = Date.parse(now) - RETENTION_DAYS * 86_400_000;
+      const inWindow = rows => rows.filter(row => Date.parse(row.period_end) > cutoff);
+      const [buyerRows, sellerKept, wireRows] = [owed.rows, sellerRows, owed.wire_obligations].map(inWindow);
+      const vsSeller = compareRows(buyerRows, sellerKept);
+      const vsWire = compareRows(buyerRows, wireRows);
       entry.discrepancies = {
         buyer_not_seller: vsSeller.onlyA.map(fmt),
         seller_not_buyer: vsSeller.onlyB.map(fmt),
         buyer_not_wire: vsWire.onlyA.map(fmt),
         wire_not_buyer: vsWire.onlyB.map(fmt),
       };
+      entry.buyer_rows = buyerRows.length;
+      entry.seller_rows = sellerKept.length;
+      entry.wire_rows = wireRows.length;
       const count = Object.values(entry.discrepancies).reduce((n, list) => n + list.length, 0);
       entry.ok = count === 0;
       console.log(`  ${entry.ok ? 'ok  ' : 'DIFF'} ${name} @ ${now}: buyer ${entry.buyer_rows}, seller ${entry.seller_rows}, wire ${entry.wire_rows}`);

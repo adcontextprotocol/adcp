@@ -584,7 +584,8 @@ const controlServer = http.createServer(async (req, res) => {
     reply = { ok: true, ...(await handler(message)) };
   } catch (error) {
     log('control error', error?.stack ?? error);
-    reply = { ok: false, error: String(error?.message ?? error), code: error?.code };
+    // The message only, never the stack (that goes to stderr above).
+    reply = { ok: false, error: error instanceof Error ? error.message : 'control request failed', code: error?.code };
   }
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify(reply));

@@ -17,7 +17,6 @@ list it, and the managed service does not expose the engine publicly yet).
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import os
 import socket
