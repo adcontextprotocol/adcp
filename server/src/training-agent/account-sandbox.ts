@@ -59,8 +59,10 @@ export interface TimezoneChange {
 
 export interface SandboxDocument extends Record<string, unknown> {
   simulated_now?: string;
-  grants: Record<string, GrantRecord>;
-  timezone_changes: Record<string, TimezoneChange[]>;
+  /** One entry per account. Arrays, not maps keyed by caller-supplied
+   * account IDs, so no account ID ever becomes a property name. */
+  grants: Array<GrantRecord & { account_id: string }>;
+  timezone_changes: Array<{ account_id: string; changes: TimezoneChange[] }>;
 }
 
 export interface LoadedSandbox {
@@ -75,7 +77,17 @@ function principalKey(principal: string | undefined): string {
 }
 
 function emptyDocument(): SandboxDocument {
-  return { grants: {}, timezone_changes: {} };
+  return { grants: [], timezone_changes: [] };
+}
+
+/** The caller's grant on an account, if one is recorded. */
+export function grantFor(doc: SandboxDocument, accountId: string): GrantRecord | undefined {
+  return doc.grants.find(grant => grant.account_id === accountId);
+}
+
+/** The account's recorded timezone changes, oldest first. */
+export function timezoneChangesFor(doc: SandboxDocument, accountId: string): TimezoneChange[] {
+  return doc.timezone_changes.find(entry => entry.account_id === accountId)?.changes ?? [];
 }
 
 export async function loadSandbox(principal: string | undefined): Promise<LoadedSandbox> {
@@ -86,8 +98,8 @@ export async function loadSandbox(principal: string | undefined): Promise<Loaded
   const doc: SandboxDocument = stored
     ? {
         ...structuredClone(stored),
-        grants: structuredClone(stored.grants ?? {}),
-        timezone_changes: structuredClone(stored.timezone_changes ?? {}),
+        grants: Array.isArray(stored.grants) ? structuredClone(stored.grants) : [],
+        timezone_changes: Array.isArray(stored.timezone_changes) ? structuredClone(stored.timezone_changes) : [],
       }
     : emptyDocument();
   return {
@@ -125,13 +137,13 @@ export async function callerSandboxNowMs(principal: string | undefined): Promise
  * sandbox time, if none is recorded yet. Returns whether the document changed.
  */
 export function ensureGrant(doc: SandboxDocument, accountId: string, nowIso: string): boolean {
-  if (doc.grants[accountId]) return false;
-  doc.grants[accountId] = { authorized_at: nowIso, history: [{ authorized_at: nowIso }] };
+  if (grantFor(doc, accountId)) return false;
+  doc.grants.push({ account_id: accountId, authorized_at: nowIso, history: [{ authorized_at: nowIso }] });
   return true;
 }
 
 export function isRevoked(doc: SandboxDocument, accountId: string): boolean {
-  return doc.grants[accountId]?.unauthorized_at !== undefined;
+  return grantFor(doc, accountId)?.unauthorized_at !== undefined;
 }
 
 /** Whether the caller's grant on the account is revoked (unknown account). */
@@ -194,7 +206,7 @@ export function grantPermits(grant: GrantRecord | undefined, task: string): bool
 
 export function revokeGrant(doc: SandboxDocument, accountId: string, nowIso: string): GrantRecord {
   ensureGrant(doc, accountId, nowIso);
-  const grant = doc.grants[accountId]!;
+  const grant = grantFor(doc, accountId)!;
   if (grant.unauthorized_at) return grant;
   grant.unauthorized_at = nowIso;
   const last = grant.history[grant.history.length - 1];
@@ -208,7 +220,7 @@ export function regrantGrant(
   nowIso: string,
 ): { grant: GrantRecord; chain: 'continued' | 'new' } {
   const created = ensureGrant(doc, accountId, nowIso);
-  const grant = doc.grants[accountId]!;
+  const grant = grantFor(doc, accountId)!;
   // A re-grant restores the full grant.
   delete grant.allowed_tasks;
   delete grant.read_only;
@@ -235,7 +247,7 @@ export function reduceGrant(
   nowIso: string,
 ): GrantRecord {
   ensureGrant(doc, accountId, nowIso);
-  const grant = doc.grants[accountId]!;
+  const grant = grantFor(doc, accountId)!;
   grant.allowed_tasks = [...new Set(allowedTasks)].sort();
   grant.read_only = false;
   return grant;
@@ -246,9 +258,9 @@ export function recordTimezoneChange(
   accountId: string,
   change: TimezoneChange,
 ): void {
-  const changes = doc.timezone_changes[accountId] ?? [];
-  changes.push(change);
-  doc.timezone_changes[accountId] = changes;
+  const entry = doc.timezone_changes.find(candidate => candidate.account_id === accountId);
+  if (entry) entry.changes.push(change);
+  else doc.timezone_changes.push({ account_id: accountId, changes: [change] });
 }
 
 export function isIanaTimezone(value: unknown): value is string {

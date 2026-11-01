@@ -243,7 +243,8 @@ function isolateSampleRequestAccounts(source, storyboard, relativePath) {
     if (!YAML.isSeq(steps)) continue;
     for (const [stepIndex, step] of steps.items.entries()) {
       if (!YAML.isMap(step)) continue;
-      if (step.get('task') === 'sync_accounts') {
+      // request_account opens or names the account itself, like sync_accounts.
+      if (step.get('task') === 'sync_accounts' || step.get('task') === 'request_account') {
         accountEstablished = true;
         continue;
       }
@@ -370,7 +371,10 @@ export function findAccountFixtureEdits(sourceRoot = DEFAULT_SOURCE_ROOT) {
     const referenced = [];
     let accountEstablished = false;
     for (const step of isolatedSteps) {
-      if (step.task === 'sync_accounts' && Array.isArray(step.sample_request?.accounts)) {
+      if (
+        (step.task === 'sync_accounts' && Array.isArray(step.sample_request?.accounts))
+        || step.task === 'request_account'
+      ) {
         accountEstablished = true;
         continue;
       }

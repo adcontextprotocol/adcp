@@ -56,6 +56,7 @@ import {
 } from './account-handlers.js';
 import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
 import {
+  grantFor,
   grantPermits,
   isIanaTimezone,
   isRevoked,
@@ -829,7 +830,7 @@ export async function handleRequestAccount(args: ToolArgs, ctx: TrainingContext)
         };
         reject(record, { code: 'ACCOUNT_NOT_FOUND', message: 'Account not found.', recovery: 'correctable', field: 'account_id' }, nowIso);
       } else {
-        const grant = loaded.sandbox.doc.grants[account.accountId];
+        const grant = grantFor(loaded.sandbox.doc, account.accountId);
         if (!grantPermits(grant, 'request_account')) {
           fail('SCOPE_INSUFFICIENT', 'Your grant on this account does not include request_account.', {
             field: 'account_id',

@@ -44,6 +44,7 @@ import { createLogger } from '../logger.js';
 import {
   authorizationFor,
   ensureGrant,
+  grantFor,
   isRevoked,
   loadSandbox,
   sandboxNowIso,
@@ -2441,7 +2442,7 @@ export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): 
       return {
         ...account,
         revision: revisions.get(account.account_id) ?? 1,
-        authorization: authorizationFor(sandbox.doc.grants[account.account_id]!),
+        authorization: authorizationFor(grantFor(sandbox.doc, account.account_id)!),
       };
     });
     if (recorded) sandbox.save();

@@ -67,7 +67,7 @@ import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
 import { PRINCIPAL_CAPABILITY, SELLER_WEBHOOK_SIGNING_ALGORITHMS } from '../principal.js';
 import { ACCOUNT_REQUESTS_CAPABILITY, ACCOUNT_REQUESTS_FEATURE } from '../account-requests.js';
-import { grantPermits, loadSandbox } from '../account-sandbox.js';
+import { grantFor, grantPermits, loadSandbox } from '../account-sandbox.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -712,7 +712,7 @@ async function tryRefuseByAccountGrant(
     return false;
   }
   const sandbox = await runWithSessionContext(() => loadSandbox(principal));
-  const grant = sandbox.doc.grants[accountId];
+  const grant = grantFor(sandbox.doc, accountId);
   if (!grant) return false;
   let error: Parameters<typeof adcpError>[1] & { code: string };
   if (grant.unauthorized_at) {

@@ -15,6 +15,7 @@ import {
   updateCallerAccount,
 } from './account-handlers.js';
 import {
+  grantFor,
   isIanaTimezone,
   loadSandbox,
   recordTimezoneChange,
@@ -23,6 +24,7 @@ import {
   revokeGrant,
   sandboxNowIso,
   sandboxNowMs,
+  timezoneChangesFor,
   type SandboxDocument,
 } from './account-sandbox.js';
 import { advanceAccountRequestsForCaller } from './account-requests.js';
@@ -132,7 +134,7 @@ export async function handleReportingSubscriptionProbe(
     if (!Array.isArray(tasks) || tasks.length === 0 || !tasks.every(isTaskName)) {
       return failure('INVALID_PARAMS', 'allowed_tasks must be a non-empty array of task names');
     }
-    if (doc.grants[accountId]?.unauthorized_at) {
+    if (grantFor(doc, accountId)?.unauthorized_at) {
       return failure('INVALID_STATE', 'The grant is revoked; regrant before reducing it');
     }
     const grant = reduceGrant(doc, accountId, tasks, nowIso);
@@ -143,11 +145,11 @@ export async function handleReportingSubscriptionProbe(
   // set_account_timezone
   const timezone = params.timezone;
   if (!isIanaTimezone(timezone)) return failure('INVALID_PARAMS', 'timezone must be an IANA timezone name');
-  if (doc.grants[accountId]?.unauthorized_at) {
+  if (grantFor(doc, accountId)?.unauthorized_at) {
     return failure('INVALID_STATE', 'The grant is revoked; regrant before changing the account');
   }
   const previous = callerAccountAttributes(account).timezone ?? 'UTC';
-  const changes = doc.timezone_changes[accountId] ?? [];
+  const changes = timezoneChangesFor(doc, accountId);
   const last = changes[changes.length - 1];
   if (previous === timezone) {
     // Convergent: a repeat at the same instant reports the change it made.
