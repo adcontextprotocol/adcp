@@ -102,6 +102,7 @@ import {
   taskRegistryScopeFromContext,
 } from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
+import { finishCollectionRead, prepareCollectionRead, runCollectionRead } from './collections/include-collections.js';
 import {
   SellerManagedControlJobCoordinator,
   type SellerManagedControlJobContext,
@@ -1165,7 +1166,11 @@ export function legacyGetProductsHandler(
     const servedAdcpVersion = ctx.servedAdcpVersion
       ?? (versionResolution.ok ? versionResolution.servedVersion : undefined);
     if (servedAdcpVersion) trainingCtx.servedAdcpVersion = servedAdcpVersion;
-    const executed = await executeTrainingAgentTool('get_products', normalizedReq, trainingCtx);
+    const executed = await executeTrainingAgentTool(
+      'get_products',
+      prepareCollectionRead('get_products', normalizedRecord, trainingCtx) as typeof normalizedReq,
+      trainingCtx,
+    );
     if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
     const rawResponse = executed.data as Record<string, unknown> | undefined;
     if (
@@ -1214,10 +1219,15 @@ export function legacyGetProductsHandler(
       executed.data,
       { allowAdvisories: true },
     );
-    return projectGetProductsCompatibilityWire(
-      response,
-      req as unknown as Record<string, unknown>,
-      servedAdcpVersion,
+    return finishCollectionRead(
+      'get_products',
+      normalizedRecord,
+      projectGetProductsCompatibilityWire(
+        response,
+        req as unknown as Record<string, unknown>,
+        servedAdcpVersion,
+      ),
+      trainingCtx,
     ) as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['getProducts']>>>;
   };
 }
@@ -1810,31 +1820,42 @@ export class TrainingSalesPlatform
     return {
     proposalRefinement: proposalCapabilitiesForProfile(this.proposalNegotiationProfile),
 
-    listProducts: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'list_products',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
+    // include_collections (experimental 3.3, collections/include-collections.ts)
+    // wraps the three split reads that can carry collection cards.
+    listProducts: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await runCollectionRead(
+          'list_products',
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+          trainingCtx,
+          args => executeProductDiscoveryPlatformTool('list_products', args, trainingCtx),
+        ),
+        { allowAdvisories: true },
+      );
+    },
 
-    requestProposals: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'request_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
+    requestProposals: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await runCollectionRead(
+          'request_proposals',
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+          trainingCtx,
+          args => executeProductDiscoveryPlatformTool('request_proposals', args, trainingCtx),
+        ),
+        { allowAdvisories: true },
+      );
+    },
 
     refineProposals: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
       return translateV5Result(
-        await executeProductDiscoveryPlatformTool(
+        await runCollectionRead(
           'refine_proposals',
           withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
           trainingCtx,
+          args => executeProductDiscoveryPlatformTool('refine_proposals', args, trainingCtx),
         ),
         { allowAdvisories: true },
       );

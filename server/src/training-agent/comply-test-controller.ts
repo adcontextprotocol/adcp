@@ -80,6 +80,7 @@ import {
   mintWrongAudDemoToken,
 } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { handleSeedCollection, SEED_COLLECTION_SCENARIO } from './collections/seed-collection.js';
 import {
   getSharedAccountCreative,
   removeSharedAccountCreative,
@@ -2342,6 +2343,12 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ctx.moduleId,
       targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
     );
+  if (scenario === SEED_COLLECTION_SCENARIO) {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: 'seed_collection is an experimental AdCP 3.3 scenario' };
+    }
+    return handleSeedCollection(rawArgs, ctx);
+  }
   if (scenario === REPORTING_SUBSCRIPTION_PROBE) {
     if (ctx.storyboardCompat?.version === '3.0' || !supportsAccountSurfaces33(ctx.servedAdcpVersion)) {
       return {
