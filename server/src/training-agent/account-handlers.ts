@@ -39,6 +39,7 @@ import {
   proveAccountWebhookControl,
 } from './webhook-challenge.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { isCollectionCardEventType, supportsCollections33 } from './collections/card-catalog.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
 import { createLogger } from '../logger.js';
 import {
@@ -921,6 +922,9 @@ async function normalizeNotificationConfigs(
     existing: NotificationConfigState[];
     dryRun: boolean;
     proofDeadlineMs: number;
+    /** Collection card events (experimental, 3.3) are registrable only on
+     * the 3.3 wire, where the seller declares them. */
+    servedAdcpVersion?: string;
   },
 ): Promise<NotificationConfigState[] | { error: Record<string, unknown> } | undefined> {
   if (input.notification_configs === undefined) return undefined;
@@ -982,7 +986,8 @@ async function normalizeNotificationConfigs(
       }
       seenEventTypes.add(eventType);
     }
-    const invalidIndex = config.event_types.findIndex(t => !ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(t));
+    const invalidIndex = config.event_types.findIndex(t => !ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(t)
+      && !(isCollectionCardEventType(t) && supportsCollections33(options.servedAdcpVersion)));
     if (invalidIndex !== -1) {
       return {
         error: validationFailure(
@@ -1111,6 +1116,39 @@ export function getAccountNotificationSubscribers(
       for (const config of account.notificationConfigs) {
         if (!config.active || !config.eventTypes.includes(notificationType)) continue;
         const subscriberKey = `${account.accountId}\u001F${config.subscriberId}\u001F${notificationType}`;
+        if (seen.has(subscriberKey)) continue;
+        seen.add(subscriberKey);
+        out.push({
+          accountId: account.accountId,
+          subscriberId: config.subscriberId,
+          url: config.url,
+          eventTypes: [...config.eventTypes],
+          authentication: config.authentication,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Every active subscriber to `notificationType` on any account the principal
+ * holds, across its session partitions. For seller-wide changes the
+ * principal can see on every account, such as its collection cards.
+ */
+export function getPrincipalNotificationSubscribers(
+  principal: string | undefined,
+  notificationType: string,
+): AccountNotificationSubscriber[] {
+  const prefix = `${principalScope(principal)}\u001F`;
+  const out: AccountNotificationSubscriber[] = [];
+  const seen = new Set<string>();
+  for (const [storeKey, accounts] of accountStore) {
+    if (!storeKey.startsWith(prefix)) continue;
+    for (const account of accounts.values()) {
+      for (const config of account.notificationConfigs) {
+        if (!config.active || !config.eventTypes.includes(notificationType)) continue;
+        const subscriberKey = `${account.accountId}\u001F${config.subscriberId}`;
         if (seen.has(subscriberKey)) continue;
         seen.add(subscriberKey);
         out.push({
@@ -1862,6 +1900,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         existing: existing.notificationConfigs,
         dryRun: req.dry_run === true,
         proofDeadlineMs,
+        servedAdcpVersion: ctx.servedAdcpVersion,
       });
       if (notificationConfigs && 'error' in notificationConfigs) {
         results.push(notificationConfigs.error);
@@ -2135,6 +2174,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       existing: existing?.notificationConfigs ?? [],
       dryRun: req.dry_run === true,
       proofDeadlineMs,
+      servedAdcpVersion: ctx.servedAdcpVersion,
     });
     if (notificationConfigs && 'error' in notificationConfigs) {
       results.push(notificationConfigs.error);

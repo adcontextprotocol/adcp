@@ -93,7 +93,12 @@ At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the traini
 - the caller's `authorization`, with `authorized_at` and `regranted_at`, and `revision` on each `list_accounts` account;
 - principal-level reporting subscriptions (`media_buy.reporting_subscriptions`): the `reporting_subscriptions` section of `sync_principal` and `get_principal`, and `subscription_coverage` on `get_reporting_status`;
 - the `reporting_subscription_probe` controller scenario, which revokes, reduces, and restores grants and advances a per-caller sandbox clock;
+- collection cards (`media_buy.collection_cards`): `include_collections` on `get_products`, `list_products`, `request_proposals` and `refine_proposals`, with images, samples, links, talent `brand_ref` and follower counts on the CreatorLoop creator channels;
+- the collection catalog (`media_buy.collection_catalog`): `list_collections`, and the `collection_card.*` and `collection_catalog.bulk_change` webhooks registered through `sync_accounts`;
+- the `seed_collection` controller scenario, which changes the caller's cards (a sample, a removal, a follower sweep) so the card webhooks fire;
 - inventory holds ([Hold policy](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental)): `hold_policy` on products and drafts (`media_buy.hold_policy`), committed proposals with `hold_placed_at`, ranked holds with `hold_rank` (`media_buy.hold_ranking`), per-installment `holds` (`media_buy.installment_holds`), `extend_hold` (`media_buy.hold_extension`), and the `force_hold_unavailable` controller scenario.
+
+At the same pin, `/brand/mcp` returns `collections` on `get_brand_identity` for the creators (`brand.collection_links`).
 
 Holds are kept per caller and timed by the caller's sandbox clock, so two accounts that hold the same slot are queued at positions 1 and 2. These products carry hold policies:
 
@@ -107,7 +112,7 @@ Holds are kept per caller and timed by the caller's sandbox clock, so two accoun
 
 Other products take the default: a hold that never contends.
 
-`tools/list` includes `request_account` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it). Response collections are not served yet ([#8181](https://github.com/adcontextprotocol/adcp/issues/8181)).
+`tools/list` includes `request_account` and `list_collections` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it).
 
 With `@adcp/sdk`, use 17.0.0-beta.11 or later, which negotiates exactly `3.3-beta.3`. Earlier 17.0.0 betas bundle an older beta, so they settle on 3.2 with the test agent.
 

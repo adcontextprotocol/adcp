@@ -148,7 +148,10 @@ function argsFor(tool: string, label: string, version: string, state: FlowState)
   const image = { asset_type: 'image', url: 'https://cdn.example.com/served-release.png', width: 300, height: 250 };
   switch (tool) {
     case 'get_products':
-      return { buying_mode: 'brief', brief: 'Display and video for sports fans in the US' };
+      // Every release is asked for collection cards (experimental 3.3,
+      // #8181): get_products accepts unknown fields, so a stable caller's
+      // flag is ignored and only the preview answers with `collections`.
+      return { buying_mode: 'brief', brief: 'Display and video for sports fans in the US', include_collections: true };
     case 'create_media_buy': {
       const product = state.products?.find(candidate => {
         const option = (candidate.pricing_options as Array<Record<string, unknown>> | undefined)?.[0];
@@ -402,6 +405,17 @@ describe('served-release response shape below 3.3 (#8487)', () => {
               `${entry.instancePath} ${entry.message} ${JSON.stringify(entry.params)}`
             )))}`);
           }
+          if (tool === 'get_products') {
+            const isPreview = version === TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
+            const referencesCollections = (structured.products as Array<Record<string, unknown>>)
+              .some(product => Array.isArray(product.collections) && product.collections.length > 0);
+            if (!isPreview && structured.collections !== undefined) {
+              failures.push(`${label} get_products @${version}: collection cards served to a stable caller`);
+            }
+            if (isPreview && referencesCollections && !Array.isArray(structured.collections)) {
+              failures.push(`${label} get_products @${version}: include_collections answered without collections`);
+            }
+          }
           // A 3.0 product card is a format reference plus its manifest; the
           // inline card replaced it in 3.1. Withholding the card would also
           // validate, so require the release's own shape on a carded product.
@@ -437,6 +451,54 @@ describe('served-release response shape below 3.3 (#8487)', () => {
       expect(graded.filter(entry => entry.endsWith(`@${TRAINING_AGENT_HOSTED_PREVIEW.wireVersion}`)).map(entry => entry.split('@')[0])).toEqual([...tools]);
     }, 180_000);
   }
+
+  it('shows stable and major-only callers none of the experimental 3.3 collection surfaces (#8181)', async () => {
+    const preview = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
+    const sales = `${baseUrl}/sales/mcp`;
+    const brand = `${baseUrl}/brand/mcp`;
+    const cardFeatures = ['media_buy.collection_cards', 'media_buy.collection_catalog', 'brand.collection_links'];
+    const cardEvents = ['collection_card.updated', 'collection_card.removed', 'collection_catalog.bulk_change'];
+    const brief = { buying_mode: 'brief', brief: 'Creator sponsored video integrations for a lifestyle audience', include_collections: true };
+    const failures: string[] = [];
+    // Preview reads first: they must not leave anything behind that a later
+    // stable read of the shared catalog could see.
+    const previewProducts = await call(sales, 'get_products', { adcp_version: preview, ...brief });
+    expect(Array.isArray(previewProducts.structured?.collections), JSON.stringify(previewProducts.raw).slice(0, 300)).toBe(true);
+    expect(JSON.stringify(previewProducts.structured)).toContain('"sample_content"');
+    await call(`${baseUrl}/mcp`, 'get_products', { adcp_version: preview, ...brief });
+    for (const pin of [{ adcp_version: '3.2' }, { adcp_version: '3.1' }, { adcp_version: '3.0' }, { adcp_major_version: 3 }, {}]) {
+      const label = JSON.stringify(pin);
+      for (const url of [sales, brand]) {
+        const { structured } = await call(url, 'get_adcp_capabilities', pin);
+        const features = (structured?.experimental_features as string[] | undefined) ?? [];
+        const events = ((structured?.wholesale_feed_webhooks as { event_types?: string[] } | undefined)?.event_types) ?? [];
+        if (features.some(feature => cardFeatures.includes(feature))) failures.push(`${url} ${label}: declares ${features.join(', ')}`);
+        if (events.some(event => cardEvents.includes(event))) failures.push(`${url} ${label}: lists card events`);
+      }
+      const products = await call(sales, 'get_products', { ...pin, ...brief });
+      if (!Array.isArray(products.structured?.products)) failures.push(`get_products ${label}: ${JSON.stringify(products.raw).slice(0, 200)}`);
+      if (products.structured?.collections !== undefined) failures.push(`get_products ${label}: served collection cards`);
+      if (JSON.stringify(products.structured ?? {}).includes('"sample_content"')) failures.push(`get_products ${label}: served the sample_content role`);
+      const legacy = await call(`${baseUrl}/mcp`, 'get_products', { ...pin, ...brief });
+      if (legacy.structured?.collections !== undefined) failures.push(`/mcp get_products ${label}: served collection cards`);
+      const identity = await call(brand, 'get_brand_identity', { ...pin, brand_id: 'juniper_vale' });
+      if (identity.structured?.collections !== undefined) failures.push(`get_brand_identity ${label}: served collection links`);
+      const listing = await rpc(sales, rpcId += 1, 'tools/list', pin.adcp_version ? { _meta: { adcp_version: pin.adcp_version } } : {});
+      const listed = (listing.result as { tools?: Array<{ name: string; inputSchema?: { properties?: Record<string, unknown> } }> } | undefined)?.tools ?? [];
+      if (listed.length === 0) failures.push(`tools/list ${label}: ${JSON.stringify(listing).slice(0, 200)}`);
+      if (listed.some(tool => tool.name === 'list_collections')) failures.push(`tools/list ${label}: lists list_collections`);
+      const flagged = listed.filter(tool => tool.inputSchema?.properties && 'include_collections' in tool.inputSchema.properties);
+      if (flagged.length > 0) failures.push(`tools/list ${label}: advertises include_collections on ${flagged.map(tool => tool.name).join(', ')}`);
+    }
+    expect(failures).toEqual([]);
+    // The same calls at the preview pin reach every surface.
+    const previewIdentity = await call(brand, 'get_brand_identity', { adcp_version: preview, brand_id: 'juniper_vale' });
+    expect(Array.isArray(previewIdentity.structured?.collections)).toBe(true);
+    const previewListing = await rpc(sales, rpcId += 1, 'tools/list', { _meta: { adcp_version: preview } });
+    const previewTools = (previewListing.result as { tools: Array<{ name: string; inputSchema?: { properties?: Record<string, unknown> } }> }).tools;
+    expect(previewTools.map(tool => tool.name)).toContain('list_collections');
+    expect(previewTools.find(tool => tool.name === 'get_products')?.inputSchema?.properties).toHaveProperty('include_collections');
+  }, 120_000);
 
   it('answers /mcp search_brands without a query with the correctable error the request schema requires', async () => {
     const url = `${baseUrl}/mcp`;
