@@ -59,6 +59,7 @@ jobs:
           npm run test:storyboard-validations-paths &&
           npm run test:refine-finalize-validation-ids &&
           npm run test:update-media-buy-affected-packages &&
+          npm run test:storyboard-fixture-discriminators &&
           npm run test:compliance-source-authority
 
       - name: Assert dist/ contains every server/src runtime asset
