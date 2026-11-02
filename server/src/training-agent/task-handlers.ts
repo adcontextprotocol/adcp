@@ -55,6 +55,7 @@ import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
 import { packageReportingOfferingIds } from './package-reporting-offerings.js';
+import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
 import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
 import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
@@ -7780,7 +7781,20 @@ function withCanonicalProposalEnvelope(
     delete internal.__canonical_terms_digest;
   }
   internal.__commercial_start_time ??= new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  internal.__commercial_end_time ??= new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+  if (internal.__commercial_end_time === undefined) {
+    // A 3.3 hold plan (holds/context.ts) stretches the flight over the
+    // upcoming installments the draft buys; otherwise the default applies.
+    const defaultEnd = Date.now() + 31 * 24 * 60 * 60 * 1000;
+    const allocated = Array.isArray(internal.allocations)
+      ? (internal.allocations as Array<{ product_id?: unknown }>).map(allocation => (
+        typeof allocation.product_id === 'string'
+          ? products.get(allocation.product_id)
+            ?? getCatalog().find(entry => entry.product.product_id === allocation.product_id)?.product
+          : undefined
+      ))
+      : [];
+    internal.__commercial_end_time = new Date(installmentFlightEnd(allocated, defaultEnd) ?? defaultEnd).toISOString();
+  }
   internal.__proposal_kind ??= 'new_media_buy';
   const commercialTerms = buildCanonicalCommercialTerms(internal as unknown as Proposal, products, brand);
   internal.__canonical_commercial_terms = commercialTerms;
@@ -12819,6 +12833,9 @@ async function handleGetProductsUnlocked(
           },
           { rebuild: true },
         );
+      // A 3.3 hold plan (holds/service.ts) sets the hold deadline it placed.
+      const plannedExpiry = refinement?.action === 'finalize' ? plannedHoldExpiry(sourceId) : undefined;
+      if (plannedExpiry) (successor as unknown as Record<string, unknown>).expires_at = plannedExpiry;
       if (refinement?.changeKind === 'cancellation') {
         const successorInternal = successor as unknown as Record<string, unknown>;
         const commercialTerms = structuredClone(successorInternal.__canonical_commercial_terms) as Record<string, unknown>;
@@ -23275,6 +23292,57 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       key: lockKey,
       claimToken: claim.claimToken,
     });
+  }
+}
+
+// ── Compact proposal state for experimental 3.3 holds (holds/service.ts) ──
+
+/** The session holding the caller's compact proposal snapshots. */
+export function compactProposalSessionKey(ctx: TrainingContext): string {
+  return productDiscoverySessionKey({ __compact_proposal_lifecycle: true } as unknown as ToolArgs, ctx);
+}
+
+/** The canonical wire form of a stored compact proposal snapshot. */
+export function compactProposalOutward(internal: Record<string, unknown>): Record<string, unknown> {
+  return outwardProposal(internal, new Map(getCatalog().map(entry => [entry.product.product_id, entry.product])));
+}
+
+/** A catalog product, with its installments. */
+export function compactCatalogProduct(productId: string): Product | undefined {
+  return getCatalog().find(entry => entry.product.product_id === productId)?.product;
+}
+
+/**
+ * Run `fn` against the caller's compact proposal session while holding the
+ * same session mutex the proposal engine writes under, then persist it. A
+ * competing writer gets the engine's transient CONFLICT.
+ */
+export async function withCompactProposalSessionLock<T extends object>(
+  ctx: TrainingContext,
+  fn: (session: SessionState) => Promise<T> | T,
+): Promise<T | { errors: TaskError[] }> {
+  const sessionScope = compactProposalSessionKey(ctx);
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const lockPrincipal = 'get-products-session-mutex';
+  const lockKey = `get-products-session:${sessionHash}`;
+  const lockStore = getIdempotencyStore();
+  const claim = await lockStore.check({ principal: lockPrincipal, key: lockKey, payload: { session: sessionHash } });
+  if (claim.kind !== 'miss') {
+    return {
+      errors: [{
+        code: 'CONFLICT',
+        message: 'Another proposal lifecycle request is already updating this session. Retry shortly.',
+        recovery: 'transient',
+      }] as TaskError[],
+    };
+  }
+  try {
+    evictSessionFromRequestCache(sessionScope);
+    const result = await fn(await getSession(sessionScope));
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await lockStore.release({ principal: lockPrincipal, key: lockKey, claimToken: claim.claimToken });
   }
 }
 

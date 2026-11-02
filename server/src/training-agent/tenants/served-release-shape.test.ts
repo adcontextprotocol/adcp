@@ -47,6 +47,8 @@ const RESPONSE_SCHEMAS: Record<string, string> = {
   list_accounts: 'account/list-accounts-response.json',
   get_products: 'media-buy/get-products-response.json',
   list_products: 'media-buy/list-products-response.json',
+  request_proposals: 'media-buy/request-proposals-response.json',
+  refine_proposals: 'media-buy/refine-proposals-response.json',
   create_media_buy: 'media-buy/create-media-buy-response.json',
   get_media_buys: 'media-buy/get-media-buys-response.json',
   update_media_buy: 'media-buy/update-media-buy-response.json',
@@ -80,7 +82,12 @@ const MEDIA_BUY_FLOW = [
 
 /** Each route's tools, in call order (later calls read earlier results). */
 const ROUTES: Record<string, readonly string[]> = {
-  sales: ['get_adcp_capabilities', 'list_accounts', ...MEDIA_BUY_FLOW, 'list_tasks', 'sync_audiences', 'sync_event_sources'],
+  // request_proposals then a finalizing refine_proposals: the experimental
+  // 3.3 hold fields reach the preview and never a stable caller (#8181).
+  sales: [
+    'get_adcp_capabilities', 'list_accounts', ...MEDIA_BUY_FLOW, 'request_proposals', 'refine_proposals',
+    'list_tasks', 'sync_audiences', 'sync_event_sources',
+  ],
   signals: ['get_adcp_capabilities', 'list_accounts', 'get_signals', 'list_tasks'],
   governance: ['get_adcp_capabilities', 'list_accounts', 'list_property_lists', 'create_property_list', 'get_property_list', 'list_collection_lists', 'list_content_standards', 'list_tasks'],
   creative: ['get_adcp_capabilities', 'list_accounts', 'list_creative_formats', 'list_creatives', 'list_transformers', 'list_tasks'],
@@ -115,6 +122,7 @@ interface FlowState {
   mediaBuyId?: string;
   propertyListId?: string;
   rights?: { rightsId: string; pricingOptionId: string };
+  draftId?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -160,6 +168,18 @@ function argsFor(tool: string, label: string, version: string, state: FlowState)
         packages: [{ product_id: product.product_id, pricing_option_id: option.pricing_option_id, budget: 10_000 }],
       };
     }
+    case 'request_proposals':
+      // A product without a hold-policy fixture: its holds never contend, so
+      // every version's run finalizes.
+      return {
+        brief: 'Sponsorship for the spring launch',
+        criteria: { product_ids: ['pinnacle_news_display_premium'] },
+        idempotency_key: key('proposals'),
+      };
+    case 'refine_proposals':
+      return state.draftId
+        ? { refinements: [{ proposal_id: state.draftId, action: 'finalize' }], idempotency_key: key('finalize') }
+        : undefined;
     case 'get_media_buys':
     case 'get_media_buy_delivery':
       return state.mediaBuyId ? { media_buy_ids: [state.mediaBuyId] } : undefined;
@@ -240,6 +260,9 @@ function capture(tool: string, structured: Record<string, unknown>, state: FlowS
     const formats = structured.formats.filter(isRecord);
     const display = formats.find(format => isRecord(format.format_id) && String(format.format_id.id).includes('display'));
     if (display && isRecord(display.format_id)) state.formatId = display.format_id;
+  }
+  if (tool === 'request_proposals' && Array.isArray(structured.proposals) && isRecord(structured.proposals[0])) {
+    state.draftId = structured.proposals[0].proposal_id as string;
   }
   if (tool === 'create_media_buy' && typeof structured.media_buy_id === 'string') {
     state.mediaBuyId = structured.media_buy_id;
@@ -324,12 +347,20 @@ describe('served-release response shape below 3.3 (#8487)', () => {
         });
         const state: FlowState = {};
         for (const tool of tools) {
+          // Releases without the compact lifecycle have no draft to finalize.
+          // (@adcp/sdk still dispatches refine_proposals at those pins.)
+          if (tool === 'refine_proposals' && !getCanonicalToolValidator('request_proposals', 'sync', { adcpVersion: version })) {
+            continue;
+          }
           const toolArgs = argsFor(tool, route || 'v5', version, state);
           if (!toolArgs) {
             failures.push(`${label} ${tool} @${version}: an earlier step left nothing to call it with`);
             continue;
           }
-          const { structured, raw } = await call(url, tool, { adcp_version: version, account, ...toolArgs });
+          // refine_proposals is addressed by proposal identity and carries no account.
+          const { structured, raw } = await call(url, tool, tool === 'refine_proposals'
+            ? { adcp_version: version, ...toolArgs }
+            : { adcp_version: version, account, ...toolArgs });
           const adcpError = structured?.adcp_error as { code?: string; message?: string } | undefined;
           const error = adcpError?.code;
           const validate = getCanonicalToolValidator(tool, 'sync', { adcpVersion: version });
@@ -396,6 +427,20 @@ describe('served-release response shape below 3.3 (#8487)', () => {
               ? cards.some(card => isRecord(card.format_id) && card.format_id.id === 'product_card_standard' && isRecord(card.manifest))
               : cards.some(card => typeof card.title === 'string');
             if (!releaseShaped) failures.push(`${label} get_products @${version}: no product carries the ${version} product_card shape`);
+          }
+          // The experimental 3.3 holds: a draft carries its binding policy and
+          // a finalized hold its placement, at the preview only.
+          if (tool === 'request_proposals' || tool === 'refine_proposals') {
+            const proposal = tool === 'request_proposals'
+              ? (structured.proposals as Array<Record<string, unknown>> | undefined)?.[0]
+              : ((structured.results as Array<Record<string, unknown>> | undefined)?.[0]?.proposal as Record<string, unknown> | undefined);
+            const holdFields = ['hold_policy', 'hold_placed_at'].filter(field => proposal && field in proposal);
+            const expected = version !== TRAINING_AGENT_HOSTED_PREVIEW.wireVersion
+              ? []
+              : tool === 'request_proposals' ? ['hold_policy'] : ['hold_policy', 'hold_placed_at'];
+            if (holdFields.join() !== expected.join()) {
+              failures.push(`${label} ${tool} @${version}: hold fields ${JSON.stringify(holdFields)}, expected ${JSON.stringify(expected)}`);
+            }
           }
           graded.push(`${tool}@${version}`);
         }

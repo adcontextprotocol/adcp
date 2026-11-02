@@ -9,6 +9,7 @@
  * `TestControllerStore` bound to our JSONB-persisted `SessionState`.
  */
 
+import { FORCE_HOLD_UNAVAILABLE, forceHoldUnavailable, holdsServed } from './holds/service.js';
 import { promoteStagedUpdate, stagedOnRejection } from './live-creative-updates.js';
 import {
   TestControllerError,
@@ -1653,6 +1654,7 @@ const LOCAL_SCENARIOS = [
   'query_account_governance_binding',
   'evaluate_distributed_brand_resolution',
   'verify_governance_token',
+  'force_hold_unavailable',
 ] as const;
 
 async function resolveOrCreateReportingProbeAccount(
@@ -2091,9 +2093,11 @@ function localScenariosFor(ctx: TrainingContext): string[] {
       && s !== 'reliable_reporting_managed_delivery_probe'
       && s !== 'reliable_reporting_reconciled_billing_probe'
     ));
-  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withChangeFeed = supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? currentOnly
     : currentOnly.filter(s => s !== 'expire_account_change_cursor');
+  // Experimental 3.3 holds (media_buy.hold_policy).
+  return holdsServed(ctx) ? withChangeFeed : withChangeFeed.filter(s => s !== FORCE_HOLD_UNAVAILABLE);
 }
 
 /**
@@ -2358,6 +2362,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       };
     }
     return handleReportingSubscriptionProbe(params, ctx);
+  }
+  if (scenario === FORCE_HOLD_UNAVAILABLE) {
+    return forceHoldUnavailable(params, ctx);
   }
   if (scenario === 'reset_state') {
     // The caller's sandbox clock, grants, and account requests reset too.

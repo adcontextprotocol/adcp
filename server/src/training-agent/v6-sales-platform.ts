@@ -104,6 +104,13 @@ import {
 import { scopedPrincipal } from './idempotency.js';
 import { finishCollectionRead, prepareCollectionRead, runCollectionRead } from './collections/include-collections.js';
 import {
+  withHoldsAcceptProposal,
+  withHoldsDeclineProposals,
+  withHoldsListProducts,
+  withHoldsRefineProposals,
+  withHoldsRequestProposals,
+} from './holds/service.js';
+import {
   SellerManagedControlJobCoordinator,
   type SellerManagedControlJobContext,
 } from './seller-managed-control-jobs.js';
@@ -1820,8 +1827,10 @@ export class TrainingSalesPlatform
     return {
     proposalRefinement: proposalCapabilitiesForProfile(this.proposalNegotiationProfile),
 
-    // include_collections (experimental 3.3, collections/include-collections.ts)
-    // wraps the three split reads that can carry collection cards.
+    // Experimental 3.3: include_collections (collections/include-collections.ts)
+    // prepares the split reads and adds collection cards; holds
+    // (holds/service.ts) wrap the engine call for 3.3 callers. Other callers
+    // pass straight through both.
     listProducts: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
       return translateV5Result(
@@ -1829,7 +1838,7 @@ export class TrainingSalesPlatform
           'list_products',
           withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
           trainingCtx,
-          args => executeProductDiscoveryPlatformTool('list_products', args, trainingCtx),
+          args => withHoldsListProducts(args, trainingCtx, () => executeProductDiscoveryPlatformTool('list_products', args, trainingCtx)),
         ),
         { allowAdvisories: true },
       );
@@ -1842,7 +1851,7 @@ export class TrainingSalesPlatform
           'request_proposals',
           withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
           trainingCtx,
-          args => executeProductDiscoveryPlatformTool('request_proposals', args, trainingCtx),
+          args => withHoldsRequestProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('request_proposals', args, trainingCtx)),
         ),
         { allowAdvisories: true },
       );
@@ -1855,20 +1864,20 @@ export class TrainingSalesPlatform
           'refine_proposals',
           withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
           trainingCtx,
-          args => executeProductDiscoveryPlatformTool('refine_proposals', args, trainingCtx),
+          args => withHoldsRefineProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('refine_proposals', args, trainingCtx)),
         ),
         { allowAdvisories: true },
       );
     },
 
-    declineProposals: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'decline_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
+    declineProposals: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>;
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsDeclineProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('decline_proposals', args, trainingCtx)),
+        { allowAdvisories: true },
+      );
+    },
 
     buyProducts: async (req, ctx) => translateV5CommitmentResult(
       await handleBuyProducts(
@@ -1877,12 +1886,13 @@ export class TrainingSalesPlatform
       ),
     ),
 
-    acceptProposal: async (req, ctx) => translateV5Result(
-      await handleAcceptProposal(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0],
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-    ),
+    acceptProposal: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0];
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsAcceptProposal(args as unknown as Record<string, unknown>, trainingCtx, () => handleAcceptProposal(args, trainingCtx)),
+      );
+    },
 
     controlMediaBuy: async (req, ctx) => {
       const args = withCurrentAccountScope(

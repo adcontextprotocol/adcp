@@ -73,6 +73,8 @@ import {
   subscriptionOfferings,
 } from '../reporting-subscriptions.js';
 import { ACCOUNT_REQUESTS_CAPABILITY, ACCOUNT_REQUESTS_FEATURE } from '../account-requests.js';
+import { applyHoldCapabilities } from '../holds/capabilities.js';
+import { FORCE_HOLD_UNAVAILABLE, supportsHolds33 } from '../holds/service.js';
 import { grantFor, grantPermits, loadSandbox } from '../account-sandbox.js';
 import { projectCollectionCapabilities } from '../collections/capabilities.js';
 import { supportsCollections33 } from '../collections/card-catalog.js';
@@ -801,6 +803,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'query_account_governance_binding'
     && rawArgs.scenario !== 'force_media_buy_confirmation'
     && rawArgs.scenario !== 'reporting_subscription_probe'
+    && rawArgs.scenario !== FORCE_HOLD_UNAVAILABLE
     && rawArgs.scenario !== SEED_COLLECTION_SCENARIO
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
@@ -823,6 +826,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'query_account_governance_binding'
       || rawArgs.scenario === 'force_media_buy_confirmation'
       || rawArgs.scenario === 'reporting_subscription_probe'
+      || rawArgs.scenario === FORCE_HOLD_UNAVAILABLE
       || rawArgs.scenario === SEED_COLLECTION_SCENARIO
       || isRejectedGetProductsDirective
     )
@@ -865,8 +869,10 @@ async function tryHandleLocalComplyScenario(
   }
 
   const result = await withStableAccountIdScope(principal, storyboardCompat, () => runWithSessionContext(async () => {
+    // force_hold_unavailable addresses the same compact proposal partition.
     const isCompactLifecycleScenario = rawArgs.scenario === 'compact_product_lifecycle_probe'
-      || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
+      || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe'
+      || rawArgs.scenario === FORCE_HOLD_UNAVAILABLE;
     const auth = (req as unknown as {
       auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
     }).auth;
@@ -880,7 +886,12 @@ async function tryHandleLocalComplyScenario(
     const body = rawArgs.scenario === 'list_scenarios'
       ? {
           success: true,
-          scenarios: salesComplyScenarios(storyboardCompat, versionResolution.servedVersion),
+          scenarios: [
+            ...salesComplyScenarios(storyboardCompat, versionResolution.servedVersion),
+            ...(storyboardCompat?.version !== '3.0' && supportsHolds33(versionResolution.servedVersion)
+              ? [FORCE_HOLD_UNAVAILABLE]
+              : []),
+          ],
         }
       : await handleComplyTestController(handlerArgs, {
           ...localContext,
@@ -1475,6 +1486,8 @@ function projectTenantCapabilities(
         ...complianceTesting,
         scenarios: [...scenarios],
       };
+      // Experimental 3.3 holds: hold_policy, extend_hold, ranking, installment holds.
+      applyHoldCapabilities(structured, servedVersion, proposalNegotiationProfile, storyboardCompat);
     }
     // Every tenant: a release whose capabilities schema closes the scenario
     // enum (3.0) never sees scenarios added after it, whichever projection
