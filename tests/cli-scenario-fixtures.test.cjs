@@ -727,15 +727,21 @@ test('inline creatives: a canonical-only video-first seller still fails coverage
 // fails the coverage gate having been asked for a canonical kind it never claimed.
 test('inline creatives: a legacy-only seller honouring format_kinds would lose all coverage if filtered', async () => {
   const storyboard = loadStoryboardFile(path.join(SCENARIOS, 'inline_creatives_without_sync.yaml'));
+  let narrowed = 0;
   for (const phase of storyboard.phases) {
     for (const step of phase.steps) {
       step.validations = (step.validations ?? []).filter(check => check.check !== 'response_schema');
-      // Simulate the proposed change: narrow the legacy probe too.
+      // Simulate the proposed change: narrow the legacy probe too. #8603 removed
+      // the step's only filter (is_fixed_price), so the authored request carries
+      // no filters object; add one rather than assume it exists.
       if (step.id === 'get_products_legacy_format') {
-        step.sample_request.filters.format_kinds = ['image'];
+        assert.equal(step.sample_request.filters?.format_kinds, undefined, 'the authored legacy probe must not already narrow');
+        step.sample_request.filters = { ...step.sample_request.filters, format_kinds: ['image'] };
+        narrowed += 1;
       }
     }
   }
+  assert.equal(narrowed, 1, 'the legacy discovery step must exist for the simulated narrowing to mean anything');
   const product = buildProduct({ canonical: false, legacy: true });
   const client = {
     executeTask: async (task, request) => {
