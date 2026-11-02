@@ -128,9 +128,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // 3.3.0-beta.1 window: the queued account, pricing, seller-terms and creative
 // PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
 // top of main). Bound at 476 KiB once for the window; resume per-PR bounding
-// after the beta.1 cut.
+// after the beta.1 cut. Naming five repeated scalar subschemas (#8525) makes
+// each a shared definition, which brings the media-buy context to 496,720
+// bytes / 485.08 KiB; bound it at 486 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 476,
+  'media-buy': 486,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -198,8 +200,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 3.3.0-beta.4: the reset_state scenario and the set_account_timezone result
 // (#8717) reach the controller on top of the beta.4 coverage fixes (#8718,
 // trimmed to 1_374_852); the controller measures 1_375_833 bytes, bound at
-// 1_376_000.
-const PARITY_COMPILE_LIMIT = 1_376_000;
+// 1_376_000. Naming five repeated scalar subschemas (#8525) brings the
+// controller to 1_378_383 bytes; bound it at 1_380_000.
+const PARITY_COMPILE_LIMIT = 1_380_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1266,8 +1269,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // requests, reached from request_account and list_accounts (23,090,968 bytes
   // measured), so the cap moves to 23 MiB. Composing the protocol envelope
   // into every task response (every response bundles the envelope) also
-  // grows it; the 23 MiB cap holds both.
-  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // grows it; the 23 MiB cap holds both. Naming five repeated scalar subschemas
+  // (#8525) brings it to 24,176,139 bytes, so the cap moves to 24 MiB.
+  assert.ok(totalBytes < 24 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

@@ -13,8 +13,7 @@
           "const": "publisher_ref"
         },
         "publisher_domain": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Domain whose adagents.json declares placement_id."
         },
         "placement_id": {

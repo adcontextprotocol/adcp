@@ -29,11 +29,8 @@
   ],
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated delivery key stable across RFC 8785 JCS-equivalent retries of the complete authenticated webhook payload. Publishers MUST generate a cryptographically random value (UUID v4 recommended), bind it immutably to the first canonical payload for the advertised delivery retry horizon, and use a fresh key for a changed payload or distinct delivery. Receivers scope the binding to the authenticated sender identity. Same key plus identical payload while active returns retryable 503; after durable acknowledgement it returns 2xx; same key plus a different canonical payload returns non-retryable 409. This is the transport delivery identity, not request idempotency or stable logical notification identity.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated delivery key stable across RFC 8785 JCS-equivalent retries of the complete authenticated webhook payload. Publishers MUST generate a cryptographically random value (UUID v4 recommended), bind it immutably to the first canonical payload for the advertised delivery retry horizon, and use a fresh key for a changed payload or distinct delivery. Receivers scope the binding to the authenticated sender identity. Same key plus identical payload while active returns retryable 503; after durable acknowledgement it returns 2xx; same key plus a different canonical payload returns non-retryable 409. This is the transport delivery identity, not request idempotency or stable logical notification identity."
     },
     "notification_id": {
       "type": "string",

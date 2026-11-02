@@ -24,8 +24,7 @@
           "description": "Convenience echo of the installment's scheduled publication or air time."
         },
         "publisher_domain": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Publisher or platform authority that namespaces the property identifier, including for an unregistered surface."
         },
         "identifier": {

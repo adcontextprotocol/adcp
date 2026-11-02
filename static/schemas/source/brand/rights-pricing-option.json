@@ -20,8 +20,7 @@
       "description": "Price amount. Interpretation depends on model: CPM = cost per 1,000 impressions, flat_rate = fixed cost per period."
     },
     "currency": {
-      "type": "string",
-      "pattern": "^[A-Z]{3}$",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code"
     },
     "uses": {

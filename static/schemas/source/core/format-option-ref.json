@@ -19,9 +19,8 @@
           "description": "Reference resolves against the named publisher's adagents.json top-level `formats[]` catalog."
         },
         "publisher_domain": {
-          "type": "string",
-          "description": "Publisher domain where the adagents.json declaring this format option is hosted.",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Publisher domain where the adagents.json declaring this format option is hosted."
         },
         "format_option_id": {
           "type": "string",

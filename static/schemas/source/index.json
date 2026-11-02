@@ -1263,6 +1263,26 @@
           "description": "Canonical gender value set with explicit unknown-gender membership Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
           "x-status": "experimental",
           "x-added-in": "3.3.0"
+        },
+        "currency-code": {
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 alphabetic currency code, such as USD or EUR."
+        },
+        "country-code": {
+          "$ref": "/schemas/core/country-code.json",
+          "description": "ISO 3166-1 alpha-2 country code, such as US or DE."
+        },
+        "idempotency-key": {
+          "$ref": "/schemas/core/idempotency-key.json",
+          "description": "Key that a client or webhook sender generates for at-most-once processing. Retries of one logical operation reuse it. A fresh UUID v4 is recommended."
+        },
+        "domain-name": {
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Lowercase DNS domain name without a scheme, path, or trailing dot, such as example.com."
+        },
+        "https-url": {
+          "$ref": "/schemas/core/https-url.json",
+          "description": "Absolute URL that uses the https scheme."
         }
       },
       "requirements": {

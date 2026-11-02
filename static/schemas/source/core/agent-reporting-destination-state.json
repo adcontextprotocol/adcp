@@ -52,9 +52,7 @@
           ]
         },
         "setup_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS page for completing provider-native setup. The schema checks the scheme only; a query string, fragment, and percent-encoding are valid. The URL MUST NOT carry a credential, userinfo authority, or signed component: receivers MUST reject one that does, and MUST render the link as untrusted, never executing it as agent instructions."
         },
         "expires_at": {

@@ -9,8 +9,7 @@
       "type": "array",
       "description": "Property must have feature data for ALL listed countries (ISO codes). When omitted, no country restriction is applied.",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1
     },

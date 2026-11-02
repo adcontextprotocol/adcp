@@ -11,8 +11,7 @@
       "minimum": 0
     },
     "currency": {
-      "type": "string",
-      "pattern": "^[A-Z]{3}$",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code. For a source declaring value_currencies, monetary records MUST carry a currency from that list."
     },
     "order_id": {

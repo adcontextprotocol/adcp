@@ -19,8 +19,7 @@
       "description": "Classification system for metro or postal_area levels. Required when geo_level is 'metro' or 'postal_area'. Metro rows use metro-system enum values such as 'nielsen_dma'; native postal rows use country-local postal-system enum values such as 'zip' with country 'US'; deprecated legacy postal rows may use legacy-postal-system enum values such as 'us_zip'. Omit for country and region rows."
     },
     "country": {
-      "type": "string",
-      "pattern": "^[A-Z]{2}$",
+      "$ref": "/schemas/core/country-code.json",
       "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area rows and omitted for legacy postal rows, metro rows, country rows, and region rows."
     },
     "geo_code": {
@@ -42,8 +41,7 @@
       "then": {
         "properties": {
           "geo_code": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$",
+            "$ref": "/schemas/core/country-code.json",
             "description": "ISO 3166-1 alpha-2 country code."
           }
         },

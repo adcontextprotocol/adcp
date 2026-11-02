@@ -13,11 +13,8 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. `account` gives resource-level dedup, but governance changes emit audit events and can trigger reapproval flows — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for at-most-once execution. `account` gives resource-level dedup, but governance changes emit audit events and can trigger reapproval flows — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request."
     },
     "accounts": {
       "type": "array",
@@ -36,9 +33,7 @@
               "type": "object",
               "properties": {
                 "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "pattern": "^https://",
+                  "$ref": "/schemas/core/https-url.json",
                   "description": "Governance agent endpoint URL. Must use HTTPS."
                 },
                 "authentication": {

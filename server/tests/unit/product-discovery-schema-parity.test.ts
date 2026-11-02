@@ -25,6 +25,10 @@ function resolveLocalRef(root: JsonSchema, value: JsonSchema): JsonSchema {
 describe('product discovery MCP schema parity', () => {
   it('keeps runtime discovery constraints aligned with source schemas', () => {
     const tools = new Map(productDiscoveryAliasToolDefinitions().map(tool => [tool.name, tool.inputSchema as JsonSchema]));
+    const idempotencyKey = JSON.parse(readFileSync(
+      join(process.cwd(), 'static/schemas/source/core/idempotency-key.json'),
+      'utf8',
+    )) as JsonSchema;
     for (const [toolName, fileName] of [
       ['list_products', 'list-products-request'],
       ['request_proposals', 'request-proposals-request'],
@@ -38,10 +42,12 @@ describe('product discovery MCP schema parity', () => {
       expect(runtime.additionalProperties).toBe(source.additionalProperties);
       expect(Object.keys(runtime.properties).sort()).toEqual(Object.keys(source.properties).sort());
       if (source.properties.idempotency_key) {
-        expect(runtime.properties.idempotency_key).toMatchObject({
-          minLength: source.properties.idempotency_key.minLength,
-          maxLength: source.properties.idempotency_key.maxLength,
-          pattern: source.properties.idempotency_key.pattern,
+        expect(source.properties.idempotency_key.$ref).toBe('/schemas/core/idempotency-key.json');
+        const key = runtime.properties.idempotency_key as JsonSchema;
+        expect(resolveLocalRef(runtime, key.allOf?.[0] ?? key)).toMatchObject({
+          minLength: idempotencyKey.minLength,
+          maxLength: idempotencyKey.maxLength,
+          pattern: idempotencyKey.pattern,
         });
       }
     }

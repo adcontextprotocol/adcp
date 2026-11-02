@@ -16,8 +16,7 @@
       "description": "Existing identifier to look up in the requested/current catalog version for lifecycle refresh or replacement discovery. Mutually exclusive with q."
     },
     "country": {
-      "type": "string",
-      "pattern": "^[A-Z]{2}$",
+      "$ref": "/schemas/core/country-code.json",
       "description": "ISO 3166-1 alpha-2 country code used to disambiguate the query."
     },
     "subdivision": {

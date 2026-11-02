@@ -21,9 +21,7 @@
       }
     },
     "next": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Optional same-host URL of the next shard (untrusted input; see trust.json https_url). Verifiers follow shards in order and stop at a configured limit."
     }
   },

@@ -300,8 +300,7 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "description": "ISO 3166-1 alpha-2 country codes where the signal is applicable. Sellers must not expose a signal for media buys in countries outside this list. Federating agents that surface a peer's signal MUST treat the peer-published list as an upper bound, re-check it against the buyer's intended deployment countries, and may apply only narrower local policy."
     },
@@ -345,8 +344,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           },
           "description": "ISO 3166-1 alpha-2 country codes where the model's training data was collected."
         },
@@ -403,9 +401,7 @@
                 "uniqueItems": true
               },
               "url": {
-                "type": "string",
-                "format": "uri",
-                "pattern": "^https://",
+                "$ref": "/schemas/core/https-url.json",
                 "description": "HTTPS URL for submitting the rights request."
               },
               "email": {
@@ -424,8 +420,7 @@
                 "type": "array",
                 "description": "ISO 3166-1 alpha-2 countries this channel serves, when the provider routes rights by country.",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{2}$"
+                  "$ref": "/schemas/core/country-code.json"
                 }
               }
             },
@@ -444,9 +439,7 @@
           "description": "Maximum response time in days for rights requests handled through the declared rights channels. For provider-published signals, providers SHOULD avoid duplicating this field across every signal unless the value varies by signal or upstream source; consumers MAY also consult the provider's public privacy policy or registry disclosures when present."
         },
         "ccpa_opt_out_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "US-specific 'Do Not Sell or Share' opt-out URL where required."
         }
       },

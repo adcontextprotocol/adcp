@@ -7,11 +7,8 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated delivery key stable across retries of one fire. Deliberate re-emission uses a new key.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated delivery key stable across retries of one fire. Deliberate re-emission uses a new key."
     },
     "notification_id": {
       "type": "string",

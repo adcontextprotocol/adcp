@@ -36,9 +36,8 @@
       "maximum": 1
     },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code for commissionable_value and resulting spend",
-      "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
     "commission_basis_description": {

@@ -169,8 +169,7 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json"
         }
       },
       "required": [
@@ -244,11 +243,8 @@
       "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time. This is separate from reporting_webhook which configures ongoing campaign reporting."
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

@@ -30,9 +30,8 @@
       "type": "array",
       "description": "Filter by currencies the buyer can use for the media product transaction, using ISO 4217 currency codes. Products match when they offer at least one product-level pricing_options entry in one of the requested currencies and any seller-applied or otherwise mandatory product-scoped signal charges are satisfiable in one of those currencies or have no incremental price. Mandatory custom signal pricing without currency is not satisfiable for this filter unless the seller can truthfully treat it as having no incremental price. Sellers MUST return only product pricing_options entries whose currency is in this list so buyers can select deterministically from discovery. This filter does not require pruning optional signal or vendor add-on pricing; buyers should avoid optional add-ons priced only in unsupported currencies.",
       "items": {
-        "type": "string",
-        "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
-        "pattern": "^[A-Z]{3}$"
+        "$ref": "/schemas/core/currency-code.json",
+        "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')"
       },
       "minItems": 1,
       "uniqueItems": true,
@@ -98,9 +97,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')"
         }
       },
       "required": ["currency"],
@@ -119,8 +117,7 @@
       "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.countries. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1
     },
@@ -373,8 +370,7 @@
             "description": "Geographic targeting level (country, region, metro, postal_area)"
           },
           "country": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$",
+            "$ref": "/schemas/core/country-code.json",
             "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area system filters; not applicable to country, region, or metro filters."
           },
           "system": {

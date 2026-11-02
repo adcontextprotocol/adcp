@@ -98,8 +98,7 @@
           "description": "Finite positive amount. Cumulative adjustments for an outcome cannot exceed its authoritative commitment."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "Three-letter uppercase currency code matching the plan currency."
         }
       },
@@ -139,10 +138,7 @@
       "additionalProperties": false
     },
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "Caller-generated retry key. Exact replays return the original report or review; reuse with another payload is rejected."
     },
     "context": { "$ref": "/schemas/core/context.json" },

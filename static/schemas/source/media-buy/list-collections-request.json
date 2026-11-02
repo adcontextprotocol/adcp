@@ -11,10 +11,7 @@
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "Optional replay key accepted uniformly on read calls."
     },
     "context": { "$ref": "/schemas/core/context.json" },
@@ -77,8 +74,7 @@
             "type": "object",
             "properties": {
               "domain": {
-                "type": "string",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                "$ref": "/schemas/core/domain-name.json"
               },
               "brand_id": { "$ref": "/schemas/core/brand-id.json" }
             },
@@ -91,8 +87,7 @@
           "type": "array",
           "description": "Include only collections with a distribution entry whose publisher_domain is any of these domains.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            "$ref": "/schemas/core/domain-name.json"
           },
           "minItems": 1,
           "uniqueItems": true

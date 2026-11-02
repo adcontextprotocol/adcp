@@ -14,8 +14,7 @@
       "type": "object",
       "properties": {
         "publisher_domain": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Publisher or platform authority that namespaces the operational identifier, including when the surface is not registered in adagents.json."
         },
         "identifier": {

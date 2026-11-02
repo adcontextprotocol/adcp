@@ -106,9 +106,7 @@
           "required": ["uri", "digest"],
           "properties": {
             "uri": {
-              "type": "string",
-              "format": "uri",
-              "pattern": "^https://",
+              "$ref": "/schemas/core/https-url.json",
               "description": "Untrusted image asset. Fetch with public-address-only SSRF protection, no redirects, DNS pinning, and body/time limits; do not attach ambient credentials."
             },
             "digest": {

@@ -6,9 +6,7 @@
   "type": "object",
   "properties": {
     "source": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Optional catalog dataset or derivative-source identifier. This records provenance/coverage and does not change the identifier namespace in system."
     },
     "current_version": {

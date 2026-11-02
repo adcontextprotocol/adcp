@@ -15,9 +15,8 @@
       "description": "Cost per 1,000 impressions"
     },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code",
-      "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
     "fixed_price": {

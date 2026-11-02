@@ -51,16 +51,14 @@
       "type": "array",
       "description": "Countries where this creative may be served under these rights (ISO 3166-1 alpha-2). If omitted, no country restriction. When both countries and excluded_countries are present, the effective set is countries minus excluded_countries.",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       }
     },
     "excluded_countries": {
       "type": "array",
       "description": "Countries excluded from rights availability (ISO 3166-1 alpha-2). Use when the grant is worldwide except specific markets.",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       }
     },
     "channels": {

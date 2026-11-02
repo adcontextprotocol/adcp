@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/https-url.json",
+  "title": "HTTPS URL",
+  "description": "Absolute URL that uses the https scheme.",
+  "type": "string",
+  "format": "uri",
+  "pattern": "^https://"
+}

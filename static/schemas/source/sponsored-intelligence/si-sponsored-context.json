@@ -30,9 +30,8 @@
           "additionalProperties": false
         },
         "operator": {
-          "type": "string",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Domain of the operator acting for the paying principal, when different from the brand domain.",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
           "x-entity": "operator"
         },
         "display_name": {
@@ -132,9 +131,7 @@
       "description": "Agent or service that attached the declaration.",
       "properties": {
         "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL of the declaring agent or service."
         },
         "role": {

@@ -6,10 +6,7 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json"
     },
     "notification_id": {
       "type": "string",

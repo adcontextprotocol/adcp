@@ -76,8 +76,7 @@
           "type": "array",
           "description": "Countries included in the denominator, as ISO 3166-1 alpha-2 codes.",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           },
           "uniqueItems": true,
           "minItems": 1

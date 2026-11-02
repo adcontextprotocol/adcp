@@ -42,8 +42,7 @@
             "description": "Amount owed to the vendor for this record, denominated in currency."
           },
           "currency": {
-            "type": "string",
-            "pattern": "^[A-Z]{3}$",
+            "$ref": "/schemas/core/currency-code.json",
             "description": "ISO 4217 currency code."
           },
           "pricing_option_id": {

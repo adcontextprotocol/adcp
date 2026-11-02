@@ -40,9 +40,7 @@
                   "type": "object",
                   "properties": {
                     "url": {
-                      "type": "string",
-                      "format": "uri",
-                      "pattern": "^https://",
+                      "$ref": "/schemas/core/https-url.json",
                       "description": "Governance agent endpoint URL."
                     }
                   },

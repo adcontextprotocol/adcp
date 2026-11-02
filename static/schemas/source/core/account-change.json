@@ -91,11 +91,8 @@
       "additionalProperties": true
     },
     "idempotency_key": {
-      "type": "string",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "The idempotency_key of the AdCP request that produced this change, echoed only when origin.kind is adcp and only on records served to the principal that sent that request. Lets a buyer recognize its own changes. Sellers MUST omit it for every other reader of the account and MUST NOT include it in account.change_recorded notifications. Apart from this field, readers see the same record, subject to the redaction of actor and origin.connection_id described on those fields.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
       "x-added-in": "3.3.0"
     },
     "resource_revision": {
