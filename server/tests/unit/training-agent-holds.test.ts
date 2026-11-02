@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { buildCatalog, buildProposals } from '../../src/training-agent/product-factory.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
 import { installmentFlightEnd, plannedHoldExpiry, runWithHoldPlan } from '../../src/training-agent/holds/context.js';
-import { HOLD_FIXTURES } from '../../src/training-agent/holds/fixtures.js';
+import { HOLD_FIXTURES, holdFixture, runWithSeededHoldFixtures, seededHoldFixture } from '../../src/training-agent/holds/fixtures.js';
 import { AGENT_DEFAULT_POLICY, deriveDraftPolicy, durationMs, durationsOrdered } from '../../src/training-agent/holds/policy.js';
 import { holdsServed, supportsHolds33 } from '../../src/training-agent/holds/service.js';
 
@@ -145,5 +145,34 @@ describe('hold plan hooks', () => {
       expect(plannedHoldExpiry('proposal_x')).toBe(expiresAt);
       expect(plannedHoldExpiry('proposal_y')).toBeUndefined();
     });
+  });
+});
+
+describe('seeded hold policies', () => {
+  it('accepts a seeded product hold_policy the schema allows, contending per product', () => {
+    expect(seededHoldFixture({ hold_policy: { available: false } })).toEqual({ policy: { available: false }, contention: 'product' });
+    expect(seededHoldFixture({
+      hold_policy: { available: true, min_duration: 'P1D', max_duration: 'P3D', extendable: true, max_total_duration: 'P10D', rankable: true },
+    })).toEqual({
+      policy: { available: true, min_duration: 'P1D', max_duration: 'P3D', extendable: true, max_total_duration: 'P10D', rankable: true },
+      contention: 'product',
+    });
+  });
+
+  it('ignores a missing or invalid seeded hold_policy', () => {
+    expect(seededHoldFixture({})).toBeUndefined();
+    expect(seededHoldFixture({ hold_policy: { min_duration: 'P1D' } })).toBeUndefined();
+    expect(seededHoldFixture({ hold_policy: { available: false, rankable: true } })).toBeUndefined();
+    expect(seededHoldFixture({ hold_policy: { available: true, min_duration: 'P3D', max_duration: 'P1D' } })).toBeUndefined();
+    expect(seededHoldFixture({ hold_policy: { available: true, max_duration: 'P1W' } })).toBeUndefined();
+    expect(seededHoldFixture({ hold_policy: { available: true, max_total_duration: 'P10D' } })).toBeUndefined();
+    expect(seededHoldFixture({ hold_policy: { available: true, extendable: 'yes' } })).toBeUndefined();
+  });
+
+  it('resolves seeded policies ahead of the catalog, only inside the request scope', async () => {
+    const seeded = new Map([['crestline_radio_premium', { policy: { available: false }, contention: 'product' as const }]]);
+    const inside = await runWithSeededHoldFixtures(seeded, async () => holdFixture('crestline_radio_premium'));
+    expect(inside?.policy).toEqual({ available: false });
+    expect(holdFixture('crestline_radio_premium')?.policy).toEqual(HOLD_FIXTURES.crestline_radio_premium!.policy);
   });
 });

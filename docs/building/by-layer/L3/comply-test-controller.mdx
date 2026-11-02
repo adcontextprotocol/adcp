@@ -640,6 +640,14 @@ timestamp, cutover, period boundary, obligation, and delivery for the caller's
 sandbox accounts uses. A revoked account is unknown to every other task, as the spec
 requires, but the controller still accepts `regrant` and `advance_time` for it.
 
+A seller that also lists `media_buy.hold_policy` places and expires the caller's
+holds on the same clock. A hold placed while `simulated_now` is fixed has
+`hold_placed_at` equal to `simulated_now`, and a committed proposal's hold lapses,
+so [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) fails with
+[`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired),
+once `simulated_now` passes its `expires_at`. The hold storyboards use this to
+check a hold's exact window and its lapse.
+
 | Operation | Params | Required observable result |
 |---|---|---|
 | **revoke_grant** | `account_id` | End the caller's authority for the account at `simulated_now`. The account reads as unknown to [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) and every other task. Each covering subscription lists it in `accounts_unauthorized[]` on [`get_principal`](/docs/protocol/get_principal), with `unauthorized_at` equal to `simulated_now`. Return `unauthorized_at`. |

@@ -74,6 +74,7 @@ authored_check_kinds:
   - upstream_traffic
   - canonical_format_satisfaction
   - owed_periods_match
+  - instant_offset_within
   - request_field_present
   - request_field_in
   - request_field_format

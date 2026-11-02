@@ -4,11 +4,11 @@
  * `media_buy.proposal_refinement.hold_extension` gate for `extend_hold`, and
  * the `force_hold_unavailable` controller scenario. Declared only where the
  * hold surfaces are served: a 3.3 caller on the sales tenant's default
- * routes.
+ * routes. The finalization-failure profile declares only the scenario.
  */
 
 import type { TrainingContext } from '../types.js';
-import { FORCE_HOLD_UNAVAILABLE, HOLD_FEATURES, holdsServed } from './service.js';
+import { FORCE_HOLD_UNAVAILABLE, HOLD_FEATURES, holdsServed, supportsHolds33 } from './service.js';
 
 interface CapabilitiesView {
   experimental_features?: unknown;
@@ -22,6 +22,13 @@ export function applyHoldCapabilities(
   proposalNegotiationProfile: TrainingContext['proposalNegotiationProfile'] | undefined,
   storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
 ): void {
+  if (proposalNegotiationProfile === 'finalization-failure' && supportsHolds33(servedVersion) && storyboardCompat?.version !== '3.0') {
+    // The deterministic hold-failure profile serves no hold_policy, but its
+    // finalize honors force_hold_unavailable (proposal-negotiation-profiles.ts),
+    // so the batch-failure storyboard can grade it.
+    declareForceHoldUnavailable(structured);
+    return;
+  }
   if (!holdsServed({ servedAdcpVersion: servedVersion, proposalNegotiationProfile, storyboardCompat })) return;
   const features = Array.isArray(structured.experimental_features)
     ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
@@ -34,6 +41,10 @@ export function applyHoldCapabilities(
     : { supported_dimensions: [] };
   mediaBuy.proposal_refinement = { ...refinement, hold_extension: true };
   structured.media_buy = mediaBuy;
+  declareForceHoldUnavailable(structured);
+}
+
+function declareForceHoldUnavailable(structured: CapabilitiesView): void {
   const testing = structured.compliance_testing ?? {};
   const scenarios = Array.isArray(testing.scenarios)
     ? testing.scenarios.filter((scenario): scenario is string => typeof scenario === 'string')

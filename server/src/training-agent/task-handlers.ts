@@ -56,6 +56,7 @@ import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxios
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
 import { packageReportingOfferingIds } from './package-reporting-offerings.js';
 import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
+import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
 import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
 import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
@@ -10356,6 +10357,9 @@ function legacyProposalOwnerMatches(
     && internal.__legacy_owner_account_scope === ownerAccountScope;
 }
 
+/** Product snapshots a session carries forward for later refinements. */
+const MAX_CARRIED_PRODUCT_SNAPSHOTS = 500;
+
 /** Compact proposal operations are partitioned by authenticated principal and
  * the SDK-restored account reference. */
 function productDiscoverySessionKey(args: ToolArgs, ctx: TrainingContext): string {
@@ -12979,8 +12983,14 @@ async function handleGetProductsUnlocked(
   // Brief/wholesale discovery must remain read-only so concurrent reads cannot
   // overwrite a proposal committed by a serialized refine request.
   if (buyingMode === 'refine' || requireProposals) {
+    // Keep the snapshots that supported earlier drafts as well: a buyer may
+    // request several drafts and finalize an earlier one, whose seeded
+    // products are not otherwise addressable from a compact refine.
+    const responseProductIds = new Set(responseProducts.map(product => product.product_id));
+    const earlierProducts = (session.lastGetProductsContext?.products ?? [])
+      .filter(product => !responseProductIds.has(product.product_id));
     session.lastGetProductsContext = {
-      products: responseProducts,
+      products: [...responseProducts, ...earlierProducts].slice(0, MAX_CARRIED_PRODUCT_SNAPSHOTS),
       proposals: persistedProposals,
     };
   }
@@ -23233,10 +23243,23 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
     for (const product of session.lastGetProductsContext?.products ?? []) {
       if (!refinementProducts.has(product.product_id)) refinementProducts.set(product.product_id, product);
     }
+    // force_hold_unavailable directives (comply_test_controller) live in the
+    // compact session's hold ledger, which the controller writes for these
+    // routes too.
+    const holdLedger = loadHoldDocument(session);
+    const requestedRefinements = (args as unknown as { refinements?: unknown }).refinements;
+    const finalizeIds = new Set((Array.isArray(requestedRefinements) ? requestedRefinements as unknown[] : [])
+      .filter((entry): entry is { action: unknown; proposal_id: unknown } => typeof entry === 'object' && entry !== null)
+      .filter(entry => entry.action === 'finalize' && typeof entry.proposal_id === 'string')
+      .map(entry => entry.proposal_id as string));
+    const forcedHoldUnavailable = new Set(holdLedger.forced
+      .map(entry => entry.proposal_id)
+      .filter(id => finalizeIds.has(id)));
     const policyContext: TrainingProposalPolicyContext = {
       profile,
       now,
       activeHoldCount,
+      ...(forcedHoldUnavailable.size > 0 && { forcedHoldUnavailable }),
       purchaseForProduct: purchaseForTrainingProduct,
       productForPurchase: productId => refinementProducts.get(productId),
     };
@@ -23260,6 +23283,11 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       adcp_version: '3.2',
       adcp_major_version: 3,
     }, policyContext);
+    if (forcedHoldUnavailable.size > 0 && Array.isArray((response as { results?: unknown }).results)) {
+      // The finalize attempted the forced holds, so the directives are consumed.
+      holdLedger.forced = holdLedger.forced.filter(entry => !forcedHoldUnavailable.has(entry.proposal_id));
+      saveHoldDocument(session, holdLedger, now.getTime());
+    }
     await flushDirtySessions();
     return response;
   } catch (error) {
