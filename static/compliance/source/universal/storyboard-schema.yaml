@@ -152,7 +152,7 @@
 #   never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | webhook_receiver | multi_agent |
+#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | field_excludes_runner | webhook_receiver | multi_agent |
 #   trusted_match_publisher_auth_runner | property_list_reference_runner (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
@@ -169,6 +169,14 @@
 #                    A storyboard using collect_product_pages MUST declare this
 #                    requirement so older runners report requirement_unmet before
 #                    fixture mutation instead of silently checking only one page.
+#
+#     field_excludes_runner — runner support for the field_excludes negative
+#                    membership check. A storyboard using that check MUST declare
+#                    this requirement. Runners that cannot execute it report
+#                    requirement_unmet before fixture mutation. A harness may
+#                    satisfy it with the public assertion API while its SDK lacks
+#                    a native implementation, provided full-run and standalone
+#                    step grading both enforce the authored exclusion.
 #
 #     controller   — gate on agent advertising comply_test_controller.
 #                    Available when the agent's get_adcp_capabilities response
@@ -1736,6 +1744,14 @@
 #                use `[*]` segments and passes when any resolved value matches
 #                `value` or one of `allowed_values`; object/array expectations
 #                are matched as deep subsets),
+#                "field_excludes" (wildcard-aware negative membership check;
+#                passes when none of the resolved values matches `value` or any
+#                `allowed_values`, using the same deep-subset matching as
+#                field_contains. An empty array passes. Pair with field_present
+#                when a nonempty result is required. This tests exclusion of a
+#                negative control without limiting the number of valid results.
+#                Storyboards using this check MUST require field_excludes_runner
+#                so an unsupported runner skips before seeding),
 #                "array_length" (asserts exact array cardinality with `value`,
 #                or an inclusive range with `min` / `max`),
 #                "all_fields_present" (every item of an array carries a field;

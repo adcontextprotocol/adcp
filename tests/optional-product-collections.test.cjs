@@ -3,6 +3,8 @@
 // Every optional-product-collection-* file loads this module first, so the
 // guard covers them all.
 require("./helpers/ajv-maglev-guard.cjs");
+// This fixture is also imported by Vitest through CJS, outside its TS resolver.
+require("tsx/cjs");
 
 // Executes the actual authored storyboards through the production caller and
 // public SDK MCP transport. All seller data/credentials are controlled fixtures.

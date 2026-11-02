@@ -3206,6 +3206,12 @@
           "description": "When true, this agent hosts a creative library and supports list_creatives and creative_id references in build_creative. Creative agents with a library should also implement the accounts protocol (sync_accounts / list_accounts) so buyers can establish access.",
           "default": false
         },
+        "supports_provenance": {
+          "type": "boolean",
+          "description": "When true, this seller supports provenance policy enforcement on sync_creatives: it publishes applicable creative_policy requirements and accepted_verifiers on products, enforces those requirements per creative, and verifies claims against its own trusted verifier allowlist when a policy calls for verification. Merely hosting a creative library or retaining provenance metadata does not imply this capability. False or absent makes provenance-enforcement conformance storyboards not applicable; it does not exempt a seller from enforcing any provenance policy it publishes.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "stable_creative_ids": {
           "type": "boolean",
           "description": "When true, this agent gives every creative that entered its library outside sync_creatives (seller UI or API, automation, or another system) a creative_id that is stable for the creative's lifetime and unique within the account, so a buyer connecting to an existing advertiser can reference those creatives in later requests. The agent MUST keep such IDs stable, MUST NOT reuse a creative_id a buyer has used on the account, and under sync_creatives delete_missing MUST NOT archive those creatives. Requires has_creative_library: true. When false or absent, sellers SHOULD follow the same rules but buyers MUST NOT rely on them.",
