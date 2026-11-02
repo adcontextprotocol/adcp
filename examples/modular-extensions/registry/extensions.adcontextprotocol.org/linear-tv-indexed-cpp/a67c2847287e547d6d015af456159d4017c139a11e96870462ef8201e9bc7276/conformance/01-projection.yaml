@@ -1,0 +1,44 @@
+id: linear_tv_indexed_cpp/projection
+version: "1.0.0"
+title: "Buyers without the module get a core quote"
+category: extension_conformance
+extension: linear-tv-indexed-cpp
+summary: "The sales house never sends the indexed branch to a buyer that did not list it, and quotes core cpp instead."
+narrative: |
+  A buyer with no extensions asks for prime time. The sales house projects its catalog
+  for this buyer: the indexed option disappears from discovery (get_products) and from the
+  products request_proposals returns, and the draft proposal prices the plan in core cpp
+  at the published market index.
+
+fixture: tv_sales_house
+buyer:
+  extensions: []
+
+phases:
+  - id: projection
+    title: "Seller projection"
+    steps:
+      - id: core_options_only
+        title: "Discovery (get_products) offers core models only"
+        task: get_products
+        covers: [LTV-R3]
+        expect:
+          ok: true
+          dropped: []
+          checks:
+            - path: products.0.pricing_options
+              every: { pricing_model: { in: [cpp, cpm] } }
+            - path: products.0.pricing_options
+              length: 1
+      - id: core_quote_only
+        title: "The draft proposal (request_proposals) prices the plan in core cpp"
+        task: request_proposals
+        covers: [LTV-R3]
+        expect:
+          ok: true
+          dropped: []
+          checks:
+            - path: products.0.pricing_options
+              every: { pricing_model: { in: [cpp, cpm] } }
+            - path: draft.commercial_terms.purchases.0.pricing.pricing_model
+              equals: cpp

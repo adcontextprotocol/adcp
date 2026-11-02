@@ -1,0 +1,41 @@
+id: rate_card_index/without_module
+version: "1.0.0"
+title: "A buyer without the module"
+category: extension_conformance
+extension: rate-card-index
+summary: "The card is ignorable on a pricing option and must-understand in signed terms."
+narrative: |
+  This buyer installed seller-adjustable-terms only. On a pricing option the card is a
+  planning aid, so the buyer ignores it and buys at fixed_price. In signed terms the same
+  extension is binding, so the buyer must reject the terms.
+
+fixture: none
+buyer:
+  extensions: [seller-adjustable-terms]
+
+phases:
+  - id: without_module
+    title: "Ignore at discovery, reject in signed terms"
+    steps:
+      - { id: load_option, title: "Load the cpp option", task: load_fixture, with: { name: pricingOption } }
+      - id: option_stays_buyable
+        title: "The card is ignored and the option stays buyable"
+        task: validate
+        with: { schema: cpp_option, subject: fixture }
+        covers: [RC-R1]
+        expect:
+          ok: true
+          status: { ext: rate-card-index, point: pricing_option, status: ignored }
+          checks:
+            - path: subject.fixed_price
+              equals: 1898
+      - { id: load_terms, title: "Load the accepted commercial terms", task: load_fixture, with: { name: commercialTerms } }
+      - id: signed_card_rejected
+        title: "Terms that carry the card are rejected"
+        task: validate
+        with: { schema: commercial_terms, subject: fixture }
+        covers: [RC-R7]
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          status: { ext: rate-card-index, point: commercial_terms, status: rejected }

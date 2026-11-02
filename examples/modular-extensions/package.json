@@ -1,0 +1,38 @@
+{
+  "name": "adcp-modular-extensions-example",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Stable AdCP core + digest-pinned extension modules + modular SDK codegen (example for the modular AdCP proposal)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "vendor-core": "node scripts/vendor-core.mjs",
+    "build:core": "node scripts/build-core.mjs && node scripts/layout-lint.mjs",
+    "build:ext": "node scripts/build-extensions.mjs",
+    "codegen": "node scripts/codegen.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "npm run build:core && npm run build:ext && npm run codegen && npm run sdk && npm run typecheck",
+    "test": "node --experimental-strip-types --no-warnings --test test/*.test.mjs && npm run conformance",
+    "demo": "node demo.mjs",
+    "demo:pricing": "node demo-pricing.mjs",
+    "release:pricing": "node scripts/module-release.mjs core/releases/buying-pricing-1.1.json",
+    "sdk": "node scripts/adcp-sdk.mjs examples/buyer-app && node scripts/adcp-sdk.mjs examples/sales-agent && node scripts/adcp-sdk.mjs test/apps/superset && node scripts/adcp-sdk.mjs test/apps/governance-only",
+    "sdk:check": "node scripts/adcp-sdk.mjs examples/buyer-app --check && node scripts/adcp-sdk.mjs examples/sales-agent --check && node scripts/adcp-sdk.mjs test/apps/superset --check && node scripts/adcp-sdk.mjs test/apps/governance-only --check",
+    "app": "node --experimental-strip-types --no-warnings examples/buyer-app/app.ts",
+    "agent": "node --experimental-strip-types --no-warnings examples/sales-agent/agent.ts",
+    "conformance": "node scripts/run-conformance.mjs",
+    "docs": "node scripts/render-extension-docs.mjs",
+    "analysis": "node scripts/size-comparison.mjs && node --experimental-strip-types --no-warnings scripts/slide-excerpts.mjs",
+    "registry:history": "node scripts/registry-history.mjs",
+    "registry:reset": "node scripts/build-extensions.mjs --clean-registry && node scripts/registry-history.mjs"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "js-yaml": "4.3.2",
+    "json-schema-to-typescript": "15.0.4",
+    "typescript": "5.6.3"
+  }
+}

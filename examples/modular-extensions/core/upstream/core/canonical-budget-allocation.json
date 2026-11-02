@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-budget-allocation.json",
+  "title": "Canonical Budget Allocation",
+  "description": "Canonical fixed or seller-optimized allocation using only canonical optimization goals.",
+  "discriminator": { "propertyName": "mode" },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "const": "fixed" }
+      },
+      "required": ["mode"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "const": "seller_optimized" },
+        "optimization_goals": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/canonical-optimization-goal.json" },
+          "minItems": 1
+        }
+      },
+      "required": ["mode", "optimization_goals"],
+      "additionalProperties": false
+    }
+  ]
+}

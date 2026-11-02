@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-metric-qualifier.json",
+  "title": "Canonical Metric Qualifier",
+  "description": "Compact qualifier set that distinguishes incompatible reporting definitions for the same metric ID.",
+  "type": "object",
+  "properties": {
+    "viewability_standard": { "$ref": "/schemas/enums/viewability-standard.json" },
+    "completion_source": { "$ref": "/schemas/enums/completion-source.json" },
+    "attribution_methodology": { "$ref": "/schemas/enums/attribution-methodology.json" },
+    "attribution_window": { "$ref": "/schemas/core/duration.json" },
+    "lift_dimension": { "$ref": "/schemas/enums/lift-dimension.json" }
+  },
+  "additionalProperties": false
+}

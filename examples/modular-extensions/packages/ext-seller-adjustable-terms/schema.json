@@ -1,0 +1,365 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Seller Adjustable Terms Extension",
+  "definitions": {
+    "SellerAdjustableTerms": {
+      "title": "Seller Adjustable Terms",
+      "type": "object",
+      "properties": {
+        "allowances": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Allowance"
+          },
+          "minItems": 1,
+          "description": "Unique by allowance_id, ordered by allowance_id (stable terms_digest).",
+          "x-adcp-validation": {
+            "unique_by": "allowance_id",
+            "verifier_constraints": {
+              "adjustable_term_bounds": {
+                "purchase_index": "less_than_purchases_length",
+                "one_entry_per_purchase_index_and_path": true,
+                "canonical_order": "ascending_allowance_id",
+                "path": "resolves_in_purchase_at_acceptance",
+                "on_violation": "reject_proposal"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "allowances"
+      ],
+      "additionalProperties": false
+    },
+    "Allowance": {
+      "title": "Seller Adjustment Allowance",
+      "description": "Port of adcp#8102 seller-adjustable-term.json. A change that satisfies constraint and min_notice creates a media buy revision with no offer; anything else needs a seller offer. Never changes a unit price and never raises what the buyer pays.",
+      "type": "object",
+      "properties": {
+        "allowance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "purchase_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "path": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 500,
+          "pattern": "^/(budget|impressions|start_time|end_time|targeting_overlay)(/([^~/]|~[01])+)*$",
+          "not": {
+            "pattern": "/([0-9]+|-)(/|$)"
+          },
+          "description": "RFC 6901 pointer into the purchase. No array indexes."
+        },
+        "constraint": {
+          "$ref": "#/definitions/Constraint"
+        },
+        "min_notice": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/duration.json"
+        }
+      },
+      "required": [
+        "allowance_id",
+        "purchase_index",
+        "path",
+        "constraint"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "path": {
+            "pattern": "^/(budget|impressions)$"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "then": {
+        "properties": {
+          "constraint": {
+            "properties": {
+              "kind": {
+                "const": "decrease"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "path": {
+              "pattern": "^/(start_time|end_time)$"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        },
+        "then": {
+          "required": [
+            "min_notice"
+          ],
+          "properties": {
+            "constraint": {
+              "properties": {
+                "kind": {
+                  "const": "time_shift"
+                }
+              }
+            }
+          }
+        },
+        "else": {
+          "if": {
+            "properties": {
+              "path": {
+                "pattern": "^/targeting_overlay(/|$)"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "then": {
+            "properties": {
+              "constraint": {
+                "properties": {
+                  "kind": {
+                    "const": "alternates"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Constraint": {
+      "title": "Allowance Constraint",
+      "description": "Tagged on kind. A later kind is another variant under another digest; a buyer pinned to an earlier digest never sees a variant it cannot read.",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/DecreaseConstraint"
+        },
+        {
+          "$ref": "#/definitions/TimeShiftConstraint"
+        },
+        {
+          "$ref": "#/definitions/AlternatesConstraint"
+        }
+      ]
+    },
+    "DecreaseConstraint": {
+      "title": "Decrease Constraint",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "decrease"
+        },
+        "min": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The value after the change MUST NOT be lower."
+        },
+        "max_change_fraction": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "not": {
+          "required": [
+            "min"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "max_change_fraction"
+        ]
+      }
+    },
+    "TimeShiftConstraint": {
+      "title": "Time Shift Constraint",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "time_shift"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "earlier",
+            "later"
+          ],
+          "description": "Absent means either."
+        },
+        "max_shift": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/duration.json"
+        }
+      },
+      "required": [
+        "kind",
+        "max_shift"
+      ],
+      "additionalProperties": false
+    },
+    "AlternatesConstraint": {
+      "title": "Alternates Constraint",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "alternates"
+        },
+        "alternates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "value": {
+                "description": "A complete replacement value, with the same schema as the field at path."
+              }
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "alternates"
+      ],
+      "additionalProperties": false
+    },
+    "AppliedAdjustments": {
+      "title": "Applied Adjustments",
+      "description": "Readback of changes the seller applied under this buy's accepted allowances, oldest first.",
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/AppliedAdjustment"
+          },
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "applied_within_allowance": {
+                "allowance": "resolves_to_accepted_allowance_same_purchase_index_and_path",
+                "bounds_origin": "accepted_value",
+                "decrease": "below_previous_value_at_or_above_min_cumulative_fraction_lte_max_change_fraction",
+                "alternates": "value_equals_an_agreed_alternate",
+                "notice": "applied_at_plus_min_notice_lte_previous_value",
+                "time_shift_pair": "start_time_and_end_time_in_one_revision",
+                "on_violation": "report_violation"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "AppliedAdjustment": {
+      "title": "Applied Adjustment",
+      "description": "Port of adcp#8102 applied-seller-adjustment.json. One application advances the media buy revision; the matching account change record (account.change_recorded) carries change_id.",
+      "type": "object",
+      "properties": {
+        "adjustment_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "allowance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The media buy revision this application created."
+        },
+        "change_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "The account change feed record for this revision."
+        },
+        "applied_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 100,
+          "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+        },
+        "purchase_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "path": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 500,
+          "pattern": "^/(budget|impressions|start_time|end_time|targeting_overlay)(/([^~/]|~[01])+)*$"
+        },
+        "previous_value": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "adjustment_id",
+        "allowance_id",
+        "revision",
+        "applied_at",
+        "reason",
+        "purchase_index",
+        "path",
+        "previous_value",
+        "value"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

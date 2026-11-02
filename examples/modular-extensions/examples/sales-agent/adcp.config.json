@@ -1,0 +1,7 @@
+{
+  "$comment": "The sales agent's choice: which core, and which extensions (by uri + version range or digest pin). Each key is the attribute the agent reads and writes. `npm run sdk` turns this into adcp.lock.json and the agent's typed layer, adcp-sdk/. 1.4 is the first makegood-units version with the request_makegood task.",
+  "core": "3.3.0",
+  "extensions": {
+    "makegood_units": "https://extensions.adcontextprotocol.org/makegood-units@^1.4"
+  }
+}

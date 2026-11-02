@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/content-rating.json",
+  "title": "Content Rating",
+  "description": "Content advisory rating using a specified rating system",
+  "type": "object",
+  "properties": {
+    "system": {
+      "$ref": "/schemas/enums/content-rating-system.json",
+      "description": "Rating system used"
+    },
+    "rating": {
+      "type": "string",
+      "description": "Rating value within the system (e.g., 'TV-PG', 'R', 'explicit')"
+    }
+  },
+  "required": ["system", "rating"],
+  "additionalProperties": true
+}

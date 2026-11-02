@@ -1,0 +1,17 @@
+file,v1_label,v2_label,reason
+media-buy/acceptance-policy-catalog.json,module:buying/supply,module:governance,F-v2-acceptance-governance
+media-buy/acceptance-policy-profile.json,module:buying/supply,module:governance,F-v2-acceptance-governance
+media-buy/acceptance-policy-requirement.json,module:buying/supply,module:governance,F-v2-acceptance-governance
+media-buy/acceptance-policy-rule.json,module:buying/supply,module:governance,F-v2-acceptance-governance
+core/canonical-proposal.json,module:buying/offer,module:buying/supply,F-v2-accepted-record-supply
+enums/proposal-status.json,module:buying/offer,module:buying/supply,F-v2-accepted-record-supply
+core/applicable-package-id.json,module:buying/execution,module:buying/commitment,F-v2-action-vocab-commitment
+core/canonical-media-buy-action-fields.json,module:buying/execution,module:buying/commitment,F-v2-action-vocab-commitment
+core/canonical-media-buy-action.json,module:buying/execution,module:buying/commitment,F-v2-action-vocab-commitment
+core/catalog-field-mapping.json,module:buying/catalogs,kernel-types,F-v2-catalog-kernel
+core/catalog.json,module:buying/catalogs,kernel-types,F-v2-catalog-kernel
+enums/content-id-type.json,module:buying/catalogs,kernel-types,F-v2-catalog-kernel
+enums/update-frequency.json,module:buying/catalogs,kernel-types,F-v2-catalog-kernel
+media-buy/media-buy-commitment-response.json,module:buying/execution,module:buying/supply,F-v2-commit-response-supply
+core/opportunity-context.json,module:buying/offer,module:buying/commitment,F-v2-opportunity-commitment
+core/property.json,module:buying/supply,kernel-types,F-v2-property-kernel

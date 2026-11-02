@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/demographic-targeting-intent.json",
+  "title": "Demographic Targeting Intent",
+  "description": "Portable demographic targeting intent plus buyer constraints on how the seller may determine user eligibility. The age predicate retains its canonical interval meaning; accepted_bases narrows execution provenance without changing which ages are requested.",
+  "type": "object",
+  "properties": {
+    "age": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/demographic-age-range.json"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "accepted_bases": {
+              "type": "array",
+              "description": "User-level age determination bases the buyer permits for this predicate. Sellers MUST use only these bases or reject the request; they MUST NOT silently fall back to another basis. When omitted, the buyer imposes no determination-basis constraint beyond product capability and any age_restriction. population_estimate is structurally unavailable because aggregate evidence cannot identify an eligible user.",
+              "items": {
+                "$ref": "/schemas/enums/age-determination-basis.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "accepted_verification_methods": {
+              "type": "array",
+              "description": "Verification methods acceptable when verified is an accepted basis. This field narrows verified demographic execution; age_restriction.accepted_methods independently governs legal eligibility and the two sets are intersected when both are present.",
+              "items": {
+                "$ref": "/schemas/enums/age-verification-method.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": ["accepted_verification_methods"]
+              },
+              "then": {
+                "required": ["accepted_bases"],
+                "properties": {
+                  "accepted_bases": {
+                    "contains": { "const": "verified" }
+                  }
+                }
+              }
+            }
+          ],
+          "additionalProperties": true
+        }
+      ]
+    }
+  },
+  "required": ["age"],
+  "additionalProperties": true
+}

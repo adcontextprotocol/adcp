@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audio-distribution-type.json",
+  "title": "Audio Distribution Type",
+  "description": "Declared audio distribution classification for radio, streaming-audio, podcast, and other audio inventory, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native value names. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+  "type": "string",
+  "enum": [
+    "music_streaming_service",
+    "fm_am_broadcast",
+    "podcast",
+    "catch_up_radio",
+    "web_radio",
+    "video_game",
+    "text_to_speech"
+  ],
+  "enumDescriptions": {
+    "music_streaming_service": "OpenRTB 2.6 audio.feed=1: music streaming service.",
+    "fm_am_broadcast": "OpenRTB 2.6 audio.feed=2: FM/AM broadcast, including live content broadcast over the air and also available via online streaming.",
+    "podcast": "OpenRTB 2.6 audio.feed=3: original, pre-recorded content distributed as episodes in a series.",
+    "catch_up_radio": "OpenRTB 2.6 audio.feed=4: recorded segment of a radio show that was originally broadcast live.",
+    "web_radio": "OpenRTB 2.6 audio.feed=5: live audio content only available via online streaming, not as FM/AM broadcast.",
+    "video_game": "OpenRTB 2.6 audio.feed=6: background audio in video games.",
+    "text_to_speech": "OpenRTB 2.6 audio.feed=7: text-to-speech audio such as audio books or website/plugin article narration."
+  }
+}

@@ -1,0 +1,32 @@
+id: seller_adjustable_terms/fail_closed
+version: "1.0.0"
+title: "A buyer without the module fails closed on allowances"
+category: extension_conformance
+extension: seller-adjustable-terms
+summary: "A seller that ignores understood_extensions sends allowances anyway; the buyer rejects the proposal."
+narrative: |
+  The seller in this fixture ignores understood_extensions. The buyer installed
+  makegood-units only, so it cannot read the allowances under terms_digest and must not
+  sign them.
+
+fixture:
+  seller: creator_network
+  ignore_understood: true
+buyer:
+  extensions: [makegood-units]
+
+phases:
+  - id: fail_closed
+    title: "Fail closed on binding data"
+    steps:
+      - id: reject_unknown_allowances
+        title: "The buyer rejects the proposal that carries allowances"
+        task: request_proposals
+        covers: [SAT-R1]
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          error_match: "seller-adjustable-terms@sha256:[a-f0-9]{64} is must-understand at commercial_terms"
+          status:
+            - { ext: seller-adjustable-terms, point: commercial_terms, status: rejected }
+            - { ext: makegood-units, point: commercial_terms, status: understood }

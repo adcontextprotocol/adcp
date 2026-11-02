@@ -1,0 +1,36 @@
+id: makegood_units/fail_closed
+version: "1.0.0"
+title: "A buyer without the module fails closed on make-good rules"
+category: extension_conformance
+extension: makegood-units
+summary: "A seller that ignores understood_extensions sends the rules anyway; the buyer rejects the proposal."
+narrative: |
+  The seller in this fixture ignores understood_extensions and sends every extension it
+  supports. The buyer installed seller-adjustable-terms only, so it cannot read the
+  make-good rules under terms_digest. It must reject the proposal before it signs.
+
+fixture:
+  seller: creator_network
+  ignore_understood: true
+buyer:
+  extensions: [seller-adjustable-terms]
+
+phases:
+  - id: fail_closed
+    title: "Fail closed on binding data"
+    steps:
+      - id: reject_unknown_rules
+        title: "The buyer rejects the proposal that carries make-good rules"
+        task: request_proposals
+        covers: [MG-R1]
+        expected: |
+          The buyer SDK rejects the draft with EXTENSION_NOT_UNDERSTOOD, naming the
+          makegood-units uri@digest at the commercial_terms hook.
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          error_match: "makegood-units@sha256:[a-f0-9]{64} is must-understand at commercial_terms"
+          status:
+            ext: makegood-units
+            point: commercial_terms
+            status: rejected

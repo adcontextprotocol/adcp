@@ -1,0 +1,11 @@
+{
+  "name": "@adcp-ext/rate-card-index",
+  "version": "1.4.0",
+  "description": "AdCP extension module: rate card (base x indices + premiums). Types, digest-pinned schema bundle, and evaluator.",
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./src/index.ts",
+  "files": ["index.mjs", "src/", "dist/bundle.json", "extension.lock.json", "extension.json", "schema.json"],
+  "adcpExtension": "./extension.lock.json",
+  "peerDependencies": { "@adcp/core": ">=3.3.0-0" }
+}

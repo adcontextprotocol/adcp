@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rate card index 1.5.0</title>
+<style>
+:root{color-scheme:light;--bg:#fbfaf7;--panel:#ffffff;--ink:#1d1f24;--muted:#5d6370;--line:#e3e0d8;--accent:#1f5fbf;--code:#f2efe8;
+--ok:#1d7a46;--ok-bg:#e3f4ea;--warn:#9a5b00;--warn-bg:#fdf0d9;--bad:#b42318;--bad-bg:#fde7e4;--co:#6941c6;--co-bg:#efe9fb}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:32px 16px 64px;min-width:0}
+a{color:var(--accent)}code{font:0.88em/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{background:var(--code);padding:12px;border-radius:6px;overflow-x:auto}pre code{padding:0;background:none}
+h1{font-size:1.9rem;line-height:1.2;margin:0 0 6px}h2{margin-top:2.2em;padding-top:.6em;border-top:1px solid var(--line);font-size:1.35rem}
+h3{margin-top:1.8em;font-size:1.1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.crumb{font-size:.9rem;color:var(--muted);margin-bottom:18px}.lede{color:var(--muted);margin:0 0 20px}
+.meta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:0 0 24px}
+.meta dt{color:var(--muted);font-size:.9rem}.meta dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.table-wrap{overflow-x:auto;margin:12px 0;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:.93rem}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}td:first-child code,td:nth-child(2) code{white-space:nowrap;overflow-wrap:normal}td:first-child a{white-space:nowrap}th{color:var(--muted);font-weight:600;font-size:.85rem}
+.badge{display:inline-block;font-size:.72rem;font-weight:600;line-height:1;padding:4px 7px;border-radius:999px;vertical-align:middle;white-space:nowrap;background:var(--code);color:var(--muted)}
+.level-must{background:var(--bad-bg);color:var(--bad)}.level-should{background:var(--warn-bg);color:var(--warn)}
+.st-covered{background:var(--ok-bg);color:var(--ok)}.st-failing,.st-uncovered{background:var(--bad-bg);color:var(--bad)}.co{background:var(--co-bg);color:var(--co)}
+.rule-head{margin:1.6em 0 .4em;font-size:1.02rem;line-height:1.5}.rule-head .src{font-size:.8rem;font-weight:400;margin-left:6px}.rule-id{font-family:ui-monospace,Menlo,monospace;text-decoration:none;margin-right:4px}
+.enforced{font-size:.9rem;color:var(--muted);border-left:3px solid var(--line);padding-left:10px}.enforced span{font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}.card h2{border:none;margin:0 0 4px;padding:0;font-size:1.15rem}
+.card p{margin:6px 0;color:var(--muted);font-size:.92rem}.small{font-size:.85rem;color:var(--muted)}
+footer{margin-top:48px;font-size:.85rem;color:var(--muted)}
+@media (max-width:600px){.meta{grid-template-columns:minmax(0,1fr)}.meta dt{margin-top:6px}h1{font-size:1.5rem}}
+</style>
+</head>
+<body>
+<main>
+
+<div class="crumb"><a href="index.html">Extensions</a> / rate-card-index</div>
+<h1>Rate card index</h1>
+<p class="lede">Rate card: base x ordered indices + premiums</p>
+<dl class="meta">
+  <dt>URI</dt><dd><code>https://extensions.adcontextprotocol.org/rate-card-index</code></dd>
+  <dt>Version</dt><dd>1.5.0 <span class="badge">candidate</span></dd>
+  <dt>Digest</dt><dd><code>sha256:a24ab2ac5282278300002b0fd40b8f2bd625f8197ef6fc4130e06fb417d4d580</code></dd>
+  <dt>Owner</dt><dd>AdCP Working Group</dd>
+  <dt>Requires</dt><dd>core <code>&gt;=3.3 &lt;5</code>; extension points and unions <code>commercial_terms</code> v1, <code>pricing_option</code> v1; core types <code>/schemas/core/format-option-ref.json</code> v1</dd>
+  <dt>Spec</dt><dd><code>spec.md</code> <code>sha256:b017efd95affe63c92b7aedcc5a409bbb33172465ef5d46123a8db9030e9ee4b</code></dd>
+  <dt>Reference code</dt><dd><code>index.mjs</code> <code>sha256:44d3f8a760030165908dbf9bfa78f7c581ca47bee381e49f121064c44b6f7de1</code></dd>
+  <dt>Coverage</dt><dd><span class="badge st-covered">9/9 rules</span> <span class="badge">MUST 9/9</span> <span class="badge">GREASE reject yes, ignore yes</span></dd>
+</dl>
+<p class="small">The digest covers the schema, the manifest, this spec, the storyboards, and the reference code. A change to any of them, the prose included, gives a different digest, which the registry accepts only under a higher version. A buyer SDK runs the reference code only if it hashes to the pinned sha256.</p>
+
+<h2 id="hooks">Extension points, open unions, and must-understand policy</h2>
+<p>The extension attaches at the following extension points and open unions. The <strong>Owner</strong> column names the core layer whose schema declares each one. The <strong>Core policy</strong> column says what that annotation tells a buyer to do with unknown data there.</p>
+<div class="table-wrap"><table><thead><tr><th>Extension point or open union</th><th>Owner</th><th>Definition</th><th>Must understand</th><th>Core policy</th><th>Semantics</th></tr></thead><tbody><tr><td><code>pricing_option</code></td><td>buying (pricing layer)</td><td><code>RateCard</code></td><td>optional</td><td>extension point policy: flag</td><td>Planning aid. A buyer without this extension ignores it and uses fixed_price.</td></tr><tr><td><code>commercial_terms</code></td><td>buying (commitment layer)</td><td><code>RateCardBinding</code></td><td>required</td><td>extension point policy: always; order: uri</td><td>Signed card for one purchase. Provisional rows make the purchase price a ceiling that the seller re-quotes once it fixes the row.</td></tr></tbody></table></div>
+
+<h2 id="rule-index">Rules and storyboard coverage</h2>
+<p>Each rule has an ID. A rule is covered when a storyboard that cites it passes in full.</p>
+<div class="table-wrap"><table><thead><tr><th>ID</th><th>Rule</th><th>Level</th><th>Enforced by</th><th>Status</th><th>Storyboards</th></tr></thead><tbody><tr><td><a href="#RC-R1"><code>RC-R1</code></a></td><td>A buyer without the extension keeps the option</td><td><span class="badge level-must">MUST</span></td><td>kernel (extension point <code>pricing_option</code>, policy <code>flag</code>, entry not flagged)</td><td><span class="badge st-covered">covered</span></td><td><code>card_rules</code> <code>without_module</code></td></tr><tr><td><a href="#RC-R2"><code>RC-R2</code></a></td><td>The quote binds, not the card</td><td><span class="badge level-must">MUST</span></td><td>conformance only</td><td><span class="badge st-covered">covered</span></td><td><code>discovery</code></td></tr><tr><td><a href="#RC-R3"><code>RC-R3</code></a></td><td>The card reproduces the quote</td><td><span class="badge level-must">MUST</span></td><td>check()<br>x-adcp-validation <code>rate_card_quote.evaluation</code></td><td><span class="badge st-covered">covered</span></td><td><code>discovery</code> <code>card_rules</code></td></tr><tr><td><a href="#RC-R4"><code>RC-R4</code></a></td><td>A differing quote is a warning</td><td><span class="badge level-must">MUST</span></td><td>check() (warning <code>RATE_CARD_QUOTE_DIFFERS</code>)<br>x-adcp-validation <code>rate_card_quote.quote_differs</code></td><td><span class="badge st-covered">covered</span></td><td><code>discovery</code></td></tr><tr><td><a href="#RC-R5"><code>RC-R5</code></a></td><td>Index points target a fired index</td><td><span class="badge level-must">MUST</span></td><td>check()<br>x-adcp-validation <code>rate_card_quote.index_points_target</code></td><td><span class="badge st-covered">covered</span></td><td><code>card_rules</code></td></tr><tr><td><a href="#RC-R6"><code>RC-R6</code></a></td><td>A provisional row is a ceiling</td><td><span class="badge level-must">MUST</span></td><td>schema (<code>IndexRow</code> requires <code>cap</code> and <code>fixed_at</code> when provisional)<br>check() (warning <code>RATE_CARD_PROVISIONAL</code>)<br>x-adcp-validation <code>rate_card_quote.provisional_rows</code></td><td><span class="badge st-covered">covered</span></td><td><code>card_rules</code></td></tr><tr><td><a href="#RC-R7"><code>RC-R7</code></a></td><td>A buyer without the extension rejects a signed card</td><td><span class="badge level-must">MUST</span></td><td>kernel (extension point <code>commercial_terms</code>, policy <code>always</code>)</td><td><span class="badge st-covered">covered</span></td><td><code>card_rules</code> <code>without_module</code></td></tr><tr><td><a href="#RC-R8"><code>RC-R8</code></a></td><td>The signed card agrees with the signed price</td><td><span class="badge level-must">MUST</span></td><td>check()<br>x-adcp-validation <code>rate_card_binding.price</code></td><td><span class="badge st-covered">covered</span></td><td><code>card_rules</code></td></tr><tr><td><a href="#RC-R9"><code>RC-R9</code></a></td><td>The signed card names a purchase</td><td><span class="badge level-must">MUST</span></td><td>check()<br>x-adcp-validation <code>rate_card_binding.purchase_index</code></td><td><span class="badge st-covered">covered</span></td><td><code>card_rules</code></td></tr></tbody></table></div>
+
+<h2 id="spec">Specification</h2>
+<p class="small">The following text is the pinned spec, verbatim. Each rule heading links to its line in <code>spec.md</code>.</p>
+<p>This document is the normative specification of the extension <code>https://extensions.adcontextprotocol.org/rate-card-index</code>, version 1.5.0. The extension digest covers this file: the manifest lists its sha256 under <code>docs.spec</code>.</p>
+<h2 id="conventions">Conventions</h2>
+<p>The key words &quot;MUST&quot;, &quot;MUST NOT&quot;, &quot;REQUIRED&quot;, &quot;SHALL&quot;, &quot;SHALL NOT&quot;, &quot;SHOULD&quot;, &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;, &quot;MAY&quot;, and &quot;OPTIONAL&quot; in this document are to be interpreted as described in BCP 14 (RFC 2119 and RFC 8174) when, and only when, they appear in all capitals.</p>
+<p>Each requirement is a rule with an ID, such as <code>RC-R3</code>. Every rule names what enforces it:</p>
+<ul><li><code>kernel</code>: the buyer validator, from the extension point's must-understand policy.</li><li><code>schema</code>: the JSON Schema definition in this bundle.</li><li><code>x-adcp-validation</code>: a declarative verifier constraint in this bundle.</li><li><code>check()</code>: the reference code in <code>index.mjs</code>, which is not normative.</li><li><code>conformance only</code>: no code in the buyer SDK enforces the rule; only the conformance storyboards test it.</li></ul>
+<p>The storyboards in <code>conformance/</code> cite the rule IDs they test.</p>
+<h2 id="overview">Overview</h2>
+<p>A seller publishes its rate card so a buyer can evaluate prices locally while it plans. The card is a base price, a chain of index rows, index-point rows, and premiums. This extension ports <code>price_adjustments</code> from adcp#7955, with an object container, an open dimension vocabulary, an explicit premium basis, seller-declared rounding, index-point rows, and provisional rows (PR #7955 review).</p>
+<p>The extension attaches at two extension points:</p>
+<div class="table-wrap"><table><thead><tr><th>Extension point</th><th>Definition</th><th>Must understand</th><th>Role</th></tr></thead><tbody><tr><td><code>pricing_option</code></td><td><code>RateCard</code></td><td>Optional (policy <code>flag</code>)</td><td>A planning aid; the option's <code>fixed_price</code> binds</td></tr><tr><td><code>commercial_terms</code></td><td><code>RateCardBinding</code></td><td>Required (policy <code>always</code>)</td><td>The card signed for one purchase</td></tr></tbody></table></div>
+<h2 id="evaluation">Evaluation</h2>
+<p>A buyer computes the price per pricing unit for a selection in this order:</p>
+<ol><li>Start from <code>base_price</code>.</li><li>For each dimension, fire the first applicable <code>index</code> row in row order. Rows on the dimension <code>always</code> each fire. Multiply the running price by each fired row's factor.</li><li>Add <code>points / 100</code> from each fired <code>index_points</code> row to the factor of the fired index row on its <code>target_dimension</code>.</li><li>Add or subtract each fired premium, as a rate of <code>premium_basis</code> or as a fixed amount.</li><li>Round as <code>rounding</code> declares: after each row, or once at the end.</li></ol>
+<h2 id="rules">Rules</h2>
+<h3 id="planning-aid-on-a-pricing-option">Planning aid on a pricing option</h3>
+<h4 class="rule-head" id="RC-R1"><a class="rule-id" href="#RC-R1">RC-R1</a> A buyer without the extension keeps the option <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r1-a-buyer-without-the-extension-keeps-the-option">spec.md, line 55</a> <span class="badge level-must">MUST</span> <span class="badge st-covered">covered by 2 storyboards</span></h4>
+<p>A buyer that does not understand this extension MUST ignore the card at <code>pricing_option</code> and MUST keep the option buyable at its <code>fixed_price</code>.</p>
+<p class="enforced"><span>Enforced by</span> kernel (extension point <code>pricing_option</code>, policy <code>flag</code>, entry not flagged).</p>
+<h4 class="rule-head" id="RC-R2"><a class="rule-id" href="#RC-R2">RC-R2</a> The quote binds, not the card <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r2-the-quote-binds-not-the-card">spec.md, line 62</a> <span class="badge level-must">MUST</span> <span class="badge co">conformance only</span> <span class="badge st-covered">covered by 1 storyboard</span></h4>
+<p>A seller MUST quote <code>fixed_price</code> on every pricing option that carries a card, and MUST NOT flag the card <code>must_understand</code>. A buyer that ignores the card loses nothing it needs to buy.</p>
+<p class="enforced"><span>Enforced by</span> conformance only.</p>
+<h4 class="rule-head" id="RC-R3"><a class="rule-id" href="#RC-R3">RC-R3</a> The card reproduces the quote <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r3-the-card-reproduces-the-quote">spec.md, line 69</a> <span class="badge level-must">MUST</span> <span class="badge st-covered">covered by 2 storyboards</span></h4>
+<p>A buyer that understands this extension MUST evaluate the card at <code>quoted_selection</code> as the Evaluation section describes. A seller SHOULD publish a card that reproduces the option's <code>fixed_price</code> and <code>price_breakdown</code>.</p>
+<p class="enforced"><span>Enforced by</span> check(); x-adcp-validation <code>rate_card_quote.evaluation</code>.</p>
+<h4 class="rule-head" id="RC-R4"><a class="rule-id" href="#RC-R4">RC-R4</a> A differing quote is a warning <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r4-a-differing-quote-is-a-warning">spec.md, line 77</a> <span class="badge level-must">MUST</span> <span class="badge st-covered">covered by 1 storyboard</span></h4>
+<p>At <code>pricing_option</code>, a buyer MUST NOT reject an option because the card evaluates to a price other than <code>fixed_price</code>. It reports a warning, and the seller's quote binds.</p>
+<p class="enforced"><span>Enforced by</span> check() (warning <code>RATE_CARD_QUOTE_DIFFERS</code>); x-adcp-validation <code>rate_card_quote.quote_differs</code>.</p>
+<h4 class="rule-head" id="RC-R5"><a class="rule-id" href="#RC-R5">RC-R5</a> Index points target a fired index <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r5-index-points-target-a-fired-index">spec.md, line 84</a> <span class="badge level-must">MUST</span> <span class="badge st-covered">covered by 1 storyboard</span></h4>
+<p>An <code>index_points</code> row MUST target a dimension on which an <code>index</code> row fires for the same selection. Otherwise no buyer can evaluate the card.</p>
+<p class="enforced"><span>Enforced by</span> check(); x-adcp-validation <code>rate_card_quote.index_points_target</code>.</p>
+<h4 class="rule-head" id="RC-R6"><a class="rule-id" href="#RC-R6">RC-R6</a> A provisional row is a ceiling <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r6-a-provisional-row-is-a-ceiling">spec.md, line 91</a> <span class="badge level-must">MUST</span> <span class="badge st-covered">covered by 1 storyboard</span></h4>
+<p>A row whose factor the seller fixes after booking MUST set <code>status</code> to <code>provisional</code> and MUST give <code>cap</code> and <code>fixed_at</code>. A buyer MUST evaluate the row at <code>cap</code>, so the result is a ceiling until <code>fixed_at</code>.</p>
+<p class="enforced"><span>Enforced by</span> schema (<code>IndexRow</code> requires <code>cap</code> and <code>fixed_at</code> when provisional); check() (warning <code>RATE_CARD_PROVISIONAL</code>); x-adcp-validation <code>rate_card_quote.provisional_rows</code>.</p>
+<h3 id="card-in-signed-terms">Card in signed terms</h3>
+<h4 class="rule-head" id="RC-R7"><a class="rule-id" href="#RC-R7">RC-R7</a> A buyer without the extension rejects a signed card <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r7-a-buyer-without-the-extension-rejects-a-signed-card">spec.md, line 101</a> <span class="badge level-must">MUST</span> <span class="badge st-covered">covered by 2 storyboards</span></h4>
+<p>A buyer that does not understand the exact uri@digest MUST NOT accept commercial terms that carry this extension.</p>
+<p class="enforced"><span>Enforced by</span> kernel (extension point <code>commercial_terms</code>, policy <code>always</code>).</p>
+<h4 class="rule-head" id="RC-R8"><a class="rule-id" href="#RC-R8">RC-R8</a> The signed card agrees with the signed price <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r8-the-signed-card-agrees-with-the-signed-price">spec.md, line 108</a> <span class="badge level-must">MUST</span> <span class="badge st-covered">covered by 1 storyboard</span></h4>
+<p>The card in <code>commercial_terms</code>, evaluated at its <code>selection</code>, MUST equal the <code>fixed_price</code> of the purchase it names. A buyer MUST reject terms where the two differ, because it can't tell which number it signs.</p>
+<p class="enforced"><span>Enforced by</span> check(); x-adcp-validation <code>rate_card_binding.price</code>.</p>
+<h4 class="rule-head" id="RC-R9"><a class="rule-id" href="#RC-R9">RC-R9</a> The signed card names a purchase <a class="src" href="../../packages/ext-rate-card-index/spec.md#rc-r9-the-signed-card-names-a-purchase">spec.md, line 116</a> <span class="badge level-must">MUST</span> <span class="badge st-covered">covered by 1 storyboard</span></h4>
+<p>The binding's <code>purchase_index</code> MUST name an entry of <code>commercial_terms.purchases</code>.</p>
+<p class="enforced"><span>Enforced by</span> check(); x-adcp-validation <code>rate_card_binding.purchase_index</code>.</p>
+
+<h2 id="conformance">Conformance storyboards</h2>
+<p>The extension digest pins each storyboard file by sha256.</p>
+<div class="table-wrap"><table><thead><tr><th>Storyboard</th><th>File</th><th>Result</th><th>GREASE</th><th>Covers</th></tr></thead><tbody><tr><td><code>rate_card_index/discovery</code><br><span class="small">A rate card explains a binding core quote</span></td><td><code>conformance/01-discovery.yaml</code><br><span class="small"><code>sha256:bd35b8d240e2…</code></span></td><td><span class="badge st-covered">2/2 steps</span></td><td>–</td><td><a href="#RC-R2"><code>RC-R2</code></a> <a href="#RC-R3"><code>RC-R3</code></a> <a href="#RC-R4"><code>RC-R4</code></a></td></tr><tr><td><code>rate_card_index/card_rules</code><br><span class="small">Rate card rules at discovery and in signed terms</span></td><td><code>conformance/02-card-rules.yaml</code><br><span class="small"><code>sha256:f7794ebacf01…</code></span></td><td><span class="badge st-covered">10/10 steps</span></td><td>ignore, reject</td><td><a href="#RC-R3"><code>RC-R3</code></a> <a href="#RC-R6"><code>RC-R6</code></a> <a href="#RC-R1"><code>RC-R1</code></a> <a href="#RC-R8"><code>RC-R8</code></a> <a href="#RC-R9"><code>RC-R9</code></a> <a href="#RC-R5"><code>RC-R5</code></a> <a href="#RC-R7"><code>RC-R7</code></a></td></tr><tr><td><code>rate_card_index/without_module</code><br><span class="small">A buyer without the module</span></td><td><code>conformance/03-without-module.yaml</code><br><span class="small"><code>sha256:263f8f17cc94…</code></span></td><td><span class="badge st-covered">4/4 steps</span></td><td>–</td><td><a href="#RC-R1"><code>RC-R1</code></a> <a href="#RC-R7"><code>RC-R7</code></a></td></tr></tbody></table></div>
+
+<h2 id="changelog">Changelog</h2>
+<ul><li><strong>1.5.0</strong>: Current version: the pricing_option rate card and its commercial_terms binding, ported from adcp#7955, with the normative spec, the conformance suite, and the reference code, all pinned by the digest. Uses the kernel container ExtensionEntry with <code>data</code>, and the host properties <code>extensions</code> and <code>extensions_state</code>. The spec and manifest text follow the documentation style guide; the rules and their IDs are unchanged.</li><li><strong>1.4.0</strong>: Registry fixture: the current sources under this version number (scripts/registry-history.mjs).</li><li><strong>1.3.0</strong>: Registry fixture: the current sources under this version number (scripts/registry-history.mjs).</li><li><strong>1.2.0</strong>: Registry fixture: the current sources under this version number (scripts/registry-history.mjs).</li><li><strong>1.1.0</strong>: Registry fixture: the current sources under this version number (scripts/registry-history.mjs).</li><li><strong>1.0.0</strong>: Registry fixture: the current sources under this version number (scripts/registry-history.mjs).</li></ul>
+
+<footer><code>scripts/render-extension-docs.mjs</code> generates these pages from the registry copy of each uri@digest, and re-verifies every document on them against the sha256 that the extension digest pins.</footer>
+</main>
+</body>
+</html>

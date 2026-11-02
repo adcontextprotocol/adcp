@@ -1,0 +1,339 @@
+{
+ "name": "formats-split",
+ "kernel_share_post_ga_fc": [
+  198,
+  3026,
+  6.5
+ ],
+ "kernel_share_post_ga_nonadd_fc": [
+  15,
+  481,
+  3.1
+ ],
+ "all": {
+  "commits": 611,
+  "cross": 194,
+  "cross_pct": 31.8,
+  "five_plus": 22
+ },
+ "all_no_sweeps": {
+  "commits": 598,
+  "cross": 181,
+  "cross_pct": 30.3,
+  "five_plus": 9
+ },
+ "post": {
+  "commits": 397,
+  "cross": 103,
+  "cross_pct": 25.9,
+  "five_plus": 8
+ },
+ "post_no_sweeps": {
+  "commits": 393,
+  "cross": 99,
+  "cross_pct": 25.2,
+  "five_plus": 4
+ },
+ "post_no_sweeps_no_ct": {
+  "commits": 393,
+  "cross": 86,
+  "cross_pct": 21.9,
+  "five_plus": 2
+ },
+ "top_pairs_post_no_sweeps": [
+  [
+   "module:buying",
+   "module:media-vocabulary",
+   19,
+   "buying → media-vocabulary"
+  ],
+  [
+   "module:buying",
+   "module:creative",
+   18,
+   "buying → creative"
+  ],
+  [
+   "module:buying",
+   "module:signals",
+   14,
+   "buying → signals"
+  ],
+  [
+   "module:buying",
+   "module:formats",
+   14,
+   "buying → formats"
+  ],
+  [
+   "module:creative",
+   "module:formats",
+   13,
+   "creative → formats"
+  ],
+  [
+   "module:accounts",
+   "module:buying",
+   11,
+   "buying → accounts"
+  ],
+  [
+   "module:buying",
+   "module:compliance-testing",
+   10,
+   "compliance-testing → buying"
+  ],
+  [
+   "module:buying",
+   "module:reporting",
+   8,
+   "reporting → buying"
+  ],
+  [
+   "module:buying",
+   "module:governance",
+   7,
+   "governance → buying"
+  ],
+  [
+   "extension:request-signing-rfc9421",
+   "module:buying",
+   5,
+   "none"
+  ],
+  [
+   "module:accounts",
+   "module:compliance-testing",
+   5,
+   "compliance-testing → accounts"
+  ],
+  [
+   "module:media-vocabulary",
+   "module:signals",
+   5,
+   "signals → media-vocabulary"
+  ],
+  [
+   "module:accounts",
+   "module:reporting",
+   5,
+   "reporting → accounts"
+  ],
+  [
+   "module:compliance-testing",
+   "module:reporting",
+   4,
+   "compliance-testing → reporting"
+  ],
+  [
+   "extension:request-signing-rfc9421",
+   "module:governance",
+   3,
+   "none"
+  ]
+ ],
+ "top_pairs_all_no_sweeps": [
+  [
+   "module:buying",
+   "module:creative",
+   42,
+   "buying → creative"
+  ],
+  [
+   "module:buying",
+   "module:media-vocabulary",
+   39,
+   "buying → media-vocabulary"
+  ],
+  [
+   "module:buying",
+   "module:formats",
+   30,
+   "buying → formats"
+  ],
+  [
+   "module:buying",
+   "module:signals",
+   29,
+   "buying → signals"
+  ],
+  [
+   "module:creative",
+   "module:formats",
+   29,
+   "creative → formats"
+  ],
+  [
+   "module:accounts",
+   "module:buying",
+   19,
+   "buying → accounts"
+  ],
+  [
+   "module:buying",
+   "module:governance",
+   17,
+   "governance → buying"
+  ],
+  [
+   "module:buying",
+   "module:identity",
+   15,
+   "buying → identity"
+  ],
+  [
+   "module:buying",
+   "module:compliance-testing",
+   11,
+   "compliance-testing → buying"
+  ],
+  [
+   "module:buying",
+   "module:reporting",
+   10,
+   "reporting → buying"
+  ],
+  [
+   "module:media-vocabulary",
+   "module:signals",
+   10,
+   "signals → media-vocabulary"
+  ],
+  [
+   "module:creative",
+   "module:governance",
+   10,
+   "governance → creative"
+  ],
+  [
+   "module:creative",
+   "module:identity",
+   9,
+   "creative → identity"
+  ],
+  [
+   "module:accounts",
+   "module:governance",
+   8,
+   "governance → accounts"
+  ],
+  [
+   "module:accounts",
+   "module:creative",
+   8,
+   "creative → accounts"
+  ]
+ ],
+ "pair_incidences_unrelated_post_no_sweeps": [
+  38,
+  214
+ ],
+ "implementers": {
+  "governance": {
+   "modules": [
+    "module:governance"
+   ],
+   "changed": 6,
+   "or_kernel": 10,
+   "patch_changed": 3,
+   "patch_or_kernel": 6,
+   "deps": [
+    "module:accounts",
+    "module:buying",
+    "module:creative",
+    "module:formats",
+    "module:identity",
+    "module:media-vocabulary",
+    "module:signals"
+   ],
+   "with_deps": 21,
+   "with_deps_or_kernel": 22
+  },
+  "signals": {
+   "modules": [
+    "module:signals"
+   ],
+   "changed": 4,
+   "or_kernel": 9,
+   "patch_changed": 1,
+   "patch_or_kernel": 5,
+   "deps": [
+    "module:identity",
+    "module:media-vocabulary"
+   ],
+   "with_deps": 5,
+   "with_deps_or_kernel": 10
+  },
+  "creative/formats": {
+   "modules": [
+    "module:creative",
+    "module:formats"
+   ],
+   "changed": 10,
+   "or_kernel": 13,
+   "patch_changed": 6,
+   "patch_or_kernel": 9,
+   "deps": [
+    "module:accounts",
+    "module:identity",
+    "module:media-vocabulary",
+    "module:signals"
+   ],
+   "with_deps": 14,
+   "with_deps_or_kernel": 15
+  },
+  "buying": {
+   "modules": [
+    "module:buying"
+   ],
+   "changed": 14,
+   "or_kernel": 16,
+   "patch_changed": 10,
+   "patch_or_kernel": 12,
+   "deps": [
+    "module:accounts",
+    "module:creative",
+    "module:formats",
+    "module:identity",
+    "module:media-vocabulary",
+    "module:signals"
+   ],
+   "with_deps": 20,
+   "with_deps_or_kernel": 21
+  },
+  "accounts/onboarding": {
+   "modules": [
+    "module:accounts"
+   ],
+   "changed": 6,
+   "or_kernel": 8,
+   "patch_changed": 3,
+   "patch_or_kernel": 4,
+   "deps": [],
+   "with_deps": 6,
+   "with_deps_or_kernel": 8
+  },
+  "reporting": {
+   "modules": [
+    "module:reporting"
+   ],
+   "changed": 4,
+   "or_kernel": 8,
+   "patch_changed": 1,
+   "patch_or_kernel": 4,
+   "deps": [
+    "module:accounts",
+    "module:buying",
+    "module:creative",
+    "module:formats",
+    "module:identity",
+    "module:media-vocabulary",
+    "module:signals"
+   ],
+   "with_deps": 20,
+   "with_deps_or_kernel": 21
+  }
+ },
+ "ga_releases": 65,
+ "kernel_releases": 8
+}

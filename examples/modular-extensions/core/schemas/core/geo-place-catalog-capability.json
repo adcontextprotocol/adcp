@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-place-catalog-capability.json",
+  "title": "Geographic Place Catalog Capability",
+  "description": "Catalog version and resolution contract for one supported place identifier system. Versions are exact opaque strings, not ordered ranges.",
+  "type": "object",
+  "properties": {
+    "source": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Optional catalog dataset or derivative-source identifier. This records provenance/coverage and does not change the identifier namespace in system."
+    },
+    "current_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version applied when a buyer omits system_version. Sellers MUST echo this version on persisted package state."
+    },
+    "supported_versions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Exact catalog versions accepted for new targeting or target-changing updates. Must include current_version. Removing a version does not mutate or silently invalidate targets already pinned to it."
+    },
+    "resolver": {
+      "$ref": "/schemas/core/geo-place-resolver.json"
+    }
+  },
+  "required": ["current_version", "supported_versions", "resolver"],
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "member_of": { "field": "current_version", "array_field": "supported_versions" },
+    "description": "JSON Schema draft-07 cannot express scalar membership in a sibling array; conformance tooling MUST verify current_version is present in supported_versions."
+  }
+}

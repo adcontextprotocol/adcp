@@ -1,0 +1,69 @@
+id: daypart_codes/informational
+version: "1.0.0"
+title: "Daypart codes are informational"
+category: extension_conformance
+extension: daypart-codes
+summary: "A buyer with the module reads the codes; a malformed or unknown entry never blocks the option."
+narrative: |
+  The pricing option carries AcmeTV's daypart codes next to a rate card. This buyer holds
+  the daypart-codes module. It reads the codes, ignores a malformed entry with a warning,
+  and grades GREASE entries on the same option: an unflagged one is ignored, a flagged one
+  rejects the option.
+
+fixture: none
+buyer:
+  extensions: [daypart-codes]
+
+phases:
+  - id: informational
+    title: "Read, ignore, or reject"
+    steps:
+      - { id: load_option, title: "Load the cpp option", task: load_fixture, with: { name: pricingOption } }
+      - id: codes_understood
+        title: "The codes are understood and the seller does not flag them"
+        task: validate
+        with: { schema: cpp_option, subject: fixture }
+        covers: [DP-R2, DP-R3]
+        expect:
+          ok: true
+          status: { ext: daypart-codes, point: pricing_option, status: understood }
+          checks:
+            - path: fixture.extensions.@daypart-codes.must_understand
+              absent: true
+      - id: malformed_code
+        title: "A malformed code fails the schema; the optional entry is ignored, the option kept"
+        task: validate
+        with:
+          schema: cpp_option
+          subject: fixture
+          mutate:
+            - { op: set, path: /extensions/@daypart-codes/data/dayparts/0/code, value: prime }
+        covers: [DP-R1, DP-R2]
+        expect:
+          ok: true
+          warning_code: EXTENSION_DATA_INVALID
+          status: { ext: daypart-codes, point: pricing_option, status: ignored }
+      - id: grease_ignore
+        title: "GREASE: an unflagged unknown entry is ignored"
+        task: validate
+        with:
+          schema: cpp_option
+          subject: fixture
+          grease: { at: /extensions, kind: extension-point, must_understand: false }
+        covers: [DP-R1]
+        expect:
+          ok: true
+          status:
+            - { ext: grease, point: pricing_option, status: ignored }
+            - { ext: daypart-codes, point: pricing_option, status: understood }
+      - id: grease_reject
+        title: "GREASE: a flagged unknown entry rejects the option"
+        task: validate
+        with:
+          schema: cpp_option
+          subject: fixture
+          grease: { at: /extensions, kind: extension-point, must_understand: true }
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          status: { ext: grease, point: pricing_option, status: rejected }

@@ -1,0 +1,758 @@
+{
+ "counts": {
+  "accounts": 48,
+  "assembly": 16,
+  "buying": 382,
+  "compliance-testing": 4,
+  "creative": 202,
+  "extension:aao-verification-token": 1,
+  "extension:adcp-ext-namespace": 1,
+  "extension:audience-evidence-on-products": 3,
+  "extension:format-declarations-on-products": 1,
+  "extension:reliable-reporting-account-attachments": 4,
+  "extension:response-signing-jws": 1,
+  "extension:spot-lifecycle": 1,
+  "governance": 91,
+  "identity": 23,
+  "kernel": 39,
+  "kernel-types": 96,
+  "reporting": 55,
+  "retire": 6,
+  "signals": 38,
+  "sponsored-intelligence": 20,
+  "trusted-match": 15
+ },
+ "extension_counts": {
+  "aao-verification-token": 1,
+  "adcp-ext-namespace": 1,
+  "audience-evidence-on-products": 3,
+  "format-declarations-on-products": 1,
+  "reliable-reporting-account-attachments": 4,
+  "response-signing-jws": 1,
+  "spot-lifecycle": 1
+ },
+ "id_changes_40": 695,
+ "id_changes_40_by_unit": {
+  "accounts": 38,
+  "buying": 382,
+  "creative": 146,
+  "extension:aao-verification-token": 1,
+  "extension:adcp-ext-namespace": 1,
+  "extension:audience-evidence-on-products": 3,
+  "extension:format-declarations-on-products": 1,
+  "extension:reliable-reporting-account-attachments": 4,
+  "extension:response-signing-jws": 1,
+  "extension:spot-lifecycle": 1,
+  "governance": 17,
+  "identity": 9,
+  "kernel-types": 1,
+  "reporting": 55,
+  "signals": 32,
+  "sponsored-intelligence": 2,
+  "trusted-match": 1
+ },
+ "ids": {
+  "accounts": {
+   "added_by_fixes": [],
+   "bridges": [
+    "C2a"
+   ],
+   "today": [
+    "brand_ref"
+   ]
+  },
+  "assembly": {
+   "added_by_fixes": [],
+   "bridges": [],
+   "today": [
+    "collection_ref",
+    "property_id",
+    "property_tag"
+   ]
+  },
+  "buying": {
+   "added_by_fixes": [
+    "asset_type_id",
+    "creative_ref",
+    "format_kind_id",
+    "indicator",
+    "indicator_type_id",
+    "media_asset"
+   ],
+   "bridges": [
+    "C2b",
+    "C3",
+    "C4",
+    "C6",
+    "C8"
+   ],
+   "today": [
+    "account_ref",
+    "activation_key",
+    "attestation_ref",
+    "brand_ref",
+    "collection_list_ref",
+    "format_id",
+    "format_option_ref",
+    "property_list_ref",
+    "signal_ref"
+   ]
+  },
+  "compliance-testing": {
+   "added_by_fixes": [],
+   "bridges": [],
+   "today": [
+    "brand_ref"
+   ]
+  },
+  "creative": {
+   "added_by_fixes": [
+    "artifact_ref",
+    "asset_type_id",
+    "creative_id",
+    "metric_id",
+    "right_type_id",
+    "right_use_id",
+    "signal_ref"
+   ],
+   "bridges": [
+    "C10",
+    "C5",
+    "C7a",
+    "C9"
+   ],
+   "today": [
+    "account_ref",
+    "attestation_ref",
+    "brand_ref",
+    "placement_ref",
+    "property_id"
+   ]
+  },
+  "extension:audience-evidence-on-products": {
+   "added_by_fixes": [],
+   "bridges": [],
+   "today": [
+    "attestation_ref",
+    "brand_ref"
+   ]
+  },
+  "governance": {
+   "added_by_fixes": [
+    "format_kind_id",
+    "media_buy_ref",
+    "proposal_ref"
+   ],
+   "bridges": [
+    "C1"
+   ],
+   "today": [
+    "account_ref",
+    "attestation_ref",
+    "brand_ref",
+    "format_id",
+    "property_id",
+    "property_tag"
+   ]
+  },
+  "identity": {
+   "added_by_fixes": [],
+   "bridges": [],
+   "today": [
+    "format_id"
+   ]
+  },
+  "kernel": {
+   "added_by_fixes": [],
+   "bridges": [],
+   "today": [
+    "account_ref"
+   ]
+  },
+  "kernel-types": {
+   "added_by_fixes": [
+    "indicator_type_id"
+   ],
+   "bridges": [],
+   "today": [
+    "brand_ref",
+    "collection_ref",
+    "format_id",
+    "property_id",
+    "property_tag",
+    "signal_ref"
+   ]
+  },
+  "reporting": {
+   "added_by_fixes": [
+    "metric_id"
+   ],
+   "bridges": [],
+   "today": [
+    "account_ref",
+    "brand_ref"
+   ]
+  },
+  "signals": {
+   "added_by_fixes": [
+    "metric_id"
+   ],
+   "bridges": [],
+   "today": [
+    "account_ref",
+    "brand_ref"
+   ]
+  },
+  "sponsored-intelligence": {
+   "added_by_fixes": [],
+   "bridges": [],
+   "today": [
+    "brand_ref"
+   ]
+  },
+  "trusted-match": {
+   "added_by_fixes": [
+    "artifact_ref",
+    "creative_ref",
+    "format_option_ref"
+   ],
+   "bridges": [
+    "C11",
+    "C12",
+    "C7b"
+   ],
+   "today": [
+    "brand_ref",
+    "format_id",
+    "property_id"
+   ]
+  }
+ },
+ "kernel_layer_files": 135,
+ "kernel_moves": {
+  "core/activation-key.json": {
+   "from": "module:signals",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/assignment-tracker.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/attestation-evaluation.json": {
+   "from": "module:identity",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/attestation-issuer.json": {
+   "from": "module:identity",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/attestation-reference.json": {
+   "from": "module:identity",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/attestation-subject.json": {
+   "from": "module:identity",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/audience-selector.json": {
+   "from": "module:buying",
+   "post_ga_mod": [
+    "#5009"
+   ],
+   "post_ga_na": [
+    "#5009"
+   ],
+   "to": "kernel-types"
+  },
+  "core/audience-size.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/business-entity.json": {
+   "from": "module:accounts",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/canonical-account-ref.json": {
+   "from": "module:accounts",
+   "post_ga_mod": [
+    "#5990",
+    "#6115"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/catalog-field-mapping.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/catalog.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/collection-selector.json": {
+   "from": "module:buying",
+   "post_ga_mod": [
+    "#6897"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/content-rating.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/demographic-age-range.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/demographic-predicate.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/diagnostic-issue.json": {
+   "from": "module:signals",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/feature-requirement.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/forecast-range.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/format-option-ref.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/identifier.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [
+    "#8289"
+   ],
+   "post_ga_na": [
+    "#8289"
+   ],
+   "to": "kernel-types"
+  },
+  "core/indicator-scope.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/indicator.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/macro-bearing-url.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/placement-identity.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/property-tag.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/property.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/provenance.json": {
+   "from": "module:creative",
+   "post_ga_mod": [
+    "#3468",
+    "#6576"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/seller-agent-ref.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/signal-targeting.json": {
+   "from": "module:signals",
+   "post_ga_mod": [
+    "#5009"
+   ],
+   "post_ga_na": [
+    "#5009"
+   ],
+   "to": "kernel-types"
+  },
+  "core/vendor-metric-id.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "core/webhook-activity-record.json": {
+   "from": "module:accounts",
+   "post_ga_mod": [
+    "#6250"
+   ],
+   "post_ga_na": [],
+   "to": "kernel"
+  },
+  "enums/action-source.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/advertiser-industry.json": {
+   "from": "module:identity",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/age-determination-basis.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/assessment-status.json": {
+   "from": "module:signals",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/attribution-methodology.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/audience-size-precision.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/c2pa-watermark-action.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/catalog-type.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/cloud-storage-protocol.json": {
+   "from": "module:accounts",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/collection-kind.json": {
+   "from": "module:buying",
+   "post_ga_mod": [
+    "#6897"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/completion-source.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/content-id-type.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/content-rating-system.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/daast-version.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/digital-source-type.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/disclosure-persistence.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/disclosure-position.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/distribution-identifier-type.json": {
+   "from": "module:buying",
+   "post_ga_mod": [
+    "#5522",
+    "#6897"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/embedded-provenance-method.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/event-type.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [
+    "#5220"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/feed-format.json": {
+   "from": "module:identity",
+   "post_ga_mod": [
+    "#5298"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/forecast-method.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/genre-taxonomy.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/identifier-types.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/lift-dimension.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/logo-slot.json": {
+   "from": "module:identity",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/metro-system.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/pixel-tracking-event.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/production-quality.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/property-type.json": {
+   "from": "module:identity",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/restricted-attribute.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/talent-role.json": {
+   "from": "module:identity",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/uid-type.json": {
+   "from": "module:signals",
+   "post_ga_mod": [
+    "#5387"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/update-frequency.json": {
+   "from": "module:buying",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/validation-mode.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/vast-version.json": {
+   "from": "module:creative",
+   "post_ga_mod": [
+    "#6141"
+   ],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/viewability-standard.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "enums/watermark-media-type.json": {
+   "from": "module:creative",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  },
+  "media-buy/acceptance-policy-profile-ref.json": {
+   "from": "module:media-vocabulary",
+   "post_ga_mod": [],
+   "post_ga_na": [],
+   "to": "kernel-types"
+  }
+ },
+ "kernel_moves_modified_post_ga": 13,
+ "kernel_moves_n": 71,
+ "kernel_moves_nonadditive": {
+  "core/audience-selector.json": [
+   "#5009"
+  ],
+  "core/identifier.json": [
+   "#8289"
+  ],
+  "core/signal-targeting.json": [
+   "#5009"
+  ]
+ },
+ "layer_counts": {
+  "catalogs": 26,
+  "commitment": 39,
+  "delivery": 24,
+  "execution": 43,
+  "offer": 37,
+  "pricing": 20,
+  "supply": 122,
+  "targeting": 71
+ },
+ "namespace_collisions": {
+  "buying/commitment/canonical-media-buy-action.json": [
+   "core/canonical-media-buy-action.json",
+   "enums/canonical-media-buy-action.json"
+  ],
+  "creative/list-creative-formats-request.json": [
+   "creative/list-creative-formats-request.json",
+   "media-buy/list-creative-formats-request.json"
+  ],
+  "creative/list-creative-formats-response.json": [
+   "creative/list-creative-formats-response.json",
+   "media-buy/list-creative-formats-response.json"
+  ]
+ },
+ "retired": [
+  "a2ui/si-catalog.json",
+  "enums/frequency-cap-scope.json",
+  "enums/history-entry-type.json",
+  "enums/metric-scope.json",
+  "enums/publisher-identifier-types.json",
+  "media-buy/product-refinement.json"
+ ],
+ "verify": {
+  "crossing_file_edges": {
+   "kernel->module": 2,
+   "layer": 1,
+   "module->extension": 17,
+   "module->module": 106
+  },
+  "crossing_occurrences": {
+   "kernel->module|resolved": 2,
+   "layer|resolved": 1,
+   "module->extension|resolved": 19,
+   "module->module|resolved": 114
+  },
+  "cycles_after": [],
+  "layer_violations_today": 1,
+  "star_violations_after": [],
+  "star_violations_today": 39
+ }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/media-buy-frequency-cap-support.json",
+  "title": "Media Buy Frequency Cap Support",
+  "description": "Optional product support detail for aggregate MediaBuy frequency caps. Aggregate support in 3.2 is max-impressions only.",
+  "allOf": [
+    { "$ref": "/schemas/core/frequency-cap-constraints.json" },
+    {
+      "type": "object",
+      "properties": {
+        "supported_control_modes": {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/media-buy-frequency-cap-control-mode.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "not": { "required": ["suppression_constraints"] }
+    }
+  ]
+}

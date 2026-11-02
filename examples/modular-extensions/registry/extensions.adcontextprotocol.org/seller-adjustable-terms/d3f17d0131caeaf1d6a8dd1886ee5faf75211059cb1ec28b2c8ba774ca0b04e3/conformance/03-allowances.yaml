@@ -1,0 +1,180 @@
+id: seller_adjustable_terms/allowances
+version: "1.0.0"
+title: "Allowances in signed terms"
+category: extension_conformance
+extension: seller-adjustable-terms
+summary: "The seller's allowances pass; each malformed allowance is rejected before the buyer signs."
+narrative: |
+  The buyer receives a committed proposal with four allowances: each video may move up to
+  7 days later, with 48 hours notice, start and end separately. The storyboard then plays
+  a seller that gets an allowance wrong, one property at a time, and a GREASE entry. All of
+  it is binding data under terms_digest.
+
+fixture: creator_network
+buyer:
+  extensions: [seller-adjustable-terms, makegood-units]
+
+phases:
+  - id: proposal
+    title: "Receive the committed proposal"
+    steps:
+      - id: draft_carries_current_digest
+        title: "A buyer with the current module gets the current digest"
+        task: request_proposals
+        covers: [SAT-R2]
+        expect:
+          ok: true
+          checks:
+            - path: draft.commercial_terms.extensions.@seller-adjustable-terms.digest
+              equals: { $digest: seller-adjustable-terms }
+      - { id: finalize, title: "Finalize the draft", task: refine_proposals, expect: { ok: true } }
+
+  - id: allowances
+    title: "Grade the allowances"
+    steps:
+      - id: well_formed
+        title: "The seller's allowances pass"
+        task: validate
+        with: { schema: commercial_terms, subject: committed.commercial_terms }
+        covers: [SAT-R3, SAT-R4, SAT-R5, SAT-R6, SAT-R7]
+        expect:
+          ok: true
+          status: { ext: seller-adjustable-terms, point: commercial_terms, status: understood }
+      - id: out_of_order
+        title: "Allowances out of allowance_id order are rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@seller-adjustable-terms/data/allowances/0/allowance_id, value: zz_slip }
+        covers: [SAT-R3]
+        expect:
+          ok: false
+          error_code: EXTENSION_SEMANTIC_ERROR
+          error_match: "allowances must be ordered by allowance_id"
+      - id: duplicate_id
+        title: "A duplicate allowance_id is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@seller-adjustable-terms/data/allowances/1/allowance_id, value: slip_v1_end }
+        covers: [SAT-R3]
+        expect:
+          ok: false
+          error_match: "allowance_id values must be unique"
+      - id: purchase_out_of_range
+        title: "An allowance on a purchase the terms do not have is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@seller-adjustable-terms/data/allowances/3/purchase_index, value: 7 }
+        covers: [SAT-R4]
+        expect:
+          ok: false
+          error_match: "purchase_index 7 is outside commercial_terms.purchases"
+      - id: path_does_not_resolve
+        title: "An allowance on a field the purchase does not have is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - op: set
+              path: /extensions/@seller-adjustable-terms/data/allowances/0
+              value:
+                allowance_id: slip_v1_end
+                purchase_index: 0
+                path: /targeting_overlay
+                constraint: { kind: alternates, alternates: [{ label: NL only, value: { geo_countries: [NL] } }] }
+        covers: [SAT-R4]
+        expect:
+          ok: false
+          error_match: "/targeting_overlay does not resolve in purchase 0"
+      - id: two_allowances_one_field
+        title: "Two allowances on one field are rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@seller-adjustable-terms/data/allowances/1/path, value: /end_time }
+        covers: [SAT-R5]
+        expect:
+          ok: false
+          error_match: "second allowance on purchase 0 /end_time"
+      - id: wrong_kind_for_field
+        title: "A decrease on a time field fails the schema"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@seller-adjustable-terms/data/allowances/0/constraint, value: { kind: decrease, max_change_fraction: 0.1 } }
+        covers: [SAT-R6]
+        expect:
+          ok: false
+          error_code: EXTENSION_DATA_INVALID
+      - id: price_field
+        title: "An allowance on a price fails the schema"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@seller-adjustable-terms/data/allowances/0/path, value: /pricing/fixed_price }
+        covers: [SAT-R6]
+        expect:
+          ok: false
+          error_code: EXTENSION_DATA_INVALID
+      - id: unknown_kind
+        title: "A constraint kind this digest does not define fails closed"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@seller-adjustable-terms/data/allowances/0/constraint, value: { kind: within_bucket, bucket: same_daypart } }
+        covers: [SAT-R7]
+        expect:
+          ok: false
+          error_code: EXTENSION_DATA_INVALID
+      - id: earlier_start_warns
+        title: "A start that may move earlier is accepted with a warning"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          mutate:
+            - { op: set, path: /extensions/@seller-adjustable-terms/data/allowances/1/constraint/direction, value: earlier }
+        covers: [SAT-R8]
+        expect:
+          ok: true
+          warning_match: "start_time may move earlier"
+
+  - id: grease
+    title: "GREASE: an unknown extension in signed terms"
+    steps:
+      - id: grease_reject
+        title: "An unknown entry next to the allowances makes the terms unacceptable"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: committed.commercial_terms
+          grease: { at: /extensions, kind: extension-point }
+        covers: [SAT-R1]
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          status:
+            - { ext: grease, point: commercial_terms, status: rejected }
+            - { ext: seller-adjustable-terms, point: commercial_terms, status: understood }
+
+  - id: accept
+    title: "Sign the unchanged terms"
+    steps:
+      - { id: accept, title: "The buyer accepts", task: accept_proposal, expect: { ok: true } }

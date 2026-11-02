@@ -1,0 +1,1099 @@
+{
+ "core/account-ref.json": {
+  "label": "kernel-types",
+  "commits": 15,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/agent-signing-key.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/brand-id.json": {
+  "label": "kernel-types",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/brand-key.json": {
+  "label": "kernel-types",
+  "commits": 4,
+  "non_additive_commits": 2,
+  "flagged": [
+   {
+    "sha": "000536179f",
+    "date": "2026-09-13",
+    "subject": "revert(brand): defer strict domain requirements to 4.0 (#7442)",
+    "changes": [
+     [
+      "pattern-changed",
+      "/properties/domain/pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' -> '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$'"
+     ]
+    ]
+   },
+   {
+    "sha": "84ea7b6bcb",
+    "date": "2026-09-08",
+    "subject": "Require portable dotted BrandRef domains (#7363)",
+    "changes": [
+     [
+      "pattern-changed",
+      "/properties/domain/pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$' -> '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/brand-ref.json": {
+  "label": "kernel-types",
+  "commits": 9,
+  "non_additive_commits": 4,
+  "flagged": [
+   {
+    "sha": "000536179f",
+    "date": "2026-09-13",
+    "subject": "revert(brand): defer strict domain requirements to 4.0 (#7442)",
+    "changes": [
+     [
+      "pattern-changed",
+      "/properties/domain/pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' -> '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$'"
+     ]
+    ]
+   },
+   {
+    "sha": "84ea7b6bcb",
+    "date": "2026-09-08",
+    "subject": "Require portable dotted BrandRef domains (#7363)",
+    "changes": [
+     [
+      "pattern-changed",
+      "/properties/domain/pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$' -> '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'"
+     ]
+    ]
+   },
+   {
+    "sha": "e6dd73a086",
+    "date": "2026-04-18",
+    "subject": "feat(governance)!: enforce Art 22 / Annex III as schema invariants (#2310) (#2338)",
+    "changes": [
+     [
+      "additionalProperties-closed",
+      "/properties/data_subject_contestation/additionalProperties"
+     ]
+    ]
+   },
+   {
+    "sha": "892da1df24",
+    "date": "2026-02-18",
+    "subject": "feat!: Unify brand identity \u2014 delete brand-manifest.json, use brand refs (#1113)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/house"
+     ],
+     [
+      "type-removed",
+      "/properties/house/type"
+     ],
+     [
+      "newly-required",
+      "/required: ['\"domain\"']"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/collection-list-ref.json": {
+  "label": "kernel-types",
+  "commits": 5,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/collection-ref.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/compact-task-input-required.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/compact-task-submitted.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/compact-task-working.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/context.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/date-range.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/datetime-range.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/downstream-connection-requirement.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/duration.json": {
+  "label": "kernel-types",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/error.json": {
+  "label": "kernel",
+  "commits": 15,
+  "non_additive_commits": 2,
+  "flagged": [
+   {
+    "sha": "6da3000248",
+    "date": "2026-05-02",
+    "subject": "spec(error): schema_id + discriminator on issues[]; preserve sub-schema $ids during bundli",
+    "changes": [
+     [
+      "additionalProperties-closed",
+      "/properties/issues/items/properties/discriminator/items/additionalProperties"
+     ]
+    ]
+   },
+   {
+    "sha": "4383860ee8",
+    "date": "2026-03-19",
+    "subject": "docs: transport error mapping for MCP and A2A (#1561)",
+    "changes": [
+     [
+      "minimum-changed",
+      "/properties/retry_after/minimum: 0 -> 1"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/experimental-feature-id.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/ext.json": {
+  "label": "kernel",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/format-id.json": {
+  "label": "kernel-types",
+  "commits": 9,
+  "non_additive_commits": 1,
+  "flagged": [
+   {
+    "sha": "3d75b8fd49",
+    "date": "2025-11-22",
+    "subject": "Simplify format-id schema for better code generation (#246)",
+    "changes": [
+     [
+      "$ref-removed",
+      "/allOf/0/oneOf/1/allOf/0/$ref"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/iana-timezone.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/installment-ref.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/locale-tag.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/operator-unit.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/pagination-request.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/pagination-response.json": {
+  "label": "kernel-types",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/placement-ref.json": {
+  "label": "kernel-types",
+  "commits": 3,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/platform-extension-ref.json": {
+  "label": "kernel",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/price.json": {
+  "label": "kernel-types",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/property-id.json": {
+  "label": "kernel-types",
+  "commits": 4,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/property-list-ref.json": {
+  "label": "kernel-types",
+  "commits": 4,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/protocol-envelope.json": {
+  "label": "kernel",
+  "commits": 26,
+  "non_additive_commits": 3,
+  "flagged": [
+   {
+    "sha": "41fce132d8",
+    "date": "2026-05-20",
+    "subject": "spec(envelope): require status on every task response envelope (#4876)",
+    "changes": [
+     [
+      "newly-required",
+      "/required: ['\"status\"']"
+     ]
+    ]
+   },
+   {
+    "sha": "904eb1a641",
+    "date": "2026-04-28",
+    "subject": "chore(release): align changesets and revert tasks/get for 3.0.1 cut (#3373)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/task_status"
+     ],
+     [
+      "property-removed",
+      "/properties/response_status"
+     ]
+    ]
+   },
+   {
+    "sha": "e2cd245974",
+    "date": "2025-11-11",
+    "subject": "move application level context management to the task payload",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/context"
+     ],
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/push-notification-config.json": {
+  "label": "kernel",
+  "commits": 14,
+  "non_additive_commits": 1,
+  "flagged": [
+   {
+    "sha": "7b2ebd4eec",
+    "date": "2025-11-20",
+    "subject": "Consolidate all inline enum definitions into centralized schemas (#226)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/authentication/properties/schemes/items/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/authentication/properties/schemes/items/enum"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/response.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/signal-id.json": {
+  "label": "kernel-types",
+  "commits": 4,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/signal-pricing.json": {
+  "label": "kernel-types",
+  "commits": 5,
+  "non_additive_commits": 1,
+  "flagged": [
+   {
+    "sha": "2b8d6b69bc",
+    "date": "2026-02-27",
+    "subject": "feat(schema): refine frequency caps, pricing, identifiers, keyword capabilities, and durat",
+    "changes": [
+     [
+      "newly-required",
+      "/oneOf/2/required: ['\"period\"']"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/signal-ref.json": {
+  "label": "kernel-types",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/tasks-get-request.json": {
+  "label": "kernel",
+  "commits": 15,
+  "non_additive_commits": 4,
+  "flagged": [
+   {
+    "sha": "6eadf0663c",
+    "date": "2026-04-29",
+    "subject": "spec(versioning): release-precision protocol version negotiation (#3493)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/adcp_major_version"
+     ],
+     [
+      "type-removed",
+      "/properties/adcp_major_version/type"
+     ]
+    ]
+   },
+   {
+    "sha": "904eb1a641",
+    "date": "2026-04-28",
+    "subject": "chore(release): align changesets and revert tasks/get for 3.0.1 cut (#3373)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/include_result"
+     ],
+     [
+      "type-removed",
+      "/properties/include_result/type"
+     ]
+    ]
+   },
+   {
+    "sha": "1d705a2996",
+    "date": "2025-11-22",
+    "subject": "Add extension and context fields to AdCP schemas (#241)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   },
+   {
+    "sha": "53632a26a0",
+    "date": "2025-11-11",
+    "subject": "chore: remove from task payloads and move it to the protocol level request",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/context"
+     ],
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/tasks-list-request.json": {
+  "label": "kernel",
+  "commits": 15,
+  "non_additive_commits": 7,
+  "flagged": [
+   {
+    "sha": "6eadf0663c",
+    "date": "2026-04-29",
+    "subject": "spec(versioning): release-precision protocol version negotiation (#3493)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/adcp_major_version"
+     ],
+     [
+      "type-removed",
+      "/properties/adcp_major_version/type"
+     ]
+    ]
+   },
+   {
+    "sha": "84b322c751",
+    "date": "2026-04-18",
+    "subject": "refactor(compliance): rename domains\u2192protocols, normalize categories, reclassify audience-",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/filters/properties/domain"
+     ],
+     [
+      "property-removed",
+      "/properties/filters/properties/domains"
+     ],
+     [
+      "$ref-removed",
+      "/properties/filters/properties/domain/$ref"
+     ],
+     [
+      "type-removed",
+      "/properties/filters/properties/domains/type"
+     ],
+     [
+      "$ref-removed",
+      "/properties/filters/properties/domains/items/$ref"
+     ],
+     [
+      "enum-value-removed",
+      "/properties/sort/properties/field/enum: ['\"domain\"']"
+     ]
+    ]
+   },
+   {
+    "sha": "96a90ec236",
+    "date": "2026-02-10",
+    "subject": "feat: Standardize cursor-based pagination across all list operations (#997)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/pagination/type"
+     ],
+     [
+      "property-removed",
+      "/properties/pagination/properties/limit"
+     ],
+     [
+      "property-removed",
+      "/properties/pagination/properties/offset"
+     ],
+     [
+      "type-removed",
+      "/properties/pagination/properties/limit/type"
+     ],
+     [
+      "type-removed",
+      "/properties/pagination/properties/offset/type"
+     ]
+    ]
+   },
+   {
+    "sha": "1d705a2996",
+    "date": "2025-11-22",
+    "subject": "Add extension and context fields to AdCP schemas (#241)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   },
+   {
+    "sha": "7b2ebd4eec",
+    "date": "2025-11-20",
+    "subject": "Consolidate all inline enum definitions into centralized schemas (#226)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/filters/properties/domain/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/filters/properties/domain/enum"
+     ],
+     [
+      "type-removed",
+      "/properties/filters/properties/domains/items/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/filters/properties/domains/items/enum"
+     ],
+     [
+      "type-removed",
+      "/properties/sort/properties/direction/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/sort/properties/direction/enum"
+     ]
+    ]
+   },
+   {
+    "sha": "53632a26a0",
+    "date": "2025-11-11",
+    "subject": "chore: remove from task payloads and move it to the protocol level request",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/context"
+     ],
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   },
+   {
+    "sha": "279ded13ab",
+    "date": "2025-10-27",
+    "subject": "Clarify webhook payload structure and add task-type enum (#153)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/filters/properties/task_type/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/filters/properties/task_type/enum"
+     ],
+     [
+      "type-removed",
+      "/properties/filters/properties/task_types/items/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/filters/properties/task_types/items/enum"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/vendor-pricing-option.json": {
+  "label": "kernel-types",
+  "commits": 4,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/version-envelope.json": {
+  "label": "kernel",
+  "commits": 5,
+  "non_additive_commits": 1,
+  "flagged": [
+   {
+    "sha": "0b772e7a7a",
+    "date": "2026-08-07",
+    "subject": "feat(security): require signed request body integrity (#6251)",
+    "changes": [
+     [
+      "pattern-changed",
+      "/properties/adcp_version/pattern: '^\\\\d+\\\\.\\\\d+(-[a-zA-Z0-9.-]+)?$' -> '^(?:0|[1-9]\\\\d*)\\\\.(?:0|[1-9]\\\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$'"
+     ]
+    ]
+   }
+  ]
+ },
+ "core/warning-resource.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "core/warning.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/auth-scheme.json": {
+  "label": "kernel",
+  "commits": 5,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/channels.json": {
+  "label": "kernel-types",
+  "commits": 5,
+  "non_additive_commits": 2,
+  "flagged": [
+   {
+    "sha": "0750907730",
+    "date": "2026-03-17",
+    "subject": "fix: cert prod fixes, SI rename, promote SI to top-level protocol section (#1515)",
+    "changes": [
+     [
+      "enum-value-removed",
+      "/enum: ['\"ai_media\"']"
+     ]
+    ]
+   },
+   {
+    "sha": "f4ef555547",
+    "date": "2026-01-25",
+    "subject": "Release AdCP v3.0.0-beta.1 (#859)",
+    "changes": [
+     [
+      "enum-value-removed",
+      "/enum: ['\"audio\"', '\"native\"', '\"retail\"', '\"video\"']"
+     ]
+    ]
+   }
+  ]
+ },
+ "enums/error-code.json": {
+  "label": "kernel",
+  "commits": 93,
+  "non_additive_commits": 2,
+  "flagged": [
+   {
+    "sha": "2c5196bf3f",
+    "date": "2026-05-25",
+    "subject": "[codex] Add publisher placement and format refs (#5014)",
+    "changes": [
+     [
+      "enum-value-removed",
+      "/enum: ['\"FORMAT_CAPABILITY_UNRESOLVED\"']"
+     ]
+    ]
+   },
+   {
+    "sha": "e27cffbafd",
+    "date": "2026-05-22",
+    "subject": "spec: replace catalog feed with wholesale feed webhooks (#4916)",
+    "changes": [
+     [
+      "enum-value-removed",
+      "/enum: ['\"RETENTION_EXPIRED\"']"
+     ]
+    ]
+   }
+  ]
+ },
+ "enums/error-scope.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/http-method.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/pricing-model.json": {
+  "label": "kernel-types",
+  "commits": 4,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/request-signing-error-code.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/sort-direction.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/task-status.json": {
+  "label": "kernel",
+  "commits": 4,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/warning-code.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "enums/webhook-security-method.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "error-details/agent-permission-denied.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 1,
+  "flagged": [
+   {
+    "sha": "2a2e5c420c",
+    "date": "2026-05-02",
+    "subject": "spec(errors): register AGENT_SUSPENDED / AGENT_BLOCKED + consolidate 3.0.5 details.status ",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/status"
+     ],
+     [
+      "type-removed",
+      "/properties/status/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/status/enum"
+     ],
+     [
+      "newly-required",
+      "/required: ['\"reason\"']"
+     ]
+    ]
+   }
+  ]
+ },
+ "error-details/authorization-required.json": {
+  "label": "kernel",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "error-details/conflict.json": {
+  "label": "kernel",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "error-details/rate-limited.json": {
+  "label": "kernel",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "error-details/stale-response.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "error-details/vendor-error-codes.json": {
+  "label": "kernel",
+  "commits": 1,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "error-details/version-unsupported.json": {
+  "label": "kernel",
+  "commits": 3,
+  "non_additive_commits": 1,
+  "flagged": [
+   {
+    "sha": "0b772e7a7a",
+    "date": "2026-08-07",
+    "subject": "feat(security): require signed request body integrity (#6251)",
+    "changes": [
+     [
+      "pattern-changed",
+      "/properties/supported_versions/items/pattern: '^\\\\d+\\\\.\\\\d+(-[a-zA-Z0-9.-]+)?$' -> '^(?:0|[1-9]\\\\d*)\\\\.(?:0|[1-9]\\\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$'"
+     ]
+    ]
+   }
+  ]
+ },
+ "extensions/extension-meta.json": {
+  "label": "kernel",
+  "commits": 2,
+  "non_additive_commits": 0,
+  "flagged": []
+ },
+ "protocol/get-adcp-capabilities-request.json": {
+  "label": "kernel",
+  "commits": 6,
+  "non_additive_commits": 1,
+  "flagged": [
+   {
+    "sha": "6eadf0663c",
+    "date": "2026-04-29",
+    "subject": "spec(versioning): release-precision protocol version negotiation (#3493)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/adcp_major_version"
+     ],
+     [
+      "type-removed",
+      "/properties/adcp_major_version/type"
+     ]
+    ]
+   }
+  ]
+ },
+ "protocol/get-task-status-request.json": {
+  "label": "kernel",
+  "commits": 17,
+  "non_additive_commits": 4,
+  "flagged": [
+   {
+    "sha": "6eadf0663c",
+    "date": "2026-04-29",
+    "subject": "spec(versioning): release-precision protocol version negotiation (#3493)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/adcp_major_version"
+     ],
+     [
+      "type-removed",
+      "/properties/adcp_major_version/type"
+     ]
+    ]
+   },
+   {
+    "sha": "904eb1a641",
+    "date": "2026-04-28",
+    "subject": "chore(release): align changesets and revert tasks/get for 3.0.1 cut (#3373)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/include_result"
+     ],
+     [
+      "type-removed",
+      "/properties/include_result/type"
+     ]
+    ]
+   },
+   {
+    "sha": "1d705a2996",
+    "date": "2025-11-22",
+    "subject": "Add extension and context fields to AdCP schemas (#241)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   },
+   {
+    "sha": "53632a26a0",
+    "date": "2025-11-11",
+    "subject": "chore: remove from task payloads and move it to the protocol level request",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/context"
+     ],
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   }
+  ]
+ },
+ "protocol/list-tasks-request.json": {
+  "label": "kernel",
+  "commits": 17,
+  "non_additive_commits": 7,
+  "flagged": [
+   {
+    "sha": "6eadf0663c",
+    "date": "2026-04-29",
+    "subject": "spec(versioning): release-precision protocol version negotiation (#3493)",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/adcp_major_version"
+     ],
+     [
+      "type-removed",
+      "/properties/adcp_major_version/type"
+     ]
+    ]
+   },
+   {
+    "sha": "84b322c751",
+    "date": "2026-04-18",
+    "subject": "refactor(compliance): rename domains\u2192protocols, normalize categories, reclassify audience-",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/filters/properties/domain"
+     ],
+     [
+      "property-removed",
+      "/properties/filters/properties/domains"
+     ],
+     [
+      "$ref-removed",
+      "/properties/filters/properties/domain/$ref"
+     ],
+     [
+      "type-removed",
+      "/properties/filters/properties/domains/type"
+     ],
+     [
+      "$ref-removed",
+      "/properties/filters/properties/domains/items/$ref"
+     ],
+     [
+      "enum-value-removed",
+      "/properties/sort/properties/field/enum: ['\"domain\"']"
+     ]
+    ]
+   },
+   {
+    "sha": "96a90ec236",
+    "date": "2026-02-10",
+    "subject": "feat: Standardize cursor-based pagination across all list operations (#997)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/pagination/type"
+     ],
+     [
+      "property-removed",
+      "/properties/pagination/properties/limit"
+     ],
+     [
+      "property-removed",
+      "/properties/pagination/properties/offset"
+     ],
+     [
+      "type-removed",
+      "/properties/pagination/properties/limit/type"
+     ],
+     [
+      "type-removed",
+      "/properties/pagination/properties/offset/type"
+     ]
+    ]
+   },
+   {
+    "sha": "1d705a2996",
+    "date": "2025-11-22",
+    "subject": "Add extension and context fields to AdCP schemas (#241)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   },
+   {
+    "sha": "7b2ebd4eec",
+    "date": "2025-11-20",
+    "subject": "Consolidate all inline enum definitions into centralized schemas (#226)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/filters/properties/domain/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/filters/properties/domain/enum"
+     ],
+     [
+      "type-removed",
+      "/properties/filters/properties/domains/items/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/filters/properties/domains/items/enum"
+     ],
+     [
+      "type-removed",
+      "/properties/sort/properties/direction/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/sort/properties/direction/enum"
+     ]
+    ]
+   },
+   {
+    "sha": "53632a26a0",
+    "date": "2025-11-11",
+    "subject": "chore: remove from task payloads and move it to the protocol level request",
+    "changes": [
+     [
+      "property-removed",
+      "/properties/context"
+     ],
+     [
+      "type-removed",
+      "/properties/context/type"
+     ]
+    ]
+   },
+   {
+    "sha": "279ded13ab",
+    "date": "2025-10-27",
+    "subject": "Clarify webhook payload structure and add task-type enum (#153)",
+    "changes": [
+     [
+      "type-removed",
+      "/properties/filters/properties/task_type/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/filters/properties/task_type/enum"
+     ],
+     [
+      "type-removed",
+      "/properties/filters/properties/task_types/items/type"
+     ],
+     [
+      "enum-removed",
+      "/properties/filters/properties/task_types/items/enum"
+     ]
+    ]
+   }
+  ]
+ }
+}

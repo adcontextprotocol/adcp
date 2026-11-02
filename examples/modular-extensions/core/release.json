@@ -1,0 +1,155 @@
+{
+  "$comment": "The published core contract an extension is checked against. layers: the final layout (placement-final-v2) as it falls on the vendored closure: the kernel (core), kernel types, the standard modules that own a vendored file (trusted-match and the compliance-testing leaf own none), each of buying's eight layers as its own layer (buying/<layer>, with depends_on naming the layers directly below it; pricing and catalogs are siblings, and so are offer and execution; buying/delivery owns no vendored file), the generated assembly, the 3.x compatibility assembly (_compat: the legacy get_products product and its signal targeting option listing, removed in 4.0), and x-<name> for a file the layout places in an extension (three bridge extensions and spot-lifecycle; module schemas $ref them only under x-adcp-bridge-point annotations). Each layer has its own version, the hooks it declares (contract majors; a major changes only if the hook's schema or must-understand policy changes), and a frozen digest over the files it owns (core/placement.json). Re-stamped when the layers moved from the ten-module cut to the final layout: hook names and majors are unchanged; pricing_option and pricing_model moved to buying/pricing, commercial_terms to buying/commitment, and media_buy_state to buying/execution; the kernel gained core/webhook-activity-record.json, and kernel types gained the catalog format and core/property.json. Re-stamped again when core/patches.json applied the layout's 3.4 fixes (kernel types with registry composition, bridge points); the bundle digest moved, no payload changed. types: per-schema majors for core types an extension may $ref (default_major unless overridden). bundle_digest: JCS sha256 of the whole bundle (what an app lock pins). The build fails if any layer stops matching its digest. Re-stamped when the kernel's capabilities fragment gained the optional modules map (in _assembly): only _assembly and the bundle digest moved.",
+  "adcp_version": "3.3.0",
+  "layers": {
+    "_assembly": {
+      "role": "assembly",
+      "version": "3.3",
+      "digest": "sha256:1895c6bce9cad3e1c0ea5d658d683c8443db0bbea17fdfa4f1ad0462f13f2e2e"
+    },
+    "_compat": {
+      "role": "assembly",
+      "version": "3.3",
+      "digest": "sha256:85b3382f54cfb0ab8ac07402ae6b8185ff867924ee633a4d9feba1edfa60fb0f"
+    },
+    "accounts": {
+      "role": "module",
+      "version": "1.0",
+      "digest": "sha256:4de802996f6992b0d787e2d9d4e89f6873e138c2d0695d5845238f455acb3926"
+    },
+    "buying/catalogs": {
+      "role": "module-layer",
+      "version": "1.0",
+      "depends_on": [
+        "buying/targeting"
+      ],
+      "digest": "sha256:fc63dd0e20bbc81b558f3211967e198c22abce8603788a9ef3e84d625b27213e"
+    },
+    "buying/commitment": {
+      "role": "module-layer",
+      "version": "1.0",
+      "depends_on": [
+        "buying/pricing"
+      ],
+      "hooks": {
+        "commercial_terms": 1
+      },
+      "digest": "sha256:4910acbb2ae8d78dcb00406f2014f1d594984f3d4231c10ae70e9842b328f699"
+    },
+    "buying/execution": {
+      "role": "module-layer",
+      "version": "1.0",
+      "depends_on": [
+        "buying/supply"
+      ],
+      "hooks": {
+        "media_buy_state": 1
+      },
+      "digest": "sha256:1bb0acbd1b86c8bfcc3ec6c990d71b285e489516bfb6a82e35daa955003823ae"
+    },
+    "buying/offer": {
+      "role": "module-layer",
+      "version": "0.1",
+      "depends_on": [
+        "buying/supply"
+      ],
+      "digest": "sha256:88b4f306eeefec2f6313b94aa1dc90deb94f074e7011ab9273c71f79958c90ad"
+    },
+    "buying/pricing": {
+      "role": "module-layer",
+      "version": "1.0",
+      "depends_on": [
+        "buying/targeting"
+      ],
+      "hooks": {
+        "pricing_model": 1,
+        "pricing_option": 1
+      },
+      "digest": "sha256:9867a778b956825030e8ffbb8682bbf3d6867abe45eb66ef938b3ea1e89a087f"
+    },
+    "buying/supply": {
+      "role": "module-layer",
+      "version": "1.0",
+      "depends_on": [
+        "buying/commitment",
+        "buying/catalogs"
+      ],
+      "digest": "sha256:d7fc6bea6c366fba787980928bbedce5a955e3bdaa45f64e88cec72e9a83e23f"
+    },
+    "buying/targeting": {
+      "role": "module-layer",
+      "version": "1.0",
+      "depends_on": [],
+      "digest": "sha256:03f992ef0b5e763b382ca7372371b568bf88f5ccd2862b65566c76c931700505"
+    },
+    "core": {
+      "role": "kernel",
+      "version": "3.3",
+      "hooks": {
+        "capabilities": 1,
+        "task": 1
+      },
+      "digest": "sha256:3f8ca048231af59939df8178562f25dc5463be856d5fbccc6a2c92334403ac8a"
+    },
+    "creative": {
+      "role": "module",
+      "version": "1.0",
+      "digest": "sha256:f468c73857f7ed0617a89c4a2c57d7ffce55504ac8a1c187be21c11cd56df09a"
+    },
+    "governance": {
+      "role": "module",
+      "version": "1.0",
+      "digest": "sha256:f24c37db38311e80812bb316c0b8892db619c60d6d5b73ca49b5043cd0fcc60a"
+    },
+    "identity": {
+      "role": "module",
+      "version": "1.0",
+      "digest": "sha256:497c6c4f9770201f8d3fdbcecda936c1f8836c3edacdf644dc8a3723b7f2da52"
+    },
+    "kernel-types": {
+      "role": "kernel-types",
+      "version": "3.3",
+      "digest": "sha256:e50cd6e3609ffa2c814b2c5304590a37e04d94508b554f0aed0b8a3153fe4502"
+    },
+    "reporting": {
+      "role": "module",
+      "version": "1.0",
+      "digest": "sha256:3bddacca1c445b5947b1a6fb5ad3be82dac5e8f0eb9094879804fb838e5acfd1"
+    },
+    "signals": {
+      "role": "module",
+      "version": "1.0",
+      "digest": "sha256:273340512a44f91f388ebe45c51bef58ba0767c7520c97519bc0cbafec6c5fac"
+    },
+    "sponsored-intelligence": {
+      "role": "module",
+      "version": "1.0",
+      "digest": "sha256:e3aaa1dfa69254ec88c72b41d365f89482993943061875832f14a85bb11adf0f"
+    },
+    "x-audience-evidence-on-products": {
+      "role": "extension",
+      "version": "0.1",
+      "digest": "sha256:ee98edecf1ce96b1185ad8ac37074e9140b814474b410df759ab700fe8fe77c6"
+    },
+    "x-format-declarations-on-products": {
+      "role": "extension",
+      "version": "0.1",
+      "digest": "sha256:9b016ef99c6fdb85e10309568c591efd97bf37117eb202f79911a1862d1399c1"
+    },
+    "x-reliable-reporting-account-attachments": {
+      "role": "extension",
+      "version": "0.1",
+      "digest": "sha256:c5127a248ff8c82bfe7624a6fef95a9a6649f0ae4284bc3c0d1cc6dd4bd3a694"
+    },
+    "x-spot-lifecycle": {
+      "role": "extension",
+      "version": "0.1",
+      "digest": "sha256:ce388760ebcd9435ef93cf6f4f47dc5e51bf5f75abc660ac547315c1c15b1d7a"
+    }
+  },
+  "types": {
+    "default_major": 1,
+    "overrides": {}
+  },
+  "bundle_digest": "sha256:26d4e59152abc1d76cd451eef8f902347f780f00e057f03613ffbf5eb25550a8"
+}

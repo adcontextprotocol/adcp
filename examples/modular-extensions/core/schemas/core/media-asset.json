@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/media-asset.json",
+  "title": "Media Asset",
+  "description": "The media asset core a module uses to carry an image, video, text, or URL asset without $ref'ing creative. Creative keeps the typed asset formats (core/assets/*.json) in its registry; the build composes the known format into every published field typed with this core, so validation stays the same.",
+  "type": "object"
+}
