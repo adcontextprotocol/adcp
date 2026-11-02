@@ -112,15 +112,9 @@
     "social_placement_surfaces": { "type": "array", "items": { "$ref": "/schemas/enums/social-placement-surface.json" }, "minItems": 1, "uniqueItems": true },
     "identifiers": {
       "type": "array",
-      "description": "Optional external inventory identifiers for this placement. Externally governed values should be authority-prefixed; seller-local values are scoped by the surrounding publisher namespace. For publisher_ref placements, the effective set is the union of publisher and product declarations, de-duplicated by exact (type, value).",
+      "description": "Optional external inventory identifiers for this placement. Externally governed values should be authority-prefixed; seller-local values are scoped by the surrounding publisher namespace. For publisher_ref placements, the effective set is the union of publisher and product declarations. Receivers MUST de-duplicate the effective set by exact (type, value). Schema `uniqueItems` rejects only entries equal in every member within one array and does not enforce this rule.",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": { "$ref": "/schemas/enums/identifier-types.json" },
-          "value": { "type": "string" }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/identifier.json"
       },
       "uniqueItems": true,
       "minItems": 1

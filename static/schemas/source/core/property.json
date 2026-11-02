@@ -19,24 +19,9 @@
     },
     "identifiers": {
       "type": "array",
-      "description": "Array of identifiers for this property",
+      "description": "Array of identifiers for this property. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain. Each item's `type` names the kind of identifier for this property.",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "$ref": "/schemas/enums/identifier-types.json",
-            "description": "Type of identifier for this property"
-          },
-          "value": {
-            "type": "string",
-            "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
-          }
-        },
-        "required": [
-          "type",
-          "value"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/identifier.json"
       },
       "minItems": 1
     },

@@ -189,20 +189,9 @@
     },
     "identifiers": {
       "type": "array",
-      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Useful for DOOH venue and installed-endpoint IDs, broadcast facility IDs, and any channel where placements map to externally registered inventory. For kind: publisher_ref, the effective identifier set is the union of the resolved publisher declaration and this product declaration, de-duplicated by exact (type, value); a product cannot suppress a publisher-declared identifier by omission.",
+      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Useful for DOOH venue and installed-endpoint IDs, broadcast facility IDs, and any channel where placements map to externally registered inventory. For kind: publisher_ref, the effective identifier set is the union of the resolved publisher declaration and this product declaration; a product cannot suppress a publisher-declared identifier by omission. Receivers MUST de-duplicate the effective set by exact (type, value). Schema `uniqueItems` rejects only entries equal in every member within one array and does not enforce this rule.",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "$ref": "/schemas/enums/identifier-types.json"
-          },
-          "value": {
-            "type": "string",
-            "description": "Identifier value, optionally authority-prefixed for externally governed IDs (e.g., space:1234931339)."
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/identifier.json"
       },
       "uniqueItems": true,
       "minItems": 1

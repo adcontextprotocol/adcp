@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/identifier.json",
   "title": "Identifier",
-  "description": "A property identifier with type and value. Used to identify properties across platforms (domains, app store IDs, etc.).",
+  "description": "A typed identifier with type and value. This one definition serves both property and placement identifiers, used to identify properties and placements across platforms (domains, app store IDs, externally governed inventory IDs, etc.). The record is open: unknown keys are permitted and consumers MUST ignore them.",
   "type": "object",
   "properties": {
     "type": {
@@ -11,14 +11,14 @@
     },
     "value": {
       "type": "string",
-      "description": "The identifier value. Domain and subdomain values MUST be lowercase ASCII hostnames (IDNs use lowercase A-label/punycode form), without scheme, path, port, whitespace, or trailing dot. Domain permits one leading '*.'; subdomain does not. For domain: 'example.com' matches base plus www and m; 'edition.example.com' matches that subdomain; '*.example.com' matches all subdomains but not the base. Invalid values MUST cause rejection of the containing request; receivers MUST NOT silently discard identifiers."
+      "description": "The identifier value. Domain and subdomain values MUST be lowercase ASCII hostnames (IDNs use lowercase A-label/punycode form), without scheme, path, port, whitespace, or trailing dot. Domain permits one leading '*.'; subdomain does not. Types whose enum description names an authority prefix (for example openooh_venue_type, facility_id) take that prefixed form. For domain: 'example.com' matches base plus www and m; 'edition.example.com' matches that subdomain; '*.example.com' matches all subdomains but not the base. Invalid values MUST cause rejection of the containing request; receivers MUST NOT silently discard identifiers."
     }
   },
   "required": [
     "type",
     "value"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "if": {

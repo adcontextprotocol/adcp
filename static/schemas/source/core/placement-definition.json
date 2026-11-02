@@ -222,20 +222,9 @@
     },
     "identifiers": {
       "type": "array",
-      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Product-level placement declarations may carry additional identifiers but SHOULD NOT contradict publisher-declared identifiers for the same type.",
+      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Product-level placement declarations may carry additional identifiers but SHOULD NOT contradict publisher-declared identifiers for the same type. Receivers MUST de-duplicate the effective identifier set by exact (type, value), as stated in the `identifiers` description on core/placement.json.",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "$ref": "/schemas/enums/identifier-types.json"
-          },
-          "value": {
-            "type": "string",
-            "description": "Identifier value, optionally authority-prefixed for externally governed IDs (e.g., space:1234931339)."
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/identifier.json"
       },
       "uniqueItems": true,
       "minItems": 1
