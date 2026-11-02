@@ -1204,9 +1204,12 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
         validation.path === path &&
         (value === undefined || validation.value === value)
     );
-  const hasFilterCheck = (id, check, path) =>
+  const hasFilterCheck = (id, check, path, value) =>
     filterStep(id).validations.some(
-      (validation) => validation.check === check && validation.path === path
+      (validation) =>
+        validation.check === check &&
+        validation.path === path &&
+        (value === undefined || validation.value === value)
     );
 
   assert.equal(storyboard.introduced_in, "3.2");
@@ -1256,20 +1259,19 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
       "the delivery negative probe checks every returned product while allowing valid empty results");
   }
 
-  assert.equal(
-    hasFilterCheck("get_filtered_brief_products", "field_absent", "products[1]"),
-    true,
-    "brief mode must grade exclusion of the negative-control product"
-  );
-  assert.equal(
-    hasFilterCheck(
-      "get_filtered_wholesale_products",
-      "field_absent",
-      "products[1]"
-    ),
-    true,
-    "wholesale mode must grade exclusion of the negative-control product"
-  );
+  for (const mode of ["brief", "wholesale"]) {
+    const id = `get_filtered_${mode}_products`;
+    assert.equal(
+      hasFilterCheck(id, "field_excludes", "products[*].product_id", "filter_behavior_negative_channel"),
+      true,
+      `${mode} mode must grade exclusion of the specific negative-control product`
+    );
+    assert.equal(
+      hasFilterCheck(id, "field_absent", "products[1]"),
+      false,
+      `${mode} mode must permit additional matching products`
+    );
+  }
   assert.equal(
     hasFilterCheck("filter_refined_product_out", "field_absent", "products[0]"),
     true,
