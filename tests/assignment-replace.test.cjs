@@ -65,7 +65,8 @@ test('the replace schema states that every authored setting transfers and that s
   assert.match(variant.description, /MUST reject the atomic request rather than drop or partially apply/);
   assert.match(variant.properties.replaces_creative_id.description, /transfer to creative_id/);
   assert.match(variant.properties.weight.description, /Omitted: the replaced assignment's weight transfers/);
-  assert.match(variant.properties.placement_ids.description, /Omitted: the replaced assignment's placement routing transfers/);
+  assert.match(variant.description, /Supplied placement_ids replaces the transferred placement routing entirely: neither the replaced assignment's placement_ids nor its placement_refs transfer/);
+  assert.match(variant.properties.placement_ids.description, /Supplied: replaces the transferred routing entirely, including any placement_refs/);
 });
 
 test('sync_creatives documents the transfer and links it from the parameter table and sync modes', () => {

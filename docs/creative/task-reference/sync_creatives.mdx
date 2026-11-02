@@ -248,7 +248,7 @@ The replacement takes over the replaced assignment's authored settings, so a swa
 - rotation settings: `rotation_mode`, `group_id`, and `sequence_position`;
 - assignment [`trackers`](#assignment-trackers) and the [`landing_page_url`](#assignment-landing-pages) override.
 
-A `weight` or `placement_ids` supplied on the operation replaces the transferred value. To change the transferred trackers or landing page in the same request, follow the `replace` with an `assign` for the replacement creative; operations apply in order and the request is atomic.
+A `weight` supplied on the operation replaces the transferred weight. A `placement_ids` supplied on the operation replaces the transferred placement routing entirely: neither the replaced assignment's `placement_ids` nor its `placement_refs` transfer. To change the transferred trackers or landing page in the same request, follow the `replace` with an `assign` for the replacement creative; operations apply in order and the request is atomic.
 
 The seller MUST validate every transferred setting against the replacement, including tracker-slot capacity and events for its format, whether the landing-page override can apply to its clicks, and any destination review, and MUST reject the atomic request with the existing assignment errors rather than drop or partially apply a setting. Readback in [`list_creatives`](/docs/creative/task-reference/list_creatives) and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `creative_approvals[]` shows the transferred settings on the replacement's row.
 

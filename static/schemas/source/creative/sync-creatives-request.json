@@ -320,7 +320,7 @@
           },
           {
             "title": "Replace assignment",
-            "description": "Atomically swap the currently assigned replaces_creative_id for creative_id on package_id. The replacement takes over the replaced assignment's authored settings: weight, placement routing (placement_ids and placement_refs), rotation_mode, group_id, sequence_position, assignment trackers, and the landing_page_url override. weight or placement_ids supplied on this operation replace the transferred value. The seller MUST validate every transferred setting against the replacement (format tracker slots, landing-page applicability, destination review) and MUST reject the atomic request rather than drop or partially apply one. To change transferred trackers or the landing page in the same request, follow this operation with an assign for creative_id.",
+            "description": "Atomically swap the currently assigned replaces_creative_id for creative_id on package_id. The replacement takes over the replaced assignment's authored settings: weight, placement routing (placement_ids and placement_refs), rotation_mode, group_id, sequence_position, assignment trackers, and the landing_page_url override. Supplied weight replaces the transferred weight. Supplied placement_ids replaces the transferred placement routing entirely: neither the replaced assignment's placement_ids nor its placement_refs transfer. The seller MUST validate every transferred setting against the replacement (format tracker slots, landing-page applicability, destination review) and MUST reject the atomic request rather than drop or partially apply one. To change transferred trackers or the landing page in the same request, follow this operation with an assign for creative_id.",
             "properties": {
               "operation": { "const": "replace" },
               "creative_id": { "type": "string", "minLength": 1, "description": "Replacement creative ID.", "x-entity": "creative" },
@@ -329,7 +329,7 @@
               "weight": { "type": "number", "minimum": 0, "maximum": 100, "description": "Delivery weight for the replacement. Omitted: the replaced assignment's weight transfers." },
               "placement_ids": {
                 "type": "array",
-                "description": "Placement routing for the replacement. Omitted: the replaced assignment's placement routing transfers.",
+                "description": "Placement routing for the replacement. Supplied: replaces the transferred routing entirely, including any placement_refs. Omitted: the replaced assignment's placement_ids and placement_refs transfer.",
                 "items": { "type": "string", "minLength": 1 },
                 "minItems": 1,
                 "uniqueItems": true
