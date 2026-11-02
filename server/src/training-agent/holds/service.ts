@@ -21,6 +21,7 @@
 
 import { createHash } from 'node:crypto';
 import { callerSandboxNowMs } from '../account-sandbox.js';
+import { getIdempotencyStore } from '../idempotency.js';
 import { getSession, flushDirtySessions } from '../state.js';
 import {
   compactCatalogProduct,
@@ -183,19 +184,49 @@ function decorateRefineResponse(doc: HoldDocument, response: Json): void {
 }
 
 const queues = new Map<string, Promise<unknown>>();
+const HOLDS_LOCK_PRINCIPAL = 'holds-ledger-mutex';
+const HOLDS_LOCK_WAIT_MS = 5_000;
 
-/** Run hold writes for one caller one at a time in this process, so two
- * concurrent finalizes on the same inventory get distinct positions. */
-async function serialized<T>(ctx: TrainingContext, fn: () => Promise<T>): Promise<T> {
-  const key = compactProposalSessionKey(ctx);
-  const previous = queues.get(key) ?? Promise.resolve();
-  const run = previous.catch(() => undefined).then(fn);
+/**
+ * Run hold writes for one caller one at a time, so two concurrent finalizes
+ * on the same inventory get distinct positions. An in-process queue orders
+ * this machine's requests; a claim in the shared idempotency store (Postgres
+ * when the agent runs on several machines) orders them across machines. The
+ * claim is separate from the proposal engine's session mutex, which a
+ * finalize takes inside it, so the order is always ledger, then engine.
+ */
+async function serialized<T>(ctx: TrainingContext, fn: () => Promise<T>): Promise<T | Errors> {
+  const sessionKey = compactProposalSessionKey(ctx);
+  const previous = queues.get(sessionKey) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(() => withLedgerClaim(sessionKey, fn));
   const tail = run.catch(() => undefined);
-  queues.set(key, tail);
+  queues.set(sessionKey, tail);
   try {
     return await run;
   } finally {
-    if (queues.get(key) === tail) queues.delete(key);
+    if (queues.get(sessionKey) === tail) queues.delete(sessionKey);
+  }
+}
+
+async function withLedgerClaim<T>(sessionKey: string, fn: () => Promise<T>): Promise<T | Errors> {
+  const hash = createHash('sha256').update(sessionKey).digest('hex');
+  const key = `holds-ledger:${hash}`;
+  const store = getIdempotencyStore();
+  const deadline = Date.now() + HOLDS_LOCK_WAIT_MS;
+  let backoff = 10;
+  let claim = await store.check({ principal: HOLDS_LOCK_PRINCIPAL, key, payload: { session: hash } });
+  while (claim.kind !== 'miss' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, backoff));
+    backoff = Math.min(backoff * 2, 250);
+    claim = await store.check({ principal: HOLDS_LOCK_PRINCIPAL, key, payload: { session: hash } });
+  }
+  if (claim.kind !== 'miss') {
+    return taskError('CONFLICT', 'Another hold request is updating this sandbox. Retry shortly.', undefined, 'transient');
+  }
+  try {
+    return await fn();
+  } finally {
+    await store.release({ principal: HOLDS_LOCK_PRINCIPAL, key, claimToken: claim.claimToken });
   }
 }
 
@@ -420,18 +451,17 @@ function planFinalize(
   doc: HoldDocument,
   drafts: Array<{ id: string; proposal: Json; ownerAccountId?: string }>,
   nowMs: number,
-  rankable: boolean,
 ): { placed: PlacedHold[] } | { failures: Map<string, PlanFailure> } {
   const working: HoldDocument = structuredClone(doc);
   const placed: PlacedHold[] = [];
   const failures = new Map<string, PlanFailure>();
   for (const { id, proposal, ownerAccountId } of drafts) {
-    const bound = draftPolicy(doc, proposal);
-    // A caller below 3.3 never sees rankable, so the seller treats it as false.
-    const policy: HoldPolicy = rankable || !bound.rankable ? bound : { ...bound, rankable: false };
+    // Only 3.3 callers reach placement (stable callers keep the legacy
+    // engine), so the draft's policy applies as served, rankable included.
+    const policy = draftPolicy(doc, proposal);
     const seq = working.next_seq++;
     if (!policy.available) {
-      placed.push({ sourceId: id, policy: bound, ownerAccountId, seq, slots: [] });
+      placed.push({ sourceId: id, policy, ownerAccountId, seq, slots: [] });
       continue;
     }
     if (doc.forced.some(entry => entry.proposal_id === id)) {
@@ -470,7 +500,7 @@ function planFinalize(
     }
     const hold: PlacedHold = {
       sourceId: id,
-      policy: bound,
+      policy,
       ownerAccountId,
       placedAt: new Date(nowMs).toISOString(),
       expiresAt: new Date(expires).toISOString(),
@@ -487,7 +517,7 @@ function planFinalize(
     placed.push(hold);
     // Later entries in the same batch queue behind this one.
     working.holds.push({
-      proposal_id: `pending:${id}`, draft_id: id, policy: bound, placed_at: hold.placedAt,
+      proposal_id: `pending:${id}`, draft_id: id, policy, placed_at: hold.placedAt,
       expires_at: hold.expiresAt!, seq, slots, state: 'live',
     });
   }
@@ -617,7 +647,7 @@ async function finalizeWithHolds(
     return inner();
   }
   const now = await sandboxNow(ctx);
-  const plan = planFinalize(doc, drafts, now, true);
+  const plan = planFinalize(doc, drafts, now);
   if ('failures' in plan) {
     const forced = [...plan.failures].filter(([, failure]) => failure === 'forced').map(([id]) => id);
     if (forced.length > 0) {
