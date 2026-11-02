@@ -92,9 +92,22 @@ At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the traini
 - account requests (`account.requests`): `request_account`, and `account_requests` on `list_accounts`;
 - the caller's `authorization`, with `authorized_at` and `regranted_at`, and `revision` on each `list_accounts` account;
 - principal-level reporting subscriptions (`media_buy.reporting_subscriptions`): the `reporting_subscriptions` section of `sync_principal` and `get_principal`, and `subscription_coverage` on `get_reporting_status`;
-- the `reporting_subscription_probe` controller scenario, which revokes, reduces, and restores grants and advances a per-caller sandbox clock.
+- the `reporting_subscription_probe` controller scenario, which revokes, reduces, and restores grants and advances a per-caller sandbox clock;
+- inventory holds ([Hold policy](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental)): `hold_policy` on products and drafts (`media_buy.hold_policy`), committed proposals with `hold_placed_at`, ranked holds with `hold_rank` (`media_buy.hold_ranking`), per-installment `holds` (`media_buy.installment_holds`), `extend_hold` (`media_buy.hold_extension`), and the `force_hold_unavailable` controller scenario.
 
-`tools/list` includes `request_account` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it). Hold policy, `extend_hold`, and response collections are not served yet ([#8181](https://github.com/adcontextprotocol/adcp/issues/8181)).
+Holds are kept per caller and timed by the caller's sandbox clock, so two accounts that hold the same slot are queued at positions 1 and 2. These products carry hold policies:
+
+| Product | Hold policy |
+|---|---|
+| `crestline_radio_premium` | Exclusive, 1 to 3 days. A second buyer gets `hold_unavailable` while a hold stands. |
+| `streetlevel_premium` | Ranked, 2 to 7 days. While a hold ahead stands, accepting a hold behind it returns `PRODUCT_UNAVAILABLE`. |
+| `beacon_search_standard` | Not holdable. A draft that allocates it finalizes as terms only. |
+| `trendsettr_premium` | Exclusive, 1 to 3 days, extendable to 10 days in total. |
+| `creatorloop_creator_*` | Ranked, 2 to 5 days, extendable to 21 days in total, never past the slot's booking deadline. Each upcoming slot is held separately and listed in `holds`. |
+
+Other products take the default: a hold that never contends.
+
+`tools/list` includes `request_account` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it). Response collections are not served yet ([#8181](https://github.com/adcontextprotocol/adcp/issues/8181)).
 
 With `@adcp/sdk`, use 17.0.0-beta.11 or later, which negotiates exactly `3.3-beta.3`. Earlier 17.0.0 betas bundle an older beta, so they settle on 3.2 with the test agent.
 

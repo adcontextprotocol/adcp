@@ -103,6 +103,13 @@ import {
 } from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
 import {
+  withHoldsAcceptProposal,
+  withHoldsDeclineProposals,
+  withHoldsListProducts,
+  withHoldsRefineProposals,
+  withHoldsRequestProposals,
+} from './holds/service.js';
+import {
   SellerManagedControlJobCoordinator,
   type SellerManagedControlJobContext,
 } from './seller-managed-control-jobs.js';
@@ -1810,44 +1817,43 @@ export class TrainingSalesPlatform
     return {
     proposalRefinement: proposalCapabilitiesForProfile(this.proposalNegotiationProfile),
 
-    listProducts: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'list_products',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
-
-    requestProposals: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'request_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
-
-    refineProposals: async (req, ctx) => {
+    // Experimental 3.3 holds (holds/service.ts) wrap the compact lifecycle
+    // for 3.3 callers; other callers pass straight through.
+    listProducts: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>;
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
       return translateV5Result(
-        await executeProductDiscoveryPlatformTool(
-          'refine_proposals',
-          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-          trainingCtx,
-        ),
+        await withHoldsListProducts(args, trainingCtx, () => executeProductDiscoveryPlatformTool('list_products', args, trainingCtx)),
         { allowAdvisories: true },
       );
     },
 
-    declineProposals: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'decline_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
+    requestProposals: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>;
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsRequestProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('request_proposals', args, trainingCtx)),
+        { allowAdvisories: true },
+      );
+    },
+
+    refineProposals: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>;
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsRefineProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('refine_proposals', args, trainingCtx)),
+        { allowAdvisories: true },
+      );
+    },
+
+    declineProposals: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>;
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsDeclineProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('decline_proposals', args, trainingCtx)),
+        { allowAdvisories: true },
+      );
+    },
 
     buyProducts: async (req, ctx) => translateV5CommitmentResult(
       await handleBuyProducts(
@@ -1856,12 +1862,13 @@ export class TrainingSalesPlatform
       ),
     ),
 
-    acceptProposal: async (req, ctx) => translateV5Result(
-      await handleAcceptProposal(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0],
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-    ),
+    acceptProposal: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0];
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsAcceptProposal(args as unknown as Record<string, unknown>, trainingCtx, () => handleAcceptProposal(args, trainingCtx)),
+      );
+    },
 
     controlMediaBuy: async (req, ctx) => {
       const args = withCurrentAccountScope(

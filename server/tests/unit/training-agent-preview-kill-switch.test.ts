@@ -77,6 +77,9 @@ describe('hosted 3.3 preview kill switch', () => {
     } else {
       expect(pinned.adcp_version, JSON.stringify(pinned).slice(0, 300)).toBe('3.2');
       expect(pinned.experimental_features ?? []).not.toContain('account.requests');
+      // Nor the experimental holds (holds/service.ts).
+      expect((pinned.experimental_features ?? []).filter((feature: string) => feature.includes('hold'))).toEqual([]);
+      expect(pinned.media_buy?.proposal_refinement?.hold_extension).toBeUndefined();
     }
   }, 60_000);
 
