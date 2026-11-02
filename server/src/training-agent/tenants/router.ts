@@ -74,6 +74,9 @@ import {
 } from '../reporting-subscriptions.js';
 import { ACCOUNT_REQUESTS_CAPABILITY, ACCOUNT_REQUESTS_FEATURE } from '../account-requests.js';
 import { grantFor, grantPermits, loadSandbox } from '../account-sandbox.js';
+import { projectCollectionCapabilities } from '../collections/capabilities.js';
+import { supportsCollections33 } from '../collections/card-catalog.js';
+import { SEED_COLLECTION_SCENARIO } from '../collections/seed-collection.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -280,9 +283,13 @@ function salesComplyScenarios(
     ? [...current, 'expire_account_change_cursor']
     : current;
   // Experimental 3.3: grants, account timezone, and the sandbox clock.
-  return supportsAccountSurfaces33(servedVersion)
+  const withAccounts33 = supportsAccountSurfaces33(servedVersion)
     ? [...withChangeFeed, 'reporting_subscription_probe']
     : withChangeFeed;
+  // Experimental 3.3 collection cards: change cards to drive card webhooks.
+  return supportsCollections33(servedVersion)
+    ? [...withAccounts33, SEED_COLLECTION_SCENARIO]
+    : withAccounts33;
 }
 
 function salesCapabilityScenarios(
@@ -794,6 +801,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'query_account_governance_binding'
     && rawArgs.scenario !== 'force_media_buy_confirmation'
     && rawArgs.scenario !== 'reporting_subscription_probe'
+    && rawArgs.scenario !== SEED_COLLECTION_SCENARIO
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
@@ -815,6 +823,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'query_account_governance_binding'
       || rawArgs.scenario === 'force_media_buy_confirmation'
       || rawArgs.scenario === 'reporting_subscription_probe'
+      || rawArgs.scenario === SEED_COLLECTION_SCENARIO
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -1032,6 +1041,19 @@ function projectTenantToolDiscovery(
           idempotentHint: true,
         };
 
+      }
+      // Experimental 3.3 include_collections (#8181): only a listing served
+      // at 3.3 or later advertises the flag. The SDK stamps the listing's
+      // release on the result; under the `all` tool profile it does not shape
+      // input schemas to it.
+      const listingMeta = (parsed.result as { _meta?: { adcp_version?: unknown } } | undefined)?._meta;
+      for (const tool of tools) {
+        const listedAt = listingMeta?.adcp_version ?? (tool as { _meta?: { adcp_version?: unknown } })._meta?.adcp_version;
+        const properties = tool.inputSchema?.properties;
+        if (!properties || !('include_collections' in properties)) continue;
+        if (supportsCollections33(typeof listedAt === 'string' ? listedAt : undefined)) continue;
+        const { include_collections: _flag, ...rest } = properties;
+        tool.inputSchema = { ...tool.inputSchema, properties: rest };
       }
     }
     if (storyboardCompat?.version === '3.0') {
@@ -1474,6 +1496,8 @@ function projectTenantCapabilities(
       }
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
+    // Experimental 3.3 collection cards, catalog and brand links (#8181).
+    if (storyboardCompat?.version !== '3.0') projectCollectionCapabilities(structured, tenantId, servedVersion);
     // Every tenant, last: withhold fields added after the served release
     // (3.3 account.stable_account_id, governance.supports_budget_periods,
     // the property-breakdown feature flags, ...), whichever projection above

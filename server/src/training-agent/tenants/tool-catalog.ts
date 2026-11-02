@@ -47,6 +47,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   request_proposals: ['sales'],
   refine_proposals: ['sales'],
   decline_proposals: ['sales'],
+  list_collections: ['sales'],
   buy_products: ['sales'],
   accept_proposal: ['sales'],
   control_media_buy: ['sales'],
@@ -149,6 +150,7 @@ export function toolsForTenant(
     .filter(tool => {
       const negotiatedVersion = options.storyboardCompat?.version ?? options.adcpVersion;
       if (tool === 'request_account' && !TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33) return false;
+      if (tool === 'list_collections' && !TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33) return false;
       if (
         tool === 'list_account_changes'
         && !supportsAccountChangeFeed(negotiatedVersion ?? '3.2-beta.5')
@@ -175,6 +177,7 @@ export function toolsForTenant(
         || tool === 'control_media_buy'
         || tool === 'list_account_changes'
         || tool === 'request_account'
+        || tool === 'list_collections'
       ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
       if (
