@@ -66,6 +66,7 @@ fixtures:
       channels: ["display"]
       publisher_properties:
         - publisher_domain: "acmeoutdoor.example"
+          selection_type: "all"
       format_ids:
         - agent_url: "https://compliance.adcontextprotocol.org/"
           id: "get_products_pagination_integrity_display"
@@ -76,6 +77,7 @@ fixtures:
       channels: ["display"]
       publisher_properties:
         - publisher_domain: "acmeoutdoor.example"
+          selection_type: "all"
       format_ids:
         - agent_url: "https://compliance.adcontextprotocol.org/"
           id: "get_products_pagination_integrity_display"
