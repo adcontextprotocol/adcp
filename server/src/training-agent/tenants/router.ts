@@ -1463,6 +1463,10 @@ function projectTenantCapabilities(
         // Live creative updates (experimental, #8404) need the library and
         // the media buys that make a creative live, so only /sales declares.
         structured.creative.live_updates = liveUpdatesCapability();
+        // Assignment-scoped trackers and landing pages (3.3): sync_creatives
+        // assign/replace, create/update media buy rows, and readback.
+        structured.creative.supports_assignment_trackers = true;
+        structured.creative.supports_assignment_landing_page = true;
         if (!experimentalFeatures.includes('creative.live_updates')) {
           experimentalFeatures.push('creative.live_updates');
         }

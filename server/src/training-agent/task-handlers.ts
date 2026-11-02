@@ -59,7 +59,8 @@ import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
 import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
 import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
-import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
+import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow } from './assignment-operations.js';
+import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -17297,6 +17298,12 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
+              ...(declaresAssignmentSettings(ctx) && assignmentReadbackFields(
+                assignmentRow(pkg, cid),
+                session.creatives.get(cid)
+                  ?? getSharedAccountCreative(resolveAccountIdForRef(sessionKey, ctx.principal, req.account), cid),
+                { supportsTrackers: true, supportsLandingPage: true },
+              )),
             })),
             ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
             ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
@@ -18225,13 +18232,50 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   const isDryRun = req.dry_run === true;
   const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
-  if (!req.creatives?.length) {
+  const assignmentOperations = (req as unknown as { assignment_operations?: Array<Record<string, unknown>> }).assignment_operations;
+  if (!req.creatives?.length && !req.assignments?.length && !assignmentOperations?.length) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'creatives array is required' }] as TaskError[],
+      errors: [{ code: 'INVALID_REQUEST', message: 'At least one of creatives, assignments, or assignment_operations is required' }] as TaskError[],
     };
   }
+  if (assignmentOperations?.length && (req as unknown as { validation_mode?: string }).validation_mode === 'lenient') {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'assignment_operations are atomic and require validation_mode strict.', field: 'validation_mode' }] as TaskError[],
+    };
+  }
+  // assignment_operations make the whole request atomic. When it also carries
+  // creatives or legacy assignments, rehearse it first so a failure leaves
+  // nothing changed.
+  if (assignmentOperations?.length && (req.creatives?.length || req.assignments?.length) && !isDryRun) {
+    const rehearsal = await handleSyncCreatives({ ...args, dry_run: true } as ToolArgs, ctx) as {
+      errors?: TaskError[];
+      creatives?: SyncCreativeResult[];
+    };
+    if (rehearsal.errors?.length) return { errors: rehearsal.errors };
+    const failedAssignment = (rehearsal as { assignments?: AssignmentResult[] }).assignments
+      ?.find(result => result.status === 'error');
+    if (failedAssignment) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `Assignment of ${failedAssignment.creative_id} to ${failedAssignment.package_id} failed, so the atomic request applied nothing: ${failedAssignment.message ?? 'invalid assignment'}`,
+          field: 'assignments',
+        }] as TaskError[],
+      };
+    }
+    const failed = rehearsal.creatives?.find(result => result.action === 'failed');
+    if (failed) {
+      return {
+        errors: [{
+          code: failed.errors?.[0]?.code ?? 'VALIDATION_ERROR',
+          message: `Creative ${failed.creative_id} was not accepted, so the atomic request applied nothing: ${failed.errors?.[0]?.message ?? 'validation failed'}`,
+          field: `creatives[${failed.creative_id}]`,
+        }] as TaskError[],
+      };
+    }
+  }
 
-  if (!isDryRun && session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
+  if (!isDryRun && session.creatives.size + (req.creatives?.length ?? 0) > MAX_CREATIVES_PER_SESSION) {
     return {
       errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
@@ -18251,7 +18295,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   const results: SyncCreativeResult[] = [];
   const stagedCreativeManifests = new Map<string, CreativeManifest>();
-  for (const creative of req.creatives) {
+  for (const creative of req.creatives ?? []) {
     if (!creative.creative_id) {
       return {
         errors: [{
@@ -18686,6 +18730,31 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
   }
 
+  if (assignmentOperations?.length) {
+    const accepted = new Set(results.filter(result => result.action !== 'failed').map(result => result.creative_id));
+    const statusById = new Map(results.filter(result => result.status).map(result => [result.creative_id, result.status as string]));
+    const settings = declaresAssignmentSettings(ctx);
+    const plan = await planAssignmentOperations(session, assignmentOperations, {
+      supportsTrackers: settings,
+      supportsLandingPage: settings,
+      requestCreativeIds: accepted,
+      creativeStatus: creativeId => statusById.get(creativeId)
+        ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.status,
+      validateForPackage: async (creativeId, pkg) => {
+        const product = productValidationMap.get(pkg.productId);
+        const manifest = stagedCreativeManifests.get(creativeId)
+          ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.manifest;
+        if (!product || !manifest) return undefined;
+        const violations = await validateCreativeForProduct(product, manifest);
+        return violations.length > 0
+          ? `Creative ${creativeId} does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`
+          : undefined;
+      },
+    });
+    if ('errors' in plan) return { errors: plan.errors as TaskError[] };
+    if (!isDryRun) commitAssignmentPlan(session, plan, new Date().toISOString());
+  }
+
   return {
     ...(isDryRun && { dry_run: true }),
     creatives: results,
@@ -18783,6 +18852,12 @@ function declaresLiveCreativeUpdates(ctx: TrainingContext): boolean {
   return liveCreativeUpdatesEnabled(ctx) && (ctx.tenantId === 'sales' || ctx.tenantId == null);
 }
 
+/** Assignment trackers and landing-page overrides (3.3) ride the same gate:
+ * /sales on the 3.3 wire, where list_creatives and get_media_buys read them back. */
+function declaresAssignmentSettings(ctx: TrainingContext): boolean {
+  return declaresLiveCreativeUpdates(ctx);
+}
+
 function storedCreativeFormatRecord(creative: CreativeState): Record<string, unknown> {
   if (creative.formatKind) {
     return {
@@ -18870,6 +18945,8 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     include_purged?: boolean;
     include_webhook_activity?: boolean;
     webhook_activity_limit?: number;
+    include_assignments?: boolean;
+    assignment_limit?: number;
     fields?: string[];
   };
   const filters = (req.filters ?? {}) as CreativeListFilters;
@@ -19085,6 +19162,29 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         if (c.stagedUpdate && (!selectedFields || selectedFields.has('staged_update'))) {
           base.staged_update = stagedUpdateWire(c.stagedUpdate);
         }
+      }
+      if (declaresAssignmentSettings(ctx) && req.include_assignments !== false
+        && (!selectedFields || selectedFields.has('assignments'))) {
+        const rows: Array<Record<string, unknown>> = [];
+        for (const mb of session.mediaBuys.values()) {
+          if (!isOpenMediaBuy(mb)) continue;
+          for (const pkg of mb.packages) {
+            if (pkg.canceled || !pkg.creativeAssignments.includes(c.creativeId)) continue;
+            rows.push({
+              package_id: pkg.packageId,
+              media_buy_id: mb.mediaBuyId,
+              assigned_date: mb.createdAt,
+              ...assignmentReadbackFields(assignmentRow(pkg, c.creativeId), c, { supportsTrackers: true, supportsLandingPage: true }),
+            });
+          }
+        }
+        const limit = Math.min(Math.max(req.assignment_limit ?? 50, 1), 200);
+        base.assignments = {
+          assignment_count: rows.length,
+          returned_assignment_count: Math.min(rows.length, limit),
+          assignments_truncated: rows.length > limit,
+          assigned_packages: rows.slice(0, limit),
+        };
       }
       if (c.purge) {
         base.purge = {
@@ -20866,6 +20966,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_compliance: false,
       has_creative_library: true,
       ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability() }),
+      ...(declaresAssignmentSettings(ctx) && {
+        supports_assignment_trackers: true,
+        supports_assignment_landing_page: true,
+      }),
       ...(supportedCreativeFormats ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
         supported_formats: supportedCreativeFormats,
