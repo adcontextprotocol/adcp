@@ -216,8 +216,10 @@ including the ones that already referenced it: delivery metrics
 placement variants), `core/creative-variant.json`, `core/registry-event.json`,
 and the `property/` list schemas (`base-property-source`, `delivery-record`,
 `get-property-list-response`, `property-list-filters`, `validation-result`).
-DR-0019 asks that a loosening name the unknown-key lint that replaces closed
-validation. That lint is not part of this release, so a misspelled key in an
+[DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)
+treats this opening as non-breaking, but it permits no additions within 3.x and
+it is not one of the recorded corrections. DR-0019 asks that a loosening name
+the unknown-key lint that replaces closed validation. That lint is not part of this release, so a misspelled key in an
 identifier validates and is ignored.
 
 **Where rejection applies.** The `value` rule is unchanged: an invalid value
