@@ -1,8 +1,19 @@
 # Version translation vectors
 
-These vectors pin how SDKs translate between consecutive minor releases of a major (DR-0032, DR-0033), starting with the 3.2 ↔ 3.1 pair. Application code speaks the newest release its SDK supports, and the SDK converts for older counterparts. Every SDK runs the same cases, so a buyer and a seller on different SDKs and releases behave the same way.
+These vectors pin how SDKs translate between consecutive minor releases of a major (DR-0032, DR-0033, DR-0036). Application code speaks the newest release its SDK supports, and the SDK converts for older counterparts. Every SDK runs the same cases, so a buyer and a seller on different SDKs and releases behave the same way.
 
-`vectors.json` has three sections:
+## Files
+
+One file per consecutive minor pair:
+
+- **`3.2-3.1.json`**: 3.2 ↔ 3.1, with one case chained to 3.0. Includes the account key 3.2 changed on schemas 3.1 published closed, which DR-0036 records as a case that stays until 4.0.
+- **`3.3-3.2.json`**: 3.3 ↔ 3.2, settled surfaces only. Provisional until 3.3 GA: the 3.3 closed-schema dispositions from #8501 land before GA, and their cases are added then. The 3.2 side is validated against 3.2.8, which carries the DR-0036 corrections.
+
+Each later pair (3.4 ↔ 3.3, then 4.1 ↔ 4.0) adds its own file under DR-0033.
+
+## Format
+
+Each file has these sections:
 
 - **`cases`**: one payload conversion each.
   - **`side`** is `client` or `server`.
@@ -14,16 +25,19 @@ These vectors pin how SDKs translate between consecutive minor releases of a maj
     - `converted` gives the exact `output`, the JSON paths that MUST be reported as `dropped`, and the `moved` fields;
     - `refused` gives a `reason` (`field_not_expressible`, `account_identity`, `task_not_defined`) and, where applicable, the refused `fields`. A refused request MUST NOT be sent.
   - **`account_identity`**, where present, is the account-key policy the case runs under (`refuse` or `reduce`).
-- **`negotiation`**: the release a client speaks for a seller's `supported_versions`. Same line: the client's release. Otherwise: the highest older GA line. A client prerelease matches only its exact prerelease, and older-line prereleases are never selected.
-- **`account_sequences`**: ordered calls under `accountIdentityDowngrade: 'reduce'`.
+- **`negotiation`**: the release a client speaks for a seller's `supported_versions`. Same line: the client's release. Otherwise: the highest older GA line. A prerelease matches only its exact prerelease, on either side, and older-line prereleases are never selected.
+- **`account_sequences`** (3.2 ↔ 3.1 only): ordered calls under one-to-one key reduction.
   - **One-to-one:** a reduced account key may serve one buyer key only, and a key sent unreduced claims itself. A step that would put a second buyer key on the same seller account is refused, in either order.
   - **Atomic:** claims are all-or-nothing per request.
   - **After a seller upgrade:** the reduced key stays in use until the buyer migrates the account. `migration_pending.in_place` is true only when the reduction removed nothing but `operator_unit`.
 
-Rules the vectors encode:
+## Rules the vectors encode
 
-- **Reads drop; mutations refuse.** On a mutation, only labels and hints may be dropped. Losing any field that changes what the seller commits to (a cap, an exclusion, a bidding mode, or any field of an update) is a refusal.
-- **Moves are exact.** `bidding.bid_amount` becomes package `bid_price`, and a media-buy default is inherited by packages without their own bid. `max_bid`, `cost_per` and `roas` have no safe 3.1 form. Assign-only `assignment_operations` become `assignments` with `validation_mode: "strict"`. `report_plan_outcome` lifetime `cumulative_spend` is not 3.1 period `spend`.
-- **Chains** run one minor at a time: 3.2 to 3.1 to 3.0.
+- **Newer fields go only to peers that negotiated them.** Under DR-0036 an older peer accepts and ignores a field on an open schema, so the hazard is a silent ignore, not a rejection.
+- **Reads drop; mutations refuse.** On a read, a field the older release doesn't define is removed and reported. On a mutation, only labels and hints may be removed. A field whose loss would change spend, targeting, caps, bidding, creative activation, measurement or account identity is refused before sending.
+- **Moves are exact.** For example, `bidding.bid_amount` becomes package `bid_price`. A media-buy default is inherited by packages without their own bid, and a default every package overrides is removed. Assign-only `assignment_operations` become `assignments` with `validation_mode: "strict"`. `max_bid`, `cost_per` and `roas` have no safe 3.1 form.
+- **Envelope fields are never removed.** The protocol and version envelope apply to every task payload, even where an older task schema didn't compose them (DR-0036 correction b).
+- **Up-conversion never removes.**
+- **Chains** run one minor at a time.
 
-The expected values were generated by the reference implementation, `@adcp/sdk` (adcontextprotocol/adcp-client#3372, #3376), and reviewed by hand. They are `proposed` until DR-0032 and DR-0033 are ratified. Major-only request handling (DR-0034) is escalated and is not encoded here. Each later minor pair (3.3 ↔ 3.2, then 4.1 ↔ 4.0) adds its own cases under DR-0033.
+The expected values were generated by the reference implementation, `@adcp/sdk` (adcontextprotocol/adcp-client), and reviewed by hand. Every 3.3 ↔ 3.2 input validates against 3.3.0-beta.3, and every converted output against 3.2.8. They are `proposed` until DR-0032 and DR-0033 are ratified.

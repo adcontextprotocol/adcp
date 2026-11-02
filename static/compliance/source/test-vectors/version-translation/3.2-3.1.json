@@ -1,5 +1,5 @@
 {
-  "description": "Cross-version translation between consecutive AdCP minor releases (DR-0032, DR-0033): request down-conversion and response up-conversion on the client, response down-conversion on the server, release negotiation, and one-to-one account-key reduction.",
+  "description": "Cross-version translation between AdCP 3.2 and 3.1 (DR-0032, DR-0033), chained to 3.0 where noted: client request down-conversion and response up-conversion, server response down-conversion, release negotiation, and one-to-one reduction of the account key 3.2 changed on schemas 3.1 published closed.",
   "reference_implementation": "@adcp/sdk (adcontextprotocol/adcp-client#3372, #3376)",
   "version_pair": [
     "3.2",
@@ -1163,5 +1163,5 @@
       ]
     }
   ],
-  "status": "proposed (DR-0032 and DR-0033 pending ratification; DR-0034 escalated)"
+  "status": "proposed (DR-0032, DR-0033)"
 }
