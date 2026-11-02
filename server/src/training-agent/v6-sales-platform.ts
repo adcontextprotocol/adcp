@@ -93,7 +93,7 @@ import {
   runWithSessionContext,
   sessionKeyFromArgs,
 } from './state.js';
-import { supportsAccountSurfaces33, supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
+import { supportsAccountSurfaces33, supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_STABLE_REGISTRY_VERSIONS, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -1562,6 +1562,8 @@ export class TrainingSalesPlatform
     private readonly storyboardCompat?: TrainingContext['storyboardCompat'],
     private readonly proposalNegotiationProfile: NonNullable<TrainingContext['proposalNegotiationProfile']> = 'ask-only',
     taskRegistry?: TaskRegistry,
+    /** This platform serves the hosted 3.3 preview's registry. */
+    private readonly servesPreview = false,
   ) {
     if (taskRegistry) {
       this.sellerManagedControlJobs = new SellerManagedControlJobCoordinator(
@@ -1625,7 +1627,11 @@ export class TrainingSalesPlatform
     // no longer derives the retained 3.2-rc.7 checkpoint on its own. Declare
     // the served releases explicitly so exact prerelease pins negotiate to
     // the checkpoint the agent advertises instead of downshifting to 3.1.
-    return { ...TRAINING_SALES_CAPABILITIES, supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS] };
+    // Only the preview's own registry negotiates the hosted preview.
+    return {
+      ...TRAINING_SALES_CAPABILITIES,
+      supported_versions: [...(this.servesPreview ? TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS : TRAINING_AGENT_STABLE_REGISTRY_VERSIONS)],
+    };
   }
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {

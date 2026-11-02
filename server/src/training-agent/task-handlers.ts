@@ -55,6 +55,7 @@ import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
 import { packageReportingOfferingIds } from './package-reporting-offerings.js';
+import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
 import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
 import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
@@ -3417,11 +3418,16 @@ function parsedSupportedReleaseVersions(supportedVersions: readonly string[]): P
     .sort(compareAdcpReleaseVersions);
 }
 
+/** The release a major-only request is served: the highest supported entry
+ * in that major, except the opt-in preview (candidate-version.ts), which is
+ * served only to an exact pin (versioning.mdx, "Pre-release pins"). A
+ * major-only request is never upgraded onto it. */
 function highestSupportedRelease(
   major?: number,
   supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
 ): string | undefined {
-  const parsedVersions = parsedSupportedReleaseVersions(supportedVersions);
+  const parsedVersions = parsedSupportedReleaseVersions(supportedVersions)
+    .filter(version => version.raw !== TRAINING_AGENT_PREVIEW_ADCP_VERSION);
   const candidates = major === undefined
     ? parsedVersions
     : parsedVersions.filter(version => version.major === major);
