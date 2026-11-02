@@ -18,9 +18,11 @@
  *   or "Unknown tool" on /mcp) rather than answered with a payload that
  *   release cannot validate.
  *
- * The 3.3 side (the same fields still reach a 3.3 caller) is covered in
- * tests/unit/training-agent-candidate-version.test.ts, since the training
- * agent serves 3.3 only through the local candidate wire contract.
+ * The same flow runs at the opt-in 3.3 preview (#8181,
+ * candidate-version.ts): an exact `3.3-beta.3` pin is echoed and every
+ * response validates against the published 3.3.0-beta.3 bundle, the release
+ * the preview claims. The local candidate wire contract is covered in
+ * tests/unit/training-agent-candidate-version.test.ts.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,10 +32,14 @@ import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 import { fieldsAddedAfterRelease } from '../served-release-fields.js';
 import { clearSessions, stopSessionCleanup } from '../state.js';
 import { clearAccountStore } from '../account-handlers.js';
+import { TRAINING_AGENT_HOSTED_PREVIEW, TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'served-release-shape-token';
 
 const TOKEN = 'served-release-shape-token';
+
+/** Stable releases, then the opt-in preview this process serves. */
+const VERSIONS = ['3.2', '3.1', '3.0', TRAINING_AGENT_HOSTED_PREVIEW.wireVersion] as const;
 
 /** The source response schema each tool is graded against for `x-added-in`. */
 const RESPONSE_SCHEMAS: Record<string, string> = {
@@ -287,9 +293,13 @@ describe('served-release response shape below 3.3 (#8487)', () => {
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
 
+  it('serves the hosted preview in this process', () => {
+    expect(TRAINING_AGENT_PREVIEW_ADCP_VERSION).toBe(TRAINING_AGENT_HOSTED_PREVIEW.wireVersion);
+  });
+
   for (const [route, tools] of Object.entries(ROUTES)) {
     const label = route ? `/${route}/mcp` : '/mcp';
-    it(`serves ${label} callers pinned to 3.2, 3.1 and 3.0 their release's shape`, async () => {
+    it(`serves ${label} callers pinned to 3.2, 3.1, 3.0 and the 3.3 preview their release's shape`, async () => {
       const url = `${baseUrl}${route ? `/${route}` : ''}/mcp`;
       await rpc(url, 1, 'initialize', {
         protocolVersion: '2025-03-26',
@@ -298,7 +308,7 @@ describe('served-release response shape below 3.3 (#8487)', () => {
       });
       const graded: string[] = [];
       const failures: string[] = [];
-      for (const version of ['3.2', '3.1', '3.0']) {
+      for (const version of VERSIONS) {
         const account = {
           brand: { domain: `served-release-${route || 'v5'}.example` },
           operator: `served-release-${route || 'v5'}.example`,
@@ -338,6 +348,10 @@ describe('served-release response shape below 3.3 (#8487)', () => {
           capture(tool, structured, state);
           const served = typeof structured.adcp_version === 'string' ? structured.adcp_version : version;
           expect(served.startsWith(version), `${label} ${tool} echoed ${served} for ${version}`).toBe(true);
+          // The preview is only ever served to an exact pin, and says so.
+          if (version === TRAINING_AGENT_HOSTED_PREVIEW.wireVersion && structured.adcp_version !== version) {
+            failures.push(`${label} ${tool} @${version}: echoed ${String(structured.adcp_version)}`);
+          }
 
           const schemaFile = tool === 'list_creative_formats' && route.startsWith('creative')
             ? 'creative/list-creative-formats-response.json'
@@ -373,8 +387,9 @@ describe('served-release response shape below 3.3 (#8487)', () => {
         }
       }
       expect(failures).toEqual([]);
-      // Every listed tool was graded at 3.2.
+      // Every listed tool was graded at 3.2 and at the preview.
       expect(graded.filter(entry => entry.endsWith('@3.2')).map(entry => entry.split('@')[0])).toEqual([...tools]);
+      expect(graded.filter(entry => entry.endsWith(`@${TRAINING_AGENT_HOSTED_PREVIEW.wireVersion}`)).map(entry => entry.split('@')[0])).toEqual([...tools]);
     }, 180_000);
   }
 

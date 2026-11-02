@@ -6,7 +6,11 @@ import {
   SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
   TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
 } from './types.js';
-import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } from './candidate-version.js';
+import {
+  TRAINING_AGENT_CANDIDATE_ADCP_VERSION,
+  TRAINING_AGENT_HOSTED_PREVIEW,
+  TRAINING_AGENT_SERVES_HOSTED_PREVIEW,
+} from './candidate-version.js';
 
 function canonicalSchemaBundleVersion(version: string): string {
   const match = version.match(/^(\d+)\.(\d+)(?:\.(\d+))?((?:-(?:beta|rc)\.\d+)?)$/);
@@ -48,6 +52,17 @@ export const CANDIDATE_SCHEMA_BUNDLE = TRAINING_AGENT_CANDIDATE_ADCP_VERSION
   : undefined;
 const CANDIDATE_SCHEMA_TREE = 'latest';
 
+/**
+ * The hosted preview's published bundle (candidate-version.ts), registered
+ * from the committed, immutable dist/schemas/<bundle> tree under its own
+ * release key, so preview responses are validated against exactly what was
+ * published. The installed @adcp/sdk may package a different 3.3 beta, or
+ * none. Unset when the preview is disabled or a local candidate replaces it.
+ */
+export const PREVIEW_SCHEMA_BUNDLE: string | undefined = TRAINING_AGENT_SERVES_HOSTED_PREVIEW
+  ? TRAINING_AGENT_HOSTED_PREVIEW.bundle
+  : undefined;
+
 let registration: Promise<void> | undefined;
 
 export function resolveRetainedSchemaRoot(
@@ -75,7 +90,8 @@ export function resolveRetainedSchemaRoot(
  * Register the training agent's retained prerelease checkpoints (beta.6 and
  * the last 3.2 RC) with SDK builds that do not package them,
  * and, in a trusted candidate process, the built source tree under the
- * candidate's release key (see CANDIDATE_SCHEMA_BUNDLE).
+ * candidate's release key (see CANDIDATE_SCHEMA_BUNDLE). The hosted preview's
+ * bundle is registered separately, on first use (ensurePreviewSchemaBundle).
  *
  * This is deliberately lazy: @adcp/sdk/testing owns the public external-root
  * API, but the rest of that entry point is unnecessary unless the training
@@ -99,11 +115,35 @@ export function ensureTrainingAgentSchemaBundle(): Promise<void> {
       // (adcontextprotocol/adcp-client#3519, still so in 17.0.0-beta.6).
       // Register there too, or the rule reads the published bundle and drops
       // `status`. Remove with #3519's fix.
-      const cjsTesting = createRequire(import.meta.url)('@adcp/sdk/testing') as {
-        registerExternalSchemaRoot: (version: string, schemaRoot: string) => void;
-      };
-      cjsTesting.registerExternalSchemaRoot(CANDIDATE_SCHEMA_BUNDLE, root);
+      cjsRegisterExternalSchemaRoot(CANDIDATE_SCHEMA_BUNDLE, root);
     }
   });
   return registration;
+}
+
+let previewRegistration: Promise<void> | undefined;
+
+/**
+ * Register the hosted preview's published bundle (PREVIEW_SCHEMA_BUNDLE) with
+ * the SDK. Lazy: registering a full bundle costs seconds, so only the preview
+ * registry and preview-pinned requests on the v5 route pay it. The ESM loader
+ * is enough: the published bundle composes the envelope the way the SDK's
+ * status rule expects, so preview responses keep `status` without the
+ * CommonJS registration the candidate needs (served-release-shape.test.ts
+ * grades it). A no-op when the preview is off.
+ */
+export function ensurePreviewSchemaBundle(): Promise<void> {
+  if (!PREVIEW_SCHEMA_BUNDLE) return Promise.resolve();
+  const bundle = PREVIEW_SCHEMA_BUNDLE;
+  previewRegistration ??= import('@adcp/sdk/testing').then(({ registerExternalSchemaRoot }) => {
+    registerExternalSchemaRoot(bundle, resolveRetainedSchemaRoot(undefined, undefined, bundle));
+  });
+  return previewRegistration;
+}
+
+function cjsRegisterExternalSchemaRoot(version: string, schemaRoot: string): void {
+  const cjsTesting = createRequire(import.meta.url)('@adcp/sdk/testing') as {
+    registerExternalSchemaRoot: (version: string, schemaRoot: string) => void;
+  };
+  cjsTesting.registerExternalSchemaRoot(version, schemaRoot);
 }

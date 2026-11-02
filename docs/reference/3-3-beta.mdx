@@ -1,7 +1,7 @@
 ---
 title: AdCP 3.3 beta program
 sidebarTitle: 3.3 beta program
-description: "Where the AdCP 3.3 beta stands at beta.3, how to test a beta before SDK support, which SDK versions bundle which beta, and which proposals are still in review for 3.3."
+description: "Where the AdCP 3.3 beta stands at beta.3, how to test a beta before SDK support or against the public test agent's preview, which SDK versions bundle which beta, and which proposals are still in review for 3.3."
 "og:title": "AdCP — 3.3 beta program"
 ---
 
@@ -24,7 +24,7 @@ The latest checkpoint is **`3.3.0-beta.3`, published 2026-10-31**. Each beta is 
 | `3.3.0-beta.2` | 2026-10-30 | Account change outcomes, seller offers, measurement provenance, structural capability bounds, the principal clarification, reporting-subscription convergence, and the withdrawal of definition pins, purchase rights, and installment selection | The same teams, against the withdrawn surfaces removed |
 | `3.3.0-beta.3` | 2026-10-31 | Live creative updates, the protocol envelope on every task response, money terms on resolved account requests, revocation as no access, and reporting-subscription coverage computable from the wire | The same teams; this is the checkpoint the docs describe |
 
-Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published, and no published SDK bundles beta.3 yet ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1).
+Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1).
 
 ## Know which version string to use
 
@@ -68,6 +68,40 @@ Useful tests are:
 4. Exercise raw MCP or A2A calls with `adcp_version: "3.3-beta.3"` against a staging peer that advertises the same pin.
 5. Run the compliance assets with a source-compatible runner if you maintain one. Do not weaken production authentication to accommodate a beta runner.
 
+## Try the preview on the public test agent
+
+The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.3` as an opt-in preview alongside its stable releases. It lists `"3.3-beta.3"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
+
+| Request | Served |
+|---|---|
+| `adcp_version: "3.3-beta.3"` | The preview. Responses echo `"3.3-beta.3"` and validate against the published `3.3.0-beta.3` schemas. |
+| `adcp_version: "3.2"`, `"3.3"`, or a later release | 3.2. A release pin never resolves onto a prerelease. |
+| Any other 3.3 prerelease, such as `"3.3-beta.2"` | Never the preview. Prerelease pins match exactly. |
+| `adcp_major_version` alone, or no version | The route's stable default, never the preview. |
+
+```bash
+curl -s https://test-agent.adcontextprotocol.org/sales/mcp \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-beta.3"}}}'
+```
+
+At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the training agent implements:
+
+- account requests (`account.requests`): `request_account`, and `account_requests` on `list_accounts`;
+- the caller's `authorization`, with `authorized_at` and `regranted_at`, and `revision` on each `list_accounts` account;
+- principal-level reporting subscriptions (`media_buy.reporting_subscriptions`): the `reporting_subscriptions` section of `sync_principal` and `get_principal`, and `subscription_coverage` on `get_reporting_status`;
+- the `reporting_subscription_probe` controller scenario, which revokes, reduces, and restores grants and advances a per-caller sandbox clock.
+
+`tools/list` includes `request_account` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it). Hold policy, `extend_hold`, and response collections are not served yet ([#8181](https://github.com/adcontextprotocol/adcp/issues/8181)).
+
+With `@adcp/sdk`, use 17.0.0-beta.11 or later, which negotiates exactly `3.3-beta.3`. Earlier 17.0.0 betas bundle an older beta, so they settle on 3.2 with the test agent.
+
+<Warning>
+**The preview is experimental and can change without notice.** It follows the latest published beta and moves to the next one when it ships. Once it moves, the old pin is no longer served. AAO can also switch the preview off, after which the agent serves only its stable releases. Use it to try 3.3 surfaces, not as a stable integration target.
+</Warning>
+
 <Note>
 **No 3.3 verification badge is issued from a beta.** A beta bundle is an implementation input, not a certification target, and prerelease grading runs are diagnostic, as they were for 3.2.
 </Note>
@@ -88,7 +122,7 @@ SDK maintainers should report protocol ambiguities against the [AdCP repository]
 
 ## SDK guidance
 
-**TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, and 17.0.0-beta.10 bundles `3.3.0-beta.2`. No published `@adcp/sdk` bundles `3.3.0-beta.3` yet, so the beta.3 surfaces (live creative updates, the envelope on every response, money terms on resolved account requests, and the reporting-subscription coverage rules) are raw-wire only until an SDK ingests that bundle. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
+**TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, and 17.0.0-beta.11 and later bundle `3.3.0-beta.3`. Each negotiates only its own beta, so a buyer and seller on different betas settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
 
 **Python.** There is no Python SDK release that bundles a 3.3 beta. Support is pending [adcp-client-python#1560](https://github.com/adcontextprotocol/adcp-client-python/issues/1560), which is open. Until it lands, use the `adcp` 3.2 release for production-line work and validate 3.3 behavior over the raw wire against the signed bundle.
 

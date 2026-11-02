@@ -62,6 +62,8 @@ import {
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
 import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, trainingBuyerDocumentation, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
+import { requestPinsPreview } from './candidate-version.js';
+import { ensurePreviewSchemaBundle } from './schema-compat.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -428,6 +430,8 @@ export function createTrainingAgentRouter(options: {
         }
       }
 
+      // Served-release shaping reads the hosted preview's published bundle.
+      if (requestPinsPreview(req.body)) await ensurePreviewSchemaBundle();
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -515,6 +519,7 @@ export function createTrainingAgentRouter(options: {
           }
         }
 
+        if (requestPinsPreview(req.body)) await ensurePreviewSchemaBundle();
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
           enableJsonResponse: true,
