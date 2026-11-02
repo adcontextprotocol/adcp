@@ -19,7 +19,8 @@
  * repeatedly from running out.
  */
 
-import type { HoldPolicy } from './policy.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { durationsOrdered, durationMs, type HoldPolicy } from './policy.js';
 
 export interface HoldFixture {
   policy: HoldPolicy;
@@ -72,6 +73,60 @@ export const HOLD_FIXTURES: Readonly<Record<string, Readonly<HoldFixture>>> = Ob
   ...Object.fromEntries(CREATOR_PRODUCTS.map(productId => [productId, CREATOR_SLOT])),
 });
 
+/**
+ * Hold policies of products a storyboard seeded through comply_test_controller
+ * (`fixtures.products[].hold_policy`), for the request in flight. A seeded
+ * product replaces a catalog product with the same ID, as the seeded overlay
+ * does for every other product field, and contends per product.
+ */
+const seededScope = new AsyncLocalStorage<ReadonlyMap<string, Readonly<HoldFixture>>>();
+
+export function runWithSeededHoldFixtures<T>(
+  seeded: ReadonlyMap<string, Readonly<HoldFixture>>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return seeded.size > 0 ? seededScope.run(seeded, fn) : fn();
+}
+
+const DURATION_KEYS = ['min_duration', 'max_duration', 'max_total_duration'] as const;
+
+/**
+ * The hold fixture a seeded product declares, or undefined when its
+ * `hold_policy` is absent or not a policy the schema allows: `available` is
+ * required, durations parse and are ordered, `extendable` and `rankable` are
+ * booleans, and a non-holdable policy declares nothing else.
+ */
+export function seededHoldFixture(product: unknown): HoldFixture | undefined {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return undefined;
+  const raw = (product as { hold_policy?: unknown }).hold_policy;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.available !== 'boolean') return undefined;
+  if (!value.available) {
+    return Object.keys(value).length === 1 ? { policy: { available: false }, contention: 'product' } : undefined;
+  }
+  const policy: HoldPolicy = { available: true };
+  for (const key of DURATION_KEYS) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== 'string') return undefined;
+    try {
+      if (durationMs(value[key] as string) <= 0) return undefined;
+    } catch {
+      return undefined;
+    }
+    policy[key] = value[key] as string;
+  }
+  for (const key of ['extendable', 'rankable'] as const) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== 'boolean') return undefined;
+    policy[key] = value[key] as boolean;
+  }
+  if (policy.max_total_duration && policy.extendable !== true) return undefined;
+  return durationsOrdered(policy) ? { policy, contention: 'product' } : undefined;
+}
+
 export function holdFixture(productId: string): Readonly<HoldFixture> | undefined {
+  const seeded = seededScope.getStore()?.get(productId);
+  if (seeded) return seeded;
   return Object.prototype.hasOwnProperty.call(HOLD_FIXTURES, productId) ? HOLD_FIXTURES[productId] : undefined;
 }

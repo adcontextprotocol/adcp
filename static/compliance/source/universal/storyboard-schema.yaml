@@ -1757,7 +1757,10 @@
 #                "Canonical format satisfaction" section below),
 #                "owed_periods_match" (compares the periods a reporting
 #                subscription owes, computed from wire state, with the
-#                seller's obligations — see "Owed periods" section below))
+#                seller's obligations — see "Owed periods" section below),
+#                "instant_offset_within" (bounds an RFC 3339 instant by a base
+#                instant plus ISO 8601 durations — see "Instant offsets"
+#                section below))
 # severity: string (optional, default "required"): "required" | "advisory".
 #                A "required" validation failure fails the step and contributes
 #                to steps_failed; this is the default. An "advisory" failure
@@ -2070,6 +2073,66 @@
 #       severity: advisory
 #       expires_after_version: "17.0.0"
 #       description: "The owed set computed from wire state equals the seller's obligations"
+#
+# Instant offsets — use `check: instant_offset_within`:
+#   Bounds an RFC 3339 instant on this step's response by a base instant plus
+#   ISO 8601 durations, for rules the other checks cannot express because they
+#   are duration arithmetic over instants. Introduced for the experimental
+#   hold storyboards (`media_buy.hold_policy`, `media_buy.hold_extension`),
+#   for example `hold_placed_at + min_duration <= expires_at <=
+#   hold_placed_at + max_duration`.
+#
+#   The runner resolves `path` and the base to instants and compares them on
+#   the UTC timeline, so offsets and fractional seconds do not matter.
+#   Durations are the hold-policy form: days, hours, minutes, and seconds
+#   only (`P2D`, `PT36H`, `P1DT12H`), where a day is exactly 86,400 seconds
+#   added to the UTC instant, never a calendar day. The check passes when
+#   base + lower <= value (strictly greater when `exclusive_min` is true) and
+#   value <= base + upper, for each bound declared.
+#
+#   Fields:
+#     check: instant_offset_within
+#     path: string               # the instant on this step's response
+#     base_path: string          # base instant on this step's response, or
+#     base_context_key: string   # base instant captured by a prior step
+#                                # (exactly one of the two)
+#     min_offset: string         # lower bound as a literal duration, or
+#     min_offset_path: string    # a duration on this step's response
+#                                # (at most one of the two)
+#     max_offset: string         # upper bound as a literal duration, or
+#     max_offset_path: string    # a duration on this step's response
+#                                # (at most one of the two)
+#     exclusive_min: boolean     # optional, default false
+#
+#   At least one bound MUST be declared. A missing or unparseable `path` or
+#   base fails the check. A declared `*_offset_path` that resolves to nothing
+#   leaves that bound unapplied (a policy without `max_duration` sets no
+#   maximum), and the runner records an `offset_absent` observation; one that
+#   is not a valid duration fails. An absent `base_context_key` passes with a
+#   `context_key_absent` observation, as for the cross-step comparison checks.
+#   Failure output uses the RFC 6901 pointer of `path` as `json_pointer`, the
+#   computed bounds as `expected`, and the observed instant as `actual`.
+#   Runners that do not implement the check grade it not_applicable
+#   (forward compatibility); storyboards declare it advisory until runner
+#   support ships.
+#
+#   Examples:
+#     - check: instant_offset_within
+#       path: "results[0].proposal.expires_at"
+#       base_path: "results[0].proposal.hold_placed_at"
+#       min_offset_path: "results[0].proposal.hold_policy.min_duration"
+#       max_offset_path: "results[0].proposal.hold_policy.max_duration"
+#       severity: advisory
+#       expires_after_version: "17.0.0"
+#       description: "hold_placed_at + min_duration <= expires_at <= hold_placed_at + max_duration"
+#     - check: instant_offset_within
+#       path: "results[0].proposal.expires_at"
+#       base_context_key: "source_expires_at"
+#       min_offset: "PT0S"
+#       exclusive_min: true
+#       severity: advisory
+#       expires_after_version: "17.0.0"
+#       description: "The extension's expires_at is later than the source's"
 #
 # Cross-step integrity — use `check: refs_resolve`:
 #   `refs_resolve` asserts every ref in a source set resolves to a member of a

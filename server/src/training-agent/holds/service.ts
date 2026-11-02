@@ -17,12 +17,16 @@
  *
  * Times follow the caller's sandbox clock (account-sandbox.ts): the wall
  * clock until a storyboard moves it.
+ *
+ * Policies come from the catalog fixtures (fixtures.ts) and from products a
+ * storyboard seeded through comply_test_controller with a `hold_policy`, so a
+ * seller-agnostic storyboard can declare the policies it tests.
  */
 
 import { createHash } from 'node:crypto';
 import { callerSandboxNowMs } from '../account-sandbox.js';
 import { getIdempotencyStore } from '../idempotency.js';
-import { getSession, flushDirtySessions } from '../state.js';
+import { getSession, flushDirtySessions, sessionKeyFromArgs } from '../state.js';
 import {
   compactCatalogProduct,
   compactProposalOutward,
@@ -31,7 +35,7 @@ import {
 } from '../task-handlers.js';
 import { atLeastAdcpVersion, type SessionState, type TrainingContext } from '../types.js';
 import { runWithHoldPlan } from './context.js';
-import { holdFixture } from './fixtures.js';
+import { holdFixture, runWithSeededHoldFixtures, seededHoldFixture, type HoldFixture } from './fixtures.js';
 import { AGENT_DEFAULT_POLICY, deriveDraftPolicy, durationMs, type HoldPolicy } from './policy.js';
 import {
   draftPolicyRecord,
@@ -239,6 +243,29 @@ async function sandboxNow(ctx: TrainingContext): Promise<number> {
   return callerSandboxNowMs(ctx.principal);
 }
 
+/**
+ * Run `fn` with the hold policies of the caller's seeded products in scope.
+ * A storyboard seeds products into its account's fixture session, and the
+ * compact_product_lifecycle_probe `prepare` operation promotes them into the
+ * caller's principal partition, which the compact proposal engine reads; both
+ * partitions are consulted, the compact one last so it wins.
+ */
+async function withSeededHoldPolicies<T>(ctx: TrainingContext, fn: () => Promise<T>): Promise<T> {
+  const partitions = [
+    sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous'),
+    compactProposalSessionKey(ctx),
+  ];
+  const seeded = new Map<string, HoldFixture>();
+  for (const key of new Set(partitions)) {
+    const session = await getSession(key);
+    for (const [productId, product] of session.complyExtensions.seededProducts) {
+      const fixture = seededHoldFixture(product);
+      if (fixture) seeded.set(productId, fixture);
+    }
+  }
+  return runWithSeededHoldFixtures(seeded, fn);
+}
+
 // ── list_products and request_proposals ─────────────────────────
 
 export async function withHoldsListProducts(
@@ -248,6 +275,10 @@ export async function withHoldsListProducts(
 ): Promise<Json> {
   const result = await inner();
   if (!holdsServed(ctx) || hasErrors(result)) return result;
+  return withSeededHoldPolicies(ctx, async () => decorateListedProducts(args, result));
+}
+
+function decorateListedProducts(args: Json, result: Json): Json {
   const fields = Array.isArray(args.fields)
     ? new Set(args.fields.filter((field): field is string => typeof field === 'string'))
     : undefined;
@@ -261,6 +292,10 @@ export async function withHoldsRequestProposals(
   inner: () => Promise<Json>,
 ): Promise<Json> {
   if (!holdsServed(ctx)) return inner();
+  return withSeededHoldPolicies(ctx, () => requestProposalsWithPolicies(ctx, inner));
+}
+
+async function requestProposalsWithPolicies(ctx: TrainingContext, inner: () => Promise<Json>): Promise<Json> {
   const result = await runWithHoldPlan({ installmentFlights: true }, inner);
   if (hasErrors(result) || !Array.isArray(result.proposals)) return result;
   const { session, doc } = await sessionAndDoc(ctx);
@@ -587,6 +622,15 @@ export async function withHoldsRefineProposals(
   ctx: TrainingContext,
   inner: () => Promise<Json>,
 ): Promise<Json> {
+  if (!holdsServed(ctx)) return refineWithPolicies(args, ctx, inner);
+  return withSeededHoldPolicies(ctx, () => refineWithPolicies(args, ctx, inner));
+}
+
+async function refineWithPolicies(
+  args: Json,
+  ctx: TrainingContext,
+  inner: () => Promise<Json>,
+): Promise<Json> {
   const refinements = Array.isArray(args.refinements) ? args.refinements.filter(isRecord) : [];
   const actions = new Set(refinements.map(entry => entry.action));
   const served = holdsServed(ctx);
@@ -855,6 +899,10 @@ async function extendHolds(args: Json, refinements: Json[], ctx: TrainingContext
 // ── comply_test_controller force_hold_unavailable ────────────────
 
 export async function forceHoldUnavailable(params: Json, ctx: TrainingContext): Promise<Json> {
+  return withSeededHoldPolicies(ctx, () => registerForcedHoldUnavailable(params, ctx));
+}
+
+async function registerForcedHoldUnavailable(params: Json, ctx: TrainingContext): Promise<Json> {
   if (!holdsServed(ctx)) {
     return {
       success: false,

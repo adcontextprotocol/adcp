@@ -1,0 +1,330 @@
+id: media_buy_seller/hold_unavailable_batch
+version: "1.0.0"
+introduced_in: "3.3"
+title: "A hold failure aborts the whole finalize batch"
+category: media_buy_seller
+summary: "Registers force_hold_unavailable for the second of two drafts, finalizes both in one request, and checks the all-or-none outcome: the named draft returns hold_unavailable, its sibling batch_aborted, nothing is committed, and an exact retry replays the failure."
+track: media_buy
+
+requires_all_capabilities:
+  - path: "compliance_testing.scenarios"
+    contains: "force_hold_unavailable"
+  - path: "compliance_testing.scenarios"
+    contains: "compact_product_lifecycle_probe"
+
+requires:
+  - controller
+
+required_tools:
+  - request_proposals
+  - refine_proposals
+  - comply_test_controller
+
+narrative: |
+  Multi-proposal finalization is atomic. When any hold cannot be created, no
+  result is `finalized`: the failing entry returns `unable` with
+  `reason_code: "hold_unavailable"`, and otherwise-eligible siblings return
+  `unable` with `reason_code: "batch_aborted"`. Exact retries use the same
+  idempotency key and replay the original response.
+
+  A seller cannot be made to fail a hold on demand by a buyer, so the
+  storyboard registers the `force_hold_unavailable` controller directive for
+  the second of two drafts and finalizes both in one request. Naming the
+  second entry distinguishes a seller that honors the directive from one that
+  always fails the first entry of a batch.
+
+  The storyboard uses no hold_policy, so it applies to any seller that offers
+  the directive, including a seller whose policy declines every hold.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - generates_proposals
+  examples:
+    - "Publisher that finalizes several proposals in one atomic request"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller advertises force_hold_unavailable and
+    compact_product_lifecycle_probe and finalizes drafts through
+    refine_proposals.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_22bf3279ff81"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_hold_unavailable_ba-15fb5f67"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: "hold_batch_first"
+      delivery_type: "guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "hold_batch_first_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+    - product_id: "hold_batch_second"
+      delivery_type: "guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "hold_batch_second_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "hold_batch_first"
+      pricing_option_id: "hold_batch_first_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 20
+    - product_id: "hold_batch_second"
+      pricing_option_id: "hold_batch_second_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 20
+
+phases:
+  - id: prepare_products
+    title: "Prepare the seeded products"
+    steps:
+      - id: prepare_first_product
+        title: "Prepare the first product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_unavailable_ba-15fb5f67"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "hold_batch_first"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares the seeded product"
+      - id: prepare_second_product
+        title: "Prepare the second product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_unavailable_ba-15fb5f67"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "hold_batch_second"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares the seeded product"
+
+  - id: request_drafts
+    title: "Request two drafts"
+    depends_on: [prepare_products]
+    steps:
+      - id: request_first_draft
+        title: "Request a draft for the first product"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_unavailable_batch_request_first"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_unavailable_ba-15fb5f67"
+            sandbox: true
+          brief: "Reserve premium online video for a product launch."
+          criteria:
+            product_ids: ["hold_batch_first"]
+        context_outputs:
+          - name: first_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: field_value
+            path: "proposals[0].proposal_status"
+            value: "draft"
+            description: "Proposal requests produce drafts"
+      - id: request_second_draft
+        title: "Request a draft for the second product"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_unavailable_batch_request_second"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_unavailable_ba-15fb5f67"
+            sandbox: true
+          brief: "Reserve premium online video for the launch follow-up."
+          criteria:
+            product_ids: ["hold_batch_second"]
+        context_outputs:
+          - name: second_draft_id
+            path: "proposals[0].proposal_id"
+          - name: batch_finalize_key
+            generate: uuid_v4
+        validations:
+          - check: field_value
+            path: "proposals[0].proposal_status"
+            value: "draft"
+            description: "Proposal requests produce drafts"
+
+  - id: forced_failure
+    title: "Fail the batch on the second draft's hold"
+    depends_on: [request_drafts]
+    steps:
+      - id: force_second_hold_unavailable
+        title: "Register force_hold_unavailable for the second draft"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_unavailable_ba-15fb5f67"
+            sandbox: true
+          scenario: "force_hold_unavailable"
+          params:
+            proposal_id: "$context.second_draft_id"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The directive is registered"
+          - check: field_value
+            path: "forced.arm"
+            value: "unable"
+            description: "The directive registers the unable arm"
+          - check: field_equals_context
+            path: "forced.proposal_id"
+            context_key: "second_draft_id"
+            description: "The directive names the second draft"
+
+      - id: finalize_batch
+        title: "Finalize both drafts in one request"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.batch_finalize_key"
+          refinements:
+            - proposal_id: "$context.first_draft_id"
+              action: "finalize"
+            - proposal_id: "$context.second_draft_id"
+              action: "finalize"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: array_length
+            path: "results"
+            value: 2
+            description: "One result per finalize entry"
+          - check: field_equals_context
+            path: "results[0].source_proposal_id"
+            context_key: "first_draft_id"
+            description: "Results follow request order"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "unable"
+            description: "No entry is finalized when any hold fails"
+          - check: field_value
+            path: "results[0].reason_code"
+            value: "batch_aborted"
+            description: "The otherwise-eligible sibling is aborted"
+          - check: field_absent
+            path: "results[0].proposal"
+            description: "The aborted sibling commits nothing"
+          - check: field_equals_context
+            path: "results[1].source_proposal_id"
+            context_key: "second_draft_id"
+            description: "Results follow request order"
+          - check: field_value
+            path: "results[1].outcome"
+            value: "unable"
+            description: "The forced draft cannot be held"
+          - check: field_value
+            path: "results[1].reason_code"
+            value: "hold_unavailable"
+            description: "The named draft fails with hold_unavailable"
+          - check: field_absent
+            path: "results[1].proposal"
+            description: "The failed entry commits nothing"
+
+      - id: replay_failed_batch
+        title: "Retry the failed finalize exactly"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.batch_finalize_key"
+          refinements:
+            - proposal_id: "$context.first_draft_id"
+              action: "finalize"
+            - proposal_id: "$context.second_draft_id"
+              action: "finalize"
+        validations:
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "The retry replays the original response"
+          - check: field_value
+            path: "results[0].reason_code"
+            value: "batch_aborted"
+            description: "The replay reports the original failure"
+          - check: field_value
+            path: "results[1].reason_code"
+            value: "hold_unavailable"
+            description: "The replay reports the original failure"
