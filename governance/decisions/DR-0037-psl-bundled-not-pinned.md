@@ -5,9 +5,9 @@ class: normative
 status: ratified
 date: 2026-11-02
 decided: 2026-11-02
-decided_by: maintainer approval (PR #TBD), on Konstantin Mirin's proposal in #8409
+decided_by: maintainer approval (PR #8702), on Konstantin Mirin's proposal in #8409
 supersedes: DR-0023  # in part: spec R3a step 1's "pinned, dated" snapshot
-refs: ["#8409", "DR-0023", "adcp-client#3379", "adcp-client-python#1562", "adcp-go#590"]
+refs: ["#8409", "PR #8702", "DR-0023", "adcp-client#3379", "adcp-client-python#1562", "adcp-go#590"]
 dissent: none recorded
 ---
 
