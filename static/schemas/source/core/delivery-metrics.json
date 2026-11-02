@@ -445,6 +445,7 @@
       "additionalProperties": true
     },
     "print_metrics": {
+      "x-added-in": "3.3.0",
       "type": "object",
       "x-status": "experimental",
       "description": "Print-specific metrics (only included for print campaigns). Experimental in AdCP 3.3. Report one object per installment (issue) on `by_installment` rows, which inherit this schema; the object is not meaningful at package, daily, or total grain. It describes one insertion per row and carries the proof the insertion ran and the circulation it ran against. Sellers SHOULD populate `evidence` for guaranteed print products; when a seller cannot, the gap is reported through `by_package[].missing_metrics` rather than by silently omitting the field. Nothing here is schema-required.",
@@ -704,6 +705,16 @@
       "items": {
         "$ref": "/schemas/core/vendor-metric-value.json"
       }
+    },
+    "vendor_metric_provenance": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.measurement_provenance). Collection-mechanism provenance for rows of `vendor_metric_values` in this object, one entry per `(vendor, metric_id, qualifier)` and joined on that key. A sibling of the closed rows, not a field on them. Sellers that emit it declare `media_buy.measurement_provenance` in `experimental_features`. Omit when no row has provenance to report.",
+      "items": {
+        "$ref": "/schemas/core/vendor-metric-provenance.json"
+      },
+      "minItems": 1
     }
   },
   "dependencies": {

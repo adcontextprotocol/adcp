@@ -1,0 +1,495 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/mcp/2026-07-28/account/request-account-request.json",
+  "title": "Request Account Request",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "The single account write (experimental, account.requests). Open an account (brand and operator: the seller finds an existing one or creates one) or change one (account_id plus the attributes to change), possibly after human review on either side. Every write is a request with the same lifecycle. Experimental in 3.3 (#8280): sellers implementing this task MUST list account.requests in experimental_features. Retries are safe through idempotency_key; deduplicating separate requests for the same advertiser is seller discretion, with non-normative guidance in the task docs. Send either account_id, or brand and operator; sellers enforce this at runtime so the MCP input schema stays a plain root object, and reject a request carrying both, or neither, with INVALID_REQUEST. With account_id, every other field present is a requested change, validated as when the account opens: brand.domain and brand.brand_id must equal the account's (a different brand is a different account, INVALID_REQUEST), currency and timezone change only on sellers that list them in account.requests.changeable_attributes and are otherwise refused with UNSUPPORTED_FEATURE, and sandbox never changes. A timezone change is a reporting cutover for account_timezone periods. Authorization (change or select): the seller first resolves account_id against the caller's own access and answers an unreachable account exactly as an unknown one, before any other validation of the body. A change requires request_account in the caller's allowed_tasks for that account and read_only: false; when the grant lists request_account under field_scopes, every changed field (including billing, billing_entity, and payment_terms) must be in that allowlist, as field_scopes already works. Otherwise SCOPE_INSUFFICIENT, READ_ONLY_SCOPE, or FIELD_NOT_PERMITTED. A change that goes in_review re-checks revision when it resolves; if the account changed meanwhile, the request is rejected with CONFLICT. A new change request for the same account from the same caller supersedes that caller's open change request: the new request gets its own request_id and must carry every change still wanted, and the open one moves to rejected with CONFLICT and details.superseded_by. It never affects another caller's request.",
+  "x-tool-summary": "Request an advertiser account: the seller matches an existing account or creates one, possibly after human review.",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key that makes retries of this call safe, with the standard replay semantics. A replayed key returns the original request; a new key is a new request. Use a fresh UUID v4 for each logical call.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Change, or select, an existing account. With other fields present, the request changes those attributes on this account; the account keeps its account_id, media buys, and history. With no other fields, it selects the account: a candidate from an ambiguous request, or, on a platform that owns its account namespace, an account the caller's credential does not reach yet. For an account_id the caller cannot reach, the seller MUST answer the same way whether or not the account exists: either always rejected with ACCOUNT_NOT_FOUND, or, for sellers that support access requests, always in_review with waiting_on: buyer and kind: grant. Mutually exclusive with operator; brand is allowed only to change countries.",
+      "x-entity": "account"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Continue one of the caller's own open requests. With account_id and no change fields: pick a candidate from an ambiguous request, or name the account a human created after a sign_up action; the open request resolves as matched. Change requests are never edited in place: send a new change request instead, which supersedes the open one. Unknown request_ids, or another caller's, are treated as not found."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Guard when changing an account (with account_id): the account revision the change is based on. Required when the change touches billing, billing_entity, or payment_terms, because a lost update there costs money; optional for other changes. Sellers enforce this at runtime and reject a money change without revision with INVALID_REQUEST. A stale revision fails the call with CONFLICT and changes nothing. Read it from list_accounts."
+    },
+    "allow_separate_account": {
+      "type": "boolean",
+      "default": false,
+      "description": "Change requests only (with account_id and change fields): whether the seller may answer by opening a separate account that carries the requested change, leaving this account unchanged (resolution: created). When false or absent, a seller that would accept the change only as a separate account rejects the request with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT instead. It never permits changing or retiring the named account, and it is ignored when opening an account."
+    },
+    "brand": {
+      "$ref": "#/$defs/external:core~1brand-key.json",
+      "description": "Advertiser identity. Required to open an account. Sellers matching on brand use domain and brand_id; countries is an attribute. With account_id, send brand only to change countries; domain and brand_id must equal the account's."
+    },
+    "operator": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent."
+    },
+    "operator_unit": {
+      "$ref": "#/$defs/external:core~1operator-unit.json",
+      "description": "Optional operator-owned business unit or seat. An account attribute; name is display metadata."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency for a currency-bound advertiser object, as in sync_accounts. An account attribute set when the account opens."
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Buyer-selected timezone when the seller declares account_fixed, buyer_selected timezones, as in sync_accounts. An account attribute set when the account opens."
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Request a sandbox account. An account attribute: a sandbox request does not match a production account."
+    },
+    "billing": {
+      "$ref": "#/$defs/external:enums~1billing-party.json",
+      "description": "Requested invoiced party. A requested term, not account identity. The seller accepts it exactly or rejects the request; billing is never silently remapped."
+    },
+    "billing_entity": {
+      "$ref": "#/$defs/external:core~1business-entity.json",
+      "description": "Requested business entity for the invoiced party. A requested term, not account identity. Bank details are write-only."
+    },
+    "payment_terms": {
+      "$ref": "#/$defs/external:enums~1payment-terms.json",
+      "description": "Requested payment terms. A requested term, not account identity. The seller accepts them or rejects the request."
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Agency requests an operator-billed account for one advertiser",
+      "data": {
+        "adcp_version": "3.3",
+        "idempotency_key": "3f1d2a8c-6b0e-4c7a-9d51-8e2f4a6b9c10",
+        "brand": {
+          "domain": "renault.fr",
+          "countries": [
+            "FR"
+          ]
+        },
+        "operator": "wppmedia.fr",
+        "currency": "EUR",
+        "billing": "operator",
+        "billing_entity": {
+          "legal_name": "WPP Media France SAS"
+        }
+      }
+    },
+    {
+      "description": "Pick one candidate after an ambiguous result",
+      "data": {
+        "adcp_version": "3.3",
+        "idempotency_key": "8c2e7d41-0a9b-4f63-b5d8-1e4c7a2f9b30",
+        "account_id": "act_1029384756"
+      }
+    }
+  ],
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/version-envelope.json",
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields, defined once. Request schemas compose this envelope directly through `allOf`. Strict (`additionalProperties: false`) request schemas also redeclare these two fields in their own `properties` via `$ref`, because draft-07 does not evaluate properties across `allOf`. The Trusted Match match requests are the exception: they inline both fields for their strict privacy boundary. On a request, these fields are part of the request payload: the buyer's version pin. Responses do not compose this envelope directly. `core/protocol-envelope.json` composes it, so on a response `adcp_version` and `adcp_major_version` are envelope fields that the server framework stamps beside `status`, `task_id` and the other protocol-layer fields, not task body data.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ],
+          "x-max-length-4.0": 32
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "x-removed-in": "4.0.0",
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/brand-key.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/brand-key.json",
+      "title": "Brand Key",
+      "description": "Stable brand identity used to resolve the canonical brand manifest. A brand is its domain plus brand_id where that domain's brand.json lists several brands. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides. countries is an account attribute, not part of the brand's identity, and does not target delivery.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/mcp/2026-07-28/account/request-account-request.json#/$defs/external:core~1brand-id.json",
+          "description": "Brand within a brand.json that lists several brands. Omit for a single-brand domain."
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "ISO 3166-1 alpha-2 countries the advertiser account serves. This is an account attribute: it does not identify the brand or the account, and it is not delivery targeting. Omit when the account is not limited to particular countries. Array order is not meaningful."
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/brand-id.json",
+      "title": "Brand ID",
+      "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "examples": [
+        "tide",
+        "cheerios",
+        "air_jordan",
+        "nike",
+        "pampers"
+      ],
+      "x-max-length-4.0": 64
+    },
+    "external:core/operator-unit.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/operator-unit.json",
+      "title": "Operator Unit",
+      "description": "Operator-owned buying context, such as a business unit, agency seat, or platform account beneath one operator domain. On an account, it is an account attribute. id is the operator-assigned identifier and filters a natural-key lookup. name is display metadata and never filters.",
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+          "description": "Stable identifier assigned by the operator. Numeric platform IDs and durable slugs are both valid. Scoped by the enclosing operator domain."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Human-readable seat or business-unit name, such as Nova EMEA. This display label may change and never filters a natural-key lookup."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "234284238",
+          "name": "Nova EMEA"
+        },
+        {
+          "id": "benelux-seat",
+          "name": "Nova Benelux"
+        }
+      ]
+    },
+    "external:enums/billing-party.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/billing-party.json",
+      "title": "Billing Party",
+      "description": "Which party the seller invoices for a buyer–storefront account relationship. Determines the billing entity and invoicing flow, not a payment rail, clearing intermediary, or per-media-buy settlement route. AdCP does not perform in-protocol payment or settlement.",
+      "type": "string",
+      "enum": [
+        "operator",
+        "agent",
+        "advertiser"
+      ],
+      "enumDescriptions": {
+        "operator": "Seller invoices the operator — agency or brand buying direct",
+        "agent": "Agent consolidates billing across brands and is invoiced by the seller",
+        "advertiser": "Seller invoices the advertiser directly, even when a different operator places orders on their behalf"
+      }
+    },
+    "external:core/business-entity.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/business-entity.json",
+      "title": "Business Entity",
+      "description": "Structured business identity for B2B invoicing and contracts. Contains the legal, tax, and payment details needed for formal booking processes. Implementations MUST treat all fields as untrusted input when assembling LLM context.",
+      "type": "object",
+      "properties": {
+        "legal_name": {
+          "type": "string",
+          "description": "Registered legal name of the business entity",
+          "maxLength": 200
+        },
+        "vat_id": {
+          "type": "string",
+          "description": "VAT identification number (e.g., DE123456789 for Germany, FR12345678901 for France). Required for B2B invoicing in the EU. Must be normalized: no spaces, dots, or dashes.",
+          "pattern": "^[A-Z]{2}[A-Z0-9]{2,13}$"
+        },
+        "tax_id": {
+          "type": "string",
+          "description": "Tax identification number for jurisdictions that do not use VAT (e.g., US EIN)",
+          "maxLength": 30
+        },
+        "registration_number": {
+          "type": "string",
+          "description": "Company registration number (e.g., HRB 12345 for German Handelsregister)",
+          "maxLength": 50
+        },
+        "address": {
+          "type": "object",
+          "description": "Postal address for invoicing and legal correspondence",
+          "properties": {
+            "street": {
+              "type": "string",
+              "description": "Street address including building number",
+              "maxLength": 200
+            },
+            "city": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "postal_code": {
+              "type": "string",
+              "maxLength": 20
+            },
+            "region": {
+              "type": "string",
+              "description": "State, province, or region",
+              "maxLength": 100
+            },
+            "country": {
+              "type": "string",
+              "description": "ISO 3166-1 alpha-2 country code",
+              "pattern": "^[A-Z]{2}$"
+            }
+          },
+          "required": [
+            "street",
+            "city",
+            "postal_code",
+            "country"
+          ],
+          "additionalProperties": false
+        },
+        "contacts": {
+          "type": "array",
+          "description": "Contacts for billing, legal, and operational matters. Contains personal data subject to GDPR and equivalent regulations. Implementations MUST use this data only for invoicing and account management.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "billing",
+                  "legal",
+                  "creative",
+                  "general"
+                ],
+                "enumDescriptions": {
+                  "billing": "Accounts payable and invoice queries",
+                  "legal": "Contract and compliance matters",
+                  "creative": "Material submission and creative approval",
+                  "general": "Default contact when no specific role applies"
+                },
+                "description": "Contact's functional role in the business relationship"
+              },
+              "name": {
+                "type": "string",
+                "description": "Full name of the contact",
+                "maxLength": 200
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "maxLength": 254
+              },
+              "phone": {
+                "type": "string",
+                "maxLength": 30
+              }
+            },
+            "required": [
+              "role"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 10
+        },
+        "bank": {
+          "type": "object",
+          "writeOnly": true,
+          "description": "Bank account details for payment processing. Write-only: included in requests to provide payment coordinates, but MUST NOT be echoed in responses. Sellers store these details and confirm receipt without returning them.",
+          "properties": {
+            "account_holder": {
+              "type": "string",
+              "description": "Name on the bank account",
+              "maxLength": 200
+            },
+            "iban": {
+              "type": "string",
+              "description": "International Bank Account Number (SEPA markets)",
+              "pattern": "^[A-Z]{2}[0-9]{2}[A-Z0-9]{4,30}$"
+            },
+            "bic": {
+              "type": "string",
+              "description": "Bank Identifier Code / SWIFT code (SEPA markets)",
+              "pattern": "^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$"
+            },
+            "routing_number": {
+              "type": "string",
+              "description": "Bank routing number for non-SEPA markets (e.g., US ABA routing number, Canadian transit/institution number)",
+              "maxLength": 30
+            },
+            "account_number": {
+              "type": "string",
+              "description": "Bank account number for non-SEPA markets",
+              "maxLength": 30
+            }
+          },
+          "required": [
+            "account_holder"
+          ],
+          "additionalProperties": false
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/mcp/2026-07-28/account/request-account-request.json#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "legal_name"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "description": "German agency with full B2B details",
+          "data": {
+            "legal_name": "Pinnacle Media GmbH",
+            "vat_id": "DE123456789",
+            "registration_number": "HRB 12345",
+            "address": {
+              "street": "Friedrichstrasse 100",
+              "city": "Berlin",
+              "postal_code": "10117",
+              "country": "DE"
+            },
+            "contacts": [
+              {
+                "role": "billing",
+                "name": "Sam Adeyemi",
+                "email": "billing@pinnacle-media.com",
+                "phone": "+49 30 12345678"
+              }
+            ],
+            "bank": {
+              "account_holder": "Pinnacle Media GmbH",
+              "iban": "DE89370400440532013000",
+              "bic": "COBADEFFXXX"
+            }
+          }
+        },
+        {
+          "description": "US advertiser with EIN and domestic bank details",
+          "data": {
+            "legal_name": "Acme Corporation",
+            "tax_id": "12-3456789",
+            "address": {
+              "street": "123 Main St",
+              "city": "New York",
+              "postal_code": "10001",
+              "region": "NY",
+              "country": "US"
+            },
+            "contacts": [
+              {
+                "role": "billing",
+                "name": "AP Department",
+                "email": "ap@acme-corp.com"
+              }
+            ],
+            "bank": {
+              "account_holder": "Acme Corporation",
+              "routing_number": "021000021",
+              "account_number": "123456789"
+            }
+          }
+        }
+      ]
+    },
+    "external:core/ext.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json",
+      "title": "Extension Object",
+      "description": "Extension object for optional parameters under an owner-controlled namespace (e.g., ext.gam, ext.roku). The reserved ext.adcp namespace is maintained by the AdCP Working Group and is limited to its documented bindings. Used for custom capabilities, partner-specific configuration, and features being proposed for standardization. Namespace support does not imply support for undocumented future bindings.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/payment-terms.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/payment-terms.json",
+      "title": "Payment Terms",
+      "description": "Standard payment terms for AdCP accounts",
+      "type": "string",
+      "enum": [
+        "net_15",
+        "net_30",
+        "net_45",
+        "net_60",
+        "net_90",
+        "prepay"
+      ],
+      "enumDescriptions": {
+        "net_15": "Payment due within 15 days of invoice",
+        "net_30": "Payment due within 30 days of invoice",
+        "net_45": "Payment due within 45 days of invoice",
+        "net_60": "Payment due within 60 days of invoice",
+        "net_90": "Payment due within 90 days of invoice",
+        "prepay": "Payment required before campaign delivery"
+      }
+    },
+    "external:core/context.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/context.json",
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "Two web-bot-auth signatures on one request: positive/001 plus a second valid signature from https://agent.brand-7k3q.com",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#verification",
+  "signing_profile": "web-bot-auth",
+  "reference_now": 1790841610,
+  "request": {
+    "method": "POST",
+    "url": "https://seller-7k3q.com/mcp/",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Digest": "sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:",
+      "Signature-Agent": "sig1=\"https://buyer-7k3q.com\", sig2=\"https://agent.brand-7k3q.com\"",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;nonce=\"Mn-ZM8SnGESx0-rmyYMuTkJFerfbwEii2C0qNkDP8ugpcuv0pcrt6Da2ifr-6MTmfVeZhnFymLeAofeXJbFaxA\";keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\", sig2=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig2\");created=1790841600;expires=1790841900;nonce=\"YwSl5nr5sFmghcAAPcAs5F3qh9fJLt9-2hWehzPpaxqlJzZpjJ4xxRKFpVPfuC8fM_Zb1VkZLSHH00cYWL7J-g\";keyid=\"hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+      "Signature": "sig1=:ihPGBC7XQPM6WkIYhYQvFHgwTpbssvuQzkb0FfwkuebREyF32sXhiRxXbXWRZMp0O//C4I2g1a2Kui56ffEfBQ==:, sig2=:UdBx3V5QrRm84M54KvhTG/DxP+i2cNRdPmKgbUVJRvy2omQm6buIJRnOB8Rray4p8mSEy/JuaopoFISc1a2SDQ==:"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"create_media_buy\",\"arguments\":{\"idempotency_key\":\"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b0a96\",\"account\":{\"account_id\":\"acc_42\"},\"proposal_id\":\"prop_7\",\"total_budget\":{\"amount\":25000,\"currency\":\"USD\"}}}}"
+  },
+  "directories": {
+    "https://buyer-7k3q.com": {
+      "keys_ref": [
+        "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+      ]
+    },
+    "https://agent.brand-7k3q.com": {
+      "keys_ref": [
+        "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI"
+      ]
+    }
+  },
+  "expected_signature_base": {
+    "sig1": "\"@method\": POST\n\"@target-uri\": https://seller-7k3q.com/mcp/\n\"@authority\": seller-7k3q.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:\n\"signature-agent\";key=\"sig1\": \"https://buyer-7k3q.com\"\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\");created=1790841600;expires=1790841900;nonce=\"Mn-ZM8SnGESx0-rmyYMuTkJFerfbwEii2C0qNkDP8ugpcuv0pcrt6Da2ifr-6MTmfVeZhnFymLeAofeXJbFaxA\";keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+    "sig2": "\"@method\": POST\n\"@target-uri\": https://seller-7k3q.com/mcp/\n\"@authority\": seller-7k3q.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:\n\"signature-agent\";key=\"sig2\": \"https://agent.brand-7k3q.com\"\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig2\");created=1790841600;expires=1790841900;nonce=\"YwSl5nr5sFmghcAAPcAs5F3qh9fJLt9-2hWehzPpaxqlJzZpjJ4xxRKFpVPfuC8fM_Zb1VkZLSHH00cYWL7J-g\";keyid=\"hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI\";alg=\"ed25519\";tag=\"web-bot-auth\""
+  },
+  "expected_outcome": {
+    "success": false,
+    "status": 403,
+    "accept_signature": {
+      "label": "sig1",
+      "components": "(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\")",
+      "parameters": [
+        "created",
+        "expires",
+        "nonce",
+        "keyid",
+        "alg",
+        "tag"
+      ],
+      "tag": "web-bot-auth"
+    },
+    "reason": "The profile takes exactly one web-bot-auth signature and one Signature-Agent member per request (RFC 9421 section 3.2.1). Web Bot Auth section 5.2.2 permits more than one signature; the profile does not accept one."
+  },
+  "$comment": "The sig1 label is byte-identical to positive/001-single-signer-request.json, and the sig2 label is a second valid signature over the same request from another identity. Each verifies on its own against its own directory, so a verifier that loops over every label and accepts when each verifies has skipped the count check. The profile reports signature failures with HTTP status codes (Web Bot Auth sections 5.3 and 5.4). Conformance grades the status code. On a 403 or 429, the AdCP layer SHOULD add Accept-Signature naming the components and parameters the profile requires, so the signer can sign again (security.mdx, AdCP checks after Web Bot Auth verification); the accept_signature object describes that header, and the exact serialization is RFC 9421 section 5.1."
+}

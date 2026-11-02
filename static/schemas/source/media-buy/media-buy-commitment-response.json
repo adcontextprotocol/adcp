@@ -4,6 +4,9 @@
   "title": "Media Buy Commitment Response",
   "description": "Shared result for clean product purchase and proposal acceptance. A successful result returns the MediaBuy identity and the immutable accepted commercial snapshot without embedding creative or package graphs. Optional warnings report non-blocking observations at the commitment boundary; continuing conditions remain readable as indicators through get_media_buys.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "discriminator": {
     "propertyName": "status"
   },
@@ -112,14 +115,10 @@
         "context": {
           "$ref": "/schemas/core/context.json"
         },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": {
-          "type": "boolean",
-          "const": true
-        }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status", "media_buy_id", "revision", "accepted_proposal", "purchase_bindings", "available_actions"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": { "required": ["errors"] }
     },
     {
@@ -133,20 +132,23 @@
           "minItems": 1
         },
         "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": { "type": "boolean", "const": true }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["status", "errors"],
-      "additionalProperties": false,
-      "not": { "required": ["media_buy_id"] }
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["media_buy_id"] },
+          { "required": ["warnings"] }
+        ]
+      }
     },
     {
+      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
       "title": "Commitment Submitted",
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "submitted" },
-        "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
-        "message": { "type": "string", "maxLength": 2000 },
         "expected_confirmation_at": {
           "type": "string",
           "format": "date-time",
@@ -155,12 +157,16 @@
         },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
         "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" },
-        "replayed": { "type": "boolean", "const": true }
+        "ext": { "$ref": "/schemas/core/ext.json" }
       },
-      "required": ["status", "task_id"],
-      "additionalProperties": false,
-      "not": { "required": ["media_buy_id"] }
+      "required": ["status"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["media_buy_id"] },
+          { "required": ["warnings"] }
+        ]
+      }
     }
   ]
 }

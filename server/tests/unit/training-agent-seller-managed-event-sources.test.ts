@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import crypto from 'node:crypto';
+
+// `platform_id` is the 3.3 name for an event source's seller-assigned id, so
+// this suite calls as a 3.3 caller through the trusted local candidate wire
+// contract. A 3.2 caller gets `seller_id` alone (#8487).
+vi.hoisted(() => {
+  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
+});
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -37,7 +45,7 @@ async function callTool(
   const handler = requestHandlers.get('tools/call');
   if (!handler) throw new Error('CallTool handler not found');
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
+    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, { adcp_version: '3.3-beta.1', ...args }) } },
     {},
   );
   const text = response.content?.[0]?.text;
@@ -80,7 +88,8 @@ describe('seller-managed event sources (training agent)', () => {
       action: 'unchanged',
       setup: { snippet_type: 'server_only' },
     });
-    expect(typeof sources[0]!.seller_id).toBe('string');
+    expect(typeof sources[0]!.platform_id).toBe('string');
+    expect(sources[0]!.seller_id).toBe(sources[0]!.platform_id);
   });
 
   it('lists buyer-synced sources before seller-managed ones, on discovery and on upsert', async () => {
@@ -97,6 +106,10 @@ describe('seller-managed event sources (training agent)', () => {
     ]);
 
     const discovered = await discover(server);
+    for (const source of [...upserted, ...discovered]) {
+      expect(typeof source.platform_id).toBe('string');
+      expect(source.seller_id).toBe(source.platform_id);
+    }
     expect(discovered.map(source => [source.event_source_id, source.managed_by])).toEqual([
       ['nova_web_pixel', 'buyer'],
       [SELLER_MANAGED_PURCHASE_SOURCE_ID, 'seller'],
@@ -114,11 +127,11 @@ describe('seller-managed event sources (training agent)', () => {
 
     expect(mine.map(source => source.event_source_id)).toEqual([SELLER_MANAGED_PURCHASE_SOURCE_ID]);
     expect(theirs.map(source => source.event_source_id)).toEqual(['acme_web_pixel', SELLER_MANAGED_PURCHASE_SOURCE_ID]);
-    const mineSellerId = mine[0]!.seller_id;
-    const theirsSellerId = theirs.find(source => source.managed_by === 'seller')!.seller_id;
-    expect(mineSellerId).not.toBe(theirsSellerId);
+    const minePlatformId = mine[0]!.platform_id;
+    const theirsPlatformId = theirs.find(source => source.managed_by === 'seller')!.platform_id;
+    expect(minePlatformId).not.toBe(theirsPlatformId);
     // Deterministic per account.
-    expect((await discover(server, ACCOUNT))[0]!.seller_id).toBe(mineSellerId);
+    expect((await discover(server, ACCOUNT))[0]!.platform_id).toBe(minePlatformId);
   });
 
   it('refuses a buyer upsert of a seller-managed source id and leaves the source seller-managed', async () => {

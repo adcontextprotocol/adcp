@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import type { TrainingContext } from '../types.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { validateSourceSchema } from '../source-schema.js';
 import { clearAccountStore, handleSyncGovernance } from '../account-handlers.js';
 import { clearIdempotencyCache } from '../idempotency.js';
@@ -34,6 +34,11 @@ import { TrainingCreativePlatform } from '../v6-creative-platform.js';
 import { accountScopeFromRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { GovernanceAgentStub } from '@adcp/sdk/testing';
+import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
+import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import addFormats from 'ajv-formats';
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import {
   clearReportingAccountBindingCacheForTesting,
   reportingMediaBuyCandidateHistoryForTesting,
@@ -41,6 +46,54 @@ import {
 } from '../reporting-reliability.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
+
+// The schema trees the build publishes, and the copies inside them that
+// reuse the $ids of the schemas they project.
+const PUBLISHED_SCHEMAS_DIR = path.resolve('dist/schemas');
+const PUBLISHED_COPY_DIRECTORIES = new Set(['bundled', 'mcp', path.join('core', 'async-response-refs')]);
+const publishedValidators = new Map<string, ValidateFunction>();
+
+/** The newest published release of a served line ("3.2" -> "3.2.8"). */
+function newestPublishedRelease(line: string): string {
+  const pattern = new RegExp(`^${line.replace('.', '\\.')}\\.(\\d+)$`);
+  const patches = readdirSync(PUBLISHED_SCHEMAS_DIR)
+    .map(name => pattern.exec(name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
+  const newest = patches.at(-1);
+  if (!newest) throw new Error(`No published ${line} schema release under ${PUBLISHED_SCHEMAS_DIR}`);
+  return newest[0];
+}
+
+/** Validates a response against the published schema of the release it was served at. */
+function validatePublishedSchema(release: string, relativePath: string, value: unknown): {
+  valid: boolean;
+  errors: ErrorObject[];
+} {
+  let validator = publishedValidators.get(`${release}/${relativePath}`);
+  if (!validator) {
+    const root = path.join(PUBLISHED_SCHEMAS_DIR, release);
+    const ajv = new Ajv({ strict: false });
+    addFormats(ajv);
+    const walk = (relative: string): void => {
+      for (const entry of readdirSync(path.join(root, relative), { withFileTypes: true })) {
+        const child = path.join(relative, entry.name);
+        if (entry.isDirectory()) {
+          if (!PUBLISHED_COPY_DIRECTORIES.has(child)) walk(child);
+        } else if (entry.name.endsWith('.json')) {
+          const schema = JSON.parse(readFileSync(path.join(root, child), 'utf8')) as Record<string, unknown>;
+          if (typeof schema.$id === 'string') ajv.addSchema(schema, schema.$id);
+        }
+      }
+    };
+    walk('');
+    validator = ajv.getSchema(`https://adcontextprotocol.org/schemas/${release}/${relativePath}`);
+    if (!validator) throw new Error(`Published ${release} schema not found: ${relativePath}`);
+    publishedValidators.set(`${release}/${relativePath}`, validator);
+  }
+  const valid = validator(value) === true;
+  return { valid, errors: [...(validator.errors ?? [])] };
+}
 
 const SALES_CURRENT_SCENARIOS = [
   'force_creative_status',
@@ -1956,6 +2009,40 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('keeps the hold scenario on 3.2, withholds the 3.3 sales-fixed-rate id below 3.3, and withdraws both from 3.1 and 3.0 pins', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      type Capabilities = { result?: { structuredContent?: {
+        specialisms?: string[];
+        compliance_testing?: { scenarios?: string[] };
+      } } };
+      const capabilitiesAt = async (id: number, args: Record<string, unknown>) => {
+        const response = await callTenantTool(url, id, 'get_adcp_capabilities', args) as Capabilities;
+        return response.result?.structuredContent;
+      };
+
+      const current = await capabilitiesAt(41, { adcp_version: '3.2' });
+      // `sales-fixed-rate` is a 3.3 enum value; a 3.2 response must not list it.
+      expect(current?.specialisms).not.toContain('sales-fixed-rate');
+      expect(current?.specialisms).toContain('sales-guaranteed');
+      expect(current?.compliance_testing?.scenarios).toContain('force_media_buy_confirmation');
+
+      for (const [id, args] of [
+        [42, { adcp_version: '3.1' }],
+        [43, { adcp_version: '3.0' }],
+      ] as const) {
+        const older = await capabilitiesAt(id, { ...args });
+        expect(older?.specialisms, JSON.stringify(args)).not.toContain('sales-fixed-rate');
+        expect(older?.specialisms, JSON.stringify(args)).toContain('sales-guaranteed');
+        expect(older?.compliance_testing?.scenarios, JSON.stringify(args)).not.toContain('force_media_buy_confirmation');
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('rejects a governed rights acquisition without persisting a grant', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -2185,7 +2272,7 @@ describe('tenant routing smoke', () => {
             media_buy?: {
               features?: { inline_creative_management?: boolean };
               supported_optimization_metrics?: string[];
-              vendor_metric_optimization?: { supported_targets?: string[] };
+              vendor_metric_optimization?: { supported_targets?: string[]; supported_metrics?: Array<{ vendor: { domain: string }; metric_id: string }> };
               conversion_tracking?: { supported_targets?: string[] };
             };
             creative?: {
@@ -2204,10 +2291,15 @@ describe('tenant routing smoke', () => {
       const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
       expect(body.result?.structuredContent?.adcp_version).toBe('3.2');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2']);
+      // The opt-in 3.3 preview (#8181) is advertised last, served to an exact pin only.
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-beta.3']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      // The supported_metrics rollup is a 3.3 field (#8070), withheld from
+      // this 3.2 response (#8487); training-agent-candidate-version.test.ts
+      // covers it on 3.3.
+      expect(mediaBuy?.vendor_metric_optimization).not.toHaveProperty('supported_metrics');
       expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);
@@ -2859,6 +2951,79 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('preserves binding creative format metadata through list_products', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'compact-creative-metadata.example' },
+        operator: 'compact-creative-metadata.example',
+        sandbox: true,
+      };
+      const productId = 'compact_creative_metadata_product';
+      const format = {
+        format_option_id: 'homepage_image', format_kind: 'image',
+        params: { width: 300, height: 250 },
+        technical_requirements_complete: true,
+        tracker_execution_contract: { complete: true, honored: [] },
+        macro_resolution_capabilities: [{
+          dialect: 'adcp', dialect_semantic: 'AD_WIDTH',
+          mapping_status: 'verified_universal', universal_semantic: 'AD_WIDTH',
+          operation: 'resolve_value', performed_by: 'seller',
+          supported_contexts: ['url_query_value'],
+          supported_encodings: [{ kind: 'none', depth: 0 }],
+        }],
+      };
+      const seeded = await callTenantTool(url, 70, 'comply_test_controller', {
+        account, scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: 'Compact creative metadata product', channels: ['display'],
+            delivery_type: 'guaranteed',
+            format_options: [{
+              ...format,
+              v1_format_ref: [{
+                agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image',
+              }],
+              seller_internal_note: 'Never returned on the compact wire.',
+            }],
+          },
+        },
+      }) as { result?: { structuredContent?: { success?: boolean } } };
+      expect(seeded.result?.structuredContent?.success, JSON.stringify(seeded)).toBe(true);
+      await provisionAccount(url, account);
+
+      for (const [index, fields] of [undefined, ['format_options']].entries()) {
+        const listed = await callTenantTool(url, 72 + index, 'list_products', {
+          account, criteria: { product_ids: [productId] }, ...(fields && { fields }),
+        }) as { result?: { structuredContent?: {
+          products?: Array<{ product_id?: string; format_options?: Array<Record<string, unknown>> }>;
+        } } };
+        const result = listed.result?.structuredContent;
+        expect(result?.products, JSON.stringify(listed)).toHaveLength(1);
+        expect(result?.products?.[0].product_id).toBe(productId);
+        expect(result?.products?.[0].format_options).toEqual([format]);
+        // The response is served at the training agent's current line (3.2),
+        // so it is graded against that line's newest published schema, not
+        // the 3.3 source: 3.2's list_products does not compose the protocol
+        // envelope and rejects the `status` the 3.3 source requires, and the
+        // SDK omits `status` for a served 3.2 (adcp-client#3493).
+        const served = (result as { adcp_version?: unknown } | undefined)?.adcp_version;
+        expect(served).toBe(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+        const validation = validatePublishedSchema(
+          newestPublishedRelease(TRAINING_AGENT_CURRENT_ADCP_VERSION),
+          'media-buy/list-products-response.json',
+          result,
+        );
+        expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('serves the AdCP 3.1 dual product shape through the explicit legacy facade', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -3461,10 +3626,14 @@ describe('tenant routing smoke', () => {
         canceled: true,
         cancellation_reason: 'Legacy reporting capture regression',
       }) as {
-        result?: { structuredContent?: { media_buy_status?: string; adcp_error?: unknown } };
+        result?: { structuredContent?: { status?: string; media_buy_status?: string; adcp_error?: unknown } };
       };
       expect(canceled.result?.structuredContent?.adcp_error, JSON.stringify(canceled)).toBeUndefined();
-      expect(canceled.result?.structuredContent?.media_buy_status).toBe('canceled');
+      // Pinned to 3.0, whose update_media_buy response carries the media buy
+      // status as `status`; `media_buy_status` arrived in 3.1. @adcp/sdk
+      // 17.0.0-beta.2 translates to the pinned release.
+      expect(canceled.result?.structuredContent?.status).toBe('canceled');
+      expect(canceled.result?.structuredContent).not.toHaveProperty('media_buy_status');
       await expect(resolveReportingAccountDurably('static:public', account)).resolves.toMatchObject({
         accountId: createdBinding!.accountId,
         account,
@@ -3750,7 +3919,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-beta.3'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
@@ -3845,6 +4014,8 @@ describe('tenant routing smoke', () => {
       expect(scenarios).not.toContain('seed_product');
       expect(scenarios).not.toContain('seed_measurement_catalog');
       expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-dooh');
+      expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-fixed-rate');
+      expect(scenarios).not.toContain('force_media_buy_confirmation');
       expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-broadcast-tv');
       expect(scenarios).not.toContain('query_provenance_audit_observations');
 
@@ -3897,6 +4068,51 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
+
+  // The 3.0 capabilities schema closes compliance_testing.scenarios to six
+  // values. An explicit 3.0 caller on a normal route (not the frozen 3.0
+  // storyboard facade) must not see scenarios added in later releases.
+  it('lists only 3.0 compliance scenarios to explicit 3.0 callers on every tenant route', async () => {
+    const { baseUrl, close } = await bootServer();
+    const validateThreeZero = getCanonicalToolValidator('get_adcp_capabilities', 'sync', { adcpVersion: '3.0' });
+    expect(validateThreeZero).toBeDefined();
+    try {
+      for (const tenant of ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si']) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const body = await callTenantTool(url, 2, 'get_adcp_capabilities', { adcp_version: '3.0' }) as {
+          result?: { structuredContent?: { adcp_version?: string; compliance_testing?: unknown } };
+        };
+        const structured = body.result?.structuredContent;
+        expect(structured?.adcp_version, tenant).toBe('3.0');
+        const valid = validateThreeZero!(structured);
+        expect(valid, `${tenant}: ${JSON.stringify(validateThreeZero!.errors)}`).toBe(true);
+      }
+
+      const salesUrl = `${baseUrl}/sales/mcp`;
+      const threeZero = await callTenantTool(salesUrl, 3, 'get_adcp_capabilities', { adcp_version: '3.0' }) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(threeZero.result?.structuredContent?.compliance_testing?.scenarios)
+        .toEqual(SALES_THREE_ZERO_COMPAT_SCENARIOS);
+
+      // 3.2 accepts any scenario name, so it keeps every scenario the
+      // seller implements.
+      const current = await callTenantTool(salesUrl, 4, 'get_adcp_capabilities', { adcp_version: '3.2' }) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(current.result?.structuredContent?.compliance_testing?.scenarios).toEqual(expect.arrayContaining([
+        ...SALES_CURRENT_SCENARIOS,
+        'force_get_products_arm',
+        'force_upstream_unavailable',
+        'evaluate_distributed_brand_resolution',
+        'reporting_core_lifecycle_probe',
+        'expire_account_change_cursor',
+      ]));
+    } finally {
+      await close();
+    }
+  }, 30000);
 
   it('advertises a schema-valid legacy compliance scenario on the 3.0 signals tenant', async () => {
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
@@ -4048,6 +4264,120 @@ describe('tenant routing smoke', () => {
       expect(updated.result?.structuredContent?.adcp_error).toBeUndefined();
       expect(updated.result?.structuredContent?.errors).toBeUndefined();
       expect(updated.result?.structuredContent?.paused).toBe(true);
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('carries task outcomes outside the envelope status from 3.1 and in it at 3.0', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const governanceUrl = `${baseUrl}/governance/mcp`;
+      const brandUrl = `${baseUrl}/brand/mcp`;
+      await initializeTenant(governanceUrl);
+      await initializeTenant(brandUrl);
+      const structured = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+      const brand = { domain: 'tenant-envelope-status.example' };
+      const planId = 'plan-tenant-envelope-status';
+      const caller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
+        .update('test-token')
+        .digest('hex')
+        .slice(0, 32)}`;
+      const synced = structured(await callTenantTool(governanceUrl, 2, 'sync_plans', {
+        idempotency_key: 'tenant-envelope-status-plan-sync',
+        brand,
+        plans: [{
+          plan_id: planId,
+          brand,
+          objectives: 'Grade the envelope status of governance responses.',
+          budget: { total: 100_000, currency: 'USD', reallocation_threshold: 100_000 },
+          flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+        }],
+      }));
+      expect(synced?.adcp_error, JSON.stringify(synced)).toBeUndefined();
+
+      const check = async (id: number, version?: string) => structured(await callTenantTool(governanceUrl, id, 'check_governance', {
+        idempotency_key: `tenant-envelope-status-check-${id}`,
+        ...(version && { adcp_version: version }),
+        brand,
+        plan_id: planId,
+        caller,
+        target_agent: `${getCanonicalBase()}/sales`,
+        tool: 'create_media_buy',
+        payload: { total_budget: { amount: 1_000, currency: 'USD' } },
+        proposed_commitment: { amount: 1_000, currency: 'USD' },
+      }));
+
+      const current = await check(3);
+      expect(current, JSON.stringify(current)).toMatchObject({ status: 'completed', verdict: 'approved' });
+      const currentValidation = validateSourceSchema('governance/check-governance-response.json', current);
+      expect(currentValidation.valid, JSON.stringify(currentValidation.errors)).toBe(true);
+
+      const reported = structured(await callTenantTool(governanceUrl, 4, 'report_plan_outcome', {
+        idempotency_key: 'tenant-envelope-status-outcome',
+        brand,
+        plan_id: planId,
+        check_id: current!.check_id,
+        governance_context: current!.governance_context,
+        outcome: 'completed',
+        seller_response: { seller_reference: 'mb_envelope_status', committed_budget: 1_000 },
+      }));
+      expect(reported, JSON.stringify(reported)).toMatchObject({ status: 'completed', outcome_state: 'accepted' });
+      const reportedValidation = validateSourceSchema('governance/report-plan-outcome-response.json', reported);
+      expect(reportedValidation.valid, JSON.stringify(reportedValidation.errors)).toBe(true);
+
+      const threeZero = await check(5, '3.0');
+      expect(threeZero, JSON.stringify(threeZero)).toMatchObject({ status: 'approved' });
+
+      // report_plan_outcome at a 3.0 pin carries the outcome state in status,
+      // on the first call and on its idempotent replay.
+      const reportThreeZero = async (id: number) => structured(await callTenantTool(governanceUrl, id, 'report_plan_outcome', {
+        idempotency_key: 'tenant-envelope-status-outcome-3-0',
+        adcp_version: '3.0',
+        brand,
+        plan_id: planId,
+        check_id: threeZero!.check_id,
+        governance_context: threeZero!.governance_context,
+        outcome: 'completed',
+        seller_response: { seller_reference: 'mb_envelope_status_3_0', committed_budget: 1_000 },
+      }));
+      const reportedThreeZero = await reportThreeZero(8);
+      expect(reportedThreeZero, JSON.stringify(reportedThreeZero)).toMatchObject({ status: 'accepted' });
+      const replayedThreeZero = await reportThreeZero(9);
+      expect(replayedThreeZero, JSON.stringify(replayedThreeZero)).toMatchObject({
+        status: 'accepted',
+        outcome_id: reportedThreeZero!.outcome_id,
+        replayed: true,
+      });
+
+      const approval = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'creative_approval', {
+        ...(version && { adcp_version: version }),
+        rights_id: 'janssen_likeness_voice',
+        creative_id: 'cr_envelope_status',
+        creative_url: 'https://cdn.tenant-envelope-status.example/creative.png',
+      }));
+      const approved = await approval(6);
+      expect(approved, JSON.stringify(approved)).toMatchObject({ status: 'completed', approval_status: 'approved' });
+      const approvedValidation = validateSourceSchema('brand/creative-approval-response.json', approved);
+      expect(approvedValidation.valid, JSON.stringify(approvedValidation.errors)).toBe(true);
+      const threeZeroApproval = await approval(7, '3.0');
+      expect(threeZeroApproval, JSON.stringify(threeZeroApproval)).toMatchObject({ status: 'approved' });
+
+      const acquire = async (id: number, version?: string) => structured(await callTenantTool(brandUrl, id, 'acquire_rights', {
+        idempotency_key: `tenant-envelope-status-rights-${id}`,
+        ...(version && { adcp_version: version }),
+        account: { brand: { domain: 'tenant-envelope-rights.example' }, operator: 'tenant-envelope-rights.example' },
+        rights_id: 'janssen_likeness_voice',
+        pricing_option_id: 'monthly_exclusive',
+        buyer: { domain: 'tenant-envelope-rights.example' },
+        campaign: { description: 'Envelope status campaign', uses: ['likeness'] },
+      }));
+      const acquired = await acquire(10);
+      expect(acquired, JSON.stringify(acquired)).toMatchObject({ status: 'completed', rights_status: 'acquired' });
+      const acquiredThreeZero = await acquire(11, '3.0');
+      expect(acquiredThreeZero, JSON.stringify(acquiredThreeZero)).toMatchObject({ status: 'acquired' });
     } finally {
       await close();
     }

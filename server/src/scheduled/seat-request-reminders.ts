@@ -10,7 +10,11 @@ import {
   markAdminReminderSent,
   markMemberTimeoutNotified,
 } from '../db/organization-db.js';
-import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
+import { sendToOrgAdmins } from '../slack/org-group-dm.js';
+import { sanitizeSlackLine } from '../utils/slack-escape.js';
+
+/** Working-group / resource names in an admin group DM. */
+const SLACK_NAME_MAX = 160;
 import { sendDirectMessage } from '../slack/client.js';
 import { query } from '../db/client.js';
 import { getOrgAdminEmails } from '../utils/org-admins.js';
@@ -62,7 +66,7 @@ async function runCheck(workos: WorkOS): Promise<void> {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `Reminder: A team member requested contributor access to join *${escapeSlackMrkdwn(resourceLabel)}* 2 days ago. <${teamUrl}|Review request>`,
+                text: `Reminder: A team member requested contributor access to join *${sanitizeSlackLine(resourceLabel, SLACK_NAME_MAX)}* 2 days ago. <${teamUrl}|Review request>`,
               },
             },
           ],

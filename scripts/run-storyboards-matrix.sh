@@ -252,12 +252,15 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
   TENANTS=(
     # Capability-resolved 3.0.26 replay. N/A storyboards are selection rows,
     # not synthetic clean results, so these floors grade only executed rows.
-    "signals:24:98"
+    # SDK 15.9.5 skips webhook_emission/get_capabilities (http loopback
+    # brand_json_url under the echoed 3.2 schema): one step fewer for
+    # signals, governance and creative.
+    "signals:24:97"
     # SDK 14 beta.12 marks unsigned signing-required functional steps N/A for
     # immutable bundles that predate the functional_dispatch contract.
     "sales:39:219"
-    "governance:27:147"
-    "creative:22:109"
+    "governance:27:146"
+    "creative:22:108"
     "creative-builder:24:112"
     "brand:22:76"
     "si:21:72"
@@ -272,7 +275,7 @@ else
     # validator checks previously skipped. Only subtract those 32 false-coverage
     # steps (115 -> 83, 160 -> 128); retain every clean/other/3.0-compat floor.
     "signals:45:80"
-    "sales:136:669"
+    "sales:136:680"
     "governance:47:128"
     "creative:49:209"
     "creative-builder:50:184"
@@ -316,7 +319,13 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/governance_approved:13:0"
   "media_buy_seller/governance_conditions:12:0"
   "media_buy_seller/governance_denied:11:0"
-  "media_buy_seller/governance_denied_recovery:9:0"
+  "media_buy_seller/governance_denied_recovery:10:0"
+  # Experimental 3.3 account requests: exact counts pin the training agent's
+  # deterministic branches (separate-account refusal, matched, buyer sign-up).
+  "account_requests:36:3"
+  # Experimental 3.3 reporting subscriptions over the sandbox clock.
+  "media_buy_seller/reporting_subscription_coverage:36:1"
+  "media_buy_seller/reporting_subscription_capacity:16:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"

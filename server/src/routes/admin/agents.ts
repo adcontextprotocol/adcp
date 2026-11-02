@@ -232,6 +232,9 @@ export function setupAdminAgentsRoutes(apiRouter: Router): void {
           : null;
       const agentPatch: Partial<AgentConfig> & { url: string } = {
         url: canonicalUrl,
+        // Keep the registered spelling when the identity key folded one
+        // away; authorization matching is spec-exact (#7829, #7830).
+        ...(rawUrl.trim() === canonicalUrl ? {} : { declared_url: rawUrl.trim() }),
         type,
         ...(requestedVisibility !== undefined ? { visibility: requestedVisibility } : {}),
         ...(typeof body.name === 'string' && body.name.trim().length > 0

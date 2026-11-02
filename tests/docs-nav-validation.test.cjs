@@ -708,12 +708,37 @@ test('default snapshot pages retain clean-route aliases', () => {
   const redirectsBySource = new Map(
     docsConfig.redirects.map(redirect => [redirect.source, redirect])
   );
+  // The default snapshot can carry early drafts of a newer line's release story
+  // (whats-new-in-X-Y, X-Y-beta, migration/X-(Y-1)-to-X-Y). Once that line has a
+  // preview in the picker, update-release-docs-nav.mjs points those clean routes
+  // at the preview's copy, which is the current story.
+  const [defaultMajor, defaultMinor] = defaultEntry.version.split('.').map(Number);
+  const previewStoryPages = new Set();
+  for (const entry of navigation.versions) {
+    const match = /^(\d+)\.(\d+)-(?:rc|beta)$/.exec(entry.version);
+    if (!match) continue;
+    const [major, minor] = [Number(match[1]), Number(match[2])];
+    if (major < defaultMajor || (major === defaultMajor && minor <= defaultMinor)) continue;
+    const storyPages = new Set([
+      `reference/whats-new-in-${major}-${minor}`,
+      `reference/${major}-${minor}-beta`,
+      ...(minor > 0 ? [`reference/migration/${major}-${minor - 1}-to-${major}-${minor}`] : []),
+    ]);
+    for (const page of collectPages(entry.groups)) {
+      if (storyPages.has(page.split('/').slice(3).join('/'))) previewStoryPages.add(`/${page}`);
+    }
+  }
   const brokenAliases = [];
 
   for (const page of snapshotPages) {
-    const cleanPath = `/docs/${page.split('/').slice(3).join('/')}`;
+    const relativePage = page.split('/').slice(3).join('/');
+    const cleanPath = `/docs/${relativePage}`;
     const redirect = redirectsBySource.get(cleanPath);
-    if (redirect?.destination !== `/${page}` || redirect.permanent !== false) {
+    const allowedDestination = redirect?.destination === `/${page}` || (
+      previewStoryPages.has(redirect?.destination)
+      && redirect.destination.endsWith(`/${relativePage}`)
+    );
+    if (!allowedDestination || redirect.permanent !== false) {
       brokenAliases.push(`${cleanPath} -> /${page}`);
     }
   }

@@ -13,7 +13,8 @@
  * render time.
  */
 
-import { getComplianceStoryboardById, type ComplianceResult } from '@adcp/sdk/testing';
+import { type ComplianceResult } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from './storyboard-cache.js';
 import { redactForDiagnostics } from '../addie/services/compliance-testing.js';
 import { hostedComplianceOptions, hostedComplianceTarget } from '../services/hosted-compliance-version.js';
 import type { RecordComplianceRunInput, StoryboardSkippedStep } from '../db/compliance-db.js';
@@ -50,7 +51,7 @@ export type StepRequiredToolResolver = (
 export const pinnedStepRequiredTool: StepRequiredToolResolver = (result, storyboardId, phaseId, step) => {
   if (!result.adcp_version) return undefined;
   try {
-    const storyboard = getComplianceStoryboardById(
+    const storyboard = getCachedComplianceStoryboardById(
       storyboardId,
       hostedComplianceOptions(hostedComplianceTarget(result.adcp_version)),
     );

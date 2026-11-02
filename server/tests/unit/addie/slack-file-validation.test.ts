@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createUrlToolHandlers } from '../../../src/addie/mcp/url-tools.js';
+import { DOCS_SCHEMA_RELEASES } from '../../../src/addie/mcp/schema-tools.js';
 
 const fileUrl = 'https://files.slack.com/files-pri/T_TEST-F_UPLOAD/adagents.json';
 const handlers = createUrlToolHandlers('test-bot-token');
@@ -29,6 +30,11 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
+// The release Addie validates a 3.2 document against. The docs snapshot
+// tooling regenerates DOCS_SCHEMA_RELEASES on every patch, so read it rather
+// than hard-coding a version that each snapshot would break.
+const CURRENT_3_2_RELEASE = DOCS_SCHEMA_RELEASES['3.2'];
+
 describe('uploaded adagents.json validation', () => {
   it('validates the whole document against the published schema without copying a truncated preview', async () => {
     uploadedText = JSON.stringify({
@@ -39,13 +45,13 @@ describe('uploaded adagents.json validation', () => {
     const result = await handlers.read_slack_file({ file_url: fileUrl, file_name: 'adagents.json' });
     expect(result).toContain('Complete uploaded adagents.json schema validation');
     expect(result).toContain('✅ **Valid!**');
-    expect(result).toContain('validates successfully against https://adcontextprotocol.org/schemas/3.2.3/adagents.json');
+    expect(result).toContain(`validates successfully against https://adcontextprotocol.org/schemas/${CURRENT_3_2_RELEASE}/adagents.json`);
     expect(result).toContain(`${Buffer.byteLength(uploadedText)} bytes checked`);
     expect(result).toContain('agent endpoint reachability and live publisher authorization were not checked');
     expect(result).not.toContain('Source integrity: unverified');
     expect(result).not.toContain('[Content truncated');
     expect(result.length).toBeLessThan(10_000);
-    expect(schemaRequests).toContain('/schemas/3.2.3/adagents.json');
+    expect(schemaRequests).toContain(`/schemas/${CURRENT_3_2_RELEASE}/adagents.json`);
     expect(fetch).toHaveBeenCalledWith(fileUrl, expect.objectContaining({ headers: { Authorization: 'Bearer test-bot-token' } }));
   });
 

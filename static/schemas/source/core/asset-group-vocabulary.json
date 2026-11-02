@@ -135,7 +135,7 @@
     },
     "cards": {
       "description": "Per-item carousel card array.",
-      "asset_type": "object",
+      "asset_type": "card",
       "typical_use": "Carousel slides on Meta, TikTok, Pinterest, LinkedIn, Reddit. Each card carries its own image/video, headline, and link.",
       "aliases": ["carousel_cards", "slides", "carousel_items", "carousel_slides"]
     },
@@ -294,7 +294,7 @@
     },
     "video_brief": {
       "description": "Structured per-segment generation brief for generative video products.",
-      "asset_type": "object",
+      "asset_type": "video_brief",
       "typical_use": "Generative video products (Veo/Sora/Runway-class). Carries `segments[]` where each entry declares order, duration_ms, prompt, optional voiceover and caption. See /schemas/creative/video-brief.json for the typed structure. Distinct from `creative_brief` (free-form text); `video_brief` is the structured timed-prompt form.",
       "aliases": ["scenes", "storyboard", "shot_brief"]
     },

@@ -1,0 +1,41 @@
+{
+  "name": "Unsigned JSON-RPC body with no method member",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "tier": "hardening",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/jsonrpc",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-neg-025\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-neg-025\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"create_media_buy\",\"input\":{\"idempotency_key\":\"vector-a2a-create-media-buy-0001\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}}}]}}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ],
+    "operation_sources": [
+      "mcp_tools_call",
+      "a2a_invocation_skill"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_body_malformed",
+    "failed_step": 0
+  },
+  "$comment": "A JSON-RPC request has a string method. Without one nothing classifies the body, so it is rejected rather than treated as a request for no operation."
+}

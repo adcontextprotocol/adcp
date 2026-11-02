@@ -185,11 +185,22 @@ export function withSdkSafeTransport<T extends object>(
   options: T,
 ): T & { transport: SdkTransportOptions & { fetchFn: typeof fetch } } {
   const existingTransport = (options as { transport?: SdkTransportOptions }).transport;
+  const signal = (options as { signal?: AbortSignal }).signal;
   return {
     ...options,
     transport: {
       ...existingTransport,
-      fetchFn: sdkSafeFetch,
+      fetchFn: signal ? ((input, init) => {
+        // Some SDK controller/discovery calls omit the run signal. Keep the
+        // hosted overall deadline at the network boundary too, so a late
+        // continuation cannot start another page or mutation after expiry.
+        signal.throwIfAborted();
+        const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+        return sdkSafeFetch(input, {
+          ...init,
+          signal: requestSignal ? AbortSignal.any([signal, requestSignal]) : signal,
+        });
+      }) as typeof fetch : sdkSafeFetch,
     },
   };
 }

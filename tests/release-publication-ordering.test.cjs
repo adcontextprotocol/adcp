@@ -17,6 +17,8 @@ const step = (name) => steps.find((s) => s.name === name);
 const version = "3.2.0-rc.3";
 const rowsPath = "test-vectors/reporting-reconciliation/rows.jsonl";
 const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+// The one stable release the fixture bucket already serves.
+const publishedStable = "3.1.23";
 
 function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   const version = fixtureVersion;
@@ -56,7 +58,58 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     write(`dist/compliance/latest/${rowsPath}`, '{"development":true}\n');
   }
   write("dist/protocol/latest.tgz", "development");
-  for (const script of ["check-release-state.cjs", "backfill-cdn-artifacts.sh"])
+  // Routine deployment rebuilds schemas/index.json and schemas/latest.json
+  // from the version directories the bucket already serves (#8318), so the
+  // fixture needs a discovery source and one published stable release.
+  write(
+    "dist/schemas/index.json",
+    JSON.stringify({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      $id: "https://adcontextprotocol.org/schemas/index.json",
+      title: "AdCP Schema Discovery",
+      description: "Root discovery document.",
+      latest: publishedStable,
+      latest_stable: publishedStable,
+      channel: "stable",
+      aliases: { v3: publishedStable, "v3.1": publishedStable },
+      latest_by_major: { 3: publishedStable },
+      latest_by_minor: { "3.1": publishedStable },
+      versions: [
+        {
+          version: publishedStable,
+          stability: "stable",
+          prerelease: false,
+          deprecated: false,
+          path: `/schemas/${publishedStable}/`,
+          index: `/schemas/${publishedStable}/index.json`,
+        },
+      ],
+    }),
+  );
+  write(
+    "dist/schemas/latest.json",
+    JSON.stringify({ latest: publishedStable, latest_stable: publishedStable }),
+  );
+  write(`bucket/schemas/${publishedStable}/index.json`, '{"release":true}');
+  // The pointer builder refuses to publish without the served copy to compare
+  // against, so the bucket starts with the frozen document deploys never
+  // refreshed.
+  write(
+    'bucket/schemas/index.json',
+    JSON.stringify({
+      latest: publishedStable,
+      latest_stable: publishedStable,
+      aliases: { v3: publishedStable, "v3.1": publishedStable },
+      latest_by_major: { 3: publishedStable },
+      latest_by_minor: { "3.1": publishedStable },
+      versions: [{ version: publishedStable }],
+    }),
+  );
+  for (const script of [
+    "check-release-state.cjs",
+    "backfill-cdn-artifacts.sh",
+    "build-schema-discovery-pointers.cjs",
+  ])
     write(
       `scripts/${script}`,
       fs.readFileSync(path.join(root, "scripts", script)),
@@ -162,9 +215,20 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
       if(fs.existsSync(object)||process.env.PUT_RACE) {console.error('PreconditionFailed');process.exit(1);}
       fs.mkdirSync(path.dirname(object),{recursive:true});fs.copyFileSync(value('--body'),object);log('r2 put '+key);
       if(process.env.ADVANCE_AWS) change();
+    } else if(args[1]==='list-objects-v2') {
+      const prefix=value('--prefix'),base=path.join('bucket',prefix);
+      const entries=fs.existsSync(base)?fs.readdirSync(base,{withFileTypes:true}):[];
+      console.log(JSON.stringify({
+        CommonPrefixes:entries.filter(e=>e.isDirectory()).map(e=>({Prefix:prefix+e.name+'/'})),
+        Contents:entries.filter(e=>e.isFile()).map(e=>({Key:prefix+e.name})),
+      }));
     } else if(args[0]==='s3'&&args[1]==='cp'&&args[2].startsWith('s3://')) {
       fs.copyFileSync(path.join('bucket',args[2].split('/').slice(3).join('/')),args[3]);
     } else if(args[0]==='s3') {
+      if(args[1]==='cp'&&!args.includes('--recursive')) {
+        const dest=path.join('bucket',args[3].split('/').slice(3).join('/'));
+        fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(args[2],dest);
+      }
       log('r2 mutable '+args[3]);if(process.env.ADVANCE_AWS) change();
     } else throw Error('unexpected aws '+args);
   `,
@@ -245,7 +309,23 @@ test("app-only deploy cannot backfill #7507 stable artifacts or #7509 immutable 
       .calls()
       .trim()
       .split("\n")
-      .every((line) => /\/latest(?:\/|\.|$)/.test(line)),
+      .every((line) =>
+        /\/latest(?:\/|\.|$)/.test(line) ||
+        // #8318: the root discovery pointers are mutable, so routine
+        // deployment republishes them. They name only versions the bucket
+        // already serves, so this cannot advertise an unapproved release.
+        /\/schemas\/index\.json$/.test(line),
+      ),
+  );
+  assert.ok(f.calls().includes("r2 mutable s3://test/schemas/index.json"));
+  assert.ok(f.calls().includes("r2 mutable s3://test/schemas/latest.json"));
+  const pointer = JSON.parse(
+    fs.readFileSync(path.join(f.dir, "bucket/schemas/index.json"), "utf8"),
+  );
+  assert.equal(pointer.latest_stable, publishedStable);
+  assert.deepEqual(
+    pointer.versions.map((entry) => entry.version),
+    [publishedStable],
   );
 });
 for (const scenario of [
@@ -648,6 +728,61 @@ test("main advancing during GitHub staging leaves a draft and publishes no R2 ob
   );
   assert.ok(!f.calls().includes("github publish"));
 });
+// A later main commit; the publication checkout stays at the tested commit.
+function laterCommit(f, files) {
+  f.git("checkout", "-q", "-b", "later");
+  for (const [file, body] of Object.entries(files)) f.write(file, body);
+  f.git("add", "--", ...Object.keys(files));
+  f.git("commit", "-qm", "Later main commit");
+  const later = f.git("rev-parse", "HEAD");
+  f.git("checkout", "-q", "--detach", f.head);
+  return later;
+}
+test("an unrelated main advance does not invalidate committed release publication", (t) => {
+  const f = fixture(t);
+  f.write("tag", "");
+  fs.unlinkSync(path.join(f.dir, "release.json"));
+  const later = laterCommit(f, { "server/app.ts": "export {};\n" });
+  const r = f.run(
+    "bash",
+    [
+      "-c",
+      "set -e\n" +
+        step("Require human approval for committed release artifacts").run.replaceAll("${{ steps.release-artifacts.outputs.version }}", version) +
+        "\n" +
+        step("Upload protocol tarball to GitHub Release").run.replaceAll(
+          "${{ steps.release-artifacts.outputs.version }}",
+          version,
+        ),
+    ],
+    { REVIEWS: approval(f.source), ADVANCE_GITHUB: "1", ADVANCE_TO: later },
+  );
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Publication fence accepted origin\/main advance/);
+  assert.ok(f.calls().includes("github publish"));
+  const upload = f.upload(immutable, { ADVANCE_AWS: "1", ADVANCE_TO: later });
+  assert.equal(upload.status, 0, upload.stderr);
+  assert.equal(
+    f.calls().trim().split("\n").filter((c) => c.startsWith("r2 put ")).length,
+    6,
+  );
+  // Generation-time checks and mutable latest publication stay strict.
+  assert.notEqual(f.script("current").status, 0);
+  assert.notEqual(f.script("pending").status, 0);
+  const latest = f.upload(["--latest-only"]);
+  assert.notEqual(latest.status, 0);
+  assert.match(latest.stderr, /Refusing stale tested SHA/);
+});
+test("a main advance that changes the release artifacts still stops R2 publication", (t) => {
+  const f = fixture(t);
+  const later = laterCommit(f, {
+    [`dist/compliance/${version}/index.json`]: '{"changed":true}',
+  });
+  const upload = f.upload(immutable, { ADVANCE_AWS: "1", ADVANCE_TO: later });
+  assert.notEqual(upload.status, 0);
+  assert.match(upload.stderr, /later commits change release paths/);
+  assert.equal(f.calls().trim().split("\n").filter(Boolean).length, 1);
+});
 test("workflow wiring binds tested SHA, approval, exact recovery, and publication order", () => {
   const ds = deploy.jobs.deploy.steps;
   assert.equal(ds.find((s) => s.name === "Checkout").with["fetch-depth"], 0);
@@ -717,6 +852,29 @@ test("workflow wiring binds tested SHA, approval, exact recovery, and publicatio
     step("Detect committed release artifacts").run,
     /check-release-state.cjs recovery/,
   );
+  // Publishing the committed release uses publication-scoped freshness; the
+  // checks before the Changesets path keep the strict exact-head fence.
+  const uploadRun = step("Upload protocol tarball to GitHub Release").run;
+  assert.match(uploadRun, /check-release-state\.cjs publication-current/);
+  assert.doesNotMatch(uploadRun, /check-release-state\.cjs current/);
+  for (const name of [
+    "Require current release branch",
+    "Recheck current release branch after installation",
+  ])
+    assert.equal(step(name).run, "node scripts/check-release-state.cjs current");
+  assert.match(
+    step("Detect committed release artifacts").run,
+    /node scripts\/check-release-state\.cjs current\n/,
+  );
+  const backfill = fs.readFileSync(
+    path.join(root, "scripts/backfill-cdn-artifacts.sh"),
+    "utf8",
+  );
+  assert.match(
+    backfill,
+    /fence_mode=current\nif \[\[ -n "\$release_version" \]\]; then fence_mode=publication-current; fi/,
+  );
+  assert.doesNotMatch(backfill, /node "\$fence_script" current/);
 });
 
 test("#7508: stale sole-parent release omits a later changeset and rewrites rc.3", (t) => {

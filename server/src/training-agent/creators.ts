@@ -4,7 +4,10 @@
  * Each creator is a `kind: channel` collection sold as its own guaranteed
  * flat-rate product. Installments are upcoming sponsored video slots with the
  * material deadlines a creator integration needs (talking points, then script,
- * then a draft cut for review). Audience composition is declared by the
+ * then a draft cut for review). Those slots reach both the legacy
+ * `get_products` Product and, since #8230, the canonical Product the compact
+ * lifecycle reads, where identity is the (collection_ref, installment_id)
+ * tuple alone. Audience composition is declared by the
  * platform itself; see `audienceEvidence` for the evidence shape.
  *
  * Slot and deadline dates are computed once, relative to process start (the

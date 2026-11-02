@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/media-buy-issue.json",
+  "title": "Media Buy Issue",
+  "x-added-in": "3.3.0",
+  "description": "Seller-owned report status, separate from transport task status and MediaBuy revision. Only the seller may acknowledge or resolve it. Reporting never changes delivery or commercial terms.",
+  "type": "object",
+  "properties": {
+    "issue_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy_issue"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "package"
+    },
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "warning"
+      ]
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "malicious_creative",
+        "wrong_creative",
+        "brand_safety",
+        "tracking",
+        "delivery",
+        "other"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "reported",
+        "acknowledged",
+        "resolved"
+      ],
+      "description": "reported is an automated receipt only. acknowledged means a person has taken responsibility. resolved means that person or their team recorded a terminal resolution. A seller may resolve immediately only if it also records human acknowledgement."
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time of human acknowledgement, never an automated receipt."
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolution": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "description": "Buyer-safe resolution summary. Resolution may explain why no seller action was warranted; it does not prove the buyer agreed or waive a dispute."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "issue_id",
+    "media_buy_id",
+    "severity",
+    "category",
+    "description",
+    "status",
+    "received_at"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "reported"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "acknowledged_at"
+              ]
+            },
+            {
+              "required": [
+                "resolved_at"
+              ]
+            },
+            {
+              "required": [
+                "resolution"
+              ]
+            }
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "acknowledged_at"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "resolved"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "resolved_at",
+          "resolution"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "resolved_at"
+              ]
+            },
+            {
+              "required": [
+                "resolution"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "issue_scope": "All identifiers belong to the requested account and media buy. The caller is authorized for that media buy. If both package_id and creative_id are supplied, the creative was associated with that package at the reported incident; removed associations remain reportable.",
+      "lifecycle": "received_at <= acknowledged_at <= resolved_at when present; transitions are reported -> acknowledged -> resolved or reported -> resolved with human acknowledgement. Identity, report content, and received_at are immutable. Status never regresses.",
+      "response_commitment": "A critical report uses the elapsed human-response commitment resolved when received. Later action or policy changes cannot weaken that commitment. An automated receipt is not human acknowledgement."
+    }
+  }
+}

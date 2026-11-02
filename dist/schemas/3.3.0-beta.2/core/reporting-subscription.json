@@ -1,0 +1,356 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/reporting-subscription.json",
+  "title": "Reporting Subscription",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Desired principal-level reporting subscription (experimental, media_buy.reporting_subscriptions): what to deliver, for which of the caller's authorized accounts, and where. Registered through the sync_principal reporting_subscriptions section. The seller resolves the selector per account and product into per-account obligations read through get_reporting_status. Obligations derived from a subscription carry delivery_config_id equal to subscription_id and delivery_config_version equal to subscription_version, so subscription_id values and the caller's sync_accounts delivery_config_id values share one caller-scoped namespace. Registration grants no account authority. On sellers where each operator or advertiser grants its own credential, each credential is its own principal with its own subscriptions.",
+  "type": "object",
+  "properties": {
+    "subscription_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_subscription",
+      "description": "Caller-selected stable key, unique within the authenticated principal and not equal to any delivery_config_id the caller uses on any account with this seller. Never . or .., because it may appear in a destination path."
+    },
+    "subscription_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Caller-selected immutable semantic generation, with its own accepted_at. Increment when the selector, reconciliation_mode, destination, scope, exclude_account_ids, or operator_domains change. active and replace_account_configs change in place. Sellers reject a reused version with different semantic content."
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the subscription creates new obligations. false is a cutover at deactivated_at: periods that started before it remain owed in full, and no later ones are created. The subscription stays readable for history."
+    },
+    "scope": {
+      "type": "object",
+      "description": "Accounts covered. all_authorized_accounts is an explicit acknowledgment, never implicit, and follows the caller's account authority as it changes, including accounts other operators grant later; narrow it with operator_domains when the destination serves one operator. account_ids names specific accounts.",
+      "properties": {
+        "all_authorized_accounts": {
+          "type": "boolean",
+          "const": true
+        },
+        "account_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "account"
+          },
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true
+        }
+      },
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false
+    },
+    "exclude_account_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "account"
+      },
+      "minItems": 1,
+      "maxItems": 1000,
+      "uniqueItems": true,
+      "description": "Accounts opted out of an all_authorized_accounts subscription. Not valid with account_ids scope."
+    },
+    "operator_domains": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+        "maxLength": 253,
+        "x-entity": "operator"
+      },
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "description": "Only accounts whose operator is one of these domains are in scope. Keeps an all-accounts subscription feeding an operator-specific destination from picking up accounts another operator grants later."
+    },
+    "selector": {
+      "type": "object",
+      "description": "Offering attributes that are stable across sellers. The seller resolves the selector separately for each account and its products. An account, buy, or package with no matching offering is excluded with reason offering_unsupported; that never fails the subscription.",
+      "properties": {
+        "feed_purpose": {
+          "type": "string",
+          "enum": [
+            "pacing",
+            "analytics",
+            "billing"
+          ],
+          "description": "Same values as the offering feed_purpose."
+        },
+        "period_duration": {
+          "type": "string",
+          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
+          "maxLength": 64,
+          "description": "ISO 8601 duration matched exactly against the offering's schedule.period_duration."
+        },
+        "required_finality": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/reporting-finality.json"
+        },
+        "alignment": {
+          "type": "string",
+          "enum": [
+            "utc",
+            "account_timezone",
+            "source_timezone",
+            "billing_cycle"
+          ],
+          "description": "Optional: only offerings whose schedule uses this alignment are candidates. Without it, the resolved offering's published alignment governs period boundaries."
+        },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/reporting-dimension.json"
+          },
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "description": "Breakdown in the standard vocabulary. With match exact (the default when present) the offering's dimensions must equal this set; with finest or all they must include it. Omit to match any breakdown."
+        },
+        "match": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "finest",
+            "all"
+          ],
+          "description": "exact selects the offering whose dimension set equals dimensions; native dimensions that do not map to the vocabulary count as distinct, so package by device does not equal package. finest selects the single offering with the most mapped dimensions among those including every selector dimension. Ties under exact and finest go to the lowest offering_id in byte order. all selects every offering including every selector dimension, each with its own obligations. Defaults to exact when dimensions is present and finest when it is absent. With match exact and no dimensions, every candidate qualifies and the lowest offering_id wins. Matching reads each offering's standard_dimensions and unmapped_dimensions. Billing subscriptions SHOULD use exact."
+        },
+        "period_timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "IANA timezone override for period boundaries. Only valid when scope.account_ids names exactly one account. An account_timezone offering matches and uses this zone in place of the account's. A utc offering matches only when this is a UTC alias (UTC or Etc/UTC). A source_timezone or fixed billing_cycle offering matches only when its published period_timezone equals this one. A billing_cycle offering whose anchor the buyer configures never matches a subscription, which has no way to supply the anchor."
+        }
+      },
+      "required": [
+        "feed_purpose",
+        "period_duration",
+        "required_finality"
+      ],
+      "additionalProperties": false
+    },
+    "reconciliation_mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/reporting-reconciliation-mode.json",
+      "description": "Matched against the offering. A billing subscription uses consumer_receipt."
+    },
+    "replace_account_configs": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, ends the caller's own active sync_accounts reporting_delivery_configs with the same feed_purpose on in-scope accounts where this subscription resolves an offering, by cutover, and the subscription takes over. Applied once per subscription_version, or when the flag changes to true. Never affects another principal's configurations or accounts this subscription excludes, and never advances an account's revision."
+    },
+    "destination": {
+      "type": "object",
+      "description": "Managed delivery target. Omit to select only API-delivered (Core) offerings. When present, only offerings whose method matches the destination's pattern and transport match.",
+      "properties": {
+        "destination_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "A destination_id in the caller's principal reporting_destinations. The seller binds the current generation and echoes its destination_ref in state."
+        },
+        "path_template": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^(?!/)(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_.=/{}-]+$",
+          "description": "Relative path under the destination location, without . or .. segments. Placeholders: {account_id}, {subscription_id}, {offering_id}, {period_start}. Each substituted value fills exactly one segment: the seller percent-encodes (RFC 3986) any value containing / or equal to . or .., so no value can add or escape a segment. MUST contain {account_id} when the scope can cover more than one account or another active subscription of the caller shares the destination, and is then required for file_transfer destinations."
+        }
+      },
+      "required": [
+        "destination_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "subscription_id",
+    "subscription_version",
+    "active",
+    "scope",
+    "selector",
+    "reconciliation_mode"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "exclude_account_ids"
+        ]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "required": [
+              "all_authorized_accounts"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "selector": {
+            "required": [
+              "period_timezone"
+            ]
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "required": [
+              "account_ids"
+            ],
+            "properties": {
+              "account_ids": {
+                "maxItems": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "anyOf": [
+              {
+                "required": [
+                  "all_authorized_accounts"
+                ]
+              },
+              {
+                "properties": {
+                  "account_ids": {
+                    "minItems": 2
+                  }
+                },
+                "required": [
+                  "account_ids"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "destination": {
+            "properties": {
+              "path_template": {
+                "pattern": "\\{account_id\\}"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "selector": {
+            "properties": {
+              "feed_purpose": {
+                "const": "billing"
+              }
+            },
+            "required": [
+              "feed_purpose"
+            ]
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      },
+      "then": {
+        "properties": {
+          "selector": {
+            "properties": {
+              "required_finality": {
+                "const": "official"
+              }
+            }
+          },
+          "reconciliation_mode": {
+            "const": "consumer_receipt"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reconciliation_mode": {
+            "const": "consumer_receipt"
+          }
+        },
+        "required": [
+          "reconciliation_mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "destination"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "coverage": "Coverage is computable by the buyer without asking. An account is in coverage while scope (with exclude_account_ids and operator_domains) selects it and the caller is authorized for it: its authorization object, when advertised, lists get_reporting_status in allowed_tasks. Covered buys are the confirmed media buys in that account the caller can see through get_media_buys. For each covered buy and resolved offering, the owed periods are the complete periods of that offering's published schedule (period_timezone overriding its timezone) that start on or after the first boundary at or after the later of this version's accepted_at and the account's authorization.authorized_at, that end after the buy's confirmed_at, and that overlap the buy's flight from start_time to its stop time: the earliest of end_time, cancellation.canceled_at, and completed_at. Flight values are evaluated at each period's scope_resolved_at, so an extension adds only unresolved periods and an elapsed period never becomes owed retroactively. The period in which the buy is confirmed is owed in full, as the account-level ledger includes a buy confirmed by a period's end, and so is the period containing the stop time; periods are never clipped. A flight whose stop time is at or before its start_time, such as a buy canceled before it starts, overlaps no period and owes nothing. The seller reports only exceptions, each removing periods; none adds one. For subscription obligations, scope_resolved_at is the period end. Authorization is evaluated as a chain: a re-grant before unauthorized_at plus status_retention_days continues the earlier grant, so authorized_at stays at the chain's first grant and withheld periods stay owed; a later re-grant starts a new chain at the re-grant. Reactivating an inactive subscription is a fresh start: the deactivation is a cutover with no incoming schedule, nothing that starts during the inactive interval is owed, and coverage resumes at the first boundary at or after the reactivation instant listed in inactive_intervals.",
+    "cutover": "Every change effective at instant T that hands periods from an outgoing schedule to an incoming one uses one rule: the outgoing schedule owes its periods that start before T, in full; let E be the end of the last of them (E is T when T is an outgoing boundary); the incoming schedule owes its periods that start at or after E. Nothing is owed twice. When the incoming schedule has no boundary at E, the stretch from E to its first boundary after E is owed under neither; it is shorter than one incoming period and is empty when both schedules share boundaries (same alignment and timezone, nested durations). This applies to version changes (for accounts in both versions; T is the new accepted_at), deactivation (no incoming schedule), overrides and replace_account_configs (the caller's configuration and the subscription, either direction), resolution changes, and account timezone changes. When the outgoing and incoming sides resolve different offerings (match all, or a resolution change), E is computed per incoming offering: when the offering continues across T, E is the end of its own last outgoing period that starts before T; otherwise E is the latest such end across the outgoing offerings. An incoming side with no outgoing predecessor, or whose predecessor resolved nothing, starts at T under the ordinary start rule. Exception from and until values are such E instants.",
+    "precedence": "Per account and feed_purpose, precedence is caller-scoped. During 3.x the caller's own active sync_accounts reporting_delivery_configs entry for the account replaces every subscription of that caller; otherwise the caller's active account_ids subscription naming the account replaces its all_authorized_accounts subscription. Another principal's configurations and subscriptions never affect this one, and overridden_by never names them. A caller never receives two feeds for the same account and feed_purpose.",
+    "selection": "The seller maps each offering's report definition dimensions onto the standard vocabulary and publishes the result on the offering as standard_dimensions, with any native dimensions it cannot map as unmapped_dimensions, so the buyer resolves match from the wire. An offering is a candidate when feed_purpose, period_duration, reconciliation_mode, required_finality (in supported_finality), and a present alignment match, a present destination matches its method, and the product lists it in reporting_delivery_offering_ids. match then applies. Each (buy, resolved offering) pair is owed its own periods. When some of a buy's packages resolve and others do not, the buy is covered for the resolved ones and carries an offering_unsupported exception naming the uncovered package_ids. The resolved offering_id and report_definition_id appear on each obligation and govern its timing. A resolution change is a cutover (see cutover).",
+    "replace_account_configs": "On the request that first applies a subscription_version with replace_account_configs true, or that changes the flag to true, the seller sets each matching configuration of the same caller to active false, cut over at that request (the configuration outgoing, the subscription incoming); sync_accounts and list_accounts readback show it, and the subscription's overridden exception ends at the cutover. A later sync_accounts entry takes precedence again. Subscription writes, including these deactivations, are caller configuration, not account changes: they never advance the account's revision or conflict with an in-review request_account change. Not applied on dry_run.",
+    "destination": "destination_id MUST name a destination present in the caller's reporting_destinations after the same request applies; otherwise the whole request fails. When more than one active subscription of the caller shares a destination, every path_template MUST contain {account_id} and the templates MUST differ. Destination proof establishes where data may go, never which account data the caller may receive: every delivery re-checks account authority. Every delivered row carries account_id."
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Daily official analytics for every authorized account, partitioned by account",
+      "data": {
+        "subscription_id": "analytics-daily",
+        "subscription_version": 1,
+        "active": true,
+        "scope": {
+          "all_authorized_accounts": true
+        },
+        "selector": {
+          "feed_purpose": "analytics",
+          "period_duration": "P1D",
+          "required_finality": "official",
+          "dimensions": [
+            "package",
+            "creative"
+          ],
+          "match": "exact"
+        },
+        "reconciliation_mode": "delivery_only",
+        "destination": {
+          "destination_id": "reporting-archive",
+          "path_template": "analytics/{account_id}/{period_start}"
+        }
+      }
+    }
+  ]
+}

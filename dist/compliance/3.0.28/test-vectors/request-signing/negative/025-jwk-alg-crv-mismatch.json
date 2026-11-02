@@ -1,0 +1,43 @@
+{
+  "name": "JWK declares alg=EdDSA but crv=P-256 (parameter-mismatch on presented key)",
+  "spec_reference": "#verifier-checklist-requests step 8 (key-purpose + parameter consistency; RFC 8037 binds alg=EdDSA to OKP key types, not EC)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-alg-crv-mismatch-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_override": {
+    "keys": [
+      {
+        "$comment": "Malformed JWK: alg=EdDSA is valid only for kty=OKP with crv=Ed25519 or crv=Ed448 (RFC 8037 §3.1). This JWK declares alg=EdDSA with kty=EC and crv=P-256, which is an impossible combination. Key material is the real Ed25519 public key bytes from test-ed25519-2026 so the failure MUST land on parameter consistency, not on some unrelated key-material defect. Verifier MUST reject at step 8 with request_signature_key_purpose_invalid — 'key purpose' encompasses both adcp_use scoping and the fundamental alg/kty/crv consistency that makes a JWK usable at all.",
+        "kid": "test-alg-crv-mismatch-2026",
+        "kty": "EC",
+        "crv": "P-256",
+        "alg": "EdDSA",
+        "use": "sig",
+        "key_ops": ["verify"],
+        "adcp_use": "request-signing",
+        "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo"
+      }
+    ]
+  },
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_key_purpose_invalid",
+    "failed_step": 8
+  },
+  "$comment": "Parameter-consistency check on the resolved JWK. A lenient verifier that picks alg from the sig-params and ignores the JWK's declared alg/crv would proceed to step 10 and reject with request_signature_invalid — a DIFFERENT (and less informative) error code. Per README 'Conformance expectations' §1, error-code mismatch is non-conformant even when the rejection lands at a different step. Uses jwks_override rather than a new keys.json entry because this key shape is deliberately malformed — polluting the canonical keys.json with impossible key parameters would risk other vectors inheriting the malformed shape through a bug."
+}

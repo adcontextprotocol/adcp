@@ -1,0 +1,74 @@
+---
+title: AdCP 3.2 prerelease history
+sidebarTitle: 3.2 prerelease history
+description: "Archive of the AdCP 3.2 beta and release-candidate checkpoints: artifact versions, wire pins, SDK pairings, and changes from RC.7 to 3.2.1."
+"og:title": "AdCP — 3.2 prerelease history"
+---
+
+# AdCP 3.2 prerelease history
+
+<Info>
+**AdCP 3.2 is generally available** as release `3.2.1` (published 2026-09-30), wire pin `"3.2"`. The number `3.2.0` was never released. Move integrations pinned to a 3.2 beta or RC to `"3.2"` and to the stable SDKs: TypeScript `@adcp/sdk@14.0.0` and Python `adcp==8.0.0`. Start with [What's new in AdCP 3.2](/dist/docs/3.0.27/reference/whats-new-in-3-2) and [Migrating from 3.1 to 3.2](/dist/docs/3.0.27/reference/migration/3-1-to-3-2).
+</Info>
+
+This page is the record of the 3.2 prerelease cycle. Every prerelease remains an immutable, signed checkpoint, so adopters who pinned one can still reproduce and debug their results.
+
+## Changes between RC.7 and 3.2.1
+
+Adopters moving from `3.2.0-rc.7` to `3.2.1` should check these changes, which landed during the GA freeze:
+
+- **Seller-optimized budgets.** `media_buy.features.seller_optimized_budget` now covers only the core shared-budget contract and media-buy pacing. Package budget caps, minimum-spend targets, and package pacing need `seller_optimized_package_budgets`, `seller_optimized_min_spend_targets`, and `seller_optimized_package_pacing`. An RC seller that declared the parent and honors those controls must add the matching sub-capabilities, or buyers' requests carrying them are rejected with `UNSUPPORTED_FEATURE`. Core sellers must accept omitted or `even` pacing and may reject `asap` or `front_loaded`.
+- **Delivery reporting timezone.** `get_media_buy_delivery` dates and `daily_breakdown[].date` are calendar dates in the products' `reporting_capabilities.timezone`, with the optional `reporting_period.timezone` echo. RC wording required exact UTC day boundaries. A dated or windowed (`time_granularity`) request spanning more than one reporting timezone is rejected with `VALIDATION_ERROR`.
+- **Account change feed.** `list_account_changes` is now experimental (`account.change_feed`). Sellers implementing it list `account.change_feed` in `experimental_features`.
+- **`views` goal definition.** The optimization-goal `views` metric now matches delivery metrics (content views toward the billable view threshold), not viewable impressions. Use `viewable_rate` for viewability.
+- **Conformance.** 27 new content-digest-covered request-signing vectors under `test-vectors/request-signing/profile-3.2/`, a restructured `seller_optimized_budget` storyboard (1.1.0) with two new scenarios, and storyboard fixes for `reporting_core`, `get_creative_features_idempotency`, non-guaranteed sellers, and cross-phase generated IDs.
+
+## Checkpoints
+
+| Checkpoint | Added | SDK pairing |
+|---|---|---|
+| `3.2.0-beta.0` | Canonical schemas, compliance assets, skills, and protocol manifest for SDK implementation | Not SDK-backed |
+| `3.2.0-beta.1` – `beta.3` | Integration-correction checkpoints | — |
+| `3.2.0-beta.4` | Flexible-window availability, outcome-target reverse forecasting, and availability conformance | — |
+| `3.2.0-beta.5` | Cross-transport async identity and convergence, policy-backed creative rejection, outcome-target conformance | TypeScript `14.0.0-beta.7`, Python `8.0.0b7` |
+| `3.2.0-beta.6` | Reporting negotiation and breakdowns, CTV experience profiles, premium display canonicals, A2A request-signing method names | TypeScript `14.0.0-beta.13`, Python `8.0.0b9` |
+| `3.2.0-beta.7` | Audience activation and external sources, creative delivery and tracker execution, static OOH and radio measurement, viewed-seconds distributions | — |
+| `3.2.0-beta.8` | Metric-container subsumption conformance and corrected documentation snapshots | — |
+| `3.2.0-beta.9` | Account change feed, inventory-list receipts, inventory delivery identity, seller policy and change rights | — |
+| `3.2.0-beta.10` | Managed reporting delivery, authenticated principals, audio VAST and DOOH, programmed channel collections, committed collection selection | TypeScript `14.0.0-beta.28`, Python `8.0.0b11` |
+| `3.2.0-beta.11` | `get_principal` in the MCP media-buy role profile | TypeScript `14.0.0-beta.29`, Python `8.0.0b12` |
+| `3.2.0-rc.0` | First release candidate; reporting lifecycle conformance | TypeScript `14.0.0-beta.31`, Python `8.0.0b13` |
+| `3.2.0-rc.1` | Reliable Reporting 1.0; delivery currency, aggregate reach, and vendor-metric hardening | TypeScript RC.35, Python `8.0.0b14`, Go `adcp/v3@v3.2.1` |
+| `3.2.0-rc.2` | Opt-in `sync_reporting_status`, buyer and orchestrator storyboards, breakdown cursor pagination | No SDK embeds it |
+| `3.2.0-rc.3` | Consumer-status hardening, MediaBuy-level `frequency_cap`, request-only targeting with `null`-clear | TypeScript RC.40, Python `8.0.0b15` |
+| `3.2.0-rc.4` | Anonymous discovery declarations, required `recovery` on 3.2 errors, `sync_accounts` account echo, supply-path vectors | TypeScript RC.44 |
+| `3.2.0-rc.5` | Not published; the release process withheld it | — |
+| `3.2.0-rc.6` | Shared MediaBuy `name`, seller-policy decline reasons, request-signing error vocabulary, three sales specialisms, waiver reconciliation | TypeScript RC.48 |
+| `3.2.0-rc.7` | `viewable_rate` goal with viewability `standard` and `vendor`; deprecated `account` on media-buy `list_creative_formats` | TypeScript `14.0.0-rc.49` and `rc.50`, Python `8.0.0b18` |
+
+TypeScript "RC.N" means `@adcp/sdk@14.0.0-rc.N`. Go module versions are not AdCP versions: `adcp/v3@v3.2.1` embeds `3.2.0-rc.1` schemas and is not AdCP 3.2.1.
+
+## Version strings
+
+The artifact version, wire pin, and documentation selector are related but not interchangeable:
+
+| Surface | Betas | Release candidates | GA |
+|---|---|---|---|
+| Protocol artifact | `3.2.0-beta.N` | `3.2.0-rc.N` | `3.2.1` |
+| Git tag | `v3.2.0-beta.N` | `v3.2.0-rc.N` | `v3.2.1` |
+| `adcp_version` wire pin | `"3.2-beta.N"` | `"3.2-rc.N"` | `"3.2"` |
+| Documentation selector | `3.2-beta` (frozen at beta.11) | `3.2-rc` | `3.2` |
+
+Prerelease pins are exact. A buyer pinned to `"3.2-rc.7"` never silently negotiates to another prerelease, and a stable `"3.2"` pin never resolves onto a prerelease. A peer that still advertises only a prerelease pin must move to `"3.2"` before stable 3.2 buyers can reach it. If you keep running a pinned prerelease compliance bundle for regression evidence, run it against a staging endpoint. Do not weaken production authentication to accommodate a prerelease runner.
+
+## Artifact retention
+
+Release-candidate and stable artifacts are never retired. Superseded 3.x beta artifacts were retired from the repository and runtime image on 2026-09-14; only the `3.2.0-beta.11` schema bundle stays hosted, backing the frozen `3.2-beta` documentation snapshot. Earlier beta URLs resolve from the artifact CDN on a best-effort basis. The prerelease documentation snapshots stay reachable by URL after their selectors leave the version picker.
+
+## Related
+
+- [What's new in AdCP 3.2](/dist/docs/3.0.27/reference/whats-new-in-3-2)
+- [Migrating from 3.1 to 3.2](/dist/docs/3.0.27/reference/migration/3-1-to-3-2)
+- [Release Notes](/dist/docs/3.0.27/reference/release-notes#version-3-2-1)
+- [Versions & Compatibility](/dist/docs/3.0.27/reference/versions)
+- [Choose your SDK](/dist/docs/3.0.27/building/by-layer/L4/choose-your-sdk)

@@ -100,6 +100,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           media_buy_id: "does-not-exist-invalid-transitions-v1"
           paused: true
           idempotency_key: "$generate:uuid_v4#update_unknown_media_buy"
@@ -139,14 +140,13 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_invalid_transitions_setup_get_products_brief"
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight."
-          filters:
-            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -156,8 +156,8 @@ phases:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "Product exposes a selectable pricing option; auction and fixed pricing are both valid"
 
       - id: create_buy
         title: "Create a buy for the error probes"
@@ -179,6 +179,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#invalid_transitions_create_buy"
           start_time: "asap"
           end_time: "2099-08-31T23:59:59Z"
@@ -231,6 +232,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           idempotency_key: "$generate:uuid_v4#update_unknown_package"
           packages:
@@ -277,6 +279,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Testing NOT_CANCELLABLE on re-cancel"
@@ -310,6 +313,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Deliberate re-cancel to force NOT_CANCELLABLE"

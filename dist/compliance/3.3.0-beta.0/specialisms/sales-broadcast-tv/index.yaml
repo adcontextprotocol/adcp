@@ -1,0 +1,1853 @@
+id: sales_broadcast_tv
+version: "1.1.0"
+title: "Broadcast linear TV seller agent"
+protocol: media-buy
+category: sales_broadcast_tv
+summary: "Seller agent for broadcast linear TV inventory: an intentional, authorized transaction on :15/:30 spots, either a guaranteed CPM- or CPP-on-demo upfront buy or a fixed-price, seller-approved, non-guaranteed scatter buy, under agreed measurement terms, with plan-to-as-run spot evidence where declared and reconciliation kept separate from airing evidence."
+track: media_buy
+requires:
+  - controller
+
+required_tools:
+  - get_products
+  - create_media_buy
+requires_scenarios:
+  - media_buy_seller/refine_products
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/measurement_terms_accepted
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/inventory_list_targeting
+  - media_buy_seller/inventory_list_no_match
+  - media_buy_seller/invalid_transitions
+  - governance_aware_seller/governance_multi_agent_rejected
+
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. active → pending_creatives on a media_buy.
+invariants:
+  - status.monotonic
+
+narrative: |
+  You run a broadcast television platform — a local TV station group, network affiliate,
+  or television rep firm that sells linear advertising inventory. A buyer agent connects
+  to discover your programs and dayparts, agree commercial and measurement terms,
+  place an authorized buy, and reconcile what aired against what was bought.
+
+  A passing run is portable onboarding evidence: it shows the agent can complete one
+  intentional, authorized TV transaction under agreed terms. Linear TV is sold two ways,
+  and the storyboard grades both. A seller earns the badge by completing at least one of
+  the two paths; it is not failed for the path it does not sell.
+
+  - Guaranteed. An upfront buy with a delivery guarantee on a named demographic, priced
+    per thousand impressions (cpm) or per rating point (cpp), reconciled on the agreed
+    guarantee-basis window. The buyer negotiates the measurement terms, and the seller
+    commits to a level of delivery.
+  - Non-guaranteed, fixed price. A scatter or spot buy at a published rate the seller sets,
+    which the seller may approve before it commits. There is no reserved inventory,
+    no delivery commitment, and no auction or bid. CPM or CPP prices or evaluates the spot;
+    it never implies a bid. The measurement terms evaluate delivery rather than guarantee it.
+
+  Both paths share discovery: products are linear_tv inventory sold as :15 and :30
+  hosted-video spots, each declaring a demo-priced option (cpm or cpp), a forecast on a
+  named demographic with the measurement source that produced it, and the measurement
+  windows (Live, C3, C7) that mature after airing. Each path then walks the transaction.
+
+  1. Agreed terms (guaranteed). The buyer proposes billing measurement terms: the
+     currency vendor, the window the guarantee is reconciled against, and a variance
+     tolerance. A seller that cannot honor the proposal answers TERMS_REJECTED, and the
+     buyer corrects and resubmits. Terms are agreed before any money is committed.
+  2. Authorized buy. The buyer places create_media_buy. Where the seller declares
+     request signing for an operation (request_signing.required_for or supported_for),
+     the runner signs that request under the shared functional-signing contract, so a
+     signing seller proves it accepts the signed path. Nothing in this storyboard asserts
+     that a signature was sent; signature verification itself is graded by the
+     signed_requests storyboard. Governance posture is graded separately by the
+     governance_aware_seller scenario listed above. On the fixed-price path a seller that
+     approves buys before committing may hold the buy for review; that optional step runs
+     only when the seller advertises the force_media_buy_confirmation controller scenario.
+  3. Plan to as-run. Where the seller declares the experimental media_buy.spot_lifecycle
+     feature, a buyer reads one spot_id from a scheduled row through aired, preempted,
+     and makegood rows, with break position where the product declares it. Sellers
+     that do not declare the feature skip this phase; today's conformant sellers are
+     not failed for omitting it.
+  4. Reconciliation. Audience delivery rows carry measurement_source, measurement_window
+     and is_final, and are read separately from as-run airing evidence. A Live or C3
+     read is provisional. Only the agreed window, marked is_final, is billable.
+
+  Broadcast pricing is impression- or rating-based on a named demographic, as in digital
+  CPM buying, and a fixed_price option is a rate, never a bid. What differs is how the
+  audience is counted: measurement accumulates over time through Live, C3, and C7
+  windows as DVR playback is counted, and the airing itself (a spot at a time in a
+  break) is separate evidence from the audience estimate attached to it. Creative assets
+  are broadcast-grade video files identified by Ad-ID, with no VAST wrappers, impression
+  trackers, or click URLs.
+
+  Delivery data arrives on a delay. Live ratings are available within a day, but C3 and
+  C7 data take 4 and 8 days respectively after broadcast. Final reconciliation happens
+  against C7 numbers, which means billing data is not complete until ~15 days after the
+  last air date.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - supports_guaranteed
+    - supports_non_guaranteed
+  examples:
+    - "Local TV station groups"
+    - "Broadcast network affiliates"
+    - "Television rep firms"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency"
+
+prerequisites:
+  description: |
+    The caller needs an established account relationship with the seller. The test
+    kit provides the Nova Motors Volta EV launch campaign — an automotive brand with
+    national broadcast reach goals and budget appropriate for primetime linear TV.
+    The controller seeds two guaranteed linear_tv products: a primetime :30 and a late
+    fringe :15, both CPM-priced with a guaranteed forecast on adults 25-54, and one
+    non-guaranteed scatter product at a fixed CPM with an estimated forecast on the same
+    demographic. A seller seeds the products it sells and completes the matching path.
+  test_kit: "test-kits/nova-motors.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_sales_broadcast_tv_nova_motors"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "broadcast-tv.pinnacle-agency.example"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: "primetime_30s_mf"
+      delivery_type: "guaranteed"
+      channels: ["linear_tv"]
+      format_options:
+        - format_option_id: "broadcast_spot_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+      forecast:
+        method: "guaranteed"
+        currency: "USD"
+        demographic_system: "nielsen"
+        demographic: "A25-54"
+        measurement_source: "summit_measurement"
+        points:
+          - budget: 280000
+            metrics:
+              measured_impressions:
+                mid: 10000000
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 1440
+        timezone: "America/New_York"
+        supports_webhooks: true
+        available_metrics: ["impressions", "spend", "grps", "plays"]
+        date_range_support: "date_range"
+        measurement_windows:
+          - window_id: "live"
+            description: "Live viewing only"
+            duration_days: 0
+            expected_availability_days: 1
+            is_guarantee_basis: false
+          - window_id: "c3"
+            description: "Live plus 3 days of time-shifted viewing"
+            duration_days: 3
+            expected_availability_days: 4
+            is_guarantee_basis: false
+          - window_id: "c7"
+            description: "Live plus 7 days of time-shifted viewing"
+            duration_days: 7
+            expected_availability_days: 8
+            is_guarantee_basis: true
+    - product_id: "late_fringe_15s_mf"
+      delivery_type: "guaranteed"
+      channels: ["linear_tv"]
+      format_options:
+        - format_option_id: "broadcast_spot_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
+      forecast:
+        method: "guaranteed"
+        currency: "USD"
+        demographic_system: "nielsen"
+        demographic: "A25-54"
+        measurement_source: "summit_measurement"
+        points:
+          - budget: 120000
+            metrics:
+              measured_impressions:
+                mid: 10000000
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 1440
+        timezone: "America/New_York"
+        supports_webhooks: true
+        available_metrics: ["impressions", "spend", "grps", "plays"]
+        date_range_support: "date_range"
+        measurement_windows:
+          - window_id: "live"
+            description: "Live viewing only"
+            duration_days: 0
+            expected_availability_days: 1
+            is_guarantee_basis: false
+          - window_id: "c3"
+            description: "Live plus 3 days of time-shifted viewing"
+            duration_days: 3
+            expected_availability_days: 4
+            is_guarantee_basis: false
+          - window_id: "c7"
+            description: "Live plus 7 days of time-shifted viewing"
+            duration_days: 7
+            expected_availability_days: 8
+            is_guarantee_basis: true
+    - product_id: "scatter_rotator_fr"
+      delivery_type: "non_guaranteed"
+      channels: ["linear_tv"]
+      format_options:
+        - format_option_id: "broadcast_spot_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+        - format_option_id: "broadcast_spot_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
+      forecast:
+        method: "estimate"
+        currency: "USD"
+        demographic_system: "nielsen"
+        demographic: "A25-54"
+        measurement_source: "summit_measurement"
+        points:
+          - budget: 22000
+            metrics:
+              measured_impressions:
+                mid: 1000000
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 1440
+        timezone: "America/New_York"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+        measurement_windows:
+          - window_id: "live"
+            description: "Live viewing only"
+            duration_days: 0
+            expected_availability_days: 1
+            is_guarantee_basis: false
+          - window_id: "c7"
+            description: "Live plus 7 days of time-shifted viewing"
+            duration_days: 7
+            expected_availability_days: 8
+            is_guarantee_basis: false
+  pricing_options:
+    - product_id: "primetime_30s_mf"
+      pricing_option_id: "cpm_primetime_30"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 28.0
+    - product_id: "late_fringe_15s_mf"
+      pricing_option_id: "cpm_fringe_15"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+    - product_id: "scatter_rotator_fr"
+      pricing_option_id: "cpm_scatter_fixed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 22.0
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before sending briefs or creating buys.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "sales_broadcast_tv--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-broadcast-tv"
+            description: "Agent declares sales-broadcast-tv specialism"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_broadcast_tv--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: product_discovery
+    title: "Product discovery"
+    narrative: |
+      The buyer sends a brief describing what they want to buy on linear TV. The seller
+      interprets the brief against their program schedule, ratings estimates, and
+      available inventory to return linear_tv products in :15 and :30 spot lengths.
+
+      Each product states what is being sold (a hosted-video spot of a fixed length),
+      how it is priced (CPM per thousand impressions, or CPP per rating point, at a fixed
+      rate the seller sets), the demographic its forecast is stated on and the measurement
+      source that produced it, and how the audience count matures (Live, C3, and C7
+      measurement windows). A guaranteed product's forecast is a commitment; a
+      non-guaranteed product's is an estimate. The buyer uses the windows to decide which
+      one the billing measurement terms reconcile against.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a broadcast brief"
+        narrative: |
+          The buyer describes their linear TV goals in natural language, including the
+          demographic the campaign is bought against. The seller returns products
+          representing available dayparts and programs.
+
+          The products carry the commercial facts the rest of the transaction depends
+          on: CPM or CPP pricing, :15 and :30 hosted-video format options, a guaranteed
+          forecast naming the demographic system, demographic and measurement source,
+          and measurement windows with one marked as the guarantee basis. Live ratings
+          arrive within a day. C3 (live + 3 days of DVR) arrives ~4 days after
+          broadcast. C7 (live + 7 days of DVR) arrives ~8 days after broadcast.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products matching the brief. Each product should include:
+          - product_id: unique identifier for the daypart or program package
+          - name: descriptive name (e.g., "Primetime :30 — M-F 8-11pm")
+          - channels: includes linear_tv
+          - delivery_type: guaranteed for upfront demo guarantees, non_guaranteed for fixed-rate scatter
+          - pricing_options: a cpm or cpp option at a fixed rate on the forecast demographic
+          - forecast: method guaranteed (upfront) or estimate (scatter), with
+            demographic_system, demographic and measurement_source, and measured_impressions
+            on the forecast points
+          - format_options: hosted-video declarations for :15 and :30 spots
+          - reporting_capabilities with measurement_windows:
+            - live: real-time linear viewing, available within 24 hours
+            - c3: live + 3 days DVR playback, available ~4 days after air
+            - c7: live + 7 days DVR playback, available ~8 days after air
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_product_discovery_get_products_brief"
+          buying_mode: "brief"
+          brief: "Primetime and late fringe broadcast spots for an automotive EV launch. Q4 flight, $400K budget. Buy CPM against adults 25-54, national footprint. Need :30 and :15 spot lengths."
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+
+          context:
+            correlation_id: "sales_broadcast_tv--get_products_brief"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+          - check: field_present
+            path: "products[0].delivery_type"
+            description: "Each product declares guaranteed delivery"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_broadcast_tv--get_products_brief"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "products[0].format_options"
+            description: "Products include canonical format_options for creative requirements"
+          - check: field_present
+            path: "products[0].format_options[0].format_kind"
+            description: "Canonical format options include a format_kind discriminator"
+          - check: field_present
+            path: "products[0].format_options[0].format_option_id"
+            description: "Canonical format options include a stable ID accepted by sync_creatives"
+          - check: field_contains
+            path: "products[*].channels[*]"
+            value: "linear_tv"
+            description: "Products are sold on the linear_tv channel"
+          - check: field_contains
+            path: "products[*].format_options[*].params.duration_ms_exact"
+            value: 30000
+            description: "A :30 hosted-video spot is offered"
+          - check: field_contains
+            path: "products[*].format_options[*].params.duration_ms_exact"
+            value: 15000
+            description: "A :15 hosted-video spot is offered"
+          - check: field_contains
+            path: "products[*].pricing_options[*].pricing_model"
+            value: "cpm"
+            allowed_values: ["cpm", "cpp"]
+            description: "Spots carry a demo-priced option: cpm (per thousand impressions) or cpp (per rating point) on the forecast demographic"
+          - check: field_contains
+            path: "products[*].forecast.demographic"
+            value: "A25-54"
+            description: "The forecast names the demographic it is stated on"
+          - check: field_contains
+            path: "products[*].forecast.demographic_system"
+            value: "nielsen"
+            description: "The forecast names the demographic notation, so buyer and seller read the demo the same way"
+          - id: forecast_measurement_source
+            check: field_contains
+            path: "products[*].forecast.measurement_source"
+            value: "summit_measurement"
+            severity: advisory
+            permanent_advisory:
+              reason: "The forecast schema says measurement_source should be present when measured_impressions is used, not must, so sellers that omit it are not failed."
+            description: "The forecast names the measurement source whose currency produced it"
+          - check: field_contains
+            path: "products[*].reporting_capabilities.measurement_windows[*].window_id"
+            value: "c7"
+            description: "A C7 measurement window is declared as a guarantee basis candidate"
+  - id: agreed_terms
+    title: "Guaranteed path: agree measurement terms"
+    optional: true
+    depends_on: [product_discovery]
+    narrative: |
+      This phase and the guaranteed buy, creative, delivery and reconciliation phases that
+      follow are the guaranteed path. A seller that sells only fixed-price, non-guaranteed
+      spots completes the other path instead and is not failed here.
+
+      Before committing money the buyer proposes the measurement terms the guarantee
+      is reconciled against: the currency vendor whose count governs billing, the
+      measurement window, and the variance tolerance between the vendor's count and
+      the seller's own.
+
+      Terms are negotiated, not assumed. A seller that cannot honor a proposal returns
+      TERMS_REJECTED with a correctable error, and the buyer resubmits. This phase
+      proves the rejection half; the accepted terms are sent on the buy in the next
+      phase. The seller is not required to accept a different configuration here.
+
+    steps:
+      - id: get_guaranteed_products
+        title: "Request guaranteed products"
+        narrative: |
+          The buyer filters discovery to guaranteed delivery. Every product that comes back
+          commits the seller to a level of delivery, and its forecast says so: method
+          guaranteed on a named demographic, counted by a named measurement source.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          Return guaranteed linear_tv products whose forecast has method guaranteed. A seller
+          that sells no guaranteed inventory returns none, and does not complete this path.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_agreed_terms_get_guaranteed_products"
+          buying_mode: "brief"
+          brief: "Upfront broadcast spots for an automotive EV launch with a delivery guarantee on adults 25-54, Q4 flight, $400K budget. Need :30 and :15 spot lengths."
+          filters:
+            delivery_type: "guaranteed"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "sales_broadcast_tv--get_guaranteed_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].delivery_type"
+            value: "guaranteed"
+            description: "The guaranteed path sells guaranteed inventory"
+          - check: field_value
+            path: "products[0].forecast.method"
+            value: "guaranteed"
+            description: "The forecast states what the seller is prepared to guarantee"
+          - check: field_present
+            path: "products[0].forecast.demographic"
+            description: "The guarantee is on a named demographic"
+
+      - id: propose_unworkable_terms
+        title: "Propose terms the seller cannot honor"
+        narrative: |
+          The buyer proposes a zero-percent variance tolerance against a measurement
+          window the seller does not guarantee. No seller can promise a zero variance
+          between two audience counts, so the seller must reject the proposal with
+          TERMS_REJECTED rather than accept it silently or fail with a generic error.
+          The rejection should be correctable, so the buyer can resubmit with workable terms.
+          Either unworkable term (the undeclared window or the zero variance) is a valid cause.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with:
+          - code: TERMS_REJECTED
+          - recovery: correctable
+          - message identifying which term is unworkable (vendor, window, or variance)
+
+        sample_request:
+          brand:
+            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          agency_estimate_number: "PNNL-NM-2026-Q4-0847"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "primetime_30s_mf"
+              budget: 280000
+              pricing_option_id: "cpm_primetime_30"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "summit-measurement.example"
+                  measurement_window: "c28"
+                  max_variance_percent: 0
+
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_agreed_terms_propose_unworkable_terms"
+          context:
+            correlation_id: "sales_broadcast_tv--propose_unworkable_terms"
+        validations:
+          - check: error_code
+            value: "TERMS_REJECTED"
+            description: "A proposal the seller cannot honor is rejected with TERMS_REJECTED"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_broadcast_tv--propose_unworkable_terms"
+            description: "Context correlation_id returned unchanged"
+  - id: create_buy
+    title: "Guaranteed path: place the authorized buy"
+    optional: true
+    depends_on: [agreed_terms]
+    narrative: |
+      The buyer commits to specific daypart packages and flight dates under the terms
+      it can defend. Broadcast buys carry an agency estimate number — the financial
+      reference that links the order to the agency's media plan and billing system.
+      This number travels with the order through traffic, delivery, and invoicing.
+
+      The buy names a measurement vendor (Summit Measurement) as the billing currency
+      and C7 as the guarantee window: "bill me against the currency's C7 count, not live." Each package is priced
+      per thousand impressions and the guarantee is on the demographic discovered above.
+
+      Authorization is part of the transaction. Where the seller declares request
+      signing for an operation in request_signing.required_for or supported_for, the
+      runner signs that request under the shared functional-signing contract
+      (test-kits/signed-requests-runner.yaml), and the seller must accept it through
+      its normal RFC 9421 verification path; the step needs no signing logic of its
+      own. A seller that declares no signing posture is graded on the same step
+      without signatures. This step proves the seller accepts the buy it is sent, not
+      that a signature was sent: the signed_requests storyboard grades verification.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a broadcast media buy"
+        narrative: |
+          The buyer places the order with an agency estimate number at the buy level.
+          Each package references a product from discovery and a CPM pricing option.
+          The measurement_terms name the currency vendor, C7 as the guarantee window,
+          and a variance tolerance the seller can honor.
+
+          The response may be synchronous (buy confirmed) or — when traffic-manager
+          review is needed — the completed A2A invocation carries an AdCP Submitted
+          response with a task_id, and the buyer waits on a webhook or get_task_status
+          invocation until the order is scheduled.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Process the broadcast media buy and return:
+          - media_buy_id: the seller's order identifier
+          - agency_estimate_number: echoed from the request
+          - status: pending_creatives (awaiting spot files) or active
+          - packages: line items with confirmed budget, CPM rate, and flight dates
+          - measurement_terms: confirmed billing vendor and guarantee window (c7)
+          - valid_actions: sync_creatives as the next step
+
+          If traffic-manager review is needed, return a completed A2A task envelope
+          whose artifact DataPart contains:
+          - status: submitted (AdCP application-level status, not a MediaBuy status)
+          - task_id: AdCP handle the buyer passes to get_task_status or receives webhooks on
+          - message (optional): explanation that the traffic manager is reviewing
+
+          Do not duplicate task_id as the A2A Task id, taskId, or artifact metadata.
+
+          Do NOT use a "pending_approval" media buy status — that value is not in the
+          MediaBuy.status enum. IO / traffic-manager review is modelled at the task layer.
+
+        sample_request:
+          brand:
+            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          agency_estimate_number: "PNNL-NM-2026-Q4-0847"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "primetime_30s_mf"
+              budget: 280000
+              pricing_option_id: "cpm_primetime_30"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "summit-measurement.example"
+                  measurement_window: "c7"
+                  max_variance_percent: 10
+            - product_id: "late_fringe_15s_mf"
+              budget: 120000
+              pricing_option_id: "cpm_fringe_15"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "summit-measurement.example"
+                  measurement_window: "c7"
+                  max_variance_percent: 10
+          push_notification_config:
+            url: "{{runner.webhook_url:create_media_buy}}"
+            operation_id: "op_broadcast_delivery_window_update"
+            authentication:
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "pinnacle-broadcast-tv-webhook-secret-token"
+
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_create_buy_create_media_buy"
+          context:
+            correlation_id: "sales_broadcast_tv--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+          - name: primetime_package_id
+            path: "packages[0].package_id"
+          - name: fringe_package_id
+            path: "packages[1].package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id"
+          - id: agreed_guarantee_window
+            check: field_value_or_absent
+            path: "packages[0].measurement_terms.billing_measurement.measurement_window"
+            value: "c7"
+            severity: advisory
+            permanent_advisory:
+              reason: "A seller may adjust proposed measurement terms instead of accepting them, so a different echoed window is surfaced for the buyer to accept or reject rather than failed."
+            description: "The confirmed package echoes the C7 guarantee window the buyer proposed"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_broadcast_tv--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+      - id: check_buy_status
+        title: "Check media buy status"
+        narrative: |
+          If create_media_buy returned working or submitted, the buyer polls for status
+          updates. For broadcast, the seller's traffic department may need to confirm
+          scheduling availability before the buy is active.
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the current state of the media buy:
+          - media_buy_id: matches what was returned from create_media_buy
+          - status: pending_creatives, pending_start, active, paused, completed
+          - packages: line items with scheduling confirmation
+          - valid_actions: what operations are available in this state
+
+          If pending_creatives:
+          - Include message explaining that broadcast spot files are needed
+          - valid_actions should include sync_creatives
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+
+          context:
+            correlation_id: "sales_broadcast_tv--check_buy_status"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys[0].status"
+            description: "Each media buy has a status"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_broadcast_tv--check_buy_status"
+            description: "Context correlation_id returned unchanged"
+  - id: creative_sync
+    title: "Guaranteed path: creative sync"
+    optional: true
+    depends_on: [create_buy]
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
+    narrative: |
+      Broadcast creative sync differs from digital in three ways. First, assets are
+      broadcast-grade video files — no VAST wrappers, no impression trackers, no click
+      URLs. The seller ingests the video file directly into their traffic and playout
+      system. Second, each creative carries an Ad-ID in industry_identifiers, which ties
+      the spot to rotation instructions and downstream traffic systems. Third, format
+      requirements are defined by spot length (:15, :30) rather than pixel dimensions.
+
+    steps:
+      - id: sync_creatives
+        title: "Push broadcast spot files"
+        narrative: |
+          The buyer uploads broadcast spot files with Ad-ID identifiers. Each creative
+          has a single video asset and one or more industry_identifiers with type ad_id.
+          There are no impression_tracker or click_url assets — broadcast spots are
+          self-contained video files that the seller loads into playout.
+
+          The Ad-ID is the critical link. It connects the creative asset to rotation
+          instructions, traffic logs, and post-log reconciliation. Without a valid
+          Ad-ID, the spot cannot be scheduled.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept and validate broadcast spot files:
+          - Per-creative action: created or updated
+          - Per-creative status: accepted, pending_review, or rejected
+          - Validation of video technical specs (codec, bitrate, duration)
+          - Confirmation that Ad-ID is recognized and valid
+          - Rejection if Ad-ID is missing or malformed
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          creatives:
+            - creative_id: "volta_ev_launch_30s"
+              name: "Nova Volta EV Launch - :30"
+              format_kind: "video_hosted"
+              industry_identifiers:
+                - type: "ad_id"
+                  value: "NOVA0042000H"
+              assets:
+                video_file:
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/nova-volta-30s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
+                  container_format: "mp4"
+                  video_codec: "h264"
+            - creative_id: "volta_ev_launch_15s"
+              name: "Nova Volta EV Launch - :15"
+              format_kind: "video_hosted"
+              industry_identifiers:
+                - type: "ad_id"
+                  value: "NOVA0042001H"
+              assets:
+                video_file:
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/nova-volta-15s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 15000
+                  container_format: "mp4"
+                  video_codec: "h264"
+
+          assignment_operations:
+            - operation: "assign"
+              creative_id: "volta_ev_launch_30s"
+              package_id: "$context.primetime_package_id"
+            - operation: "assign"
+              creative_id: "volta_ev_launch_15s"
+              package_id: "$context.fringe_package_id"
+
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_creative_sync_sync_creatives"
+          context:
+            correlation_id: "sales_broadcast_tv--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "Each creative has an action (created/updated)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_broadcast_tv--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+  - id: spot_as_run
+    title: "Plan to as-run spot reporting"
+    depends_on: []
+    requires_capability:
+      path: experimental_features
+      contains: "media_buy.spot_lifecycle"
+    narrative: |
+      Linear buyers want to see where their spots will run before they air, and to
+      check afterward that what aired is what was planned. Where the seller declares
+      the experimental media_buy.spot_lifecycle feature in get_adcp_capabilities, one
+      by_spot row can follow a spot from plan to as-run: it is reported as scheduled,
+      with a scheduled_at and no aired_at, and the same spot_id is later reported as
+      aired (or preempted, with a makegood row carrying replaces_spot_id pointing back
+      at it). Where the product declares break position, each row also places the
+      spot inside its commercial break.
+
+      This phase is optional. Sellers that do not list media_buy.spot_lifecycle skip
+      it, and the storyboard result is unaffected. Spot lifecycle and break position
+      are experimental, and per-product declarations cannot gate a runner step, so
+      the phase seeds its own product whose reporting_capabilities declare what a
+      participating seller reports, and buys it separately from the transaction above
+      so the certified buy never depends on an optional capability.
+
+      What the phase can grade is bounded by what a buyer can cause. No controller
+      scenario defines how simulated delivery maps to spot rows, a seller that lists
+      the scheduled status does not promise a planning horizon, and preemption cannot
+      be provoked from the buyer side. The phase therefore requires every row a seller
+      returns to be schema-valid, which enforces aired_at on aired and makegood rows,
+      scheduled_at on scheduled and preempted rows, and replaces_spot_id on makegood
+      rows, and requires the package's airing count to agree with the plays the
+      controller injected. Whether the seller reports a scheduled row, a stable
+      spot_id and a break position for the seeded product is surfaced as advisory
+      observations rather than failures.
+
+    steps:
+      - id: seed_spot_product
+        title: "Seed a linear_tv product that declares spot reporting"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        expected: |
+          The controller records a guaranteed primetime :30 product whose
+          reporting_capabilities declare spot-level reporting with every lifecycle
+          status and break position.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          scenario: "seed_product"
+          params:
+            product_id: "primetime_30s_spot_log"
+            fixture:
+              delivery_type: "guaranteed"
+              channels: ["linear_tv"]
+              format_options:
+                - format_option_id: "broadcast_spot_30s"
+                  format_kind: "video_hosted"
+                  params:
+                    duration_ms_exact: 30000
+              reporting_capabilities:
+                available_reporting_frequencies: ["daily"]
+                expected_delay_minutes: 1440
+                timezone: "America/New_York"
+                supports_webhooks: false
+                available_metrics: ["impressions", "spend", "plays"]
+                date_range_support: "date_range"
+                supports_spot_breakdown:
+                  available_metrics: ["impressions"]
+                  available_statuses: ["scheduled", "preempted", "makegood"]
+                  supports_break_position: true
+                measurement_windows:
+                  - window_id: "live"
+                    duration_days: 0
+                    expected_availability_days: 1
+                    is_guarantee_basis: false
+                  - window_id: "c7"
+                    duration_days: 7
+                    expected_availability_days: 8
+                    is_guarantee_basis: true
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller accepts the spot-reporting product"
+
+      - id: seed_spot_pricing
+        title: "Seed the CPM pricing option"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        expected: |
+          The controller records a fixed CPM pricing option on the spot-reporting product.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          scenario: "seed_pricing_option"
+          params:
+            product_id: "primetime_30s_spot_log"
+            pricing_option_id: "cpm_primetime_30_spot_log"
+            fixture:
+              pricing_model: "cpm"
+              currency: "USD"
+              fixed_price: 28.0
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller accepts the CPM pricing option"
+
+      - id: create_spot_buy
+        title: "Buy the spot-reporting product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Create the media buy under the same agreed billing measurement terms and
+          return a media_buy_id for the spot log reads below.
+        sample_request:
+          brand:
+            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          agency_estimate_number: "PNNL-NM-2026-Q4-0848"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "primetime_30s_spot_log"
+              budget: 28000
+              pricing_option_id: "cpm_primetime_30_spot_log"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "summit-measurement.example"
+                  measurement_window: "c7"
+                  max_variance_percent: 10
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_spot_as_run_create_spot_buy"
+        context_outputs:
+          - name: spot_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id"
+
+      - id: get_planned_spot_log
+        title: "Read the planned schedule before anything airs"
+        narrative: |
+          The buyer asks for the spot log before any delivery. A seller that has
+          already placed the spots reports them as scheduled rows, each with its own
+          spot_id, a scheduled_at, no aired_at, and a planned break position. Any
+          metrics on a scheduled row are expectations, not delivery. A seller that has
+          not placed spots yet may return an empty log, which is not evidence that
+          nothing will be placed.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return the delivery response with the requested spot dimension. When the
+          seller has placed spots, by_package[0].by_spot carries rows with:
+          - spot_status: scheduled
+          - spot_id: identity that survives airing
+          - scheduled_at: planned airing time; aired_at absent
+          - break_position: planned position inside the commercial break
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.spot_media_buy_id"
+          reporting_dimensions:
+            spot: {}
+        validations:
+          - check: response_schema
+            description: "Delivery response matches the schema, including the per-status field rules on every spot row"
+          - id: planned_spot_scheduled
+            check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_spot[0].spot_status"
+            value: "scheduled"
+            severity: advisory
+            permanent_advisory:
+              reason: "A seller that lists the scheduled status does not promise a planning horizon, so an empty or already-aired plan this early is not a failure."
+            description: "Before airing, the first row is a scheduled spot"
+          - id: planned_spot_scheduled_at
+            check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_spot[0].scheduled_at"
+            severity: advisory
+            permanent_advisory:
+              reason: "Observed only when the seller has placed spots; see planned_spot_scheduled."
+            description: "A scheduled row carries its planned airing time"
+          - id: planned_break_position
+            check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_spot[0].break_position.position_in_break"
+            severity: advisory
+            permanent_advisory:
+              reason: "Observed only when the seller has placed spots; see planned_spot_scheduled."
+            description: "The product declares break position, so the planned row places the spot in its break"
+
+      - id: simulate_spot_delivery
+        title: "Air the planned spots"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        expected: |
+          The controller records plays and impressions for the buy, as a sandbox
+          seller's traffic system would once the spots air.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.spot_media_buy_id"
+            plays: 4
+            impressions: 400000
+            reported_spend:
+              amount: 11200.00
+              currency: "USD"
+            is_final: false
+            measurement_window: "live"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller accepts the simulated airing"
+
+      - id: get_as_run_spot_log
+        title: "Read the as-run log"
+        narrative: |
+          After airing, the buyer reads the same log again. Airing evidence is a row
+          per spot with when it aired and where it sat in its break. The audience
+          estimate for those spots is read from the package under its own
+          measurement_window, never inferred from the existence of an as-run row. The
+          controller injected four plays, so the package's airing count must agree.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return by_package[0].by_spot for the same buy:
+          - aired and makegood rows carry aired_at; preempted rows carry scheduled_at
+          - any makegood row carries replaces_spot_id naming the preempted spot
+          - by_package[0] carries the injected plays and the audience estimate with
+            its own measurement_window and is_final, separate from the spot rows
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.spot_media_buy_id"
+          reporting_dimensions:
+            spot: {}
+        validations:
+          - check: response_schema
+            description: "Delivery response matches the schema, including replaces_spot_id on makegood rows and aired_at rules on every row"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].plays"
+            value: 4
+            description: "The package reports the plays the controller injected, as the controller contract requires"
+          - id: as_run_spot_rows
+            check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_spot[0].spot_id"
+            severity: advisory
+            permanent_advisory:
+              reason: "No controller scenario defines how simulated delivery maps to spot rows, so the as-run rows a seller reports for the injected plays are observed, not required."
+            description: "The as-run log reports spots with stable identities"
+          - id: as_run_break_position
+            check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_spot[0].break_position.position_in_break"
+            severity: advisory
+            permanent_advisory:
+              reason: "Break position is declared per product and observed only when the seller reports rows; see as_run_spot_rows."
+            description: "The product declares break position, so the as-run row places the spot in its break"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].measurement_window"
+            value: "live"
+            description: "The audience estimate declares its own measurement window, apart from the as-run rows"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].is_final"
+            value: false
+            description: "A Live read is provisional and is not marked final"
+  - id: delivery_monitoring
+    title: "Guaranteed path: delivery and reporting"
+    optional: true
+    depends_on: [create_buy]
+    narrative: |
+      Broadcast delivery reporting operates on a fundamentally different timeline than
+      digital. Live ratings are available within 24 hours, but the numbers that matter
+      for billing — C7 — are not final until 8 days after each air date. A buyer
+      checking delivery mid-flight will see data at different maturation stages: recent
+      airings show only live numbers, while airings from two weeks ago have full C7.
+
+      The seller reports delivery with measurement window context so the buyer
+      understands which numbers are preliminary and which are final. The buyer should
+      not make pacing decisions based on live-only data for a C7-guaranteed buy.
+
+    steps:
+      - id: simulate_provisional_delivery
+        title: "Air the first spots and report the Live window"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        expected: |
+          The controller adds Live-window delivery to the buy, as a sandbox
+          seller's traffic and measurement systems would after the first airings.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 4000000
+            reported_spend:
+              amount: 112000.00
+              currency: "USD"
+            is_final: false
+            measurement_window: "live"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller accepts the Live-window delivery"
+
+
+      - id: get_delivery
+        title: "Check delivery metrics"
+        narrative: |
+          The buyer requests delivery data for the active broadcast buy. The seller
+          returns audience metrics broken down by package, with each data point
+          tagged by measurement window.
+
+          Data arrives on a delay. For a spot that aired on October 15:
+          - Live data: available October 16
+          - C3 data: available ~October 19
+          - C7 data: available ~October 23
+
+          The buyer should expect that the most recent 8 days of the flight will not
+          have final C7 numbers. The response makes this clear through the
+          measurement window tagging on each data point. The Live read here is
+          provisional: it is not the guarantee basis, so it is not marked final.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return delivery metrics for the broadcast buy:
+          - Per-package: impressions, spend, and (where reported) GRPs
+          - measurement_window on each package (live, c3, or c7)
+          - is_final: false for packages with data still maturing
+          - Pacing information relative to the guaranteed audience
+
+          The buyer uses this to understand:
+          - How the preliminary (live) and final (C7) audience delivery compare
+          - Whether makegoods may be needed if C7 delivery is under-performing
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+
+          context:
+            correlation_id: "sales_broadcast_tv--get_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].measurement_window"
+            value: "live"
+            description: "The audience estimate declares the window it was measured in"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].is_final"
+            value: false
+            description: "A Live read is provisional, so it is not marked final"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_broadcast_tv--get_delivery"
+            description: "Context correlation_id returned unchanged"
+  - id: reconciliation
+    title: "Guaranteed path: post-flight reconciliation"
+    optional: true
+    depends_on: [delivery_monitoring]
+    branch_set:
+      id: broadcast_transaction
+      semantics: any_of
+    narrative: |
+      Broadcast reconciliation cannot happen until C7 data has matured for every air
+      date in the flight. For a flight ending December 31, final C7 data for the last
+      air dates arrives around January 8. The seller then has approximately one week to
+      compile final delivery numbers and issue a post-log.
+
+      The buyer pulls final delivery data ~15 days after the last air date. This is the
+      authoritative data set for billing reconciliation, and it must be the window the
+      buyer agreed on the buy: C7 from the named currency vendor, marked final. Airing
+      evidence (what ran, when, and where in the break) and audience evidence (how many
+      people the currency counted) are different records. The audience rows carry
+      measurement_source, measurement_window and is_final, and a buyer reconciles the
+      guarantee against those rows, not against the count of spots that aired.
+
+      If C7 delivery fell short of the guaranteed audience levels, the buyer requests
+      makegoods — additional spots to close the delivery gap.
+
+    steps:
+      - id: simulate_final_delivery
+        title: "Deliver the remainder and finalize on C7"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        expected: |
+          The controller adds the remaining delivery (the controller accumulates
+          impressions and spend across calls) and marks the buy final on the C7
+          window with a finalization time, as the measurement vendor's C7 data would
+          after the window closes.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 16000000
+            reported_spend:
+              amount: 288000.00
+              currency: "USD"
+            is_final: true
+            finalized_at: "2100-01-08T12:00:00Z"
+            measurement_window: "c7"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller accepts the final C7 delivery"
+
+      - id: get_final_delivery
+        title: "Pull final reconciliation data"
+        contributes_to: broadcast_transaction
+        narrative: |
+          The buyer requests delivery data after C7 has fully matured for all air dates.
+          This is the same get_media_buy_delivery task used during monitoring, but now
+          all data points reflect final C7 measurement.
+
+          The buyer compares final C7 delivery against the guaranteed audience levels
+          from the media buy. If delivery is short, the buyer contacts the seller to
+          negotiate makegoods.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return final delivery metrics with all data points at C7 maturation:
+          - Per-package: final impressions, spend, and (where reported) GRPs
+          - measurement_window: "c7" on all packages, the window agreed on the buy
+          - is_final: true on all packages (all windows fully matured), with finalized_at
+          - measurement_source naming the currency that counted the audience
+          - Final pacing: delivered vs. guaranteed audience levels
+          - Budget reconciliation: actual spend vs. committed
+
+          If delivery fell short of guaranteed levels:
+          - Shortfall amount by package
+          - The buyer uses this data to negotiate makegoods with the seller
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+
+          context:
+            correlation_id: "sales_broadcast_tv--get_final_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains final delivery data"
+          - check: field_greater_than
+            path: "media_buy_deliveries[0].totals.impressions"
+            value: 0
+            description: "The reconciled totals carry the delivery the controller injected"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].measurement_window"
+            value: "c7"
+            description: "Final delivery is reconciled on the window agreed on the buy"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].is_final"
+            value: true
+            description: "The guarantee-basis window is marked final, so the seller is willing to invoice on it"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].finalized_at"
+            description: "Final data carries the time it became final"
+          - id: audience_measurement_source
+            check: field_present
+            path: "media_buy_deliveries[0].by_package[0].measurement_source"
+            severity: advisory
+            permanent_advisory:
+              reason: "measurement_source is optional on delivery rows in the schema, so sellers that omit it are not failed. A buyer reconciling against a named currency needs it to tie the count to the vendor in measurement_terms."
+            description: "The audience row names the measurement source that counted it"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_broadcast_tv--get_final_delivery"
+            description: "Context correlation_id returned unchanged"
+  - id: fixed_price_discovery
+    title: "Non-guaranteed path: discover fixed-price products"
+    optional: true
+    depends_on: [product_discovery]
+    narrative: |
+      Much of linear TV is sold at a fixed price the seller sets, with the seller approving
+      the buy, no reserved inventory, and no auction or bid. CPM (or CPP) prices or
+      evaluates the spot; it never implies a bid. This path covers that way of selling, and
+      is independent of the guaranteed path: a seller earns the badge by completing at
+      least one of the two.
+
+      Every product returned for this brief is non-guaranteed and every pricing option is
+      a fixed price. There is no floor to clear, no bid guidance, and no maximum bid,
+      because nothing is auctioned. Auction semantics apply only when fixed_price is
+      absent, which broadcast sellers do not use.
+
+    steps:
+      - id: get_fixed_price_products
+        title: "Request fixed-price, non-guaranteed products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          Return non-guaranteed linear_tv products matching the brief. With
+          filters.is_fixed_price set to true, only fixed_price pricing options are
+          returned, and none carries floor_price, price_guidance or max_bid.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_fixed_price_discovery_get_fixed_price_products"
+          buying_mode: "brief"
+          brief: "Scatter broadcast spots for an automotive EV launch at the published rate, Q4 flight, $22K budget. Adults 25-54, national footprint. Fixed price, no auction."
+          filters:
+            delivery_type: "non_guaranteed"
+            is_fixed_price: true
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "sales_broadcast_tv--get_fixed_price_products"
+        context_outputs:
+          - name: fixed_product_id
+            path: "products[0].product_id"
+          - name: fixed_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "A product is returned"
+          - check: field_value
+            path: "products[0].delivery_type"
+            value: "non_guaranteed"
+            description: "Fixed-price scatter inventory is non-guaranteed: no delivery commitment"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The offer is a published fixed rate the seller sets"
+          - check: field_value
+            path: "products[0].pricing_options[0].pricing_model"
+            value: "cpm"
+            allowed_values: ["cpm", "cpp"]
+            description: "The rate is quoted per thousand impressions or per rating point on the demographic"
+          - check: field_absent
+            path: "products[0].pricing_options[0].floor_price"
+            description: "A fixed rate has no auction floor"
+          - check: field_absent
+            path: "products[0].pricing_options[0].price_guidance"
+            description: "A fixed rate carries no bid guidance"
+          - check: field_absent
+            path: "products[0].pricing_options[0].max_bid"
+            description: "A fixed rate carries no maximum bid"
+          - check: field_value_or_absent
+            path: "products[0].forecast.method"
+            value: "estimate"
+            allowed_values: ["estimate", "modeled"]
+            description: "A non-guaranteed forecast is an estimate, not a commitment"
+  - id: fixed_price_buy
+    title: "Non-guaranteed path: buy at the fixed rate"
+    optional: true
+    depends_on: [fixed_price_discovery]
+    narrative: |
+      The buyer buys at the published rate. The request carries no bid, and the measurement
+      terms name the currency vendor and window the delivered audience is evaluated and
+      billed against. The terms evaluate delivery; they do not commit the seller to a
+      level of it.
+
+    steps:
+      - id: create_fixed_price_buy
+        title: "Buy the fixed-price product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return synchronous success with a media_buy_id and packages issued in-line, a
+          media_buy_status of pending_creatives, pending_start, or active, and the selected
+          fixed-rate pricing_option_id echoed on the package. A seller that
+          approves buys before committing returns confirmed_at null and a status that is
+          not active.
+        sample_request:
+          brand:
+            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          agency_estimate_number: "PNNL-NM-2026-Q4-0849"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "$context.fixed_product_id"
+              budget: 22000
+              pricing_option_id: "$context.fixed_pricing_option_id"
+              measurement_terms:
+                billing_measurement:
+                  vendor:
+                    domain: "summit-measurement.example"
+                  measurement_window: "c7"
+                  max_variance_percent: 10
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_fixed_price_buy_create_fixed_price_buy"
+          context:
+            correlation_id: "sales_broadcast_tv--create_fixed_price_buy"
+        context_outputs:
+          - name: fixed_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller issues a media_buy_id synchronously"
+          - check: field_value_or_absent
+            path: "media_buy_status"
+            allowed_values: ["pending_creatives", "pending_start", "active"]
+            description: "Initial status is any valid status; the storyboard does not mandate which one"
+          - check: field_equals_context
+            path: "packages[0].pricing_option_id"
+            context_key: "fixed_pricing_option_id"
+            description: "Package echoes the selected fixed-rate option"
+          # The echoed bid_price is deliberately not asserted: the SDK runner's
+          # create_media_buy builder adds a bid_price to any cpm option the sample
+          # omits, so a seller can echo a bid the buyer never meant to send. The
+          # graded no-bid mechanics are the product's pricing option fields above.
+  - id: seller_approval
+    title: "Non-guaranteed path, optional: seller approves the buy"
+    optional: true
+    depends_on: [fixed_price_discovery]
+    requires_capability:
+      path: compliance_testing.scenarios
+      contains: force_media_buy_confirmation
+    narrative: |
+      Many broadcast sellers review a buy before they commit to it. When they do, the buy is
+      not an async task: create_media_buy returns synchronous success with a media_buy_id
+      and confirmed_at null, and the buy stays provisional until the seller commits. A
+      provisional buy is never active.
+
+      This phase runs only when the seller advertises the force_media_buy_confirmation
+      controller scenario under compliance_testing.scenarios (see the sales-fixed-rate
+      proposal, #7963); other sellers skip it as not applicable, and a seller that commits
+      to every buy immediately is graded on the rest of the path alone. The controller
+      holds the next buy, then confirms it. The buyer observes confirmation by polling
+      get_media_buys.
+
+    steps:
+      - id: force_hold
+        title: "Hold the next buy for seller review"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request_skip_schema: true
+        expected: |
+          Register a hold directive for the next create_media_buy from this sandbox account.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_media_buy_confirmation"
+          params:
+            action: "hold"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller accepts the hold directive"
+
+      - id: create_held_buy
+        title: "Create a buy the seller holds"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return synchronous success with a media_buy_id, confirmed_at null, and a status of
+          pending_creatives or pending_start. The buy is not active.
+        sample_request:
+          brand:
+            domain: "novamotors.example"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          agency_estimate_number: "PNNL-NM-2026-Q4-0850"
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          packages:
+            - product_id: "$context.fixed_product_id"
+              budget: 22000
+              pricing_option_id: "$context.fixed_pricing_option_id"
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_seller_approval_create_held_buy"
+        context_outputs:
+          - name: held_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema, including the rule that a buy with confirmed_at null is never active"
+          - check: field_present
+            path: "media_buy_id"
+            description: "A held buy exists immediately: media_buy_id is issued synchronously"
+          - check: field_absent
+            path: "confirmed_at"
+            description: "The seller has not committed, so confirmed_at is null"
+          - check: field_value
+            path: "media_buy_status"
+            allowed_values: ["pending_creatives", "pending_start"]
+            description: "A held buy is never active"
+
+      - id: confirm_held_buy
+        title: "Approve the held buy"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request_skip_schema: true
+        expected: |
+          Commit the held buy as the seller would on approval.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_media_buy_confirmation"
+          params:
+            action: "confirm"
+            media_buy_id: "$context.held_media_buy_id"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller confirms the held buy"
+
+      - id: read_confirmed_buy
+        title: "Read the approved buy back"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          confirmed_at is now set. The status follows the ordinary lifecycle and any valid
+          status is accepted.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.held_media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys[0].confirmed_at"
+            description: "Seller commitment is recorded: confirmed_at is set"
+  - id: fixed_price_delivery
+    title: "Non-guaranteed path: evaluate delivery"
+    optional: true
+    depends_on: [fixed_price_buy]
+    branch_set:
+      id: broadcast_transaction
+      semantics: any_of
+    narrative: |
+      Delivery on a fixed-rate buy is reported against the measurement terms the buyer
+      named, and the buyer is billed on what the vendor counted in the agreed window. There
+      is no guaranteed level to reconcile against and no shortfall to make good, so the
+      read proves the window, finality and the counted audience, not a commitment.
+
+    steps:
+      - id: simulate_fixed_price_delivery
+        title: "Deliver and finalize on C7"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        expected: |
+          The controller records delivery for the buy and marks it final on the C7 window,
+          as the measurement vendor's C7 data would after the window closes.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.fixed_media_buy_id"
+            impressions: 1000000
+            reported_spend:
+              amount: 22000.00
+              currency: "USD"
+            is_final: true
+            finalized_at: "2100-01-08T12:00:00Z"
+            measurement_window: "c7"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller accepts the simulated delivery"
+
+      - id: get_fixed_price_delivery
+        title: "Read delivery on the agreed window"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        contributes_to: broadcast_transaction
+        expected: |
+          Return delivery for the buy with the package's measurement_window c7, is_final
+          true, and the counted audience.
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.fixed_media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].measurement_window"
+            value: "c7"
+            description: "Delivery is evaluated on the window named in the measurement terms"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].is_final"
+            value: true
+            description: "The agreed window is marked final, so the seller is willing to invoice on it"
+          - check: field_greater_than
+            path: "media_buy_deliveries[0].totals.impressions"
+            value: 0
+            description: "The totals carry the delivery the controller injected"
+  - id: delivery_webhooks
+    title: "Guaranteed path: window maturation webhooks"
+    depends_on: [create_buy]
+    narrative: |
+      Window maturation is graded by observing the webhooks the seller emits to the
+      push_notification_config registered on create_media_buy. An agent that emits
+      no webhooks at all scores identically to one that emits the correct C3 and C7
+      progression — closing that gap requires the webhook_receiver_runner test-kit
+      contract (so the runner has somewhere to observe deliveries); without it, the
+      grading step below grades as not_applicable rather than failing.
+
+    steps:
+      - id: expect_window_update_webhook
+        title: "Seller emits at least one window_update delivery webhook"
+        narrative: |
+          After create_media_buy, the seller emits delivery-notification webhooks
+          as each measurement window matures (C3 superseding live with is_final:
+          false, then C7 superseding C3 with is_final: true). The envelope payload
+          MUST carry a valid idempotency_key and validate against the canonical
+          MCP webhook payload schema; the nested delivery result SHOULD carry
+          notification_type: window_update with the supersedes_window progression
+          appropriate to the window that has matured.
+
+          The filter currently matches the top-level payload operation_id only
+          — runner extensions for nested payload matching (e.g.
+          result.notification_type) will allow separating the C3 and C7
+          deliveries into distinct assertions in a follow-up. Runs only when
+          the webhook_receiver_runner contract is in scope.
+        task: expect_webhook
+        triggered_by: create_media_buy
+        filter:
+          body:
+            operation_id: "op_broadcast_delivery_window_update"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          A webhook arrives within 30 seconds whose envelope validates against
+          mcp-webhook-payload.json and carries an idempotency_key matching
+          ^[A-Za-z0-9_.:-]{16,255}$. The nested delivery result (per
+          get-media-buy-delivery-response.json) SHOULD carry notification_type:
+          window_update with supersedes_window reflecting window progression
+          (e.g. "live" for C3, "c3" for C7). Sellers that emit no delivery
+          webhooks at all fail with no_webhook_received.
+  - id: broadcast_path_gate
+    title: "Complete at least one path"
+    depends_on: []
+    narrative: |
+      Linear TV is sold guaranteed and non-guaranteed, and a seller sells one, the other, or
+      both. The badge is earned by completing at least one path end to end: the guaranteed
+      path through C7 reconciliation, or the fixed-price path through delivery on the agreed
+      window. A seller that completes neither fails.
+
+    steps:
+      - id: assert_path_completed
+        title: "Assert a transaction path completed"
+        task: assert_contribution
+        validations:
+          - id: broadcast_transaction.any_path_contributed
+            check: any_of
+            allowed_values: ["broadcast_transaction"]
+            description: "The seller completed the guaranteed path or the fixed-price, non-guaranteed path"

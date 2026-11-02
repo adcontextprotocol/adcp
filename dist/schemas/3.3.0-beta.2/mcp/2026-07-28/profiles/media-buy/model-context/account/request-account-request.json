@@ -1,0 +1,226 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "account_id": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer"
+    },
+    "allow_separate_account": {
+      "type": "boolean"
+    },
+    "brand": {
+      "$ref": "#/$defs/external:core~1brand-key.json"
+    },
+    "operator": {
+      "type": "string"
+    },
+    "operator_unit": {
+      "$ref": "#/$defs/external:core~1operator-unit.json"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "sandbox": {
+      "type": "boolean"
+    },
+    "billing": {
+      "$ref": "#/$defs/external:enums~1billing-party.json"
+    },
+    "billing_entity": {
+      "$ref": "#/$defs/external:core~1business-entity.json"
+    },
+    "payment_terms": {
+      "$ref": "#/$defs/external:enums~1payment-terms.json"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "required": [
+    "idempotency_key"
+  ],
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/brand-id.json": {
+      "type": "string"
+    },
+    "external:core/operator-unit.json": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "external:enums/billing-party.json": {
+      "enum": [
+        "operator",
+        "agent",
+        "advertiser"
+      ]
+    },
+    "external:core/business-entity.json": {
+      "type": "object",
+      "properties": {
+        "legal_name": {
+          "type": "string"
+        },
+        "vat_id": {
+          "type": "string"
+        },
+        "tax_id": {
+          "type": "string"
+        },
+        "registration_number": {
+          "type": "string"
+        },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": {
+              "type": "string"
+            },
+            "city": {
+              "type": "string"
+            },
+            "postal_code": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "country": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "street",
+            "city",
+            "postal_code",
+            "country"
+          ]
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "enum": [
+                  "billing",
+                  "legal",
+                  "creative",
+                  "general"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "phone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          }
+        },
+        "bank": {
+          "type": "object",
+          "properties": {
+            "account_holder": {
+              "type": "string"
+            },
+            "iban": {
+              "type": "string"
+            },
+            "bic": {
+              "type": "string"
+            },
+            "routing_number": {
+              "type": "string"
+            },
+            "account_number": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_holder"
+          ]
+        }
+      },
+      "required": [
+        "legal_name"
+      ]
+    },
+    "external:enums/payment-terms.json": {
+      "enum": [
+        "net_15",
+        "net_30",
+        "net_45",
+        "net_60",
+        "net_90",
+        "prepay"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object"
+    }
+  }
+}

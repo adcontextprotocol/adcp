@@ -107,7 +107,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -138,7 +137,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -165,7 +163,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -192,7 +189,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -231,7 +227,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -261,7 +256,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -290,7 +284,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -318,7 +311,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -346,7 +338,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -376,7 +367,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -409,7 +399,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -453,7 +442,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -490,7 +478,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -527,7 +514,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: false
         sample_request:
-          adcp_version: "3.1-beta.5"
           brand:
             domain: "acmeoutdoor.example"
           manifest:
@@ -582,7 +568,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.1-beta.5"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -622,7 +607,6 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.1-beta.5"
           account:
             brand:
               domain: "acmeoutdoor.example"

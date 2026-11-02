@@ -660,10 +660,6 @@ phases:
           push_notification_config:
             url: "{{runner.webhook_url:create_media_buy}}"
             operation_id: "op_broadcast_delivery_window_update"
-            authentication:
-              schemes:
-                - "HMAC-SHA256"
-              credentials: "pinnacle-broadcast-tv-webhook-secret-token"
 
           idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_create_buy_create_media_buy"
           context:

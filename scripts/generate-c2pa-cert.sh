@@ -54,6 +54,8 @@ chmod 600 "$KEY_OUT"
 #     marked as a CA when issuer == subject; this declares us an end-entity.
 #   - keyUsage: digitalSignature (critical)
 #   - extendedKeyUsage: emailProtection (accepted by c2pa-rs trust handler)
+#   - authorityKeyIdentifier: c2pa-rs rejects certs without it, and OpenSSL 4
+#     no longer adds it to self-signed certs by default.
 # 10-year validity is deliberately long; we rotate by deploying a new cert,
 # not by expiration pressure.
 openssl req -new -x509 \
@@ -64,7 +66,8 @@ openssl req -new -x509 \
   -addext "basicConstraints=critical,CA:FALSE" \
   -addext "keyUsage=critical,digitalSignature" \
   -addext "extendedKeyUsage=emailProtection" \
-  -addext "subjectKeyIdentifier=hash"
+  -addext "subjectKeyIdentifier=hash" \
+  -addext "authorityKeyIdentifier=keyid:always"
 
 echo "✅ Generated AAO C2PA signing keypair"
 echo "   Certificate: $CERT_OUT"

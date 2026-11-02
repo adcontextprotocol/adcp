@@ -34,8 +34,11 @@ describe('agent-ownership', () => {
       const [sql, params] = queryMock.mock.calls[0];
       expect(sql).toContain('member_profiles mp');
       expect(sql).toContain('organization_memberships om');
+      // Both spellings of the one agent, then the user id (#8322).
+      expect(sql).toContain('mp.agents @> $1::jsonb OR mp.agents @> $2::jsonb');
       expect(params).toEqual([
         JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/mcp/' }]),
         'user_123',
       ]);
     });
@@ -67,12 +70,15 @@ describe('agent-ownership', () => {
         fields: [],
       } as never);
 
+      // Scheme/host case and trailing slashes fold; path case does not (#7830).
       const result = await findOwnerOrgForUser('user_123', 'HTTPS://Agent.Example.com/MCP///');
 
       expect(result).toBe('org_abc');
       const [, params] = queryMock.mock.calls[0];
       expect(params).toEqual([
-        JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/MCP' }]),
+        JSON.stringify([{ url: 'HTTPS://Agent.Example.com/MCP///' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/MCP/' }]),
         'user_123',
       ]);
     });
@@ -91,9 +97,12 @@ describe('agent-ownership', () => {
       expect(result).toBe(true);
       const [sql, params] = queryMock.mock.calls[0];
       expect(sql).toContain('mp.workos_organization_id = $1');
+      // The org scoping stays ahead of the folded containment (#8322).
+      expect(sql).toContain('mp.agents @> $2::jsonb OR mp.agents @> $3::jsonb');
       expect(params).toEqual([
         'org_abc',
         JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/mcp/' }]),
         'user_123',
       ]);
     });
@@ -125,13 +134,16 @@ describe('agent-ownership', () => {
         fields: [],
       } as never);
 
+      // Scheme/host case and trailing slashes fold; path case does not (#7830).
       const result = await isOrgOwnerOfAgent('org_abc', 'user_123', 'HTTPS://Agent.Example.com/MCP///');
 
       expect(result).toBe(true);
       const [, params] = queryMock.mock.calls[0];
       expect(params).toEqual([
         'org_abc',
-        JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/MCP' }]),
+        JSON.stringify([{ url: 'HTTPS://Agent.Example.com/MCP///' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/MCP/' }]),
         'user_123',
       ]);
     });
@@ -150,6 +162,7 @@ describe('agent-ownership', () => {
       expect(queryMock.mock.calls[0]?.[1]).toEqual([
         'org_selected',
         JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/mcp/' }]),
         'user_123',
       ]);
     });
@@ -202,13 +215,14 @@ describe('agent-ownership', () => {
       queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_a' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
       await findOwnerOrgForUser('user_1', 'https://x/mcp');
       const [findSql, findParams] = queryMock.mock.calls[0];
-      expect(findParams).toHaveLength(2);
+      // One containment payload per spelling of the agent, plus the user id.
+      expect(findParams).toHaveLength(3);
       expect(findSql).not.toContain('mp.workos_organization_id = $1');
 
       queryMock.mockResolvedValueOnce({ rows: [{ '?column?': 1 }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
       await isOrgOwnerOfAgent('org_a', 'user_1', 'https://x/mcp');
       const [isSql, isParams] = queryMock.mock.calls[1];
-      expect(isParams).toHaveLength(3);
+      expect(isParams).toHaveLength(4);
       expect(isSql).toContain('mp.workos_organization_id = $1');
     });
   });

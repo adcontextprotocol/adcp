@@ -10,6 +10,9 @@ required_tools:
   - refine_proposals
 
 requires_all_capabilities:
+  # Refinement support does not imply the compact proposal producer.
+  - path: media_buy.lifecycle_tools
+    contains: request_proposals
   - path: media_buy.aggregate_frequency_capping
     present: true
   - path: media_buy.proposal_refinement.supported_dimensions
@@ -113,7 +116,7 @@ fixtures:
             height: 250
     - product_id: "no_fcap_native_q4"
       delivery_type: "guaranteed"
-      channels: ["native"]
+      channels: ["display"]
       format_options:
         - format_option_id: "native_article"
           format_kind: "native"

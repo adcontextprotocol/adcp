@@ -285,6 +285,40 @@ describe('sync_accounts', () => {
     expect(secondAcct.billing).toBe('agent');
   });
 
+  it('declines a settings-update attribute change with UNSUPPORTED_FEATURE and rejects an operator', async () => {
+    const { result: created } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com', countries: ['US'] },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+      }],
+    });
+    const accountId = (created.accounts as Record<string, unknown>[])[0].account_id;
+
+    const { result: attribute } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        account: { account_id: accountId },
+        brand: { domain: 'acme.com', countries: ['US', 'CA'] },
+      }],
+    });
+    const attributeRow = (attribute.accounts as Record<string, unknown>[])[0];
+    expect(attributeRow.action).toBe('failed');
+    expect(attributeRow).not.toHaveProperty('status');
+    const attributeErrors = attributeRow.errors as Array<{ code: string; field: string }>;
+    expect(attributeErrors[0].code).toBe('UNSUPPORTED_FEATURE');
+    expect(attributeErrors[0].field).toBe('brand');
+
+    const { result: operator } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        account: { account_id: accountId },
+        operator: 'agency-two',
+      }],
+    });
+    const operatorErrors = (operator.accounts as Record<string, unknown>[])[0].errors as Array<{ code: string }>;
+    expect(operatorErrors[0].code).toBe('INVALID_REQUEST');
+  });
+
   it('rejects account with missing brand.domain', async () => {
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{

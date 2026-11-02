@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-request-changed-webhook.json",
+  "title": "Account Request Changed Webhook",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "Caller-anchored webhook payload fired when one of the caller's account requests changes state or pending action (experimental, account.requests). Not fired for the response to the caller's own request_account call, which already reports the result. Registered through the caller-scoped notification_configs (sync_principal or sync_agent_notification_configs) with event_types containing account_request.changed. The payload is an invalidation signal, not request state: receivers repair by calling list_accounts with request_ids. Sellers MUST make the new state observable on that read before firing.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Stable identifier for this logical request transition. Re-emissions of the same transition reuse this value under a new idempotency_key; a later transition receives a new id.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "account_request.changed",
+      "description": "Fixed notification type discriminator. Matches the value registered on the subscriber's event_types."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller initiated this fire. Distinct from changed_at."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which caller-scoped notification_configs[] entry is receiving this fire. Echoed verbatim from the entry's subscriber_id.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonical seller agent URL that holds the request. Receivers connected to several sellers use this to pick where to re-read."
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "The request that changed."
+    },
+    "previous_state": {
+      "$ref": "/schemas/enums/account-request-state.json",
+      "description": "State before this transition. Advisory."
+    },
+    "state": {
+      "$ref": "/schemas/enums/account-request-state.json",
+      "description": "State after this transition. Advisory: receivers MUST re-read list_accounts (include_requests) for the authoritative request."
+    },
+    "changed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller recorded the transition."
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["idempotency_key", "notification_id", "notification_type", "fired_at", "subscriber_id", "agent_url", "request_id", "state", "changed_at"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Seller review finished and matched an existing account",
+      "data": {
+        "idempotency_key": "6d1f0b7e-2c4a-4e8f-9b3d-5a7c1e9f2b40",
+        "notification_id": "areq_01K4F8M2Q7:resolved",
+        "notification_type": "account_request.changed",
+        "fired_at": "2026-10-19T14:30:05Z",
+        "subscriber_id": "buyer-events",
+        "agent_url": "https://sales.streamhaus.example/adcp",
+        "request_id": "areq_01K4F8M2Q7",
+        "previous_state": "in_review",
+        "state": "resolved",
+        "changed_at": "2026-10-19T14:30:00Z"
+      }
+    }
+  ]
+}

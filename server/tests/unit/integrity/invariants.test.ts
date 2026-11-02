@@ -16,10 +16,14 @@ import { everyEntitledOrgHasResolvableTierInvariant } from '../../../src/audit/i
 import { uniqueOrgPerEmailDomainInvariant } from '../../../src/audit/integrity/invariants/unique-org-per-email-domain.js';
 import { workosVerifiedDomainsMirroredInvariant } from '../../../src/audit/integrity/invariants/workos-verified-domains-mirrored.js';
 import { personalMemberCompanyOrgSplitInvariant } from '../../../src/audit/integrity/invariants/personal-member-company-org-split.js';
+import {
+  registryReviewQueueDrainedInvariant,
+  REGISTRY_REVIEW_SLA_HOURS,
+} from '../../../src/audit/integrity/invariants/registry-review-queue-drained.js';
 import { ALL_INVARIANTS, getInvariantByName } from '../../../src/audit/integrity/invariants/index.js';
 import type { InvariantContext } from '../../../src/audit/integrity/types.js';
 
-const EXPECTED_INVARIANT_COUNT = 11;
+const EXPECTED_INVARIANT_COUNT = 12;
 
 const mockPoolQuery = vi.fn();
 const mockStripeCustomersRetrieve = vi.fn();
@@ -1305,5 +1309,114 @@ describe('unique-org-per-email-domain', () => {
     // flagging gmail.com pairs as company duplicates.
     const sql = (mockPoolQuery.mock.calls[0] as [string, unknown[]])[0];
     expect(sql).toMatch(/is_personal/);
+  });
+});
+
+/**
+ * Registry review fails safe since adcp#8337, so an Anthropic outage or a
+ * missing ANTHROPIC_API_KEY parks community submissions instead of
+ * publishing them. This invariant is the operational-diagnostics half of
+ * the backlog signal (adcp#8338) — the daily digest is the moderator half.
+ *
+ * One aggregate violation, deliberately: the outage this catches is
+ * exactly when per-item violations would bury the billing and directory
+ * findings an operator opens this report for.
+ */
+describe('registry-review-queue-drained', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Shape of the `waiting` aggregate `getRegistryReviewBacklog` reads. */
+  function backlogRow(over: Record<string, unknown> = {}) {
+    return {
+      rows: [{
+        pending_brands: '0',
+        pending_properties: '0',
+        flagged_edits: '0',
+        flagged_edit_records: '0',
+        oldest_created_at: null,
+        ...over,
+      }],
+    };
+  }
+
+  it('reports nothing when the queue is empty', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow());
+
+    const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
+
+    expect(result).toEqual({ checked: 0, violations: [] });
+  });
+
+  it('reports nothing while everything is inside the SLA', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({
+      pending_brands: '3',
+      oldest_created_at: new Date(Date.now() - (REGISTRY_REVIEW_SLA_HOURS - 2) * 3_600_000),
+    }));
+
+    const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
+
+    expect(result.violations).toEqual([]);
+    expect(result.checked).toBe(3);
+  });
+
+  it('raises one aggregate violation once the oldest wait passes the SLA', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({
+      pending_brands: '4',
+      pending_properties: '1',
+      flagged_edits: '3',
+      flagged_edit_records: '2',
+      oldest_created_at: new Date(Date.now() - 100 * 3_600_000),
+    }));
+
+    const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(7);
+    // One violation, not seven — a 40-record outage must not bury the
+    // Stripe and WorkOS findings in the same report.
+    expect(result.violations).toHaveLength(1);
+    const violation = result.violations[0];
+    expect(violation.severity).toBe('warning');
+    expect(violation.subject_type).toBe('queue');
+    expect(violation.subject_id).toBe('registry-review-queue');
+    expect(violation.message).toContain('7 community registry submission(s)');
+    expect(violation.message).toContain(`${REGISTRY_REVIEW_SLA_HOURS}h SLA`);
+    expect(violation.remediation_hint).toContain('/admin/registry-review');
+    expect(violation.details).toMatchObject({
+      total: 7,
+      pending_brands: 4,
+      pending_properties: 1,
+      flagged_edits: 3,
+      sla_hours: REGISTRY_REVIEW_SLA_HOURS,
+    });
+    expect((violation.details as { oldest_age_hours: number }).oldest_age_hours)
+      .toBeGreaterThanOrEqual(99);
+  });
+
+  it('carries no submitter- or model-authored text into the operator report', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({
+      pending_brands: '2',
+      oldest_created_at: new Date(Date.now() - 100 * 3_600_000),
+    }));
+
+    const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
+
+    // Counts and ages only. Domains, edit summaries and the model's
+    // reason are member- or model-authored and stay on the admin page.
+    const serialized = JSON.stringify(result.violations[0]);
+    expect(serialized).not.toMatch(/\.example|\.com/);
+  });
+
+  it('counts both pending records and flagged edits through one aggregate', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({
+      pending_brands: '1', flagged_edits: '1', flagged_edit_records: '1',
+    }));
+
+    await registryReviewQueueDrainedInvariant.check(makeCtx());
+
+    const sql = (mockPoolQuery.mock.calls[0] as [string])[0];
+    expect(sql).toMatch(/review_status = 'pending'/);
+    expect(sql).toMatch(/submission_kind = 'edit'/);
   });
 });

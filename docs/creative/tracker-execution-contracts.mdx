@@ -13,6 +13,8 @@ Neither promise implies the other. A seller can resolve `{CACHEBUSTER}` without 
 
 This 3.2 surface covers only first-class `pixel_tracker`, `vast_tracker`, and `daast_tracker` manifest assets. It does not inspect trackers embedded in fetched VAST/DAAST documents, wrappers, JavaScript responses, or generic URL assets. Runtime preview observation is a separate, later capability; the production commitment does not depend on it.
 
+In AdCP 3.3, capability-gated [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers) are also checked against the effective package contract as `pixel_tracker` with `method: "img"` and their event/custom name. They fire alongside the creative's trackers and count against the same format tracker-slot limits. An unlisted selector in a complete contract rejects the assignment. Even without a declared selector, an accepted assignment tracker MUST fire at its event or the seller MUST reject the assignment; unknown custom events cannot silently no-op.
+
 ## Product-format authority
 
 The binding commitment is `Product.format_options[].tracker_execution_contract`, alongside `format_kind` and `params`. It is seller execution behavior, not a canonical-format parameter. A product option carrying the contract must have a stable `format_option_id` so the buyer can bind resolution and package assignment to exactly one option.
@@ -68,7 +70,7 @@ Each `honored[]` entry selects one exact tracker/event combination. It is not a 
 
 | Branch | Required identity | Important restrictions |
 |---|---|---|
-| `pixel_tracker` | `event`, `method: img` | `event: custom` requires a nonempty `custom_event_name`. JavaScript tracker execution is not supported by the 3.2 contract. |
+| `pixel_tracker` | `event`, `method: img` | `event: custom` requires a nonempty `custom_event_name`. JavaScript tracker execution is not supported by the 3.2 contract. From 3.3 the shared event enum also includes the playback events `start`, `first_quartile`, `midpoint`, `third_quartile` and `complete`, valid on `video_hosted` and `audio_hosted`: list the ones the seller fires, and under `complete: true` a buyer reads any unlisted one as not fired (for example, a FreeWheel-backed seller has no `start`). |
 | `vast_tracker` | `vast_versions[]`, `vast_event`, `target` | `progress` requires `offset`; other events forbid it. The event/target pair must be valid in every listed version. |
 | `daast_tracker` | `daast_versions[]`, `daast_event`, `target` | `progress` requires `offset`; other events forbid it. The event/target pair must be valid in every listed version. |
 

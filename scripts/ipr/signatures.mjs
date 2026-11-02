@@ -15,9 +15,12 @@ export function readSignatures(repoRoot = process.cwd()) {
   if (!fs.existsSync(full)) {
     return { signedContributors: [] };
   }
-  const raw = fs.readFileSync(full, 'utf8');
+  return parseSignatures(fs.readFileSync(full, 'utf8'));
+}
+
+export function parseSignatures(raw) {
   const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed.signedContributors)) {
+  if (!Array.isArray(parsed?.signedContributors)) {
     throw new Error(`Malformed ${SIGNATURES_PATH}: missing signedContributors array`);
   }
   return parsed;

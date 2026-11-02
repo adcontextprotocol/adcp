@@ -3,10 +3,12 @@ name: Validate schema PR bundle
 on:
   pull_request:
     branches: [main]
-    # Preview artifacts are only for changes to canonical schema sources.
-    # Compliance, OpenAPI, and build-tool changes remain covered by normal CI.
+    # Exercise canonical sources and the SDK semantic gate itself.
+    # Compliance, OpenAPI, and other build tools remain covered by normal CI.
     paths:
       - 'static/schemas/source/**'
+      - 'scripts/probe-generated-sdk-creative-assets.cjs'
+      - '.github/workflows/validate-schema-bundle.yml'
 
 concurrency:
   group: schema-pr-bundle-${{ github.event.pull_request.number }}
@@ -109,6 +111,17 @@ jobs:
 
       - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: protocol
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/probe-generated-sdk-creative-assets.cjs
+            static/schemas/source/core/assets
+
+      - uses: actions/checkout@v7.0.1
+        with:
           repository: adcontextprotocol/adcp-client
           path: sdk
           fetch-depth: 1
@@ -131,6 +144,9 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
+          # The SDK's sync-version generator handles 3.3 beta/rc candidates
+          # natively (exact preview aliases only, 3.2.x GA as stable peers),
+          # so the checkout is used as-is.
           printf '%s\n' "${bundle_version}" > sdk/ADCP_VERSION
           # This is a disposable candidate checkout: align the SDK's AdCP
           # metadata without bumping its own package release number.
@@ -153,6 +169,8 @@ jobs:
           # the normal public host.
           unset ADCP_BASE_URL ADCP_GITHUB_FALLBACK
           npm --prefix sdk run build:lib
+          node protocol/scripts/probe-generated-sdk-creative-assets.cjs \
+            --source-root protocol/static/schemas/source --sdk-root sdk
 
           bundle_digest="$(node -p "require('./bundle/latest.tgz.provenance.json').bundle_sha256")"
           {
@@ -174,9 +192,14 @@ jobs:
           name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
           path: bundle
 
+      # main bundles are AdCP 3.3 candidates. The Python SDK generates them only
+      # on its `next` branch (SDK 10 / AdCP 3.3); its default branch, `main`,
+      # is the 9.x line for AdCP 3.2 and cannot package a 3.3 bundle key.
+      # Move this back to the default branch when the SDK promotes 3.3 there.
       - uses: actions/checkout@v7.0.1
         with:
           repository: adcontextprotocol/adcp-client-python
+          ref: next
           path: sdk
           fetch-depth: 1
 
@@ -237,6 +260,14 @@ jobs:
                           continue
                       index = next((i for i, line in enumerate(lines) if old in line), None)
                       if index is None:
+                          # Current SDK sdists package the tracked cache and
+                          # deliberately prune generated package copies.
+                          if (
+                              filename == "sdk/MANIFEST.in"
+                              and old.startswith("recursive-include src/adcp/_schemas/")
+                              and any(line.strip() == "prune src/adcp/_schemas" for line in lines)
+                          ):
+                              continue
                           raise SystemExit(f"{filename} does not package the pinned SDK schema {old}")
                       lines.insert(index + 1, lines[index].replace(old, new))
                   path.write_text("".join(lines))

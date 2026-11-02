@@ -6,7 +6,9 @@ const state = vi.hoisted(() => ({
   connectDelayMs: 6000,
   pools: [] as Array<{ timeout: number; end: ReturnType<typeof vi.fn>; query: () => Promise<void> }>,
   storage: vi.fn(),
+  logError: vi.fn(),
 }));
+vi.mock('../../src/logger.js', () => ({ createLogger: () => ({ error: state.logError }) }));
 vi.mock('../../src/config.js', () => ({ getDatabaseConfig: () => state.database }));
 vi.mock('../../src/training-agent/gcs-reporting-config.js', () => ({
   trainingGcsReportingConfig: () => state.enabled ? { bucket: 'private-canary', credentialsFile: '/run/gcp.json' } : undefined,
@@ -53,6 +55,7 @@ beforeEach(() => {
   state.connectDelayMs = 6000;
   state.pools.length = 0;
   state.storage.mockClear();
+  state.logError.mockClear();
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -70,6 +73,30 @@ async function startup() {
 }
 
 describe('private GCS reporting startup connection budget', () => {
+  it.each(['40P01', '55P03', '42703', '08006'])('reports nested SQLSTATE %s without database payloads', async code => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const databaseError = Object.assign(new Error('private SQL and account values'), { code });
+    module.logTrainingReportingSchedulerFailure(new Error('Reporting notification recovery claim failed', {
+      cause: new Error('storage wrapper', { cause: databaseError }),
+    }));
+    expect(state.logError).toHaveBeenCalledWith({
+      diagnostic: 'Reporting notification recovery claim failed', databaseCode: code,
+    }, 'Durable reporting scheduler failed');
+    expect(JSON.stringify(state.logError.mock.calls)).not.toContain('private SQL');
+  });
+
+  it('handles cyclic causes and hostile descriptors without interrupting the scheduler', async () => {
+    const module = await import('../../src/training-agent/gcs-reporting.js');
+    const cyclic = new Error('scheduler failure');
+    cyclic.cause = cyclic;
+    const hostile = new Proxy({}, { getOwnPropertyDescriptor() { throw new Error('hostile'); } });
+    for (const error of [cyclic, hostile, Object.assign(new Error('failure'), { code: 'not a SQLSTATE' })]) {
+      expect(() => module.logTrainingReportingSchedulerFailure(error)).not.toThrow();
+    }
+    expect(state.logError).toHaveBeenCalledTimes(3);
+    for (const [details] of state.logError.mock.calls) expect(details.databaseCode).toBeUndefined();
+  });
+
   it('allows a cold primary connection longer than five seconds within the configured Fly budget', async () => {
     const module = await startup();
     const initializing = module.initializeTrainingGcsReporting();

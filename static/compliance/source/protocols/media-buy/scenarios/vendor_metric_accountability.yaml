@@ -1,5 +1,5 @@
 id: media_buy_seller/vendor_metric_accountability
-version: "1.0.1"
+version: "1.0.2"
 title: "End-to-end vendor-metric accountability: declaration → commitment → delivery audit"
 category: media_buy_seller
 summary: "Buyer commits vendor metrics on two packages, then verifies one clean package, one overdue gap, and one not-yet-measurable omission."
@@ -7,9 +7,15 @@ track: reporting
 requires:
   - controller
 
-requires_capability:
-  path: media_buy.features.committed_metrics_supported
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.features.committed_metrics_supported
+    equals: true
+  - path: media_buy.buying_modes
+    contains: wholesale
+  - path: compliance_testing.scenarios
+    contains: seed_product
+  - path: compliance_testing.scenarios
+    contains: seed_pricing_option
 
 required_tools:
   - get_products
@@ -49,7 +55,7 @@ agent:
   capabilities:
     - sells_media
   examples:
-    - "Any media buy seller that declares vendor_metrics on its products"
+    - "Sellers exposing the attention and post-flight vendor reporting contract exercised by this slice"
 
 caller:
   role: buyer_agent
@@ -57,54 +63,185 @@ caller:
 
 prerequisites:
   description: |
-    The seller supports comply_test_controller and can seed products with
-    `reporting_capabilities.vendor_metrics`. The seeded product must appear in
-    `get_products` responses when filtered by the declared vendor.
+    The seller supports wholesale discovery and committed metric snapshots. A
+    fully paginated, schema-valid catalog must contain a native non-guaranteed
+    display product declaring attentionvendor.example's attention_units and
+    post_flight_brand_lift metrics, plus the live and post_flight measurement
+    windows exercised below. An unrelated vendor metric is not evidence for
+    this contract. A valid no-match is fixture_unsatisfied coverage, not a pass
+    or proof that other vendor metrics or measurement windows are unsupported.
+    This exact compatibility slice uses the domain-only vendor reference below;
+    different brand IDs or additional vendor-reference metadata do not qualify it.
+    This slice requires seed_product and seed_pricing_option to be advertised in
+    compliance_testing.scenarios before any fixture mutation.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+context:
+  account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: vendor-metric-accountability.pinnacle-agency.example
+    sandbox: true
 fixtures:
+  accounts:
+    - account_id: acct_vendor_metric_accountability_sandbox
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: vendor-metric-accountability.pinnacle-agency.example
+        sandbox: true
+        billing: operator
+        status: active
   products:
-    - product_id: "display_premium_vendor_metrics"
-      # Non-guaranteed so sales-non-guaranteed-only sellers can run this scenario
-      # (#7754). Fixed-price because discovery filters on is_fixed_price and the
-      # creates send no bid. is_guarantee_basis is not conditioned on delivery_type.
-      delivery_type: "non_guaranteed"
-      channels: ["display"]
-      format_options:
-        - format_option_id: "display_300x250"
-          format_kind: "image"
-          params:
-            width: 300
-            height: 250
-      reporting_capabilities:
-        available_metrics:
-          - impressions
-          - clicks
-          - spend
-        measurement_windows:
-          - window_id: "live"
-            duration_days: 0
-            expected_availability_days: 0
-          - window_id: "post_flight"
-            duration_days: 0
-            expected_availability_days: 14
-            is_guarantee_basis: true
-        vendor_metrics:
-          - vendor:
-              domain: "attentionvendor.example"
-            metric_id: "attention_units"
-          - vendor:
-              domain: "attentionvendor.example"
-            metric_id: "post_flight_brand_lift"
-  pricing_options:
-    - product_id: "display_premium_vendor_metrics"
-      pricing_option_id: "cpm_standard_vendor"
-      pricing_model: "cpm"
-      currency: "USD"
-      fixed_price: 12.0
+    - product_id: native_vendor_metric_reporting_support
+fixture_resolution:
+  products:
+    - handle: native_vendor_metric_reporting_support
+      strategies:
+        - discover
+      match:
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /channels
+          operator: contains_all
+          value:
+            - display
+        - path: /pricing_options
+          operator: any_match
+          where:
+            - path: /pricing_model
+              operator: equals
+              value: cpm
+        - path: /reporting_capabilities/vendor_metrics
+          operator: any_match
+          where:
+            - path: /vendor
+              operator: equals
+              value:
+                domain: attentionvendor.example
+            - path: /metric_id
+              operator: equals
+              value: attention_units
+        - path: /reporting_capabilities/vendor_metrics
+          operator: any_match
+          where:
+            - path: /vendor
+              operator: equals
+              value:
+                domain: attentionvendor.example
+            - path: /metric_id
+              operator: equals
+              value: post_flight_brand_lift
+        - path: /reporting_capabilities/measurement_windows
+          operator: any_match
+          where:
+            - path: /window_id
+              operator: equals
+              value: live
+            - path: /duration_days
+              operator: equals
+              value: 0
+            - path: /expected_availability_days
+              operator: equals
+              value: 0
+        - path: /reporting_capabilities/measurement_windows
+          operator: any_match
+          where:
+            - path: /window_id
+              operator: equals
+              value: post_flight
+            - path: /duration_days
+              operator: equals
+              value: 0
+            - path: /expected_availability_days
+              operator: equals
+              value: 14
+            - path: /is_guarantee_basis
+              operator: equals
+              value: true
 
 phases:
+  - id: seed_supported_reporting_fixture
+    title: Prepare reporting fixtures only after declared native support
+    steps:
+      - id: seed_reporting_product
+        title: Seed the reporting product after native support is established
+        task: comply_test_controller
+        schema_ref: compliance/comply-test-controller-request.json
+        response_schema_ref: compliance/comply-test-controller-response.json
+        doc_ref: /building/by-layer/L3/comply-test-controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: vendor-metric-accountability.pinnacle-agency.example
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: display_premium_vendor_metrics
+            fixture:
+              delivery_type: non_guaranteed
+              channels:
+                - display
+              format_options:
+                - format_option_id: display_300x250
+                  format_kind: image
+                  params:
+                    width: 300
+                    height: 250
+              reporting_capabilities:
+                available_metrics:
+                  - impressions
+                  - spend
+                measurement_windows:
+                  - window_id: live
+                    duration_days: 0
+                    expected_availability_days: 0
+                  - window_id: post_flight
+                    duration_days: 0
+                    expected_availability_days: 14
+                    is_guarantee_basis: true
+                vendor_metrics:
+                  - vendor:
+                      domain: attentionvendor.example
+                    metric_id: attention_units
+                  - vendor:
+                      domain: attentionvendor.example
+                    metric_id: post_flight_brand_lift
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The supported reporting fixture is seeded successfully
+      - id: seed_reporting_price
+        title: Seed auction pricing for the reporting fixture
+        task: comply_test_controller
+        schema_ref: compliance/comply-test-controller-request.json
+        response_schema_ref: compliance/comply-test-controller-response.json
+        doc_ref: /building/by-layer/L3/comply-test-controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: vendor-metric-accountability.pinnacle-agency.example
+            sandbox: true
+          scenario: seed_pricing_option
+          params:
+            product_id: display_premium_vendor_metrics
+            pricing_option_id: cpm_standard_vendor
+            fixture:
+              pricing_model: cpm
+              currency: USD
+              floor_price: 12
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The auction reporting price is seeded successfully
   - id: discover_with_required_vendor_metrics
     title: "Discover products that declare an attention vendor metric"
     narrative: |
@@ -127,9 +264,10 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "pinnacle-agency.example"
+              operator: "vendor-metric-accountability.pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
+              sandbox: true
           idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_accountability_setup_sync_accounts"
         validations:
           - check: response_schema
@@ -156,15 +294,15 @@ phases:
           buying_mode: "brief"
           brief: "Display inventory with attention measurement from attentionvendor."
           filters:
-            channels: ["display"]
-            is_fixed_price: true
+            channels: [ "display" ]
             required_vendor_metrics:
               - vendor:
                   domain: "attentionvendor.example"
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "vendor-metric-accountability.pinnacle-agency.example"
+            sandbox: true
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -185,9 +323,13 @@ phases:
           - check: field_present
             path: "products[0].reporting_capabilities.vendor_metrics[0].metric_id"
             description: "Each declared vendor metric entry carries a metric_id"
+          - check: field_contains
+            path: "products[0].reporting_capabilities.vendor_metrics[*].vendor.domain"
+            value: "attentionvendor.example"
+            description: "The selected product declares a metric from the requested vendor"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "The captured pricing option is selectable with fixed or auction pricing"
 
   - id: create_media_buy
     title: "Commit the media buy on the matched product"
@@ -196,6 +338,8 @@ phases:
       Package 0 commits attention plus a post-flight metric; package 1 commits
       the same attention metric. The seller stamps both package contracts with
       `committed_at`, allowing the report to prove package-scoped isolation.
+      A read-back then settles the normative day-1 equality
+      `committed_at == confirmed_at` against the persisted buy.
     steps:
       - id: create_media_buy
         title: "Create media buy"
@@ -214,7 +358,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "vendor-metric-accountability.pinnacle-agency.example"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
           packages:
@@ -244,6 +389,12 @@ phases:
             key: "media_buy_id"
           - path: "confirmed_at"
             key: "confirmed_at"
+          - path: "packages[0].committed_metrics[0].committed_at"
+            key: "day_one_committed_at_pkg0_attention"
+          - path: "packages[0].committed_metrics[1].committed_at"
+            key: "day_one_committed_at_pkg0_brand_lift"
+          - path: "packages[1].committed_metrics[0].committed_at"
+            key: "day_one_committed_at_pkg1_attention"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -262,13 +413,69 @@ phases:
             path: "packages[0].committed_metrics[0].committed_at"
             description: "Seller stamps the commitment time used by delivery reconciliation"
           - check: field_value
-            path: "packages[0].committed_metrics[0].committed_at"
-            value: "$context.confirmed_at"
-            description: "Day-1 commitment time equals the media buy confirmed_at timestamp"
-          - check: field_value
             path: "packages[1].committed_metrics[0].metric_id"
             value: "attention_units"
             description: "Breach package commits the same metric, proving values are package-scoped"
+
+      # `each such entry's committed_at MUST equal confirmed_at` for the day-1
+      # set (/media-buy/task-reference/create_media_buy, core/package.json)
+      # cannot be asserted on the create step itself: the runner resolves a
+      # validation comparand from the context as it stood *before* the step,
+      # and that step's own context_outputs land after its validations run, so
+      # both operands would still be unresolved `$context.` tokens (#8328).
+      # Every day-1 committed_at is captured on create and settled here against
+      # the persisted confirmed_at, which `confirmed_at` is normatively stable
+      # for ("Once populated, remains stable", get-media-buys-response.json).
+      #
+      # `get_media_buys` stays a step-level `requires_tool` rather than joining
+      # the storyboard's `required_tools`: that list is an any-of gate
+      # (hasAnyRequiredTool), so adding a tool to it widens selection instead of
+      # tightening it. A seller that does not advertise get_media_buys skips
+      # this step; the equality is then ungraded, which is a property of the
+      # runner's skip-is-not-a-failure model rather than of this assertion.
+      - id: read_back_commitment_timestamps
+        title: "Read the buy back and settle committed_at = confirmed_at"
+        task: get_media_buys
+        requires_tool: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: |
+          Return the buy under test, echoing the confirmed_at the create
+          response returned. That timestamp is the one the seller stamped on
+          every day-1 committed_metrics entry, on both packages.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "vendor-metric-accountability.pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "media_buy_id"
+            description: "Read-back returns the buy under test, not another buy"
+          - check: field_equals_context
+            path: "media_buys[0].confirmed_at"
+            context_key: "confirmed_at"
+            description: "Persisted confirmed_at is the one create_media_buy returned"
+          - check: field_equals_context
+            path: "media_buys[0].confirmed_at"
+            context_key: "day_one_committed_at_pkg0_attention"
+            description: "Package 0 attention commitment time equals the media buy confirmed_at timestamp"
+          - check: field_equals_context
+            path: "media_buys[0].confirmed_at"
+            context_key: "day_one_committed_at_pkg0_brand_lift"
+            description: "Package 0 brand-lift commitment time equals the media buy confirmed_at timestamp"
+          - check: field_equals_context
+            path: "media_buys[0].confirmed_at"
+            context_key: "day_one_committed_at_pkg1_attention"
+            description: "Package 1 attention commitment time equals the media buy confirmed_at timestamp"
 
   - id: simulate_and_validate_vendor_metrics
     title: "Simulate delivery with vendor-metric values and validate emission"
@@ -295,6 +502,9 @@ phases:
           the vendor_metric_values.
         sample_request:
           account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: vendor-metric-accountability.pinnacle-agency.example
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -320,7 +530,7 @@ phases:
         validations:
           - check: field_value
             path: "success"
-            allowed_values: [true]
+            allowed_values: [ true ]
             description: "Delivery simulation succeeds"
 
       - id: get_delivery_with_vendor_metrics
@@ -341,7 +551,8 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            operator: "vendor-metric-accountability.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
         validations:

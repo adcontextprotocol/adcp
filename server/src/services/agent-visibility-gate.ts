@@ -10,6 +10,7 @@
 import { isValidAgentVisibility, isValidAgentType } from '../types.js';
 import type { AgentConfig, AgentVisibility } from '../types.js';
 import { validateExternalUrl } from '../utils/url-security.js';
+import { registryAgentUrlKey } from '../db/registry-agent-url-key.js';
 
 /**
  * Server-authoritative answer to "can this caller publish an agent publicly?"
@@ -112,8 +113,20 @@ export function gateAgentVisibilityForCaller(
       const validated = validateExternalUrl(a.health_check_url);
       if (validated) healthCheckUrl = validated;
     }
+    // `declared_url` is the URL authorization matching compares against
+    // (#7829), so it is the one field here a member could use to borrow
+    // someone else's authorization: claim `url` of their own agent and
+    // `declared_url` of a well-authorized one, and the directory would
+    // report their agent as authorized wherever that one is. Only accept it
+    // when it keys back to this exact agent — i.e. when it really is just
+    // another spelling of `url` (#7830).
+    const declaredUrl = typeof a.declared_url === 'string'
+      && registryAgentUrlKey(a.declared_url) === url
+      ? a.declared_url
+      : undefined;
     const cleaned: AgentConfig = {
       url,
+      ...(declaredUrl ? { declared_url: declaredUrl } : {}),
       visibility,
       ...(typeof a.name === 'string' ? { name: a.name } : {}),
       ...(typeValue ? { type: typeValue } : {}),

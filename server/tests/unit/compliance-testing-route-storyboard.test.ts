@@ -31,6 +31,10 @@ vi.mock('@adcp/sdk/testing', async importOriginal => ({
 
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   hostedComplianceTarget: () => mocks.target,
+  // Read by the forward-introduced-specialism overlay; this fixture target is
+  // synthetic, so no bundled release can define a specialism after it.
+  bundledComplianceVersions: () => [],
+  compareComplianceVersions: () => 0,
   hostedComplianceOptions: (target: { version: string; complianceDir: string; schemaRoot: string }) => ({
     version: target.version,
     complianceDir: target.complianceDir,
@@ -52,7 +56,7 @@ vi.mock('../../src/services/storyboards.js', () => ({
 }));
 
 import { loadStoryboardFile } from '@adcp/sdk/testing';
-import { comply } from '../../src/addie/services/compliance-testing.js';
+import { comply, HOSTED_COMPLIANCE_MAX_RESPONSE_BYTES } from '../../src/addie/services/compliance-testing.js';
 
 const SOURCE = resolve(__dirname, '../../../static/compliance/source');
 const SELLER_URL = 'https://seller.wrapper-7758.example/mcp';
@@ -109,5 +113,34 @@ describe('hosted comply() routing hook', () => {
     mocks.sdkComply.mockResolvedValue({ agent_profile: {} });
     await comply(SELLER_URL, { routeStoryboard: custom } as never, mocks.target as never);
     expect(mocks.sdkComply.mock.calls[0][1].routeStoryboard).toBe(custom);
+  });
+});
+
+describe('hosted comply() response bounds', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('bounds every agent response during the run and its capability pre-discovery', async () => {
+    mocks.discovery.mockResolvedValue({ profile: { tools: [] }, steps: [] });
+    mocks.sdkComply.mockResolvedValue({ agent_profile: {} });
+
+    await comply(SELLER_URL, {}, mocks.target as never);
+
+    expect(HOSTED_COMPLIANCE_MAX_RESPONSE_BYTES).toBe(4 * 1024 * 1024);
+    expect(mocks.sdkComply.mock.calls[0][1].transport.maxResponseBytes).toBe(HOSTED_COMPLIANCE_MAX_RESPONSE_BYTES);
+    expect(mocks.discovery).toHaveBeenCalled();
+    for (const [, options] of mocks.discovery.mock.calls) {
+      expect(options.transport.maxResponseBytes).toBe(HOSTED_COMPLIANCE_MAX_RESPONSE_BYTES);
+    }
+  });
+
+  it('keeps a caller-supplied response bound', async () => {
+    mocks.discovery.mockResolvedValue({ profile: { tools: [] }, steps: [] });
+    mocks.sdkComply.mockResolvedValue({ agent_profile: {} });
+
+    await comply(SELLER_URL, { transport: { maxResponseBytes: 1024 } } as never, mocks.target as never);
+
+    expect(mocks.sdkComply.mock.calls[0][1].transport.maxResponseBytes).toBe(1024);
   });
 });

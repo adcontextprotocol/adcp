@@ -1,0 +1,232 @@
+{
+  "version": "1.0.0",
+  "description": "Reference vectors for the AAO reference catalog's HTML-markup legacy formats (`display_html`, `display_WxH_html`). These formats require one `html_creative` asset (markup the seller renders verbatim), so they project to `display_tag` with an inline-markup `html_creative` slot, not to `html5`, which is reserved for seller-hosted zip bundles (adcontextprotocol/adcp#8339). `product_projection_vectors` apply canonical-projection-ref rules 1-6 to the catalog entry plus its fixed render dimensions. `legacy_selection_vectors` select the exact legacy ref for a canonical creative from a product's legacy formats and give the legacy-wire assets. On that wire, inline markup travels byte-for-byte as the `html` asset's `content` under the slot's `asset_group_id`. These vectors cover format and size selection only. They do not fetch, inspect, or execute markup.",
+  "catalog": "server/src/creative-agent/reference-formats.json",
+  "product_projection_vectors": [
+    {
+      "id": "sized-html-markup-projects-to-inline-display-tag",
+      "format_id": "display_300x250_html",
+      "expected_v2": {
+        "format_kind": "display_tag",
+        "params": {
+          "width": 300,
+          "height": 250,
+          "asset_source": "buyer_uploaded",
+          "slots": [
+            {
+              "asset_group_id": "html_creative",
+              "asset_type": "display_tag",
+              "required": true
+            }
+          ],
+          "supported_delivery_types": [
+            "inline_markup"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mobile-html-markup-projects-to-inline-display-tag",
+      "format_id": "display_320x50_html",
+      "expected_v2": {
+        "format_kind": "display_tag",
+        "params": {
+          "width": 320,
+          "height": 50,
+          "asset_source": "buyer_uploaded",
+          "slots": [
+            {
+              "asset_group_id": "html_creative",
+              "asset_type": "display_tag",
+              "required": true
+            }
+          ],
+          "supported_delivery_types": [
+            "inline_markup"
+          ]
+        }
+      }
+    },
+    {
+      "id": "unsized-html-markup-projects-without-a-size-constraint",
+      "format_id": "display_html",
+      "expected_v2": {
+        "format_kind": "display_tag",
+        "params": {
+          "asset_source": "buyer_uploaded",
+          "slots": [
+            {
+              "asset_group_id": "html_creative",
+              "asset_type": "display_tag",
+              "required": true
+            }
+          ],
+          "supported_delivery_types": [
+            "inline_markup"
+          ]
+        }
+      }
+    },
+    {
+      "id": "javascript-tag-format-is-unchanged",
+      "format_id": "display_js",
+      "expected_v2": {
+        "format_kind": "display_tag",
+        "params": {}
+      },
+      "notes": "display_js keeps its bare display_tag annotation and the canonical's default tag_url slot contract."
+    }
+  ],
+  "legacy_selection_vectors": [
+    {
+      "id": "inline-markup-selects-the-exact-sized-legacy-ref",
+      "product_legacy_formats": [
+        "display_300x250_html",
+        "display_300x600_html",
+        "display_320x50_html"
+      ],
+      "creative": {
+        "format_kind": "display_tag",
+        "assets": {
+          "html_creative": {
+            "asset_type": "display_tag",
+            "delivery_type": "inline_markup",
+            "markup_type": "standard",
+            "markup": "<ins class=\"dcmads\" style=\"display:inline-block;width:300px;height:250px\" data-dcm-placement=\"N0000.0000ACME/B0000000.000000000\" data-dcm-rendering-mode=\"script\"><script src=\"https://ads.acme.example/dcmads.js\"></script></ins>",
+            "width": 300,
+            "height": 250
+          }
+        }
+      },
+      "expected": {
+        "status": "selected",
+        "format_id": "display_300x250_html",
+        "legacy_assets": {
+          "html_creative": {
+            "asset_type": "html",
+            "content": "<ins class=\"dcmads\" style=\"display:inline-block;width:300px;height:250px\" data-dcm-placement=\"N0000.0000ACME/B0000000.000000000\" data-dcm-rendering-mode=\"script\"><script src=\"https://ads.acme.example/dcmads.js\"></script></ins>"
+          }
+        }
+      }
+    },
+    {
+      "id": "unsized-inline-markup-selects-the-unsized-legacy-ref",
+      "product_legacy_formats": [
+        "display_html"
+      ],
+      "creative": {
+        "format_kind": "display_tag",
+        "assets": {
+          "html_creative": {
+            "asset_type": "display_tag",
+            "delivery_type": "inline_markup",
+            "markup_type": "standard",
+            "markup": "<ins class=\"dcmads\" style=\"display:inline-block;width:300px;height:250px\" data-dcm-placement=\"N0000.0000ACME/B0000000.000000000\" data-dcm-rendering-mode=\"script\"><script src=\"https://ads.acme.example/dcmads.js\"></script></ins>"
+          }
+        }
+      },
+      "expected": {
+        "status": "selected",
+        "format_id": "display_html",
+        "legacy_assets": {
+          "html_creative": {
+            "asset_type": "html",
+            "content": "<ins class=\"dcmads\" style=\"display:inline-block;width:300px;height:250px\" data-dcm-placement=\"N0000.0000ACME/B0000000.000000000\" data-dcm-rendering-mode=\"script\"><script src=\"https://ads.acme.example/dcmads.js\"></script></ins>"
+          }
+        }
+      }
+    },
+    {
+      "id": "unsized-inline-markup-does-not-prove-a-fixed-size",
+      "product_legacy_formats": [
+        "display_300x250_html",
+        "display_300x600_html"
+      ],
+      "creative": {
+        "format_kind": "display_tag",
+        "assets": {
+          "html_creative": {
+            "asset_type": "display_tag",
+            "delivery_type": "inline_markup",
+            "markup_type": "standard",
+            "markup": "<ins class=\"dcmads\" style=\"display:inline-block;width:300px;height:250px\" data-dcm-placement=\"N0000.0000ACME/B0000000.000000000\" data-dcm-rendering-mode=\"script\"><script src=\"https://ads.acme.example/dcmads.js\"></script></ins>"
+          }
+        }
+      },
+      "expected": {
+        "status": "unavailable",
+        "reason": "rendered_size_unproven"
+      }
+    },
+    {
+      "id": "size-without-a-legacy-candidate-fails-closed",
+      "product_legacy_formats": [
+        "display_300x250_html",
+        "display_300x600_html"
+      ],
+      "creative": {
+        "format_kind": "display_tag",
+        "assets": {
+          "html_creative": {
+            "asset_type": "display_tag",
+            "delivery_type": "inline_markup",
+            "markup_type": "standard",
+            "markup": "<ins class=\"dcmads\" style=\"display:inline-block;width:300px;height:250px\" data-dcm-placement=\"N0000.0000ACME/B0000000.000000000\" data-dcm-rendering-mode=\"script\"><script src=\"https://ads.acme.example/dcmads.js\"></script></ins>",
+            "width": 728,
+            "height": 90
+          }
+        }
+      },
+      "expected": {
+        "status": "unavailable",
+        "reason": "no_size_match"
+      }
+    },
+    {
+      "id": "html5-zip-does-not-match-an-html-markup-product",
+      "product_legacy_formats": [
+        "display_300x250_html",
+        "display_300x600_html",
+        "display_320x50_html"
+      ],
+      "creative": {
+        "format_kind": "html5",
+        "assets": {
+          "html5_bundle": {
+            "asset_type": "zip",
+            "url": "https://cdn.acme.example/spring-300x250.zip",
+            "width": 300,
+            "height": 250
+          }
+        }
+      },
+      "expected": {
+        "status": "unavailable",
+        "reason": "format_kind_mismatch"
+      },
+      "notes": "Intended. These sellers render markup verbatim and never unpack or host bundles. A zip can reach them only as buyer-served markup."
+    },
+    {
+      "id": "tag-url-delivery-does-not-match-an-inline-markup-product",
+      "product_legacy_formats": [
+        "display_300x250_html"
+      ],
+      "creative": {
+        "format_kind": "display_tag",
+        "assets": {
+          "html_creative": {
+            "asset_type": "display_tag",
+            "delivery_type": "tag_url",
+            "url": "https://ads.acme.example/render?sz=300x250",
+            "width": 300,
+            "height": 250
+          }
+        }
+      },
+      "expected": {
+        "status": "unavailable",
+        "reason": "delivery_type_not_supported"
+      }
+    }
+  ]
+}

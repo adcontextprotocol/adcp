@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { handleSearchBrands } from '../../src/training-agent/brand-handlers.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+
+const advertiserIndustries = (JSON.parse(readFileSync(new URL(
+  '../../../static/schemas/source/enums/advertiser-industry.json',
+  import.meta.url,
+), 'utf8')) as { enum: string[] }).enum;
 
 const ctx: TrainingContext = {
   mode: 'open',
@@ -53,5 +59,33 @@ describe('training-agent search_brands', () => {
     expect(invalid.errors).toEqual([
       expect.objectContaining({ code: 'INVALID_REQUEST', field: 'pagination.cursor' }),
     ]);
+  });
+
+  it('asks the buyer to correct an absent query instead of throwing', () => {
+    const result = handleSearchBrands({ context: { correlation_id: 'no-query' } }, ctx) as Record<string, any>;
+    expect(result.errors).toEqual([
+      expect.objectContaining({ code: 'INVALID_REQUEST', field: 'query', recovery: 'correctable' }),
+    ]);
+    expect(result.brands).toBeUndefined();
+    expect(result.context).toEqual({ correlation_id: 'no-query' });
+  });
+
+  it('reports industries from the advertiser-industry taxonomy', () => {
+    const allowed = new Set(advertiserIndustries);
+    const result = handleSearchBrands({ query: '', pagination: { max_results: 100 } }, ctx) as Record<string, any>;
+    const industries = (result.brands as Array<{ industries?: string[] }>).flatMap(brand => brand.industries ?? []);
+    expect(industries.length).toBeGreaterThan(0);
+    expect(industries.filter(industry => !allowed.has(industry))).toEqual([]);
+  });
+
+  it('carries the house a 3.1 result requires on every brand', () => {
+    const current = handleSearchBrands({ query: '', pagination: { max_results: 100 } }, ctx) as Record<string, any>;
+    const threeOne = handleSearchBrands(
+      { query: '', pagination: { max_results: 100 } },
+      { ...ctx, servedAdcpVersion: '3.1' },
+    ) as Record<string, any>;
+    // 3.2 makes house conditional on a recorded affiliation.
+    expect((current.brands as Array<Record<string, unknown>>).some(brand => brand.house === undefined)).toBe(true);
+    expect((threeOne.brands as Array<Record<string, unknown>>).filter(brand => brand.house === undefined)).toEqual([]);
   });
 });

@@ -160,6 +160,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -240,6 +241,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           creatives:
             - creative_id: "available_actions_display_creative"
               name: "Acme Outdoor Available Actions Display Creative"
@@ -283,6 +285,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "available_actions_product_mb"
@@ -370,6 +373,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           media_buy_ids: ["$context.available_actions_media_buy_id"]
@@ -435,6 +439,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
@@ -492,6 +497,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
@@ -546,6 +552,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
@@ -602,6 +609,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
@@ -658,6 +666,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_available_actions-798c3be3"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"

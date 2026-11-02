@@ -131,10 +131,15 @@ export class AgentService {
     return {
       name: config.name || profile.display_name,
       url: config.url,
+      // Carried through so authorization matching can use the spelling the
+      // member registered — the key folds a trailing slash for identity and
+      // cannot decide an adagents.json match (#7829, #7830).
+      ...(config.declared_url ? { declared_url: config.declared_url } : {}),
       type: (config.type as AgentType) || "buying",
       protocol: "mcp",
       description: profile.description || "",
-      mcp_endpoint: config.url,
+      // The endpoint to actually call is the one that was registered.
+      mcp_endpoint: config.declared_url ?? config.url,
       contact: {
         name: profile.display_name,
         email: profile.contact_email || "",

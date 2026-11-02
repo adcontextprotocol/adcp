@@ -6,6 +6,7 @@ import { logger } from '../logger.js';
 import { sendChannelMessage, sendDirectMessage, isSlackConfigured } from '../slack/client.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import type { SlackBlockMessage } from '../slack/types.js';
+import { isSafeSlackLinkTarget, sanitizeSlackLine, sanitizeSlackLinkLabel } from '../utils/slack-escape.js';
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
@@ -88,6 +89,25 @@ export async function sendSlackMessage(message: SlackMessage): Promise<boolean> 
 }
 
 /**
+ * Render `<url|label>`, or just the label when the target has a shape that
+ * would break out of Slack link syntax. The label half is sanitized by the
+ * caller; the target half cannot be escaped, so it is checked instead.
+ */
+function slackLink(url: string, label: string): string {
+  return isSafeSlackLinkTarget(url) ? `<${url}|${label}>` : label;
+}
+
+/**
+ * Drop backticks from text we are about to put inside a ``` fence. The
+ * fenced copy is meant to be selected and pasted verbatim, so escaping the
+ * mrkdwn would corrupt it — removing the one character that can close the
+ * fence keeps the block intact without rewriting the author's words.
+ */
+function stripFenceBreakers(value: string): string {
+  return value.replace(/`/g, '');
+}
+
+/**
  * Format currency amount from cents to dollars
  */
 function formatAmount(cents: number, currency: string = 'usd'): string {
@@ -122,9 +142,13 @@ export async function notifyNewSubscription(data: {
 }): Promise<boolean> {
   const intervalText = data.interval === 'year' ? '/year' : '/month';
   const amountText = data.amount ? formatAmount(data.amount, data.currency) + intervalText : 'Custom';
+  // Organization and product names are set by the paying org / the Stripe
+  // catalog, not by us (adcp#8320).
+  const organizationName = sanitizeSlackLine(data.organizationName, 120);
+  const productName = sanitizeSlackLine(data.productName || 'Membership', 120);
 
   return sendSlackMessage({
-    text: `🎉 New AAO Member: ${data.organizationName}`,
+    text: `🎉 New AAO Member: ${organizationName}`,
     blocks: [
       {
         type: 'header',
@@ -139,15 +163,15 @@ export async function notifyNewSubscription(data: {
         fields: [
           {
             type: 'mrkdwn',
-            text: `*Organization:*\n${data.organizationName}`,
+            text: `*Organization:*\n${organizationName}`,
           },
           {
             type: 'mrkdwn',
-            text: `*Email:*\n${maskEmail(data.customerEmail)}`,
+            text: `*Email:*\n${sanitizeSlackLine(maskEmail(data.customerEmail), 120)}`,
           },
           {
             type: 'mrkdwn',
-            text: `*Plan:*\n${data.productName || 'Membership'}`,
+            text: `*Plan:*\n${productName}`,
           },
           {
             type: 'mrkdwn',
@@ -171,9 +195,11 @@ export async function notifyPaymentSucceeded(data: {
 }): Promise<boolean> {
   const emoji = data.isRecurring ? '💰' : '🎊';
   const paymentType = data.isRecurring ? 'Recurring Payment' : 'New Payment';
+  const organizationName = sanitizeSlackLine(data.organizationName, 120);
+  const productName = sanitizeSlackLine(data.productName || 'Membership', 120);
 
   return sendSlackMessage({
-    text: `${emoji} ${paymentType}: ${formatAmount(data.amount, data.currency)} from ${data.organizationName}`,
+    text: `${emoji} ${paymentType}: ${formatAmount(data.amount, data.currency)} from ${organizationName}`,
     blocks: [
       {
         type: 'header',
@@ -188,7 +214,7 @@ export async function notifyPaymentSucceeded(data: {
         fields: [
           {
             type: 'mrkdwn',
-            text: `*Organization:*\n${data.organizationName}`,
+            text: `*Organization:*\n${organizationName}`,
           },
           {
             type: 'mrkdwn',
@@ -196,7 +222,7 @@ export async function notifyPaymentSucceeded(data: {
           },
           {
             type: 'mrkdwn',
-            text: `*Product:*\n${data.productName || 'Membership'}`,
+            text: `*Product:*\n${productName}`,
           },
           {
             type: 'mrkdwn',
@@ -217,8 +243,10 @@ export async function notifyPaymentFailed(data: {
   currency: string;
   attemptCount: number;
 }): Promise<boolean> {
+  const organizationName = sanitizeSlackLine(data.organizationName, 120);
+
   return sendSlackMessage({
-    text: `⚠️ Payment Failed: ${data.organizationName} - ${formatAmount(data.amount, data.currency)}`,
+    text: `⚠️ Payment Failed: ${organizationName} - ${formatAmount(data.amount, data.currency)}`,
     blocks: [
       {
         type: 'header',
@@ -233,7 +261,7 @@ export async function notifyPaymentFailed(data: {
         fields: [
           {
             type: 'mrkdwn',
-            text: `*Organization:*\n${data.organizationName}`,
+            text: `*Organization:*\n${organizationName}`,
           },
           {
             type: 'mrkdwn',
@@ -256,8 +284,11 @@ export async function notifySubscriptionCancelled(data: {
   organizationName: string;
   productName?: string;
 }): Promise<boolean> {
+  const organizationName = sanitizeSlackLine(data.organizationName, 120);
+  const productName = sanitizeSlackLine(data.productName || 'Membership', 120);
+
   return sendSlackMessage({
-    text: `😢 Subscription Cancelled: ${data.organizationName}`,
+    text: `😢 Subscription Cancelled: ${organizationName}`,
     blocks: [
       {
         type: 'header',
@@ -272,11 +303,11 @@ export async function notifySubscriptionCancelled(data: {
         fields: [
           {
             type: 'mrkdwn',
-            text: `*Organization:*\n${data.organizationName}`,
+            text: `*Organization:*\n${organizationName}`,
           },
           {
             type: 'mrkdwn',
-            text: `*Plan:*\n${data.productName || 'Membership'}`,
+            text: `*Plan:*\n${productName}`,
           },
         ],
       },
@@ -293,12 +324,17 @@ export async function notifyNewMemberProfile(data: {
   slug: string;
   offerings?: string[];
 }): Promise<boolean> {
+  // Every field here is member-set profile text landing in a staff channel
+  // (adcp#8320), so each one is flattened, capped and mrkdwn-escaped.
+  const displayName = sanitizeSlackLine(data.displayName, 120);
+  const organizationName = sanitizeSlackLine(data.organizationName, 120);
+  const slug = sanitizeSlackLine(data.slug, 120);
   const offeringsText = data.offerings?.length
-    ? data.offerings.join(', ')
+    ? sanitizeSlackLine(data.offerings.join(', '), 400)
     : 'Not specified';
 
   return sendSlackMessage({
-    text: `👤 New Member Profile: ${data.displayName}`,
+    text: `👤 New Member Profile: ${displayName}`,
     blocks: [
       {
         type: 'header',
@@ -313,15 +349,15 @@ export async function notifyNewMemberProfile(data: {
         fields: [
           {
             type: 'mrkdwn',
-            text: `*Display Name:*\n${data.displayName}`,
+            text: `*Display Name:*\n${displayName}`,
           },
           {
             type: 'mrkdwn',
-            text: `*Organization:*\n${data.organizationName}`,
+            text: `*Organization:*\n${organizationName}`,
           },
           {
             type: 'mrkdwn',
-            text: `*Slug:*\n${data.slug}`,
+            text: `*Slug:*\n${slug}`,
           },
           {
             type: 'mrkdwn',
@@ -349,9 +385,15 @@ export async function notifyWorkingGroupPost(data: {
   const typeLabel = data.contentType === 'link' ? 'Link' : 'Article';
   const postUrl = `https://agenticadvertising.org/working-groups/${data.workingGroupSlug}/posts/${data.postSlug}`;
   const groupUrl = `https://agenticadvertising.org/working-groups/${data.workingGroupSlug}`;
+  // Member-authored (adcp#8320). The two that sit inside `<url|label>` also
+  // drop `|`, which escaping alone leaves able to restructure the link.
+  const postTitle = sanitizeSlackLinkLabel(data.postTitle, 160);
+  const workingGroupName = sanitizeSlackLinkLabel(data.workingGroupName, 120);
+  const authorName = sanitizeSlackLine(data.authorName, 120);
+  const category = data.category ? sanitizeSlackLine(data.category, 80) : '';
 
   return sendSlackMessage({
-    text: `${emoji} New ${typeLabel} in ${data.workingGroupName}: ${data.postTitle}`,
+    text: `${emoji} New ${typeLabel} in ${workingGroupName}: ${postTitle}`,
     blocks: [
       {
         type: 'header',
@@ -366,19 +408,19 @@ export async function notifyWorkingGroupPost(data: {
         fields: [
           {
             type: 'mrkdwn',
-            text: `*Title:*\n<${postUrl}|${data.postTitle}>`,
+            text: `*Title:*\n${slackLink(postUrl, postTitle)}`,
           },
           {
             type: 'mrkdwn',
-            text: `*Working Group:*\n<${groupUrl}|${data.workingGroupName}>`,
+            text: `*Working Group:*\n${slackLink(groupUrl, workingGroupName)}`,
           },
           {
             type: 'mrkdwn',
-            text: `*Author:*\n${data.authorName}`,
+            text: `*Author:*\n${authorName}`,
           },
           {
             type: 'mrkdwn',
-            text: `*Type:*\n${typeLabel}${data.category ? ` (${data.category})` : ''}`,
+            text: `*Type:*\n${typeLabel}${category ? ` (${category})` : ''}`,
           },
         ],
       },
@@ -410,10 +452,24 @@ export async function notifyWorkingGroupSlackChannel(data: {
   const emoji = data.contentType === 'link' ? '🔗' : '📝';
   const headerText = data.contentType === 'link' ? 'New Link Shared' : 'New Post Published';
   const postUrl = `${APP_URL}/working-groups/${data.workingGroupSlug}/posts/${data.postSlug}`;
+  // Member-authored post content posted into the group's own channel
+  // (adcp#8320). `postTitle` is a link label, so it also drops `|`; the
+  // excerpt is multi-line free text, so flattening is what stops it forging
+  // the "Posted by …" line below it.
+  const postTitle = sanitizeSlackLinkLabel(data.postTitle, 160);
+  const workingGroupName = sanitizeSlackLine(data.workingGroupName, 120);
+  const authorName = sanitizeSlackLine(data.authorName, 120);
+  const category = data.category ? sanitizeSlackLine(data.category, 80) : '';
+  const excerpt = data.excerpt ? sanitizeSlackLine(data.excerpt, 400) : '';
+  // Member-supplied on a link post, and the only field here that is a URL
+  // rather than prose — so it is checked rather than escaped.
+  const externalUrl = data.externalUrl && isSafeSlackLinkTarget(data.externalUrl)
+    ? data.externalUrl
+    : '';
 
   // Build message blocks
   const message: SlackBlockMessage = {
-    text: `${emoji} ${headerText} in ${data.workingGroupName}: ${data.postTitle}`,
+    text: `${emoji} ${headerText} in ${workingGroupName}: ${postTitle}`,
     blocks: [
       {
         type: 'header',
@@ -427,22 +483,22 @@ export async function notifyWorkingGroupSlackChannel(data: {
         type: 'section',
         text: {
           type: 'mrkdwn' as const,
-          text: `*<${postUrl}|${data.postTitle}>*${data.excerpt ? `\n${data.excerpt}` : ''}`,
+          text: `*${slackLink(postUrl, postTitle)}*${excerpt ? `\n${excerpt}` : ''}`,
         },
       },
       {
         type: 'section',
         text: {
           type: 'mrkdwn' as const,
-          text: `Posted by ${data.authorName}${data.category ? ` • ${data.category}` : ''}`,
+          text: `Posted by ${authorName}${category ? ` • ${category}` : ''}`,
         },
       },
       // Add external URL for link posts
-      ...(data.contentType === 'link' && data.externalUrl ? [{
+      ...(data.contentType === 'link' && externalUrl ? [{
         type: 'section',
         text: {
           type: 'mrkdwn' as const,
-          text: `🔗 ${data.externalUrl}`,
+          text: `🔗 ${externalUrl}`,
         },
       }] : []),
     ],
@@ -532,8 +588,11 @@ export async function notifyMeetingStarted(data: {
     return false;
   }
 
+  const meetingTitle = sanitizeSlackLine(data.meetingTitle, 160);
+  const workingGroupName = sanitizeSlackLine(data.workingGroupName, 120);
+
   const message: SlackBlockMessage = {
-    text: `📹 Meeting starting now: ${data.meetingTitle}`,
+    text: `📹 Meeting starting now: ${meetingTitle}`,
     blocks: [
       {
         type: 'header',
@@ -547,10 +606,10 @@ export async function notifyMeetingStarted(data: {
         type: 'section',
         text: {
           type: 'mrkdwn' as const,
-          text: `*${data.meetingTitle}*\n${data.workingGroupName}`,
+          text: `*${meetingTitle}*\n${workingGroupName}`,
         },
       },
-      ...(data.zoomJoinUrl ? [{
+      ...(data.zoomJoinUrl && isSafeSlackLinkTarget(data.zoomJoinUrl) ? [{
         type: 'section',
         text: {
           type: 'mrkdwn' as const,
@@ -564,7 +623,7 @@ export async function notifyMeetingStarted(data: {
     const result = await sendChannelMessage(data.slackChannelId, message);
     if (result.ok) {
       logger.info(
-        { channelId: data.slackChannelId, meetingTitle: data.meetingTitle },
+        { channelId: data.slackChannelId, meetingTitle },
         'Sent meeting started notification to Slack channel'
       );
       return true;
@@ -598,9 +657,11 @@ export async function notifyMeetingEnded(data: {
   const durationText = data.durationMinutes
     ? `Duration: ${Math.floor(data.durationMinutes / 60)}h ${data.durationMinutes % 60}m`
     : '';
+  const meetingTitle = sanitizeSlackLine(data.meetingTitle, 160);
+  const workingGroupName = sanitizeSlackLine(data.workingGroupName, 120);
 
   const message: SlackBlockMessage = {
-    text: `✅ Meeting ended: ${data.meetingTitle}`,
+    text: `✅ Meeting ended: ${meetingTitle}`,
     blocks: [
       {
         type: 'header',
@@ -614,7 +675,7 @@ export async function notifyMeetingEnded(data: {
         type: 'section',
         text: {
           type: 'mrkdwn' as const,
-          text: `*${data.meetingTitle}*\n${data.workingGroupName}${durationText ? `\n${durationText}` : ''}`,
+          text: `*${meetingTitle}*\n${workingGroupName}${durationText ? `\n${durationText}` : ''}`,
         },
       },
       {
@@ -636,7 +697,7 @@ export async function notifyMeetingEnded(data: {
     const result = await sendChannelMessage(data.slackChannelId, message);
     if (result.ok) {
       logger.info(
-        { channelId: data.slackChannelId, meetingTitle: data.meetingTitle },
+        { channelId: data.slackChannelId, meetingTitle },
         'Sent meeting ended notification to Slack channel'
       );
       return true;
@@ -703,13 +764,18 @@ export async function sendSocialAmplificationDM(data: {
   }
 
   const postUrl = `${APP_URL}/working-groups/${data.workingGroupSlug}/posts/${data.postSlug}`;
-  const socialText = data.excerpt || data.subtitle || '';
+  // Slack rejects a header block over 150 characters with `invalid_blocks`,
+  // and member-authored titles run to 500 — an uncapped title silently
+  // loses the author their whole amplification DM.
+  const headerTitle = sanitizeSlackLine(data.title, 110);
+  // Fenced below, so a backtick run in the excerpt would close the fence.
+  const socialText = stripFenceBreakers(data.excerpt || data.subtitle || '');
 
   // LinkedIn: use excerpt/subtitle with URL and hashtags
   const linkedInPost = `"${socialText}"\n\nRead more: ${postUrl}\n\n#AgenticAdvertising #AdCP #AdTech #AI`;
 
   // Twitter: title + short excerpt, keep under 280 chars
-  const tweetBase = `${data.title} — `;
+  const tweetBase = `${stripFenceBreakers(data.title)} — `;
   const tweetHashtags = `\n\n${postUrl}\n\n#AgenticAdvertising #AdCP`;
   const tweetBudget = 280 - tweetBase.length - tweetHashtags.length;
   const tweetExcerpt = tweetBudget > 0 && socialText
@@ -719,16 +785,16 @@ export async function sendSocialAmplificationDM(data: {
     : '';
   const tweetPost = tweetExcerpt
     ? `${tweetBase}${tweetExcerpt}${tweetHashtags}`
-    : `${data.title}${tweetHashtags}`;
+    : `${stripFenceBreakers(data.title)}${tweetHashtags}`;
 
   const message: SlackBlockMessage = {
-    text: `Your perspective "${data.title}" is live!`,
+    text: `Your perspective "${headerTitle}" is live!`,
     blocks: [
       {
         type: 'header',
         text: {
           type: 'plain_text' as const,
-          text: `Your perspective "${data.title}" is live! \ud83c\udf89`,
+          text: `Your perspective "${headerTitle}" is live! \ud83c\udf89`,
           emoji: true,
         },
       },

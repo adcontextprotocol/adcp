@@ -28,10 +28,19 @@
  * Note on active-membership filtering: `organization_memberships` has no
  * status column in this schema — removed members get their row deleted, not
  * status-flipped. Row existence is the membership signal.
+ *
+ * Note on the agent URL: every predicate below matches the agent by its
+ * registry IDENTITY, not by one spelling of its URL (#8322). `/mcp` and
+ * `/mcp/` are one agent (#7830/#8249), and a profile may hold either
+ * spelling, so an exact match on the keyed URL denied owners their own
+ * agent. `agentIdentityContainment` builds the folded filter and documents
+ * what the fold does and does not widen; the org/membership scoping in each
+ * query below is unchanged, and `declared_url` is never consulted.
  */
 
 import { query } from '../db/client.js';
-import { canonicalizeAgentUrl } from '../db/publisher-db.js';
+import { agentIdentityContainment } from '../db/agent-identity-match.js';
+import { registryAgentUrlKeySpellings } from '../db/registry-agent-url-key.js';
 import type { AgentVisibility } from '../types.js';
 
 /** Resolve the owned agent's directory visibility without exposing it publicly. */
@@ -40,17 +49,28 @@ export async function findOwnedAgentVisibility(
   agentUrl: string,
 ): Promise<AgentVisibility | null> {
   try {
-    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    // The LATERAL form reads the matching element, so it takes the spelling
+    // set as a `text[]` rather than a containment OR. The fold can now match
+    // more than one element (two spellings of one agent, or two orgs this
+    // user belongs to), so order the candidates instead of leaving `LIMIT 1`
+    // to the planner: the most permissive visibility wins, which is the same
+    // answer `isAgentPublic` gives ("some owner listed this agent public")
+    // and keeps the caller's public-event decision stable across runs.
     const result = await query<{ visibility: string | null }>(
       `SELECT agent->>'visibility' AS visibility
        FROM member_profiles mp
        JOIN organization_memberships om
          ON om.workos_organization_id = mp.workos_organization_id
        CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
-       WHERE agent->>'url' = $1
+       WHERE agent->>'url' = ANY($1::text[])
          AND om.workos_user_id = $2
+       ORDER BY CASE agent->>'visibility'
+                  WHEN 'public' THEN 0
+                  WHEN 'members_only' THEN 1
+                  ELSE 2
+                END
        LIMIT 1`,
-      [lookupAgentUrl, userId],
+      [registryAgentUrlKeySpellings(agentUrl), userId],
     );
     if (!result.rows[0]) return null;
     const visibility = result.rows[0].visibility;
@@ -74,16 +94,16 @@ export async function findOwnerOrgForUser(
   agentUrl: string,
 ): Promise<string | null> {
   try {
-    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const agents = agentIdentityContainment('mp.agents', agentUrl, 1);
     const result = await query<{ workos_organization_id: string }>(
       `SELECT mp.workos_organization_id
        FROM member_profiles mp
        JOIN organization_memberships om
          ON om.workos_organization_id = mp.workos_organization_id
-       WHERE mp.agents @> $1::jsonb
-         AND om.workos_user_id = $2
+       WHERE ${agents.sql}
+         AND om.workos_user_id = $${agents.nextPlaceholder}
        LIMIT 1`,
-      [JSON.stringify([{ url: lookupAgentUrl }]), userId],
+      [...agents.params, userId],
     );
     return result.rows[0]?.workos_organization_id ?? null;
   } catch {
@@ -103,16 +123,18 @@ export async function findSoleOwnerOrgForUser(
   options: { throwOnError?: boolean } = {},
 ): Promise<string | null> {
   try {
-    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const agents = agentIdentityContainment('mp.agents', agentUrl, 1);
+    // DISTINCT already collapses one org that holds both spellings, so the
+    // fold cannot turn a sole owner into an ambiguous one within an org.
     const result = await query<{ workos_organization_id: string }>(
       `SELECT DISTINCT mp.workos_organization_id
        FROM member_profiles mp
        JOIN organization_memberships om
          ON om.workos_organization_id = mp.workos_organization_id
-       WHERE mp.agents @> $1::jsonb
-         AND om.workos_user_id = $2
+       WHERE ${agents.sql}
+         AND om.workos_user_id = $${agents.nextPlaceholder}
        LIMIT 2`,
-      [JSON.stringify([{ url: lookupAgentUrl }]), userId],
+      [...agents.params, userId],
     );
     return result.rows.length === 1
       ? result.rows[0].workos_organization_id
@@ -140,16 +162,16 @@ export async function isOrgOwnerOfAgent(
   options: { throwOnError?: boolean } = {},
 ): Promise<boolean> {
   try {
-    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const agents = agentIdentityContainment('mp.agents', agentUrl, 2);
     const result = await query(
       `SELECT 1 FROM member_profiles mp
        JOIN organization_memberships om
          ON om.workos_organization_id = mp.workos_organization_id
        WHERE mp.workos_organization_id = $1
-         AND mp.agents @> $2::jsonb
-         AND om.workos_user_id = $3
+         AND ${agents.sql}
+         AND om.workos_user_id = $${agents.nextPlaceholder}
        LIMIT 1`,
-      [orgId, JSON.stringify([{ url: lookupAgentUrl }]), userId],
+      [orgId, ...agents.params, userId],
     );
     return result.rows.length > 0;
   } catch (error) {
@@ -169,17 +191,17 @@ export async function canManageAgentForOrg(
   options: { throwOnError?: boolean } = {},
 ): Promise<boolean> {
   try {
-    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const agents = agentIdentityContainment('mp.agents', agentUrl, 2);
     const result = await query(
       `SELECT 1 FROM member_profiles mp
        JOIN organization_memberships om
          ON om.workos_organization_id = mp.workos_organization_id
        WHERE mp.workos_organization_id = $1
-         AND mp.agents @> $2::jsonb
-         AND om.workos_user_id = $3
+         AND ${agents.sql}
+         AND om.workos_user_id = $${agents.nextPlaceholder}
          AND om.role IN ('owner', 'admin')
        LIMIT 1`,
-      [orgId, JSON.stringify([{ url: lookupAgentUrl }]), userId],
+      [orgId, ...agents.params, userId],
     );
     return result.rows.length === 1;
   } catch (error) {

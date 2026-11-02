@@ -138,3 +138,22 @@ fixture_resolution:
       strategies: [seed]
 `), []);
 });
+
+function collectionDoc(value) {
+  return { fixtures: { products: [{ product_id: 'p' }] }, fixture_resolution: {
+    products: [{ handle: 'p', strategies: ['discover'], match: [{ path: '', operator: 'collection_selection_satisfies', value }] }],
+  } };
+}
+test('merged collection predicate accepts root pointer and authored optional defaults', () => {
+  for (const collection_targeting of ['fixed', 'selectable', 'any']) {
+    assert.deepEqual(lintDoc(collectionDoc({ collection_targeting })), []);
+    assert.deepEqual(lintDoc(collectionDoc({ collection_targeting, minimum_pairs: 2, require_cross_publisher_collection: true })), []);
+  }
+});
+test('collection operand rejects obsolete aliases and invalid closed values', () => {
+  for (const value of [{ mode: 'fixed' }, { collection_targeting: 'fixed', require_external_owner: true },
+    { collection_targeting: 'fixed', minimum_pairs: 0 }, { collection_targeting: 'fixed', minimum_pairs: '2' },
+    { collection_targeting: 'any', require_cross_publisher_collection: 'true' }, { collection_targeting: 'unknown' }]) {
+    assert.ok(lintDoc(collectionDoc(value)).some(v => v.rule === 'collection_selection_value'));
+  }
+});

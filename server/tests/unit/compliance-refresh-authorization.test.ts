@@ -18,6 +18,7 @@ vi.mock('../../src/db/authorization-epoch-db.js', () => ({
 
 import {
   authorizeComplianceRefresh,
+  createComplianceRefreshAuthorizationGuard,
   captureComplianceRefreshAuthorization,
   isRefreshAdmin,
   isRefreshOwner,
@@ -218,6 +219,61 @@ describe('queued compliance refresh authorization', () => {
     await expect(isRefreshAdmin({ id: 'user_canonical', authWorkosUserId: 'user_exact', email: 'stale@example.test' }))
       .resolves.toBe(true);
     expect(mocks.getUser).toHaveBeenCalledExactlyOnceWith('user_exact');
+  });
+
+  it('re-checks ownership through the registry identity key under row locks (#8322)', async () => {
+    // The route gate (`canManageAgentForOrg`) folds `/mcp` and `/mcp/` into
+    // one agent. This locked re-check has to fold the same way, or an owner
+    // registered under the other spelling passes admission and then fails
+    // here with `authorization_revoked` in the middle of the write.
+    const agentUrl = 'https://agent.example.test/mcp';
+    const request = {
+      ...userRequest,
+      id: 'req_owner_fold',
+      triggered_by: 'owner_test' as const,
+      owner_org_id: 'org_exact',
+      lease_token: 'lease_owner_fold',
+      agent_url: agentUrl,
+    } as never;
+    // `canManageAgentForOrg` (admission half) sees the owner.
+    mocks.query.mockResolvedValue({ rows: [{ '?column?': 1 }], rowCount: 1 });
+
+    const seen: Array<{ sql: string; params: unknown[] }> = [];
+    const client = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        seen.push({ sql, params });
+        if (sql.includes('FROM users WHERE workos_user_id')) {
+          return { rows: [{ workos_user_id: 'user_exact' }], rowCount: 1 };
+        }
+        if (sql.includes('identity_workos_users WHERE workos_user_id')) {
+          return { rows: [{ identity_id: 'identity_exact' }], rowCount: 1 };
+        }
+        if (sql.includes('is_primary = TRUE')) {
+          return { rows: [{ workos_user_id: 'user_exact' }], rowCount: 1 };
+        }
+        if (sql.includes('organization_memberships om')) {
+          return { rows: [{ workos_user_id: 'user_exact' }], rowCount: 1 };
+        }
+        if (sql.includes('agent_compliance_refresh_requests')) {
+          return { rows: [{ id: request.id }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      }),
+    } as never;
+
+    await createComplianceRefreshAuthorizationGuard(request, { assertValid: () => {} })
+      .beforeWrite(client, agentUrl);
+
+    const ownerCheck = seen.find(call => call.sql.includes('organization_memberships om'));
+    expect(ownerCheck).toBeDefined();
+    // $1 user, $2 org, then one containment payload per spelling.
+    expect(ownerCheck!.sql).toContain('mp.agents @> $3::jsonb OR mp.agents @> $4::jsonb');
+    expect(ownerCheck!.params).toEqual([
+      'user_exact',
+      'org_exact',
+      JSON.stringify([{ url: agentUrl }]),
+      JSON.stringify([{ url: `${agentUrl}/` }]),
+    ]);
   });
 
   it('does not grant break-glass from a stale session email during a membership outage', async () => {

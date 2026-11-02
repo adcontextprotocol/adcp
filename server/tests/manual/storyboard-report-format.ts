@@ -1,9 +1,37 @@
 interface FailedValidationForSummary {
   id?: unknown;
   passed?: boolean;
+  severity?: string;
   description?: unknown;
   error?: unknown;
   actual?: unknown;
+}
+
+export interface StoryboardStepForSummary {
+  passed?: boolean;
+  skipped?: boolean;
+  not_applicable?: boolean;
+  error?: string;
+  validations?: Array<{ passed: boolean; severity?: string }>;
+  response?: { accepted?: unknown; errors?: Array<{ code?: unknown }> };
+}
+
+/** SDK step.passed already applies advisory expiry/promotion and blocking
+ * validation rules. Do not turn an SDK-passing advisory into a failed step. */
+export function storyboardStepStatus(step: StoryboardStepForSummary): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
+  if (step.not_applicable) return 'not_applicable';
+  if (step.skipped) return 'skipped';
+  const validations = step.validations ?? [];
+  if (
+    (step.passed === false || step.error)
+    && step.response?.accepted === 0
+    && step.response.errors?.some(error => error.code === 'BILLING_OUT_OF_BAND')
+    && validations.length > 0
+    && validations.every(validation => validation.passed || validation.severity === 'advisory')
+  ) return 'passed';
+  if (step.error || step.passed === false) return 'failed';
+  if (step.passed === true) return 'passed';
+  return validations.some(validation => !validation.passed && validation.severity !== 'advisory') ? 'failed' : 'passed';
 }
 
 interface FormatFailedValidationSummaryOptions {

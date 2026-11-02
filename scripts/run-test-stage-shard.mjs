@@ -72,13 +72,25 @@ console.log(
   `Running canonical test shard ${shardIndex}/${shardTotal}: ${selectedStages.length} of ${runnableStages.length} stages`,
 );
 
+// A hung stage must fail by name, with its logs, before the job's own timeout
+// cancels the whole shard and discards them.
+const STAGE_TIMEOUT_MS = Number(process.env.TEST_STAGE_TIMEOUT_MS) || 15 * 60 * 1000;
+
 for (const [index, stage] of selectedStages.entries()) {
   console.log(`\n[${index + 1}/${selectedStages.length}] ${stage.command}`);
+  const startedAt = Date.now();
   const result = spawnSync('npm', ['run', stage.scriptName], {
     stdio: 'inherit',
+    timeout: STAGE_TIMEOUT_MS,
+    killSignal: 'SIGTERM',
   });
 
+  if (result.error?.code === 'ETIMEDOUT') {
+    console.error(`${stage.command} exceeded the ${Math.round(STAGE_TIMEOUT_MS / 1000)}s stage timeout and was stopped`);
+    process.exit(1);
+  }
   if (result.error) throw result.error;
+  console.log(`[${index + 1}/${selectedStages.length}] ${stage.scriptName} finished in ${Math.round((Date.now() - startedAt) / 1000)}s`);
   if (result.signal) {
     console.error(`${stage.command} terminated by signal ${result.signal}`);
     process.exit(1);

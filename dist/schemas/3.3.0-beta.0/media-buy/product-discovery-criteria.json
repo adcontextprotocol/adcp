@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/media-buy/product-discovery-criteria.json",
+  "title": "Product Discovery Criteria",
+  "description": "Structured criteria shared by product listing and proposal requests. Offer filters decide which commercial offers may be returned; targeting_overlay constrains deliverable inventory; required_overlay_support requires package-level targeting capability; required_media_buy_support requires participation in shared MediaBuy controls; acceptance_context supplies facts for advisory seller-policy preflight.",
+  "type": "object",
+  "properties": {
+    "product_ids": {
+      "type": "array",
+      "description": "Exact seller-issued products to retrieve or use as proposal candidates.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "product"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "product_ids_exclusive": {
+      "type": "boolean",
+      "default": false,
+      "x-added-in": "3.3.0",
+      "x-status": "experimental",
+      "description": "Experimental (media_buy.delegated_composition). On request_proposals and refine_proposals, when true, product_ids is the complete composable product universe for the request and its refinement lineage rather than a candidate hint: every proposal purchase, and every product echoed alongside proposals, MUST reference a listed product_id that resolves for the calling account, and every signal the seller selects in a purchase's targeting MUST resolve through a listed product's signal_targeting_options. A listed ID the seller cannot resolve is outside the universe; it is never substituted. A seller that cannot satisfy the brief within the universe returns the rejected outcome (request_proposals) or a partial/unable result with reason constraint_unsatisfiable (refine_proposals); it never returns off-universe products, purchases, or signals. A refinement inherits the source proposal's effective universe: criteria may narrow product_ids (restating product_ids_exclusive true is allowed) but MUST NOT widen them, set the flag on a lineage that did not set it, or set it false — such a refinement is rejected at task level with INVALID_REQUEST naming the field. A product_changes include of an off-universe product returns constraint_unsatisfiable for that entry. Widening requires a new request_proposals. Requires product_ids. Buyers MUST NOT send this flag unless the seller declares media_buy.supports_exclusive_product_ids, and SHOULD verify returned products are a subset of product_ids regardless. Sellers that do not declare the capability MUST NOT silently ignore the flag on request_proposals or refine_proposals — they reject the request at task level with UNSUPPORTED_FEATURE. On list_products the flag is ignorable: product_ids already selects exactly the listed products."
+    },
+    "offer_filters": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/product-offer-filters.json",
+      "description": "Hard commercial and product-characteristic filters. Every returned product MUST satisfy them. These fields do not become package delivery targeting."
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/targeting.json",
+      "description": "Concrete delivery constraints the buyer expects to carry into create_media_buy. Returned product pricing and forecasts MUST reflect the effective targeting. A product that cannot apply the request exactly is omitted or returned as a distinct configured product with sparse Product.targeting_resolution modifications; absence of that resolution means exact acceptance."
+    },
+    "media_buy_frequency_cap": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/media-buy-frequency-cap.json",
+      "description": "Concrete aggregate max-impression cap expected at the MediaBuy root. Every returned product must participate in one shared counter for this exact value. Proposals carry it in commercial_terms.frequency_cap."
+    },
+    "required_overlay_support": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/targeting-overlay-requirements.json",
+      "description": "Minimum product-scoped targeting dimensions the buyer must be able to select independently on packages later. This requests capability, not current values, value-specific availability, a forecast for every later value, or one product per value."
+    },
+    "required_media_buy_support": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/media-buy-support-requirements.json",
+      "description": "Minimum product participation in shared MediaBuy-level controls. For frequency caps, every returned product is promising composability in one aggregate seller counter for each requested per unit."
+    },
+    "outcome_target": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/media-buy/outcome-target.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/media-buy/outcome-target.json",
+      "description": "Reverse-forecast planning input for sellers declaring media_buy.outcome_target: a metric, event, or vendor_metric goal plus a volume, a cost target, or both, answered on proposals. Inert on list_products for every seller. See outcome-target.json."
+    },
+    "acceptance_context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/media-buy/acceptance-context.json",
+      "x-adcp-schema-uri": "/schemas/media-buy/acceptance-context.json",
+      "description": "Structured campaign and advertiser facts for coarse acceptance-policy matching. A matching product is not a guarantee of final acceptance."
+    },
+    "catalog": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/catalog-selection.json"
+    },
+    "policy_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "minProperties": 1,
+  "dependencies": {
+    "product_ids_exclusive": [
+      "product_ids"
+    ]
+  },
+  "additionalProperties": false
+}

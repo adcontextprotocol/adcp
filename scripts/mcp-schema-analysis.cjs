@@ -38,6 +38,8 @@ const TARGETING_DIMENSIONS = [
   "property_list_exclude",
   "collection_list",
   "collection_list_exclude",
+  "collection_lists",
+  "collection_lists_exclude",
   "placement_selection",
   "age_restriction",
   "device_platform",

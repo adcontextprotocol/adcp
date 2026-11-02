@@ -56,6 +56,16 @@
         "$ref": "/schemas/core/signal-selection-group-rule.json"
       },
       "minItems": 1
+    },
+    "signal_pricing_group_rules": {
+      "type": "array",
+      "description": "Experimental (signals.pricing_groups). Product-scoped rules for how fees of signals sharing a pricing_group combine; they override get_signals signal_pricing_group_rules for the same pricing_group. A group with no rule is charged 'each', so a seller opts in to 'highest' explicitly. Ungrouped signals are always 'each'.",
+      "items": {
+        "$ref": "/schemas/core/signal-pricing-group-rule.json"
+      },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
     }
   },
   "additionalProperties": true

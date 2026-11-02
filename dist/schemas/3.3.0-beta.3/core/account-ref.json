@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/account-ref.json",
+  "title": "Account Reference",
+  "description": "Reference to an advertiser account by seller-assigned account_id or by natural key. An account's identity is its account_id, which the seller issues when the account opens and never changes. The natural key is brand + operator, the account's parties; its optional brand.countries, operator_unit.id, currency, timezone, and sandbox fields are account attributes that act as lookup filters. Each supplied attribute must equal the account's value: countries compares as a set and operator_unit compares by id. An omitted attribute does not filter, except sandbox, which defaults to false. A natural key resolves only when exactly one of the caller's accounts matches it; when several match, the seller returns ACCOUNT_AMBIGUOUS. operator_unit identifies the operator-owned buying seat or business unit and is distinct from the seller account. Sending the natural key as the reference on account-scoped tasks after the account opens is deprecated as of 3.3 and planned for removal in 4.0; it stays valid throughout 3.x, and the natural key stays valid as a list_accounts filter. After the account opens, buyers send account_id.",
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "description": "Seller-assigned account identifier and the account's identity. For upstream-managed account namespaces, this value comes from list_accounts; for seller-defined namespaces without a list_accounts surface, it is supplied out-of-band. Buyer-declared account sellers MUST return account_id from sync_accounts. Every seller MUST accept account_id for every account the caller can operate and MUST NOT change it for the life of the account. Buyers SHOULD send it on every call after the account opens. Changing an account attribute never changes its account_id.",
+          "x-entity": "account"
+        }
+      },
+      "required": [
+        "account_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "brand": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/brand-ref.json",
+          "description": "Brand reference identifying the advertiser. domain and optional brand_id identify the brand; countries is an account attribute that acts as a lookup filter."
+        },
+        "operator": {
+          "type": "string",
+          "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "operator_unit": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/operator-unit.json",
+          "description": "Optional operator-owned business unit, agency seat, or platform account. An account attribute: id acts as a lookup filter; name is display metadata and never filters."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 transaction currency when the seller's advertiser object is currency-bound. An account attribute that acts as a lookup filter; media buys on the account MUST use it. Omit when currency is selected independently per media buy."
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Account timezone. An account attribute that acts as a lookup filter when get_adcp_capabilities.account.timezone declares account_fixed with buyer_selected; omit it for seller_fixed or seller_assigned accounts."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, selects the sandbox account for this brand/operator pair. Defaults to false, which selects the production account.",
+          "default": false
+        }
+      },
+      "required": [
+        "brand",
+        "operator"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "account_id": "acc_acme_001"
+    },
+    {
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "acme-corp.com"
+    },
+    {
+      "brand": {
+        "domain": "nova-brands.com",
+        "brand_id": "spark"
+      },
+      "operator": "pinnacle-media.com"
+    },
+    {
+      "brand": {
+        "domain": "nova-athletics.example",
+        "countries": [
+          "NL"
+        ]
+      },
+      "operator": "nova-athletics.example",
+      "operator_unit": {
+        "id": "234284238",
+        "name": "Nova EMEA"
+      },
+      "currency": "EUR",
+      "timezone": "Europe/Amsterdam"
+    },
+    {
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "acme-corp.com",
+      "sandbox": true
+    }
+  ]
+}

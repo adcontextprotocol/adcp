@@ -52,6 +52,12 @@ Field names should describe **what** they represent, not generic categories.
 - ❌ `type` - Ambiguous: type of what?
 - ❌ `asset_type` - Better, but could conflict with other type fields
 
+### Platform object IDs and seller identity
+
+Use `platform_id` for an object's ID assigned by the seller's ad platform. This is the same concept on creative, catalog, event source, and audience sync results. Use `seller_id` for the seller's own identity, such as the IAB sellers.json ID in `adagents.json` `contact.seller_id` or a publisher identifier of type `seller_id`.
+
+The existing `seller_id` fields on `sync_event_sources` and `sync_audiences` results are deprecated aliases for `platform_id` in AdCP 3.3. They retain their object-ID semantics and MUST NOT be repurposed as seller identity. They remain functional throughout 3.x under the [deprecation policy](/docs/reference/versioning#deprecation-policy). See the [migration guide](/docs/reference/migration/3-2-to-3-3#deprecations) for dual-field emission and buyer fallback rules. AdCP requests continue to reference objects by `creative_id`, `catalog_id`, `event_source_id`, or `audience_id`.
+
 ### Ratio Field Names: `_rate` vs `_percentage`
 
 **RULE**: Name a **measured ratio** `_rate`. Name a **configured share** of a budget, allocation or target `_percentage`.

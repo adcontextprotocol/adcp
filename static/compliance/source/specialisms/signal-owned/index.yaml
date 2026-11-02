@@ -166,6 +166,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-signal_owned-9e5fc43a"
+            sandbox: true
           signal_spec: "High-value customers likely to purchase electronics, with loyalty program data"
 
           context:
@@ -213,6 +214,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-signal_owned-9e5fc43a"
+            sandbox: true
           signal_spec: "Purchase behavior signals"
           filters:
             max_cpm: 5.00

@@ -108,6 +108,15 @@
       font-size: var(--text-sm);
       color: var(--color-text);
       line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+
+    .notif-body {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      line-height: 1.4;
+      margin-top: var(--space-1);
+      overflow-wrap: anywhere;
     }
 
     .notif-time {
@@ -241,6 +250,7 @@
             <div class="notif-avatar">${avatar}</div>
             <div class="notif-content">
               <div class="notif-title">${escapeHtml(n.title)}</div>
+              ${n.body ? `<div class="notif-body">${escapeHtml(n.body)}</div>` : ''}
               <div class="notif-time">${timeAgo(n.created_at)}</div>
             </div>
           </${tag}>`;

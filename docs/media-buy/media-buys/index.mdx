@@ -8,7 +8,7 @@ A MediaBuy is the operational resource created from accepted commercial terms.
 AdCP 3.2 keeps three concerns separate:
 
 1. **Commercial formation** chooses or negotiates the terms.
-2. **Creative supply** attaches approved assets to the resulting packages.
+2. **Creative supply** attaches assets to the resulting packages; only approved assignments serve.
 3. **Operational control** changes delivery inside the accepted envelope.
 
 That separation gives buyers and sellers an immutable commercial record while
@@ -70,12 +70,16 @@ include:
 The buyer does not reconstruct package state from its original request. Read
 the current seller snapshot through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys).
 
+The [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review) allows approved assignments to start while others remain
+in review. A package may instead require every assignment approved before
+first release for serving with `start_requires_all_creatives_approved: true` (AdCP 3.3).
+
 ## State machine
 
 | State | Meaning | Terminal? |
 |---|---|---|
-| `pending_creatives` | Commercially accepted; required creative coverage is missing | No |
-| `pending_start` | Ready to serve; waiting for the flight to begin | No |
+| `pending_creatives` | Buyer action required: missing creative coverage or a blocking rejection needs correction or replacement. Independent of seller commitment (`confirmed_at`) | No |
+| `pending_start` | Waiting for the flight date, seller confirmation, or seller review of already assigned creatives. Inspect package `creative_approvals` for review state | No |
 | `active` | Eligible to deliver | No |
 | `paused` | Delivery is intentionally held | No |
 | `completed` | Flight ended, goal completed, or budget exhausted | Yes |
@@ -89,7 +93,8 @@ stateDiagram-v2
   [*] --> active : commitment ready, flight started
   [*] --> paused : direct purchase created held
   pending_creatives --> pending_start : creative assignments complete
-  pending_start --> active : flight starts
+  pending_start --> pending_creatives : blocking creative rejection
+  pending_start --> active : flight and creative review ready
   active --> paused : control_media_buy pause
   paused --> active : control_media_buy resume
   active --> completed : flight, goal, or budget completes

@@ -203,11 +203,11 @@ test('parent flow carries the correct complete natural AccountRef through each t
   assert.equal(doc.phases.flatMap(phase => phase.steps).some(candidate => candidate.task === 'list_accounts'), false);
 });
 
-test('buyer-selected storyboard covers cold-start reconnect and an immutable timezone switch', () => {
+test('buyer-selected storyboard covers cold-start lookup and a second-timezone account', () => {
   const doc = load('account_timezone_buyer_selected');
   const discovery = step(doc, 'discover_supported_timezones');
   const provision = step(doc, 'provision_selected_timezone');
-  const reconnect = step(doc, 'reconnect_existing_timezone');
+  const lookup = step(doc, 'list_by_natural_key');
   const second = step(doc, 'provision_second_timezone');
   const switchPhase = doc.phases.find(phase => phase.id === 'select_second_timezone');
 
@@ -220,20 +220,12 @@ test('buyer-selected storyboard covers cold-start reconnect and an immutable tim
     validation(provision, 'field_value', 'accounts[0].action').value,
     'created'
   );
-  assert.deepEqual(reconnect.sample_request.accounts[0], {
-    brand: { domain: '$context.recovered_brand_domain' },
-    operator: '$context.recovered_operator',
-    operator_unit: {
-      id: '$context.recovered_operator_unit_id',
-      name: 'Timezone reconciliation test',
-    },
-    timezone: '$context.recovered_account_timezone',
-    billing: 'operator',
-    sandbox: '$context.recovered_sandbox',
-  });
-  assert.equal(
-    validation(reconnect, 'field_value', 'accounts[0].action').value,
-    'unchanged'
+  assert.ok(lookup.context_outputs.some(output => output.name === 'original_account_id'));
+  // This storyboard opens each account once and recovers IDs through
+  // list_accounts; stable_account_id grades re-sending a provisioning entry.
+  assert.deepEqual(
+    doc.phases.flatMap(phase => phase.steps).filter(candidate => candidate.task === 'sync_accounts').map(candidate => candidate.id),
+    ['provision_selected_timezone', 'provision_second_timezone']
   );
   assert.deepEqual(switchPhase.requires_capability, {
     path: 'account.timezone.supported_timezones.1',
@@ -322,7 +314,7 @@ test('seller-fixed UTC ignores West/East buyer preferences on both write and rea
   assert.equal(wrongReadClock.result.overall_passed, false);
 });
 
-test('buyer-selected UTC-only seller reconciles a local preference and reconnects exactly', async () => {
+test('buyer-selected UTC-only seller reconciles a local preference and recovers the account by lookup', async () => {
   const storyboard = loadExecutable('account_timezone_buyer_selected');
   const accountTimezone = {
     mode: 'account_fixed',
@@ -332,7 +324,6 @@ test('buyer-selected UTC-only seller reconciles a local preference and reconnect
   const { options } = timezoneProfile(accountTimezone);
   const syncRequests = [];
   const listRequests = [];
-  let syncCount = 0;
 
   const result = await runStoryboard('https://agent.example/mcp', storyboard, {
     ...options,
@@ -343,10 +334,9 @@ test('buyer-selected UTC-only seller reconciles a local preference and reconnect
       },
       async syncAccounts(request) {
         syncRequests.push(request);
-        const action = syncCount++ === 0 ? 'created' : 'unchanged';
         return {
           success: true,
-          data: { status: 'completed', accounts: [accountResult(request.accounts[0], 'UTC', action)] },
+          data: { status: 'completed', accounts: [accountResult(request.accounts[0], 'UTC', 'created')] },
         };
       },
       async listAccounts(request) {
@@ -360,10 +350,9 @@ test('buyer-selected UTC-only seller reconciles a local preference and reconnect
   });
 
   assert.equal(result.overall_passed, true, JSON.stringify(result, null, 2));
-  assert.equal(syncRequests.length, 2);
-  assert.equal(listRequests.length, 2);
-  assert.deepEqual(syncRequests.map(request => request.accounts[0].timezone), ['UTC', 'UTC']);
-  assert.equal(syncRequests[0].accounts[0].operator_unit.id, syncRequests[1].accounts[0].operator_unit.id);
+  assert.equal(syncRequests.length, 1);
+  assert.equal(listRequests.length, 1);
+  assert.deepEqual(syncRequests.map(request => request.accounts[0].timezone), ['UTC']);
   assert.match(syncRequests[0].accounts[0].operator_unit.id, /^[0-9a-f-]{36}$/);
   assert.equal(syncRequests[0].accounts[0].sandbox, true);
   const expectedNaturalKey = {
@@ -373,7 +362,7 @@ test('buyer-selected UTC-only seller reconciles a local preference and reconnect
     timezone: 'UTC',
     sandbox: true,
   };
-  assert.deepEqual(listRequests.map(request => request.account), [expectedNaturalKey, expectedNaturalKey]);
+  assert.deepEqual(listRequests.map(request => request.account), [expectedNaturalKey]);
   const skippedSwitchPhases = result.phases.filter(phase =>
     ['select_second_timezone', 'verify_both_timezone_keys'].includes(phase.phase_id)
   );
@@ -397,7 +386,6 @@ test('buyer-selected timezone switch creates a second key without mutating the f
     const syncRequests = [];
     const listRequests = [];
     const timezoneByAccountId = new Map();
-    let syncCount = 0;
     let secondProvisioned = false;
     const result = await runStoryboard('https://agent.example/mcp', storyboard, {
       ...options,
@@ -408,13 +396,12 @@ test('buyer-selected timezone switch creates a second key without mutating the f
         },
         async syncAccounts(request) {
           syncRequests.push(request);
-          const action = syncCount++ === 1 ? 'unchanged' : 'created';
           if (request.accounts[0].timezone === 'UTC') secondProvisioned = true;
           return {
             success: true,
             data: {
               status: 'completed',
-              accounts: [accountResult(request.accounts[0], request.accounts[0].timezone, action)],
+              accounts: [accountResult(request.accounts[0], request.accounts[0].timezone, 'created')],
             },
           };
         },
@@ -444,15 +431,15 @@ test('buyer-selected timezone switch creates a second key without mutating the f
   assert.equal(valid.result.overall_passed, true, JSON.stringify(valid.result, null, 2));
   assert.deepEqual(
     valid.syncRequests.map(request => request.accounts[0].timezone),
-    ['America/New_York', 'America/New_York', 'UTC']
+    ['America/New_York', 'UTC']
   );
   assert.deepEqual(
     valid.listRequests.map(request => request.account.timezone),
-    ['America/New_York', 'America/New_York', 'America/New_York', 'UTC', undefined, undefined]
+    ['America/New_York', 'America/New_York', 'UTC', undefined, undefined]
   );
   assert.notEqual(
-    valid.listRequests[4].account.account_id,
-    valid.listRequests[5].account.account_id
+    valid.listRequests[3].account.account_id,
+    valid.listRequests[4].account.account_id
   );
   assert.equal(
     new Set(valid.syncRequests.map(request => request.accounts[0].operator_unit.id)).size,

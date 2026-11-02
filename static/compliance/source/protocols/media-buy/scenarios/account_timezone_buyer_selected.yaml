@@ -1,8 +1,8 @@
 id: media_buy_seller/account_timezone_buyer_selected
-version: "1.0.0"
+version: "1.0.1"
 title: "Buyer-selected account timezone resolution"
 category: media_buy_seller
-summary: "Verifies advertised timezone reconciliation, cold-start reconnect, and separate account identities when a buyer selects another timezone."
+summary: "Verifies advertised timezone selection, cold-start lookup through list_accounts, and a separate account when a buyer selects another timezone."
 track: media_buy
 introduced_in: "3.2"
 
@@ -20,11 +20,11 @@ narrative: |
   supported_timezones must choose an advertised value (for example UTC) or
   decline to provision; it cannot ask the seller to coerce an off-list value.
 
-  The selected timezone is immutable and participates in the natural account
-  key. Reconnecting therefore reuses the complete timezone-bearing key. If the
-  seller advertises a second timezone, selecting it creates a second account
-  identity rather than changing the first account in place; both exact keys
-  must remain independently resolvable.
+  The selected timezone is an account attribute set when the account opens. A
+  buyer recovering from a cold start finds the account and its account_id
+  through list_accounts, filtered by the timezone. If the seller advertises a
+  second timezone, a second provisioning entry with it opens a second account;
+  both accounts must remain independently resolvable.
 
 agent:
   interaction_model: media_buy_seller
@@ -69,7 +69,7 @@ phases:
           - check: field_value
             path: "account.timezone.account_selection"
             value: "buyer_selected"
-            description: "Buyer selects the immutable account timezone"
+            description: "Buyer selects the account timezone"
           - check: field_present
             path: "account.timezone.supported_timezones[0]"
             description: "At least one selectable timezone is advertised"
@@ -102,7 +102,7 @@ phases:
           - check: field_value
             path: "accounts[0].action"
             value: "created"
-            description: "The per-run natural key creates a fresh account identity"
+            description: "Provisioning opens a fresh account for this run"
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "account_timezone"
@@ -114,14 +114,14 @@ phases:
           - check: field_equals_context
             path: "accounts[0].operator_unit.id"
             context_key: "timezone_test_operator_unit_id"
-            description: "Provisioning preserves the per-run natural-key qualifier"
+            description: "Provisioning echoes the per-run operator_unit attribute"
 
   - id: natural_key_roundtrip
     title: "Round-trip the timezone-bearing natural AccountRef"
     depends_on: [discover_and_provision]
     steps:
       - id: list_by_natural_key
-        title: "Resolve the account by its complete natural key"
+        title: "Resolve the account by its natural key"
         task: list_accounts
         schema_ref: "account/list-accounts-request.json"
         response_schema_ref: "account/list-accounts-response.json"
@@ -155,7 +155,7 @@ phases:
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "account_timezone"
-            description: "Readback preserves the natural-key timezone"
+            description: "Readback preserves the account timezone"
           - check: field_value
             path: "accounts[0].brand.domain"
             value: "acmeoutdoor.example"
@@ -173,93 +173,17 @@ phases:
             value: true
             description: "Readback exposes the reusable sandbox qualifier"
 
-  - id: reconnect_existing
-    title: "Reconnect to the existing timezone-bound account"
-    depends_on: [natural_key_roundtrip]
-    narrative: |
-      A buyer recovering from a cold start reuses the canonical natural key it
-      recovered from list_accounts rather than relying on provisioning memory.
-      Its own current timezone preference does not mutate the existing account
-      or remove the timezone qualifier.
-    steps:
-      - id: reconnect_existing_timezone
-        title: "Re-sync the exact existing natural key"
-        task: sync_accounts
-        schema_ref: "account/sync-accounts-request.json"
-        response_schema_ref: "account/sync-accounts-response.json"
-        doc_ref: "/accounts/tasks/sync_accounts"
-        stateful: true
-        sample_request:
-          accounts:
-            - brand:
-                domain: "$context.recovered_brand_domain"
-              operator: "$context.recovered_operator"
-              operator_unit:
-                id: "$context.recovered_operator_unit_id"
-                name: "Timezone reconciliation test"
-              timezone: "$context.recovered_account_timezone"
-              billing: "operator"
-              sandbox: "$context.recovered_sandbox"
-          idempotency_key: "$generate:uuid_v4#account_timezone_buyer_selected_reconnect"
-        validations:
-          - check: response_schema
-            description: "Reconnect response matches the canonical schema"
-          - check: field_value
-            path: "accounts[0].action"
-            value: "unchanged"
-            description: "The exact timezone-bearing key reconnects instead of provisioning another account"
-          - check: field_equals_context
-            path: "accounts[0].timezone"
-            context_key: "recovered_account_timezone"
-            description: "Reconnect preserves the existing immutable timezone"
-          - check: field_equals_context
-            path: "accounts[0].operator_unit.id"
-            context_key: "recovered_operator_unit_id"
-            description: "Reconnect preserves the complete natural key"
-
-  - id: verify_reconnect
-    title: "Verify the reconnected natural key"
-    depends_on: [reconnect_existing]
-    steps:
-      - id: read_reconnected_timezone_key
-        title: "Read the recovered natural key again"
-        task: list_accounts
-        schema_ref: "account/list-accounts-request.json"
-        response_schema_ref: "account/list-accounts-response.json"
-        doc_ref: "/accounts/tasks/list_accounts"
-        stateful: false
-        sample_request:
-          account:
-            brand:
-              domain: "$context.recovered_brand_domain"
-            operator: "$context.recovered_operator"
-            operator_unit:
-              id: "$context.recovered_operator_unit_id"
-            timezone: "$context.recovered_account_timezone"
-            sandbox: "$context.recovered_sandbox"
-        validations:
-          - check: response_schema
-            description: "Reconnect read matches the canonical schema"
-          - check: field_equals_context
-            path: "accounts[0].timezone"
-            context_key: "recovered_account_timezone"
-            description: "Reconnect leaves the recovered immutable timezone unchanged"
-          - check: field_equals_context
-            path: "accounts[0].operator_unit.id"
-            context_key: "recovered_operator_unit_id"
-            description: "Reconnect leaves the recovered natural key unchanged"
-
   - id: select_second_timezone
     title: "Select a second advertised timezone as a separate account"
-    depends_on: [verify_reconnect]
+    depends_on: [natural_key_roundtrip]
     requires_capability:
       path: account.timezone.supported_timezones.1
       present: true
     narrative: |
-      Account timezone cannot be changed in settings-update mode. When a buyer
-      needs another advertised clock, the different timezone forms a different
-      natural key. This phase runs only when the seller advertises a second
-      choice; a seller that offers only UTC has no account-timezone switch.
+      When a buyer needs another advertised clock alongside the first account,
+      it opens a second account with the other timezone. This phase runs only
+      when the seller advertises a second choice; a seller that offers only UTC
+      has no second clock to select.
     steps:
       - id: discover_second_timezone
         title: "Read the second advertised timezone"
@@ -280,7 +204,7 @@ phases:
             description: "A second selectable timezone is advertised"
 
       - id: provision_second_timezone
-        title: "Provision the second timezone-bearing natural key"
+        title: "Open a second account with the second timezone"
         task: sync_accounts
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
@@ -304,7 +228,7 @@ phases:
           - check: field_value
             path: "accounts[0].action"
             value: "created"
-            description: "A different timezone creates a separate natural-key account"
+            description: "A second entry with a different timezone opens a separate account"
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "second_account_timezone"
@@ -315,7 +239,7 @@ phases:
             description: "The second selection also belongs to the advertised allowlist"
 
   - id: verify_both_timezone_keys
-    title: "Verify both immutable timezone identities"
+    title: "Verify both timezone accounts"
     depends_on: [select_second_timezone]
     requires_capability:
       path: account.timezone.supported_timezones.1
@@ -347,7 +271,7 @@ phases:
           - check: field_equals_context
             path: "accounts[0].operator_unit.id"
             context_key: "timezone_test_operator_unit_id"
-            description: "The original complete natural key remains resolvable"
+            description: "The original natural key remains resolvable"
 
       - id: read_second_timezone_key
         title: "Read the second timezone-bearing key"
@@ -374,11 +298,11 @@ phases:
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "second_account_timezone"
-            description: "The second natural key resolves its own immutable timezone"
+            description: "The second natural key resolves its own account timezone"
           - check: field_equals_context
             path: "accounts[0].operator_unit.id"
             context_key: "timezone_test_operator_unit_id"
-            description: "The second complete natural key remains resolvable"
+            description: "The second natural key remains resolvable"
 
       - id: read_original_by_account_id
         title: "Resolve the original canonical account handle"
@@ -396,7 +320,7 @@ phases:
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "account_timezone"
-            description: "The original handle still resolves the original immutable timezone"
+            description: "The original handle still resolves the original account timezone"
 
       - id: read_second_by_account_id
         title: "Resolve the second canonical account handle"
@@ -414,4 +338,4 @@ phases:
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "second_account_timezone"
-            description: "The second handle resolves the second immutable timezone"
+            description: "The second handle resolves the second account timezone"

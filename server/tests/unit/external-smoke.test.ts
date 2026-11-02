@@ -182,6 +182,113 @@ describe('external smoke discovery', () => {
   });
 });
 
+describe('external smoke served release', () => {
+  // A 3.0 pin cannot carry adcp_version, so the SDK sends only
+  // adcp_major_version: 3. The agent may serve its highest 3.x release and
+  // echo it; the SDK validates against that echo.
+  const pinned: TestOptions = { ...options, adcpVersion: '3.0.27' };
+  const pinnedResolver = { version: '3.0.27' } as Parameters<typeof checkProbe>[2];
+  const servedResolver = { version: '3.2.4' } as Parameters<typeof checkProbe>[2];
+  const served = (echo: unknown, issues: Array<{ pointer: string; message: string }> = []): Result => {
+    const result = success();
+    result.profile!.adcp_supported_versions = ['3.0', '3.1', '3.2-rc.7', '3.2'];
+    result.profile!.raw_capabilities = echo === undefined ? {} : { adcp_version: echo };
+    if (issues.length) result.profile!.capabilities_schema_issues = issues;
+    return result;
+  };
+  // What the SDK reports when it falls back to validating a 3.2 response
+  // against the 3.0 pin.
+  const threeTwoShapes = [
+    { pointer: '/media_buy/features/bidding_policy', message: 'must be boolean' },
+    { pointer: '/compliance_testing/scenarios/4', message: 'must be one of: "force_creative_status"' },
+  ];
+
+  it.each(['3.2', '3.2-rc.7', '3.0'])('resolves storyboards from the bundle of echoed release %s after one discovery', async echo => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served(echo));
+    const resolverFor = vi.fn(() => servedResolver);
+    const resolve = vi.fn(() => resolved);
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, resolve, resolverFor }))
+      .resolves.toBe('authenticated');
+    expect(discover).toHaveBeenCalledExactlyOnceWith(url, pinned);
+    expect(resolverFor).toHaveBeenCalledExactlyOnceWith(echo);
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(expect.anything(), servedResolver);
+  });
+
+  it('resolves from the pin bundle when the agent omits the echo', async () => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served(undefined));
+    const resolverFor = vi.fn(() => servedResolver);
+    const resolve = vi.fn(() => resolved);
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, resolve, resolverFor }))
+      .resolves.toBe('authenticated');
+    expect(resolverFor).not.toHaveBeenCalled();
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(expect.anything(), pinnedResolver);
+  });
+
+  it('rejects schema issues the SDK reports against the served release', async () => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served('3.2', [{ pointer: '/adcp', message: 'invalid' }]));
+    const resolve = vi.fn(() => resolved);
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, resolve, resolverFor: () => servedResolver }))
+      .rejects.toMatchObject({ kind: 'semantic', message: expect.stringContaining('/adcp') });
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a release its supported_versions omit', '3.3', /supported_versions do not list/],
+    ['a different major', '4.0', /majors must agree/],
+    ['a non-string version', 3, /majors must agree/],
+  ])('rejects an agent that serves %s, with the SDK schema issues as context', async (_label, echo, message) => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served(echo, threeTwoShapes));
+    const resolverFor = vi.fn(() => servedResolver);
+    const rejection = checkProbe(url, pinned, pinnedResolver, false, { discover, resolverFor });
+    await expect(rejection).rejects.toMatchObject({ kind: 'semantic', message: expect.stringMatching(message) });
+    await expect(rejection).rejects.toThrow(/bidding_policy/);
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(resolverFor).not.toHaveBeenCalled();
+  });
+
+  it('checks the echo even without a resolver for the served release', async () => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served('3.3'));
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, resolve: () => resolved }))
+      .rejects.toMatchObject({ kind: 'semantic', message: expect.stringMatching(/supported_versions do not list/) });
+  });
+
+  it('fails when no hosted bundle exists for the served release', async () => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served('3.2'));
+    const resolverFor = () => { throw new Error('No npm-published compliance version is registered for 3.2'); };
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, resolverFor }))
+      .rejects.toMatchObject({ kind: 'semantic', message: expect.stringMatching(/AdCP 3\.2, but no hosted bundle.*No npm-published/) });
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('external smoke cross-check and auth evidence', () => {
+  it.each([
+    // SDK 15.9.2: a declared compliance_testing block requires the controller.
+    "Protocol 'compliance_testing' reported but no matching tools found",
+    'Tools suggest unreported protocols: compliance_testing (has: [comply_test_controller])',
+    'Tools suggest unreported protocols: signals (has: [get_signals])',
+  ])('fails on any SDK protocol/tool cross-check issue: %s', async error => {
+    const result = success();
+    result.steps.push({ step: 'Cross-validate protocols and tools', passed: false, duration_ms: 0, error });
+    const discover = vi.fn().mockResolvedValue(result);
+    const resolve = vi.fn(() => resolved);
+    await expect(checkProbe(url, options, {}, false, { discover, resolve }))
+      .rejects.toMatchObject({ kind: 'semantic', message: expect.stringContaining(error) });
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('treats an SDK OAuth challenge as anonymous auth-required evidence', async () => {
+    const discover = vi.fn().mockResolvedValue(failure(
+      'Agent https://smoke.example.com/mcp requires OAuth authorization. Authorization server: https://auth.example.com. Provide an OAuthFlowHandler or run an interactive flow to complete authorization.',
+    ));
+    await expect(checkProbe(url, {}, {}, true, { discover })).resolves.toBe('auth-required');
+    await expect(checkProbe(url, options, {}, false, { discover })).rejects.toMatchObject({ kind: 'auth' });
+    expect(discover).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('external smoke CI isolation', () => {
   it('default integration selection cannot execute the external harness', () => {
     const pkg = JSON.parse(readFileSync(resolvePath(root, 'package.json'), 'utf8'));

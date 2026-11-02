@@ -9,6 +9,10 @@ description: "How publishers, sales agents, networks, and SSPs use brand.json an
 
 Buyer agents need both views. `brand.json` answers "who is this seller or platform, and what is it claiming?" `adagents.json` answers "does the publisher authorize this agent to sell this inventory?"
 
+<Note>
+**Signing keys under the Web Bot Auth profile (3.3, experimental).** This page describes the RFC 9421 profile, where a sales agent's keys are found through brand.json `agents[].jwks_uri`. That profile is deprecated in 3.3 and works through 3.x. Under the experimental Web Bot Auth profile, the sales agent serves its own key directory at its origin (`/.well-known/http-message-signatures-directory`) and is listed, without keys, in its operator's `/.well-known/trust.json`. Each agent needs its own origin, so a platform hosting many publishers' agents on paths gives each tenant a subdomain. `adagents.json` is unchanged; a publisher's `signing_keys` pin still narrows keys by thumbprint. See [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) and the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
+</Note>
+
 ## Requirement boundary
 
 The practical rule is:

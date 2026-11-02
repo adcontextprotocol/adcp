@@ -148,6 +148,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-read_tool_idempotency-1d54d28c"
+            sandbox: true
           context:
             correlation_id: "read_tool_idempotency--get_products_with_key"
           ext:
@@ -277,6 +278,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-read_tool_idempotency-1d54d28c"
+            sandbox: true
           include_snapshot: false
           pagination:
             max_results: 10

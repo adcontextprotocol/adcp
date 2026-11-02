@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/assets/html-asset.json",
+  "title": "HTML Asset",
+  "description": "Inline HTML content asset. For seller-hosted HTML5 banner bundles, use the zip asset type. For third-party display markup or paired redirects, use the display_tag asset so the trafficking representation remains explicit.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "html",
+      "description": "Discriminator identifying this as an HTML asset. See /schemas/creative/asset-types for the registry."
+    },
+    "content": {
+      "type": "string",
+      "description": "HTML content"
+    },
+    "version": {
+      "type": "string",
+      "description": "HTML version (e.g., 'HTML5')"
+    },
+    "accessibility": {
+      "type": "object",
+      "description": "Self-declared accessibility properties for this opaque creative",
+      "x-accessibility": true,
+      "properties": {
+        "alt_text": {
+          "type": "string",
+          "description": "Text alternative describing the creative content"
+        },
+        "keyboard_navigable": {
+          "type": "boolean",
+          "description": "Whether the creative can be fully operated via keyboard"
+        },
+        "motion_control": {
+          "type": "boolean",
+          "description": "Whether the creative respects prefers-reduced-motion or provides pause/stop controls"
+        },
+        "screen_reader_tested": {
+          "type": "boolean",
+          "description": "Whether the creative has been tested with screen readers"
+        }
+      }
+    },
+    "width": {
+      "x-added-in": "3.3.0",
+      "type": "integer",
+      "minimum": 1,
+      "description": "Rendered width in logical pixels of the entry canvas, independent of target placement and embedded image density. For expandable units, this is the initial width. When set, height must also be set. Mutually exclusive with sizes."
+    },
+    "height": {
+      "x-added-in": "3.3.0",
+      "type": "integer",
+      "minimum": 1,
+      "description": "Rendered height in logical pixels of the entry canvas. For expandable units, this is the initial height. When set, width must also be set. Mutually exclusive with sizes."
+    },
+    "sizes": {
+      "x-added-in": "3.3.0",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "width",
+          "height"
+        ],
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Selectable entry-canvas sizes in logical pixels at which the same representation can render, rather than placement constraints or expanded states. Mutually exclusive with width/height. Omit all size fields for an unsized or responsive asset; absence does not establish compatibility with a size-constrained option."
+    },
+    "provenance": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type",
+    "content"
+  ],
+  "dependencies": {
+    "width": [
+      "height"
+    ],
+    "height": [
+      "width"
+    ]
+  },
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "width",
+          "sizes"
+        ]
+      },
+      {
+        "required": [
+          "height",
+          "sizes"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}

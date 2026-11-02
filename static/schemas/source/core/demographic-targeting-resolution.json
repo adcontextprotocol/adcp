@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/demographic-targeting-resolution.json",
   "title": "Demographic Targeting Resolution",
-  "description": "Lossless package readback for exact demographic targeting. requested preserves canonical buyer intent; applied states the canonical predicate actually booked; execution identifies the seller mechanism. Sellers MUST book only when requested and applied denote exactly the same set, including unknown-age membership. Unsupported predicates are rejected; a buyer that chooses another supported predicate submits it as a new request. Buyers SHOULD recompute equality from the two predicates.",
+  "description": "Lossless exact age and gender package readback. requested preserves accepted buyer intent; applied preserves every actually booked dimension; execution identifies its mechanism. Sellers MUST reject unless requested, applied, and effective targeting denote exactly the same set, including independent unknown membership. Gender value order is immaterial. JSON Schema cannot prove semantic equality or actual execution; buyers SHOULD recompute equality. Joint signals use complete predicate unions, never independent projections of correlated dimensions.",
   "type": "object",
   "properties": {
     "requested": {
@@ -16,7 +16,7 @@
     "equivalent": {
       "type": "boolean",
       "const": true,
-      "description": "Always true for a stored package. requested and applied MUST denote exactly the same set, including unknown-age membership; sellers reject non-equivalent requests instead of storing an alternative."
+      "description": "Always true for a stored package. All requested and applied dimensions MUST match exactly, including independent unknown-age and unknown-gender membership. Sellers reject non-equivalent requests rather than store alternatives."
     },
     "execution": {
       "oneOf": [
@@ -81,12 +81,211 @@
           },
           "required": ["type", "signal_refs"],
           "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "gender_values",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": true,
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "per_dimension",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            },
+            "age": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "continuous_bounds",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "/schemas/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "enumerated_intervals",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "interval_ids": {
+                      "type": "array",
+                      "description": "Seller-scoped interval identifiers whose union produced applied.",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "x-entity": "demographic_interval_id"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "/schemas/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "interval_ids"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "signals",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "signal_refs": {
+                      "type": "array",
+                      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+                      "items": {
+                        "$ref": "/schemas/core/signal-ref.json"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "/schemas/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "signal_refs"
+                  ],
+                  "additionalProperties": true
+                }
+              ],
+              "description": "Exact age execution. Signal references MUST carry age-only predicates; dropping a correlated gender constraint is forbidden.",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            },
+            "gender": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "gender_values",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "/schemas/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "signals",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "signal_refs": {
+                      "type": "array",
+                      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+                      "items": {
+                        "$ref": "/schemas/core/signal-ref.json"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "/schemas/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "signal_refs"
+                  ],
+                  "additionalProperties": true
+                }
+              ],
+              "description": "Exact gender execution. Signal references MUST carry gender-only predicates; dropping a correlated age constraint is forbidden. Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            }
+          },
+          "required": [
+            "type",
+            "age",
+            "gender"
+          ],
+          "additionalProperties": true,
+          "description": "Mixed age and gender execution. Results compose with AND; signals within either dimension compose with OR. Both dimensions MUST be requested and applied. Joint age-and-gender signals instead use top-level signals execution and full predicate union.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         }
       ]
     },
     "applied_bases": {
       "type": "array",
-      "description": "Effective user-level determination bases configured for this package after intersecting buyer accepted_bases, product supported_bases, and age_restriction. This is an auditable configuration readback, not proof that every impression used every listed basis.",
+      "description": "Effective user-level age determination bases configured for this package after intersecting buyer accepted_bases, product supported_bases, and age_restriction. This is an auditable configuration readback, not proof that every impression used every listed basis.",
       "items": {
         "$ref": "/schemas/enums/age-determination-basis.json"
       },
@@ -114,9 +313,15 @@
           "requested": {
             "properties": {
               "age": { "required": ["accepted_bases"] }
-            }
+            },
+            "required": [
+              "age"
+            ]
           }
-        }
+        },
+        "required": [
+          "requested"
+        ]
       },
       "then": {
         "required": ["applied_bases"]
@@ -146,6 +351,172 @@
       },
       "then": {
         "required": ["applied_verification_methods"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "requested": {
+            "required": [
+              "age"
+            ]
+          }
+        },
+        "required": [
+          "requested"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied": {
+            "required": [
+              "age"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "applied": {
+            "not": {
+              "required": [
+                "age"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "requested": {
+            "required": [
+              "gender"
+            ]
+          }
+        },
+        "required": [
+          "requested"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied": {
+            "required": [
+              "gender"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "applied": {
+            "not": {
+              "required": [
+                "gender"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "continuous_bounds",
+                  "enumerated_intervals"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
+        "required": [
+          "execution"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested": {
+            "required": [
+              "age"
+            ],
+            "not": {
+              "required": [
+                "gender"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "type": {
+                "const": "gender_values"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
+        "required": [
+          "execution"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested": {
+            "required": [
+              "gender"
+            ],
+            "not": {
+              "required": [
+                "age"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "type": {
+                "const": "per_dimension"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
+        "required": [
+          "execution"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested": {
+            "required": [
+              "age",
+              "gender"
+            ]
+          }
+        }
       }
     }
   ],

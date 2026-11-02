@@ -27,14 +27,17 @@
 
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { GitHubClient } from './github.mjs';
 import { isLedgerRemoteAllowed } from './ledger-remote.mjs';
 import {
   SIGN_PHRASE,
+  SIGNATURES_PATH,
   addSignature,
   findSignature,
   hasSigned,
   isSignPhrase,
+  parseSignatures,
   readSignatures,
   writeSignatures,
 } from './signatures.mjs';
@@ -78,39 +81,30 @@ function parseRepoSlug(slug) {
   return { owner, repo };
 }
 
-function git(args, opts = {}) {
+function git(args, { cwd = LEDGER_DIR, ...opts } = {}) {
   return execFileSync('git', args, {
-    cwd: LEDGER_DIR,
+    cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
     ...opts,
   });
 }
 
-function gitStatusPorcelain(pathname) {
-  return execFileSync('git', ['status', '--porcelain', pathname], {
-    cwd: LEDGER_DIR,
-    encoding: 'utf8',
-  }).trim();
+function configureGitIdentity(dir) {
+  git(['config', 'user.name', 'github-actions[bot]'], { cwd: dir });
+  git(['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], { cwd: dir });
 }
 
-function configureGitIdentity() {
-  git(['config', 'user.name', 'github-actions[bot]']);
-  git(['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
-}
-
-// The ledger-remote guard protects the push target. GitHub Actions concurrency
-// is per-repo, so the rebase-retry loop is the actual serialization mechanism
-// against contention from sibling AAO repos all writing to the same ledger.
-// Asserting the remote URL here removes a class of "future workflow edit
-// changes which checkout backs LEDGER_DIR" footguns. The accept/reject matrix
-// lives in tests/ipr-ledger-remote.test.mjs.
-function assertLedgerRemote() {
+// The ledger-remote guard protects the push target. Asserting the remote URL
+// here removes a class of "future workflow edit changes which checkout backs
+// LEDGER_DIR" footguns. The accept/reject matrix lives in
+// tests/ipr-ledger-remote.test.mjs.
+function assertLedgerRemote(dir) {
   let url;
   try {
-    url = git(['remote', 'get-url', 'origin']).trim();
+    url = git(['remote', 'get-url', 'origin'], { cwd: dir }).trim();
   } catch (err) {
-    throw new Error(`LEDGER_DIR ${LEDGER_DIR} has no \`origin\` remote: ${err.message ?? err}`);
+    throw new Error(`LEDGER_DIR ${dir} has no \`origin\` remote: ${err.message ?? err}`);
   }
   if (!isLedgerRemoteAllowed(url)) {
     throw new Error(
@@ -119,26 +113,141 @@ function assertLedgerRemote() {
   }
 }
 
-function commitSignaturesChange(message, branch = 'main') {
-  if (!gitStatusPorcelain('signatures/ipr-signatures.json')) return false;
-  assertLedgerRemote();
-  git(['add', 'signatures/ipr-signatures.json']);
-  git(['commit', '-m', message]);
-  // Five attempts handles realistic contention from up to ~5 AAO repos
-  // writing to the same JSON file with no cross-repo concurrency lock.
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+// GitHub Actions concurrency groups are per repo. The write group serializes
+// signature writes within one repo, but every AAO repo that calls
+// ipr-check-callable.yml writes the same ledger, so writes from different repos
+// can still race. This retry loop handles that race. Five attempts covers
+// realistic contention from about five repos.
+export const RECORD_MAX_ATTEMPTS = 5;
+const RECORD_BASE_DELAY_MS = 1000;
+
+// Exponential backoff plus jitter, so two writers that collided once do not
+// retry on the same schedule.
+function defaultBackoff(retry) {
+  return RECORD_BASE_DELAY_MS * 2 ** (retry - 1) + Math.floor(Math.random() * RECORD_BASE_DELAY_MS);
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Append `entry` to the ledger and push it, retrying when the push is rejected.
+ *
+ * Each attempt applies the signature to a fresh copy of the ledger instead of
+ * replaying a commit. Two signatures appended to the same JSON array at the
+ * same time edit the same lines, so a rebase conflicts. After a rejected push,
+ * the next attempt resets to the new remote head, re-reads the ledger, and adds
+ * the entry again. If the author is already on the fresh ledger (another run
+ * recorded them first), it returns without writing.
+ *
+ * `ops` is the git-facing surface:
+ *   sync()          move the checkout to the remote head
+ *   read()/write()  the ledger file
+ *   commit(message) returns false when there is nothing to commit
+ *   push()          throws on rejection
+ *
+ * Resolves to `{ recorded: true }` or `{ recorded: false, existing }`.
+ */
+export async function recordSignatureWithRetry(ops, entry, message, {
+  maxAttempts = RECORD_MAX_ATTEMPTS,
+  backoff = defaultBackoff,
+  sleep = sleepMs,
+} = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) {
+      await sleep(backoff(attempt - 1));
+      try {
+        ops.sync();
+      } catch (err) {
+        lastErr = err;
+        console.warn(`Attempt ${attempt}/${maxAttempts}: could not sync the ledger: ${err.message ?? err}`);
+        continue;
+      }
+    }
+
+    const current = ops.read();
+    const existing = findSignature(current, entry.id);
+    if (existing) {
+      console.log(`@${entry.name} is already on the ledger (${existing.created_at}); not writing.`);
+      return { recorded: false, existing };
+    }
+    ops.write(addSignature(current, entry).data);
+    if (!ops.commit(message)) {
+      // addSignature just added the entry, so an empty diff means the file on
+      // disk already had it. Treat this like the already-recorded case.
+      return { recorded: false, existing: null };
+    }
+
     try {
-      git(['push', 'origin', `HEAD:refs/heads/${branch}`], { stdio: 'inherit' });
-      return true;
-    } catch (pushErr) {
-      if (attempt === 4) throw pushErr;
-      // Rebase onto a newer main and retry. Rebase failures are not recoverable
-      // here (conflict on an append-only JSON means something upstream wrote an
-      // incompatible shape) — rethrow immediately.
-      git(['pull', '--rebase', 'origin', branch], { stdio: 'inherit' });
+      ops.push();
+      return { recorded: true };
+    } catch (err) {
+      lastErr = err;
+      console.warn(`Attempt ${attempt}/${maxAttempts}: push rejected: ${err.message ?? err}`);
     }
   }
-  throw new Error('Failed to push signature update after retries');
+  throw new Error(
+    `Failed to record signature for @${entry.name} after ${maxAttempts} attempts: ${lastErr?.message ?? lastErr}`,
+  );
+}
+
+// Git-backed ops for recordSignatureWithRetry. Tests set `assertRemote: false`
+// to point the ledger at a local bare repository. Production always checks.
+export function createGitLedgerOps(dir = LEDGER_DIR, { branch = 'main', assertRemote = true } = {}) {
+  let identityConfigured = false;
+  return {
+    sync: () => {
+      git(['fetch', '--depth=1', 'origin', branch], { cwd: dir });
+      // Drop this run's rejected commit. The caller re-applies the signature
+      // to the fresh ledger.
+      git(['reset', '--hard', 'FETCH_HEAD'], { cwd: dir });
+    },
+    read: () => readSignatures(dir),
+    write: (data) => writeSignatures(data, dir),
+    commit: (message) => {
+      if (!git(['status', '--porcelain', SIGNATURES_PATH], { cwd: dir }).trim()) return false;
+      if (assertRemote) assertLedgerRemote(dir);
+      if (!identityConfigured) {
+        configureGitIdentity(dir);
+        identityConfigured = true;
+      }
+      git(['add', SIGNATURES_PATH], { cwd: dir });
+      git(['commit', '-m', message], { cwd: dir });
+      return true;
+    },
+    push: () => {
+      if (assertRemote) assertLedgerRemote(dir);
+      git(['push', 'origin', `HEAD:refs/heads/${branch}`], { cwd: dir });
+    },
+  };
+}
+
+// Read the ledger at the current tip of origin/main rather than the checkout.
+// The check-only job (pull_request_target) does not share a concurrency group
+// with the signature-write job, so a signature can land on main after this
+// job's checkout. Returns null when the fetch fails so callers fail closed
+// (leave the status pending) instead of guessing.
+function readLatestSignatures(dir, branch = 'main') {
+  try {
+    git(['fetch', '--depth=1', 'origin', branch], { cwd: dir });
+    return parseSignatures(git(['show', `FETCH_HEAD:${SIGNATURES_PATH}`], { cwd: dir }));
+  } catch (err) {
+    console.warn(`Could not re-read ledger from origin/${branch}: ${err.message ?? err}`);
+    return null;
+  }
+}
+
+// The handlers reach the ledger only through this object so tests can drive
+// them without a git checkout.
+export function createGitLedger(dir = LEDGER_DIR, { assertRemote = true, retry } = {}) {
+  const ops = createGitLedgerOps(dir, { assertRemote });
+  return {
+    read: () => readSignatures(dir),
+    readLatest: () => readLatestSignatures(dir),
+    record: (entry, message) => recordSignatureWithRetry(ops, entry, message, retry),
+  };
 }
 
 async function setStatus(gh, eventRepo, sha, { state, description }) {
@@ -193,7 +302,7 @@ function confirmCommentBody(login) {
   ].join('\n');
 }
 
-async function handleIssueComment(gh, event, eventRepo) {
+export async function handleIssueComment(gh, event, eventRepo, ledger = createGitLedger()) {
   const comment = event.comment;
   const issue = event.issue;
   if (!issue?.pull_request) {
@@ -231,7 +340,7 @@ async function handleIssueComment(gh, event, eventRepo) {
     return;
   }
 
-  const signatures = readSignatures(LEDGER_DIR);
+  const signatures = ledger.read();
   if (hasSigned(signatures, prAuthor.id)) {
     const existing = findSignature(signatures, prAuthor.id);
     console.log(`${prAuthor.login} already signed on ${existing.created_at} — no-op.`);
@@ -252,28 +361,39 @@ async function handleIssueComment(gh, event, eventRepo) {
     comment_id: comment.id,
     comment_url: comment.html_url,
   };
-  const { data: next, added } = addSignature(signatures, entry);
-  if (!added) {
-    throw new Error(`Unexpected: ${prAuthor.login} already signed after hasSigned check`);
-  }
-  writeSignatures(next, LEDGER_DIR);
-
-  configureGitIdentity();
-  const committed = commitSignaturesChange(
+  // record() re-applies the entry to the remote head on each retry and skips
+  // the write when a concurrent run already recorded this author.
+  const { recorded } = await ledger.record(
+    entry,
     `chore(ipr): record signature for @${prAuthor.login} (${eventRepo.owner}/${eventRepo.repo}#${issue.number})`,
   );
-  if (!committed) {
-    console.log('Ledger already up to date at HEAD (concurrent write completed first).');
+  if (!recorded) {
+    console.log('Ledger already records this author at the remote head (concurrent write completed first).');
   }
 
   await ensureComment(gh, eventRepo, issue.number, CONFIRM_COMMENT_MARKER, confirmCommentBody(prAuthor.login));
-  await setStatus(gh, eventRepo, headSha, {
-    state: 'success',
-    description: `@${prAuthor.login} signed just now`,
-  });
+
+  // A check job for a push that raced this signature may have read the ledger
+  // before the push above landed and marked its head pending. Re-read the PR
+  // head now that the signature is on main and mark it as well. Together with
+  // the post-pending re-read in handlePullRequestTarget, every interleaving
+  // ends with the latest head marked success.
+  const shas = new Set([headSha]);
+  try {
+    const latest = await gh.getPullRequest(eventRepo.owner, eventRepo.repo, issue.number);
+    if (latest?.head?.sha) shas.add(latest.head.sha);
+  } catch (err) {
+    console.warn(`Could not re-read PR head after recording: ${err.message ?? err}`);
+  }
+  for (const sha of shas) {
+    await setStatus(gh, eventRepo, sha, {
+      state: 'success',
+      description: `@${prAuthor.login} signed just now`,
+    });
+  }
 }
 
-async function handlePullRequestTarget(gh, event, eventRepo) {
+export async function handlePullRequestTarget(gh, event, eventRepo, ledger = createGitLedger()) {
   const pr = event.pull_request;
   if (!pr) {
     console.log('No pull_request payload — skipping.');
@@ -291,21 +411,31 @@ async function handlePullRequestTarget(gh, event, eventRepo) {
     return;
   }
 
-  const signatures = readSignatures(LEDGER_DIR);
-  if (hasSigned(signatures, prAuthor.id)) {
-    const existing = findSignature(signatures, prAuthor.id);
-    await setStatus(gh, eventRepo, headSha, {
-      state: 'success',
-      description: `@${prAuthor.login} signed on ${existing.created_at.slice(0, 10)}`,
-    });
-    return;
-  }
+  if (await setStatusIfSigned(gh, eventRepo, headSha, prAuthor, ledger.read())) return;
 
   await setStatus(gh, eventRepo, headSha, {
     state: 'pending',
     description: `Awaiting IPR Policy signature from @${prAuthor.login}`,
   });
+
+  // This job runs outside the signature-write concurrency group, so the
+  // checkout can predate a signature the author recorded while this job was
+  // starting. Re-read origin/main *after* posting pending: a signature that
+  // landed meanwhile overwrites the pending status here, and the write job
+  // re-marks the latest head after its push to cover the opposite order.
+  if (await setStatusIfSigned(gh, eventRepo, headSha, prAuthor, ledger.readLatest())) return;
+
   await ensureComment(gh, eventRepo, pr.number, CLAIM_COMMENT_MARKER, requestCommentBody(prAuthor));
+}
+
+async function setStatusIfSigned(gh, eventRepo, headSha, prAuthor, signatures) {
+  if (!signatures || !hasSigned(signatures, prAuthor.id)) return false;
+  const existing = findSignature(signatures, prAuthor.id);
+  await setStatus(gh, eventRepo, headSha, {
+    state: 'success',
+    description: `@${prAuthor.login} signed on ${existing.created_at.slice(0, 10)}`,
+  });
+  return true;
 }
 
 async function main() {
@@ -326,7 +456,21 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err.stack || err.message);
-  process.exit(1);
-});
+// Run only when invoked as a script so tests can import the handlers. Compare
+// real paths: Node resolves symlinks for the main module's import.meta.url but
+// not for argv[1], and a false negative here would silently skip the status.
+function invokedDirectly() {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
+  main().catch((err) => {
+    console.error(err.stack || err.message);
+    process.exit(1);
+  });
+}

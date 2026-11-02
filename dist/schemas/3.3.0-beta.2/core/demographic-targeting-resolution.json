@@ -1,0 +1,569 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/demographic-targeting-resolution.json",
+  "title": "Demographic Targeting Resolution",
+  "description": "Lossless exact age and gender package readback. requested preserves accepted buyer intent; applied preserves every actually booked dimension; execution identifies its mechanism. Sellers MUST reject unless requested, applied, and effective targeting denote exactly the same set, including independent unknown membership. Gender value order is immaterial. JSON Schema cannot prove semantic equality or actual execution; buyers SHOULD recompute equality. Joint signals use complete predicate unions, never independent projections of correlated dimensions.",
+  "type": "object",
+  "properties": {
+    "requested": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/demographic-targeting-intent.json",
+      "description": "Canonical demographic predicate and determination constraints requested by the buyer."
+    },
+    "applied": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/demographic-predicate.json",
+      "description": "Canonical demographic predicate actually applied by the seller."
+    },
+    "equivalent": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true for a stored package. All requested and applied dimensions MUST match exactly, including independent unknown-age and unknown-gender membership. Sellers reject non-equivalent requests rather than store alternatives."
+    },
+    "execution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "continuous_bounds"
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "enumerated_intervals"
+            },
+            "interval_ids": {
+              "type": "array",
+              "description": "Seller-scoped interval identifiers whose union produced applied.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "demographic_interval_id"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json"
+            }
+          },
+          "required": [
+            "type",
+            "interval_ids"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "signals"
+            },
+            "signal_refs": {
+              "type": "array",
+              "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/signal-ref.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json"
+            }
+          },
+          "required": [
+            "type",
+            "signal_refs"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "gender_values",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": true,
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "per_dimension",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            },
+            "age": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "continuous_bounds",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "enumerated_intervals",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "interval_ids": {
+                      "type": "array",
+                      "description": "Seller-scoped interval identifiers whose union produced applied.",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "x-entity": "demographic_interval_id"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "interval_ids"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "signals",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "signal_refs": {
+                      "type": "array",
+                      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+                      "items": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/signal-ref.json"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "signal_refs"
+                  ],
+                  "additionalProperties": true
+                }
+              ],
+              "description": "Exact age execution. Signal references MUST carry age-only predicates; dropping a correlated gender constraint is forbidden.",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            },
+            "gender": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "gender_values",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "signals",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "signal_refs": {
+                      "type": "array",
+                      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+                      "items": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/signal-ref.json"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    },
+                    "ext": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "signal_refs"
+                  ],
+                  "additionalProperties": true
+                }
+              ],
+              "description": "Exact gender execution. Signal references MUST carry gender-only predicates; dropping a correlated age constraint is forbidden. Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
+            }
+          },
+          "required": [
+            "type",
+            "age",
+            "gender"
+          ],
+          "additionalProperties": true,
+          "description": "Mixed age and gender execution. Results compose with AND; signals within either dimension compose with OR. Both dimensions MUST be requested and applied. Joint age-and-gender signals instead use top-level signals execution and full predicate union.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        }
+      ]
+    },
+    "applied_bases": {
+      "type": "array",
+      "description": "Effective user-level age determination bases configured for this package after intersecting buyer accepted_bases, product supported_bases, and age_restriction. This is an auditable configuration readback, not proof that every impression used every listed basis.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/age-determination-basis.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "applied_verification_methods": {
+      "type": "array",
+      "description": "Effective verification methods when applied_bases contains verified. A method name does not establish that a particular proof or claim was valid; runtime verification and claim entailment remain required.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/age-verification-method.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json"
+    }
+  },
+  "required": [
+    "requested",
+    "applied",
+    "equivalent",
+    "execution"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "requested": {
+            "properties": {
+              "age": {
+                "required": [
+                  "accepted_bases"
+                ]
+              }
+            },
+            "required": [
+              "age"
+            ]
+          }
+        },
+        "required": [
+          "requested"
+        ]
+      },
+      "then": {
+        "required": [
+          "applied_bases"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "applied_verification_methods"
+        ]
+      },
+      "then": {
+        "required": [
+          "applied_bases"
+        ],
+        "properties": {
+          "applied_bases": {
+            "contains": {
+              "const": "verified"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "applied_bases": {
+            "contains": {
+              "const": "verified"
+            }
+          }
+        },
+        "required": [
+          "applied_bases"
+        ]
+      },
+      "then": {
+        "required": [
+          "applied_verification_methods"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "requested": {
+            "required": [
+              "age"
+            ]
+          }
+        },
+        "required": [
+          "requested"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied": {
+            "required": [
+              "age"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "applied": {
+            "not": {
+              "required": [
+                "age"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "requested": {
+            "required": [
+              "gender"
+            ]
+          }
+        },
+        "required": [
+          "requested"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied": {
+            "required": [
+              "gender"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "applied": {
+            "not": {
+              "required": [
+                "gender"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "continuous_bounds",
+                  "enumerated_intervals"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
+        "required": [
+          "execution"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested": {
+            "required": [
+              "age"
+            ],
+            "not": {
+              "required": [
+                "gender"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "type": {
+                "const": "gender_values"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
+        "required": [
+          "execution"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested": {
+            "required": [
+              "gender"
+            ],
+            "not": {
+              "required": [
+                "age"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "type": {
+                "const": "per_dimension"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
+        "required": [
+          "execution"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requested": {
+            "required": [
+              "age",
+              "gender"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "difference_reason"
+        ]
+      },
+      {
+        "required": [
+          "buyer_approved"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}

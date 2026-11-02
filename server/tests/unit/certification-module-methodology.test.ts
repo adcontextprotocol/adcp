@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 // certification-tools.ts imports the certification-db module; stub it so this
 // pure-function test never touches a real database.
@@ -33,11 +34,12 @@ import {
 } from '../../src/addie/mcp/certification-tools.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
 
-const SDK_PACKAGE_VERSION = (
-  JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
-    dependencies: Record<string, string>;
-  }
-).dependencies['@adcp/sdk'];
+// Learner instructions name the stable SDK checkpoint, not a prerelease the
+// repository may run (tests/helpers/sdk-checkpoint.cjs).
+const { sdkCheckpoints } = createRequire(import.meta.url)('../../../tests/helpers/sdk-checkpoint.cjs') as {
+  sdkCheckpoints: () => { stable: string };
+};
+const SDK_PACKAGE_VERSION = sdkCheckpoints().stable;
 
 // Distinctive markers from each methodology block.
 const TEACHING_MARKER = 'Teaching approach';

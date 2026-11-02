@@ -71,6 +71,7 @@ test('the four 3.x request fields are documented compatibility no-ops', () => {
   assert.deepEqual(declarations, [
     'decline-proposals-request.json',
     'list-products-request.json',
+    'list-proposals-request.json',
     'refine-proposals-request.json',
     'request-proposals-request.json',
   ]);

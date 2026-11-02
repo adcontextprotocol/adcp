@@ -1,0 +1,315 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/account-request-record.json",
+  "title": "Account Request",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "A buyer agent's request to open or change an advertiser account, and its lifecycle (experimental, account.requests). The request is its own object: no account exists until the request resolves, so a seller can match the request to an existing account without changing an account_id. Requests are scoped to the authenticated caller that made them and are never visible to another caller.",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+      "description": "Seller-assigned identifier for this request. Stable for the life of the request. It is not an account_id and is never accepted as an AccountRef."
+    },
+    "state": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/account-request-state.json"
+    },
+    "requested": {
+      "title": "Requested Account",
+      "type": "object",
+      "description": "Echo of what was requested: for an open, the brand, operator, and attributes; for a change, the account_id and the requested changes. When a repeat request replaced an open request's terms or changes, this shows the replacement. Never echoes billing_entity bank details or other write-only fields.",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "description": "Present when the request named an existing account."
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The revision a change request was based on, when sent."
+        },
+        "brand": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/brand-key.json"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "operator_unit": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/operator-unit.json"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sandbox": {
+          "type": "boolean"
+        },
+        "billing": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/billing-party.json"
+        },
+        "payment_terms": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/payment-terms.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pending_action": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/pending-action.json",
+      "description": "Present when state is in_review. Says whose turn it is and what is needed."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Present when state is resolved: the account this request resolved to. Never changes for the life of the account. For an open request, it is the account to reference from now on. On a change request that resolves as updated, it equals requested.account_id. On a change request that resolves as created or matched, it is a different account from requested.account_id; the named account is unchanged and stays usable, and whether to use the resolved account for new buys is the buyer's choice. Existing account-scoped calls are not redirected to it.",
+      "x-entity": "account"
+    },
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/account.json",
+      "description": "Present when state is resolved: the account after the request, including any changed attributes and its revision. Sellers SHOULD include it when resolution is updated, and MAY omit it otherwise."
+    },
+    "resolution": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/account-request-resolution.json",
+      "description": "Present when state is resolved: whether the seller matched an existing account, created one, or updated the named account. A change request can resolve as any of the three."
+    },
+    "candidates": {
+      "type": "array",
+      "description": "Present when state is ambiguous. Accounts that match the request, limited to accounts the caller is already granted. The seller MUST NOT list accounts the caller cannot already reach. When the only matches are outside the caller's grants, every caller-visible state, pending-action kind, and error MUST be one the seller could also return when nothing matches.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/account-candidate.json"
+      },
+      "minItems": 2,
+      "maxItems": 50
+    },
+    "errors": {
+      "type": "array",
+      "description": "Present when state is rejected. Why the seller declined, or that a buyer action expired.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/error.json"
+      },
+      "minItems": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller recorded the request."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the request last changed state, pending action, or requested terms."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json"
+    }
+  },
+  "required": [
+    "request_id",
+    "state",
+    "requested",
+    "created_at",
+    "updated_at"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "in_review"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "pending_action"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "account_id"
+              ]
+            },
+            {
+              "required": [
+                "account"
+              ]
+            },
+            {
+              "required": [
+                "candidates"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "resolved"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "account_id",
+          "resolution"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "pending_action"
+              ]
+            },
+            {
+              "required": [
+                "candidates"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "ambiguous"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "candidates"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "account_id"
+              ]
+            },
+            {
+              "required": [
+                "account"
+              ]
+            },
+            {
+              "required": [
+                "pending_action"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "rejected"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "errors"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "account_id"
+              ]
+            },
+            {
+              "required": [
+                "account"
+              ]
+            },
+            {
+              "required": [
+                "pending_action"
+              ]
+            },
+            {
+              "required": [
+                "candidates"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Waiting on seller sales ops",
+      "data": {
+        "request_id": "areq_01K4F8M2Q7",
+        "state": "in_review",
+        "requested": {
+          "brand": {
+            "domain": "renault.fr",
+            "countries": [
+              "FR"
+            ]
+          },
+          "operator": "wppmedia.fr",
+          "currency": "EUR",
+          "billing": "operator"
+        },
+        "pending_action": {
+          "waiting_on": "seller",
+          "kind": "review",
+          "message": "Checking for an existing Renault France relationship."
+        },
+        "created_at": "2026-10-18T09:00:00Z",
+        "updated_at": "2026-10-18T09:00:00Z"
+      }
+    },
+    {
+      "description": "Matched to an existing account",
+      "data": {
+        "request_id": "areq_01K4F8M2Q7",
+        "state": "resolved",
+        "requested": {
+          "brand": {
+            "domain": "renault.fr",
+            "countries": [
+              "FR"
+            ]
+          },
+          "operator": "wppmedia.fr",
+          "currency": "EUR",
+          "billing": "operator"
+        },
+        "account_id": "acc_renault_fr_wpp",
+        "resolution": "matched",
+        "created_at": "2026-10-18T09:00:00Z",
+        "updated_at": "2026-10-19T14:30:00Z"
+      }
+    }
+  ]
+}

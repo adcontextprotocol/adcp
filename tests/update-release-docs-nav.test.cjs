@@ -799,6 +799,17 @@ function versionEntry(version, build, extra = {}) {
       t.skip(`docs default ${repoDefault.version} is newer than the 3.2 GA flip`);
       return;
     }
+    // Once a newer line's preview is in the picker, a 3.2.1 run is a late
+    // patch of an older line: it correctly leaves that preview's Latest tag
+    // alone, so this GA flip fixture no longer describes the repository.
+    const newerLine = repoConfig.navigation.versions.find((entry) => {
+      const [entryMajor, entryMinor] = String(entry.version).split(/[.-]/).map(Number);
+      return entryMajor > 3 || (entryMajor === 3 && entryMinor > 2);
+    });
+    if (newerLine) {
+      t.skip(`docs version ${newerLine.version} is newer than the 3.2 GA flip`);
+      return;
+    }
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-docs-ga-'));
     const files = {

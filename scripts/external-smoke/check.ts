@@ -23,13 +23,16 @@ export class SmokeFailure extends Error {
 
 // SDK step errors are strings. Keep this allowlist narrow; unknown errors fail
 // once. In particular, a generic mention of "auth" or "network" proves nothing.
+// `requires OAuth authorization` is the message of the SDK's
+// NeedsAuthorizationError (a 401 Bearer challenge), which reaches us only as a
+// step string.
 function failureKind(error: unknown): FailureKind {
   if (error instanceof SmokeFailure) return error.kind;
   const value = error as { name?: string; code?: string; status?: number; message?: string; cause?: unknown } | null;
   const evidence = typeof error === 'string' ? error :
     [value?.name, value?.code, value?.status, value?.message].join(' ');
   if (/\b(?:AssertionError|ZodError|SchemaValidationError)\b|schema|validation|unsupported version/i.test(evidence)) return 'semantic';
-  if ([401, 403].includes(value?.status ?? 0) || /\b(?:unauthorized|UnauthorizedError|forbidden|AUTH_REQUIRED|AUTHENTICATION_REQUIRED|NeedsAuthorizationError)\b|\b(?:HTTP|status(?: code)?)[\s:=]+(?:401|403)\b|authentication required|invalid (?:bearer )?token/i.test(evidence)) return 'auth';
+  if ([401, 403].includes(value?.status ?? 0) || /\b(?:unauthorized|UnauthorizedError|forbidden|AUTH_REQUIRED|AUTHENTICATION_REQUIRED|NeedsAuthorizationError)\b|\b(?:HTTP|status(?: code)?)[\s:=]+(?:401|403)\b|authentication required|invalid (?:bearer )?token|\brequires OAuth authorization\b/i.test(evidence)) return 'auth';
   if ([408, 429, 502, 503, 504].includes(value?.status ?? 0) || /\b(?:ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT|UND_ERR_SOCKET|TimeoutError|SmokeTransientTransportError)\b|\b(?:HTTP|status(?: code)?)[\s:=]+(?:408|429|502|503|504)\b|request timed out|request timeout|version negotiation probe timed out/i.test(evidence)) return 'transient';
   return value?.cause ? failureKind(value.cause) : 'semantic';
 }
@@ -88,7 +91,8 @@ export async function boundedDiscovery(
 function assertDiscovery(result: DiscoveryResult): void {
   const schemaIssues = result.profile?.capabilities_schema_issues;
   if (schemaIssues?.length) throw new SmokeFailure('semantic', `Capability schema errors: ${JSON.stringify(schemaIssues)}`);
-  const failures = result.steps.filter(step => !step.passed && !step.skipped).map(step => ({
+  const failed = result.steps.filter(step => !step.passed && !step.skipped);
+  const failures = failed.map(step => ({
     kind: step.task === 'getAgentInfo' || step.task === 'get_adcp_capabilities'
       ? failureKind(step.error) : 'semantic' as FailureKind,
     message: `${step.step}: ${step.error ?? step.details ?? 'failed'}`,
@@ -112,21 +116,67 @@ function assertDiscovery(result: DiscoveryResult): void {
   'Discovery returned no supported version');
 }
 
+type ResolverOptions = Parameters<Resolver>[1];
+
+/** Storyboard-resolution options for the release the agent echoed. */
+export type ResolverForRelease = (release: string) => ResolverOptions;
+
+const MAJOR_RE = /^([1-9]\d*)\./;
+
+/**
+ * A 3.0 pin cannot carry `adcp_version`, so the SDK sends only
+ * `adcp_major_version: 3` and the agent may serve and echo its highest 3.x
+ * release (docs/reference/versioning.mdx, "Server resolves"). The SDK
+ * validates the capabilities against that echo. This checks that the agent
+ * may serve it, and resolves storyboards from the served release's bundle:
+ * the pin's bundle does not know specialisms that later releases added.
+ */
+function servedResolverOptions(
+  result: DiscoveryResult,
+  options: TestOptions,
+  resolverOptions: ResolverOptions,
+  resolverFor: ResolverForRelease | undefined,
+): ResolverOptions {
+  const echoed = (result.profile?.raw_capabilities as { adcp_version?: unknown } | undefined)?.adcp_version;
+  if (echoed === undefined) return resolverOptions;
+  // The SDK falls back to the pin for an echo it cannot validate against, so
+  // its schema issues are context for the failures below.
+  const issues = result.profile?.capabilities_schema_issues;
+  const context = issues?.length ? `; capability schema errors: ${JSON.stringify(issues)}` : '';
+  const pinned = options.wireAdcpVersion ?? options.adcpVersion;
+  const pinMajor = pinned?.match(MAJOR_RE)?.[1];
+  if (typeof echoed !== 'string' || (pinMajor !== undefined && echoed.match(MAJOR_RE)?.[1] !== pinMajor)) {
+    throw new SmokeFailure('semantic', `Agent served AdCP ${JSON.stringify(echoed)} to a ${pinned} pin; majors must agree${context}`);
+  }
+  if (!result.profile?.adcp_supported_versions?.includes(echoed)) {
+    throw new SmokeFailure('semantic', `Agent served AdCP ${echoed}, which its supported_versions do not list${context}`);
+  }
+  if (!resolverFor) return resolverOptions;
+  try {
+    return resolverFor(echoed);
+  } catch (error) {
+    throw new SmokeFailure('semantic', `Agent served AdCP ${echoed}, but no hosted bundle is available to resolve its storyboards: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export async function checkProbe(
   url: string,
   options: TestOptions,
-  resolverOptions: Parameters<Resolver>[1],
+  resolverOptions: ResolverOptions,
   anonymous: boolean,
   {
     discover = (endpoint, opts) => boundedDiscovery(endpoint, opts),
     resolve = resolveStoryboardsForCapabilities,
-  }: { discover?: Discovery; resolve?: Resolver } = {},
+    resolverFor,
+  }: { discover?: Discovery; resolve?: Resolver; resolverFor?: ResolverForRelease } = {},
 ): Promise<'public' | 'authenticated' | 'auth-required'> {
   for (let attempt = 1; ; attempt++) {
     let result: DiscoveryResult;
+    let served: ResolverOptions;
     try {
-      // Exactly one authenticated discovery per attempt; reuse its profile.
+      // One discovery per attempt; reuse its profile.
       result = await discover(url, options);
+      served = servedResolverOptions(result, options, resolverOptions, resolverFor);
       assertDiscovery(result);
     } catch (error) {
       const kind = failureKind(error);
@@ -140,7 +190,7 @@ export async function checkProbe(
       specialisms: profile.specialisms ?? [],
       major_versions: profile.adcp_major_versions,
       supported_versions: profile.adcp_supported_versions,
-    }, resolverOptions);
+    }, served);
     assert(resolved.storyboards.length > 0, 'No applicable storyboards');
     assert(resolved.bundles.length > 0, 'No applicable bundles');
     return anonymous ? 'public' : 'authenticated';

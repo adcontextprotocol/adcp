@@ -67,6 +67,7 @@ export function buildCreativeCapabilities(formats: Format[]): Array<Record<strin
       kind?: string;
       asset_source?: string;
       slots_override?: unknown[];
+      supported_delivery_types?: string[];
       parameters?: Record<string, unknown>;
     } | undefined;
     if (!canonical?.kind) return [];
@@ -142,6 +143,7 @@ export function buildCreativeCapabilities(formats: Format[]): Array<Record<strin
     }
     if (canonical.asset_source) params.asset_source = canonical.asset_source;
     if (canonical.slots_override) params.slots = canonical.slots_override;
+    if (canonical.supported_delivery_types) params.supported_delivery_types = canonical.supported_delivery_types;
 
     // The hosted reference agent proxies media through a bounded cache. Make
     // that ceiling part of every affected advertised route so compatibility
@@ -394,6 +396,12 @@ function manifestConstraintValue(
     });
     if (codecs.length > 0) return [...new Set(codecs)];
   }
+  if (key === 'supported_delivery_types') {
+    const deliveryTypes = assets.flatMap(asset =>
+      asset.asset_type === 'display_tag' && typeof asset.delivery_type === 'string' ? [asset.delivery_type] : []
+    );
+    if (deliveryTypes.length > 0) return [...new Set(deliveryTypes)];
+  }
   const params = manifest.params;
   if (params && typeof params === 'object' && !Array.isArray(params)
     && Object.prototype.hasOwnProperty.call(params, key)) {
@@ -449,6 +457,14 @@ function requiredSlotIssue(value: unknown, slot: CanonicalSlot): string | undefi
     if (['text', 'markdown', 'html', 'css', 'javascript'].includes(slot.asset_type ?? '') && !stringValue('content')) {
       return `${slotId} requires usable content`;
     }
+    if (slot.asset_type === 'display_tag') {
+      const hasPayload = asset.delivery_type === 'inline_markup'
+        ? stringValue('markup')
+        : asset.delivery_type === 'tag_url'
+          ? stringValue('url')
+          : asset.delivery_type === 'paired_redirect' && stringValue('ad_request_url') && stringValue('clickthrough_url');
+      if (!hasPayload) return `${slotId} requires a valid display_tag delivery payload`;
+    }
     if (['vast', 'daast'].includes(slot.asset_type ?? '')) {
       const hasPayload = asset.delivery_type === 'url' ? stringValue('url') : asset.delivery_type === 'inline' && stringValue('content');
       if (!hasPayload) return `${slotId} requires a valid ${slot.asset_type} delivery payload`;
@@ -462,8 +478,11 @@ function manifestDimensions(manifest: Record<string, unknown>): { width?: number
   const requiredIds = new Set((canonicalDefaultSlots(kind) as CanonicalSlot[])
     .filter(slot => slot.required && slot.asset_group_id)
     .map(slot => slot.asset_group_id!));
-  const width = manifestConstraintValue(manifest, 'width', requiredIds);
-  const height = manifestConstraintValue(manifest, 'height', requiredIds);
+  // A format option can override the canonical's default slots (for example an
+  // inline-markup display_tag slot), so fall back to every supplied asset.
+  const allIds = new Set(manifestAssetRecords(manifest).length ? Object.keys(manifest.assets as object) : []);
+  const width = manifestConstraintValue(manifest, 'width', requiredIds) ?? manifestConstraintValue(manifest, 'width', allIds);
+  const height = manifestConstraintValue(manifest, 'height', requiredIds) ?? manifestConstraintValue(manifest, 'height', allIds);
   return {
     ...(typeof width === 'number' ? { width } : {}),
     ...(typeof height === 'number' ? { height } : {}),
@@ -665,9 +684,13 @@ function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): 
     const declared = buildCreativeCapabilities([format])[0]?.format as { params?: Record<string, unknown> } | undefined;
     return declared?.params?.width === undefined && declared?.params?.height === undefined;
   });
-  if (generic.length === 1) {
-    assertManifestCompatibleWithFormat(manifest, generic[0], `Canonical format_kind "${manifest.format_kind}"`);
-    return generic[0];
+  // Unsized legacy routes can share a canonical kind with different slot
+  // contracts (display_js takes a tag URL; display_html takes inline markup).
+  const compatibleGeneric = generic.filter(format => manifestCompatibilityIssue(manifest, format) === undefined);
+  const genericPool = compatibleGeneric.length === 1 ? compatibleGeneric : generic;
+  if (genericPool.length === 1) {
+    assertManifestCompatibleWithFormat(manifest, genericPool[0], `Canonical format_kind "${manifest.format_kind}"`);
+    return genericPool[0];
   }
   throw new PreviewFormatNotSupportedError(
     `Canonical format_kind "${manifest.format_kind}" matches multiple preview capabilities; provide target_capability_id.`,

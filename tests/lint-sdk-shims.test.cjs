@@ -38,9 +38,8 @@ test('ledger entries include removal conditions and upstream asks', () => {
   }
 });
 
-test('source tree has no remaining private SDK reach-ins', () => {
-  const findings = collectFindings();
-  assert.deepEqual(findings, []);
+test('no private SDK reach-ins remain', () => {
+  assert.deepEqual(collectFindings(), []);
 });
 
 test('matchingPrivateTerm ignores comment-only lines but catches private SDK code', () => {

@@ -2,17 +2,15 @@ import { Pool } from 'pg';
 import { Storage } from '@google-cloud/storage';
 import { canonicalize } from '@adcp/sdk';
 import { AdcpError, type NotificationSubscriptionConfigInput, type ResolveContext } from '@adcp/sdk/server';
-import {
-  PostgresReportingLedgerStore, PostgresReportingManagedDeliveryStore,
-  reportingManagedDeliveryBindingV1, reportingObjectWriteScopeKey,
-  type ReportingManagedDeliveryAdapterV1, type ReportingPgPool,
-} from '@adcp/sdk/reporting/ledger';
-import { createGcsReportingManagedDeliveryAdapterV1, createGcsReportingObjectFenceV1, isReportingGcsFenceError, type GcsReportingReaderOptionsV1 } from '@adcp/sdk/reporting/gcs';
+import { reportingManagedDeliveryBindingV1 } from '@adcp/sdk/reporting/ledger';
+import { reportingSchedulerErrorMessage, type ReliableReportingConfigurationInputV1 } from '@adcp/sdk/reporting/service';
+import { PostgresReportingLedgerStore, reportingObjectWriteScopeKey, type ReportingPgPool } from '@adcp/reporting-storage';
+import { PostgresReportingManagedDeliveryStore, type ReportingManagedDeliveryAdapterV1 } from '@adcp/reporting-storage/managed';
+import { createGcsReportingManagedDeliveryAdapterV1, createGcsReportingObjectFenceV1, isReportingGcsFenceError, type GcsReportingReaderOptionsV1 } from '@adcp/reporting-storage/gcs';
 import { createPostgresReliableReportingProductionService,
   type CreatePostgresReliableReportingProductionServiceOptionsV1,
   type PostgresReliableReportingProductionServiceV1,
-  type ReliableReportingConfigurationInputV1,
-} from '@adcp/sdk/reporting/service';
+} from '@adcp/reporting-storage/service';
 import type { ExpectedReportingPeriod } from '@adcp/sdk/reporting/consumer';
 import { getDatabaseConfig } from '../config.js';
 import { createLogger } from '../logger.js';
@@ -44,6 +42,93 @@ function unavailable(): never {
 }
 function denied(): never {
   throw new AdcpError('ACCOUNT_NOT_FOUND', { recovery: 'correctable', message: 'Reporting account was not found.' });
+}
+
+/** Keep the PostgreSQL receipt when the storage layer wraps a query failure. */
+export function logTrainingReportingSchedulerFailure(error: unknown): void {
+  let databaseCode: string | undefined;
+  let cause = error;
+  for (let depth = 0; depth < 8 && typeof cause === 'object' && cause !== null; depth++) {
+    try {
+      // Do not invoke accessors or serialize database messages, SQL or values.
+      const code = Object.getOwnPropertyDescriptor(cause, 'code');
+      if (code && 'value' in code && typeof code.value === 'string' && /^[0-9A-Z]{5}$/.test(code.value)) {
+        databaseCode = code.value;
+        break;
+      }
+      const next = Object.getOwnPropertyDescriptor(cause, 'cause');
+      cause = next && 'value' in next ? next.value : undefined;
+    } catch { break; }
+  }
+  logger.error({ diagnostic: reportingSchedulerErrorMessage(error), databaseCode },
+    'Durable reporting scheduler failed');
+}
+
+/** Reserve one active or unfinished canary account per organization. Retired
+ * bindings stay immutable; a replacement needs durable revocation evidence. */
+export async function reserveTrainingGcsAccount(db: Pool, input: AccountBinding): Promise<void> {
+  const client = await db.connect();
+  let reusable = true;
+  const matches = (saved: AccountBinding | undefined) => saved
+    && saved.principal_id === input.principal_id && saved.account_id === input.account_id
+    && saved.source_config_id === input.source_config_id && saved.source_config_version === input.source_config_version
+    && saved.destination_ref === input.destination_ref && saved.currency === input.currency
+    && canonicalize(saved.media_buy_ids) === canonicalize(input.media_buy_ids)
+    && canonicalize(saved.installed_input) === canonicalize(input.installed_input);
+  try {
+    await client.query('BEGIN');
+    await client.query("SET LOCAL lock_timeout = '3s'");
+    await client.query("SET LOCAL statement_timeout = '10s'");
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`training-gcs-account:${input.principal_id}`]);
+    const saved = await client.query<AccountBinding>(
+      `SELECT * FROM ${TRAINING_REPORTING_SCHEMA}.host_accounts WHERE account_id = $1 FOR UPDATE`, [input.account_id],
+    );
+    if (saved.rows.length && !matches(saved.rows[0])) {
+      throw new AdcpError('VALIDATION_ERROR', { recovery: 'correctable', message: 'Reporting account is already bound to different immutable source facts.' });
+    }
+    const revoked = await client.query(
+      `SELECT 1 FROM ${TRAINING_REPORTING_SCHEMA}.adcp_reporting_destination_authorizations
+        WHERE account_id = $1 AND destination_ref = $2 AND revoked_at IS NOT NULL LIMIT 1`,
+      [input.account_id, input.destination_ref],
+    );
+    if (revoked.rows.length) {
+      throw new AdcpError('VALIDATION_ERROR', { recovery: 'correctable', message: 'This canary destination is retired. Provision a new account.' });
+    }
+    const occupied = await client.query(
+      `SELECT 1 FROM ${TRAINING_REPORTING_SCHEMA}.host_accounts prior
+        WHERE prior.principal_id = $1 AND prior.account_id <> $2 AND (
+          NOT EXISTS (
+            SELECT 1 FROM ${TRAINING_REPORTING_SCHEMA}.host_grants destination_grant
+              JOIN ${TRAINING_REPORTING_SCHEMA}.adcp_reporting_destination_authorizations auth
+                ON auth.account_id = destination_grant.account_id AND auth.destination_ref = destination_grant.destination_ref
+               AND auth.generation = destination_grant.generation
+             WHERE destination_grant.account_id = prior.account_id AND destination_grant.destination_ref = prior.destination_ref
+               AND auth.revoked_at IS NOT NULL
+          ) OR EXISTS (
+            SELECT 1 FROM ${TRAINING_REPORTING_SCHEMA}.adcp_reporting_destination_authorizations auth
+             WHERE auth.account_id = prior.account_id AND auth.revoked_at IS NULL
+          )
+        ) LIMIT 1`, [input.principal_id, input.account_id],
+    );
+    if (occupied.rows.length) {
+      throw new AdcpError('VALIDATION_ERROR', { recovery: 'correctable', message: 'The canary organization has an active or unfinished account. Revoke its destination before provisioning a replacement.' });
+    }
+    await client.query(`INSERT INTO ${TRAINING_REPORTING_SCHEMA}.host_accounts
+      (principal_id, account_id, source_config_id, source_config_version, currency, media_buy_ids, installed_input, destination_ref)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (account_id) DO NOTHING`,
+    [input.principal_id, input.account_id, input.source_config_id, input.source_config_version,
+      input.currency, JSON.stringify(input.media_buy_ids), input.installed_input, input.destination_ref]);
+    const confirmed = await client.query<AccountBinding>(
+      `SELECT * FROM ${TRAINING_REPORTING_SCHEMA}.host_accounts WHERE account_id = $1`, [input.account_id],
+    );
+    if (!matches(confirmed.rows[0])) {
+      throw new AdcpError('VALIDATION_ERROR', { recovery: 'correctable', message: 'Reporting account is already bound to different immutable source facts.' });
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => { reusable = false; });
+    throw error;
+  } finally { client.release(!reusable); }
 }
 
 /** Shared options also let the migration generator collect the SDK's ordered SQL. */
@@ -213,13 +298,11 @@ export class TrainingGcsReporting {
       expectedCurrency: currency, expectedSourceTimezone: 'UTC', expectedMediaBuyIds: source.config.scope.media_buy_ids,
       canonicalization: trainingGcsCanonicalization(this.config.bucket, this.contractPrefix),
     };
-    await this.db.query(`INSERT INTO host_accounts (principal_id, account_id, source_config_id, source_config_version, currency, media_buy_ids, installed_input, destination_ref)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
-    [principal, accountId, sourceConfigId, source.config.delivery_config_version, currency, JSON.stringify(source.config.scope.media_buy_ids), input, destinationRef]);
-    const saved = await this.db.query<AccountBinding>('SELECT * FROM host_accounts WHERE account_id = $1', [accountId]);
-    if (saved.rows[0]?.principal_id !== principal || saved.rows[0]?.destination_ref !== destinationRef || canonicalize(saved.rows[0]?.installed_input) !== canonicalize(input)) {
-      throw new AdcpError('VALIDATION_ERROR', { recovery: 'correctable', message: 'Reporting account is already bound to different immutable source facts.' });
-    }
+    await reserveTrainingGcsAccount(this.db, {
+      principal_id: principal, account_id: accountId, source_config_id: sourceConfigId,
+      source_config_version: source.config.delivery_config_version, currency,
+      media_buy_ids: source.config.scope.media_buy_ids, installed_input: input, destination_ref: destinationRef,
+    });
     const installed = await this.service.installConfiguration(input, { account: { id: accountId, ctx_metadata: {} } });
     // One destination generation per canary account; replay repairs partial provisioning.
     await this.service.stores.managed.authorizeDestination({ account_id: accountId, destination_ref: destinationRef, generation: 1, authorized_at: installed.installedAt });
@@ -317,7 +400,7 @@ export class TrainingGcsReporting {
   start(onError?: (error: unknown) => void): void {
     this.service.start({ deploymentWide: true, intervalMilliseconds: 15_000, maxObligationsPerAccount: 4, maxWorkerIterationsPerAccount: 2,
       executionDeadlineMilliseconds: limits.operationMilliseconds, notificationRecoveryLimit: 25, webhookRecoveryLimit: 10,
-      ...(onError ? { onError } : { logger: { warn: message => logger.error({ diagnostic: message }, 'Durable reporting scheduler failed') } }) });
+      onError: onError ?? logTrainingReportingSchedulerFailure });
   }
   async probe(): Promise<boolean> {
     if (this.stopping) return false;

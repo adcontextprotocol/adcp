@@ -590,7 +590,7 @@ core error pointers: `/creative_manifest/assets/hero_image` for
 When a stored manifest is addressed only by `creative_id`, use `/creative_id`;
 the request contains no valid nested asset path.
 
-These schemas are recommended unless the code's canonical definition explicitly requires a repair field. `ACCOUNT_MOVED`, for example, requires `details.current_account`; without it the caller cannot repair a tombstoned natural-key reference safely. For codes without such a requirement, sellers that omit `details` entirely are conformant and agents fall back to `code`, `message`, and `recovery` when details are absent or unexpected.
+These schemas are recommended unless the code's canonical definition explicitly requires a repair field. `ACTION_NOT_ALLOWED`, for example, requires `details.attempted_action` and `details.reason`; without them the caller cannot tell which action failed or why. For codes without such a requirement, sellers that omit `details` entirely are conformant and agents fall back to `code`, `message`, and `recovery` when details are absent or unexpected.
 
 ## Seller-Specific Error Codes
 

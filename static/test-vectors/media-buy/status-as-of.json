@@ -1,7 +1,7 @@
 {
   "version": 1,
   "schema": "/schemas/media-buy/get-media-buys-response.json",
-  "description": "Positive wire-level vectors for media_buys[].status_as_of in get_media_buys responses. Covers cached rolled-up list status with a timestamp, explicit null for no freshness assertion, and omitted optional freshness.",
+  "description": "Positive wire-level vectors for get_media_buys freshness timestamps. Covers media_buys[].status_as_of (cached rolled-up list status with a timestamp, explicit null for no freshness assertion, omitted optional freshness) and creative state freshness (packages[].creative_assignments_as_of, creative_approvals[].approval_status_as_of).",
   "vectors": [
     {
       "id": "cached-rollup-status",
@@ -113,6 +113,60 @@
         {
           "path": "media_buys[0].status_as_of",
           "absent": true
+        }
+      ]
+    },
+    {
+      "id": "creative-state-freshness",
+      "description": "Seller whose source of truth confirms creative assignment and approval asynchronously reports when it last observed the package's assignment set and each approval. approval_status_as_of for crt_meridian_spring_15s predates creative_assignments_as_of because the seller has not refreshed that approval since its last assignment-set observation.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_meridian_async_creative_001",
+            "status": "active",
+            "currency": "USD",
+            "total_budget": 30000,
+            "confirmed_at": "2026-06-02T10:00:00Z",
+            "revision": 3,
+            "start_time": "2026-06-05T00:00:00Z",
+            "end_time": "2026-07-05T23:59:59Z",
+            "created_at": "2026-06-02T10:00:00Z",
+            "updated_at": "2026-06-13T16:20:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_meridian_async_video",
+                "product_id": "prod_ctv_standard",
+                "budget": 30000,
+                "currency": "USD",
+                "start_time": "2026-06-05T00:00:00Z",
+                "end_time": "2026-07-05T23:59:59Z",
+                "creative_assignments_as_of": "2026-06-14T06:00:00Z",
+                "creative_approvals": [
+                  {
+                    "creative_id": "crt_meridian_spring_30s",
+                    "approval_status": "approved",
+                    "approval_status_as_of": "2026-06-14T06:00:00Z"
+                  },
+                  {
+                    "creative_id": "crt_meridian_spring_15s",
+                    "approval_status": "pending_review",
+                    "approval_status_as_of": "2026-06-13T06:00:00Z"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].packages[0].creative_assignments_as_of",
+          "value": "2026-06-14T06:00:00Z"
+        },
+        {
+          "path": "media_buys[0].packages[0].creative_approvals[1].approval_status_as_of",
+          "value": "2026-06-13T06:00:00Z"
         }
       ]
     }

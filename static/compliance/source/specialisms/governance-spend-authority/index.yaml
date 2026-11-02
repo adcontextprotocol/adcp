@@ -291,6 +291,7 @@ phases:
               operator: "pinnacle-agency.example"
               operator_unit:
                 id: "compliance-governance_spend_authority-6163432e"
+              sandbox: true
             brand:
               domain: "acmeoutdoor.example"
             total_budget:
@@ -374,6 +375,7 @@ phases:
               operator: "pinnacle-agency.example"
               operator_unit:
                 id: "compliance-governance_spend_authority-6163432e"
+              sandbox: true
             brand:
               domain: "acmeoutdoor.example"
             total_budget:
@@ -448,6 +450,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-governance_spend_authority-6163432e"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           governance_context: "$context.governance_context"

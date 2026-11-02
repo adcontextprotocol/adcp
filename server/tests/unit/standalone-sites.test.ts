@@ -66,7 +66,27 @@ describe('resolveStandaloneRequest: brandjson.org', () => {
 });
 
 describe('resolveStandaloneRequest: trustjson.org', () => {
-  it('serves only its landing page, schemas, and assets', () => {
+  it('serves the authority guide at each AI discovery path', () => {
+    const guide = trust('GET', '/llms.txt');
+    expect(guide.kind).toBe('text');
+    if (guide.kind !== 'text') throw new Error('Expected plain-text authority guide');
+    expect(guide.contentType).toBe('text/plain; charset=utf-8');
+    expect(guide.body).toContain('https://trustjson.org/#publish');
+    expect(guide.body).toContain('trust.json carries no signing keys');
+    expect(guide.body).toContain('A child with a verified parent does not need its own trust.json');
+    expect(guide.body).toContain('Never downgrade a previously published authority');
+    expect(trust('GET', '/.well-known/llms.txt')).toEqual(guide);
+    expect(trust('GET', '/llms-full.txt')).toEqual(guide);
+  });
+
+  it('exposes the public lookup only at its exact read path', () => {
+    expect(trust('GET', '/api/trust/lookup?domain=nova-motors.com').kind).toBe('pass');
+    expect(trust('HEAD', '/api/trust/lookup').kind).toBe('pass');
+    expect(trust('POST', '/api/trust/lookup').kind).toBe('not_found');
+    expect(trust('GET', '/api/trust/lookup/other').kind).toBe('not_found');
+  });
+
+  it('keeps unrelated app paths off the site', () => {
     expect(trust('GET', '/')).toEqual({ kind: 'page', file: 'sites/trustjson/index.html' });
     expect(trust('GET', '/schemas/v3/brand.json').kind).toBe('pass');
     expect(trust('GET', '/builder').kind).toBe('not_found');

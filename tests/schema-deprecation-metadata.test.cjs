@@ -58,6 +58,34 @@ test('explicitly deprecated schema nodes carry deprecated: true', () => {
   assert.deepEqual(missing, [], `Missing deprecated: true annotations:\n${missing.join('\n')}`);
 });
 
+test('deprecated nodes scheduled for 4.0 removal carry x-removed-in: 4.0.0', () => {
+  const missing = [];
+  const unscheduled = [];
+
+  for (const file of findJsonFiles(SOURCE_DIR)) {
+    if (path.basename(file) === 'index.json') continue;
+    const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
+    walk(schema, '', (node, pointer) => {
+      if (pointer.includes('/examples/')) return;
+      const site = `${path.relative(SOURCE_DIR, file).split(path.sep).join('/')}#${pointer}`;
+      const description = typeof node.description === 'string' ? node.description : '';
+      const saysRemovedIn4 = /\bremoved (?:in|at) (?:AdCP )?4\.0\b/i.test(description);
+      if (node.deprecated === true && saysRemovedIn4 && node['x-removed-in'] !== '4.0.0') {
+        missing.push(site);
+      }
+      if (node['x-removed-in'] !== undefined && node.deprecated !== true) unscheduled.push(site);
+    });
+  }
+
+  assert.deepEqual(
+    missing,
+    [],
+    'Deprecated nodes described as removed in 4.0 must carry "x-removed-in": "4.0.0" ' +
+      `and be listed in static/compliance/source/universal/v4-compatibility.yaml:\n${missing.join('\n')}`,
+  );
+  assert.deepEqual(unscheduled, [], `x-removed-in requires deprecated: true:\n${unscheduled.join('\n')}`);
+});
+
 test('codegen-facing schema titles remain stable', () => {
   const expectations = [
     ['core/geo-metro.json', ['title'], 'Geo Metro'],

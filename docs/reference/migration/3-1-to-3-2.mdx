@@ -269,26 +269,28 @@ match exactly, and a release pin never resolves onto a prerelease.
 `update_media_buy` compatibility facades. A seller that exposes only the
 compact tools cannot serve an unchanged 3.1 buyer.
 
-**Response shapes when serving `"3.1"`.** The spec requires the echo, and it
-tells buyers to validate against the echoed release. It does not yet state
-normatively that a seller serving `"3.1"` must produce a response valid under
-the 3.1 schema. [#7718](https://github.com/adcontextprotocol/adcp/issues/7718)
-tracks that gap. Until then, follow the
-[non-normative guidance](/docs/reference/versioning#serving-an-older-pin). These
-3.2 shapes fail a strict 3.1 validator if a seller emits them under a 3.1 pin:
+**Response shapes when serving `"3.1"`.** [Serving an older
+pin](/docs/reference/versioning#serving-an-older-pin) says what a seller that
+lists 3.3 or a later release sends under a `"3.1"` pin. 3.2 itself did not
+require this, so a 3.2 seller can still emit the shapes below under a 3.1 pin,
+and a strict 3.1 validator rejects them. Buyers should keep parsing
+tolerantly. The six known divergences:
 
-- `get_adcp_capabilities`: `media_buy.execution.targeting.geo_regions` and
-  `.language` can be objects instead of booleans. This is the discovery call
-  itself, so parse it tolerantly.
-- `core/pricing-option.json`: new `revenue_share` arm.
-- `get_products`: terminal `status: "rejected"` response without `products`.
-- `sync_accounts` rows that carry `account` without `brand` / `operator`.
-- `get_media_buys` `available_actions[]` canonical action objects.
-- `get_media_buy_delivery` without root `currency` or `totals.spend`.
+1. `sync_accounts` response rows: `brand` and `operator` are forbidden when
+   `account` is present. In 3.1 both are required, so a row that carries
+   `account` without them fails a 3.1 validator. This is the sharpest
+   failure, a required-field flip. 3.2 also makes `status` optional on
+   `action: "failed"` rows.
+2. `get_adcp_capabilities`: `media_buy.execution.targeting.geo_regions` and
+   `.language` can be objects instead of booleans. This is the discovery call
+   itself, so parse it tolerantly when talking to sellers that predate the rule.
+3. `core/pricing-option.json`: new `revenue_share` arm.
+4. `get_products`: terminal `status: "rejected"` response without `products`.
+5. `get_media_buys` `available_actions[]` canonical action objects.
+6. `get_media_buy_delivery` without root `currency` or `totals.spend`.
 
-Sellers should project these shapes, or omit them, when serving 3.1. Buyers
-should accept unknown enum values, unknown union arms, and the object forms
-above.
+Sellers project these shapes, or omit them, when serving 3.1. Buyers should
+accept unknown enum values, unknown union arms, and the object forms above.
 
 ## Adopt by capability
 
@@ -323,6 +325,25 @@ Use:
 Absence of the declaration means use the 3.x compatibility facades. Retry a
 stateful request with the same tool name, idempotency key, and payload; an
 idempotency key does not create replay identity across old and new task names.
+
+**Correction: the proposal-flow schemas are open.** 3.2.7 and earlier published
+these tasks' request and response schemas closed, with
+`additionalProperties: false`. They also closed `canonical-proposal`,
+`canonical-product`, `product-discovery-criteria`, `proposal-refinement`,
+`package-control`, and `opportunity-context`.
+[DR-0019](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md)
+keeps roots and containers open, so later 3.2 patches reopen them. This is a
+correction recorded in
+[DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)
+([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). Every payload
+that was valid stays valid. A field that only the legacy Product defines,
+such as `format_ids`, `is_custom`, or `installments`, is still rejected on a
+canonical product. A root `feed_version` or `pricing_version` on a
+`request_proposals` response, and `warnings` on an error or submitted
+`buy_products`, `accept_proposal`, or `control_media_buy` response, are also
+still rejected. `commercial_terms` and the purchases inside it stay closed. A
+validator on 3.2.7 or earlier still rejects unknown fields on these schemas, so
+don't send fields the served release doesn't define.
 
 ### Scope idempotency to mutations
 

@@ -40,6 +40,7 @@ import { setupIllustrationRoutes } from "./admin/illustrations.js";
 import { setupAddieCostRoutes } from "./admin/addie-costs.js";
 import { setupPromptMetricsRoutes } from "./admin/prompt-metrics.js";
 import { setupIntegrityRoutes } from "./admin/integrity.js";
+import { setupRegistryReviewRoutes } from "./admin/registry-review.js";
 import { setupAdminAgentsRoutes } from "./admin/agents.js";
 import { createAAOAdminRouter } from "./aao-admin.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
@@ -164,6 +165,10 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Ban management and registry activity routes
   setupBanRoutes(pageRouter, apiRouter);
+
+  // Moderation queue for registry submissions the automated review left
+  // for a human (adcp#8337 fail-safe, adcp#8338 queue)
+  setupRegistryReviewRoutes(pageRouter, apiRouter);
 
   // GEO visibility routes (LLM Pulse integration)
   setupGeoRoutes(apiRouter);

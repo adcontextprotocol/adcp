@@ -18,6 +18,9 @@ import type { AgentType, MemberOffering } from "./types.js";
 import { BrandManager } from "./brand-manager.js";
 import { brandDb, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
 import { isDomainControlVerified } from "./services/brand-trust-fields.js";
+import {
+  INVALID_DOMAIN_MESSAGE, LOOKUP_BUSY_MESSAGE, InvalidTrustLookupDomain, TrustLookupBusy, TrustLookupService,
+} from "./services/trust-lookup.js";
 import { propertyDb } from "./db/property-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "./services/brandfetch.js";
@@ -28,9 +31,11 @@ import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review
 import type { MCPAuthContext } from "./mcp/auth.js";
 import { createLogger } from "./logger.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { isRegistryDomain } from "./services/registry-domain.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { serializeInlineScriptJson } from './utils/inline-script-json.js';
 import { getBrandPrimaryDomain } from './services/brand-domain-resolver.js';
+import { declaredAgentUrl } from './db/registry-agent-url-key.js';
 
 const logger = createLogger('mcp-tools');
 
@@ -420,6 +425,21 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "lookup_brand_authorization",
+    description:
+      "Show who is publicly authorized to act for a brand. Resolves the brand's verified parent organization, reads the authoritative /.well-known/trust.json, and returns the agents that organization operates and the grants it has published (grantee, scopes, brands, countries, validity, exclusivity). status is published, not_found (a confirmed missing file), unavailable (outage or invalid record: never treat as unprotected), or unverified_parent. Reports public declarations only: it does not authenticate a request, check seller enforcement, or see seller-private approvals.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        domain: {
+          type: "string",
+          description: "Brand domain to check (e.g., 'yourbrand.com'). A bare domain or https origin; no path or port.",
+        },
+      },
+      required: ["domain"],
+    },
+  },
+  {
     name: "validate_brand_agent",
     description:
       "Validate that a brand agent is reachable and responding via MCP protocol",
@@ -635,6 +655,7 @@ export class MCPToolHandler {
   private brandManager: BrandManager;
   private adagentsManager: AdAgentsManager;
   private orgDb: OrganizationDatabase;
+  private trustLookup: TrustLookupService;
 
   constructor() {
     this.agentService = new AgentService();
@@ -644,6 +665,7 @@ export class MCPToolHandler {
     this.brandManager = new BrandManager();
     this.adagentsManager = new AdAgentsManager();
     this.orgDb = new OrganizationDatabase();
+    this.trustLookup = new TrustLookupService(this.brandManager);
   }
 
   /**
@@ -912,8 +934,12 @@ export class MCPToolHandler {
         const matchingAgents = [];
 
         for (const agent of allAgents) {
-          // Check if agent is authorized for this property
-          const validation = await this.validator.validate(propertyValue, agent.url);
+          // Authorization is spec-exact (#7829): a publisher that lists
+          // `/mcp/` authorizes `/mcp/`, not `/mcp`. Match on the URL the
+          // member registered, not on the identity key, which folds the
+          // trailing slash away (#7830).
+          const validation = await this.validator.validate(
+            propertyValue, declaredAgentUrl(agent));
           if (validation.authorized) {
             matchingAgents.push({
               url: agent.url,
@@ -1342,6 +1368,40 @@ export class MCPToolHandler {
         };
       }
 
+      case "lookup_brand_authorization": {
+        const domain = args?.domain;
+        if (typeof domain !== "string" || !domain) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: "Missing required parameter: domain" }) }],
+            isError: true,
+          };
+        }
+        try {
+          const result = await this.trustLookup.lookup(domain);
+          return {
+            content: [
+              {
+                type: "resource",
+                resource: {
+                  uri: `brand://authorization/${encodeURIComponent(result.domain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify(result, null, 2),
+                },
+              },
+            ],
+          };
+        } catch (error) {
+          let message = "The lookup could not be completed. Try again later.";
+          if (error instanceof InvalidTrustLookupDomain) message = INVALID_DOMAIN_MESSAGE;
+          else if (error instanceof TrustLookupBusy) message = LOOKUP_BUSY_MESSAGE;
+          else logger.error({ err: error, domain }, "Brand authorization lookup failed");
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+            isError: true,
+          };
+        }
+      }
+
       case "validate_brand_agent": {
         const agentUrl = args?.agent_url as string;
         if (!agentUrl) {
@@ -1750,9 +1810,12 @@ export class MCPToolHandler {
               editor_name: authContext.email,
             });
 
-            const oldRevision = revision_number > 1
-              ? await brandDb.getBrandRevision(domain, revision_number - 1)
-              : null;
+            // Revision N is the state *before* edit N — `editDiscoveredBrand`
+            // snapshots the pre-edit row — so the edit's own revision number
+            // is the old snapshot. Reading N-1 handed the reviewer a field
+            // the *previous* editor wrote, attributed to this one, which the
+            // auto-ban then acted on (adcp#8326). `http.ts` already does this.
+            const oldRevision = await brandDb.getBrandRevision(domain, revision_number);
 
             // Fire-and-forget: notify then review (review runs even if notification fails)
             notifyRegistryEdit({
@@ -1860,10 +1923,10 @@ export class MCPToolHandler {
           };
         }
 
-        const publisherDomain = sanitizeDomain(args?.publisher_domain as string);
-        if (!publisherDomain) {
+        const publisherDomain = args?.publisher_domain;
+        if (typeof publisherDomain !== 'string' || !isRegistryDomain(publisherDomain)) {
           return {
-            content: [{ type: "text", text: JSON.stringify({ error: "publisher_domain is required or invalid format" }) }],
+            content: [{ type: "text", text: JSON.stringify({ error: "Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed" }) }],
             isError: true,
           };
         }
@@ -1917,9 +1980,9 @@ export class MCPToolHandler {
               editor_name: authContext.email,
             });
 
-            const oldPropRevision = revision_number > 1
-              ? await propertyDb.getPropertyRevision(publisherDomain, revision_number - 1)
-              : null;
+            // Same off-by-one as the brand path above: revision N is the
+            // pre-edit snapshot, so N is what the reviewer must diff against.
+            const oldPropRevision = await propertyDb.getPropertyRevision(publisherDomain, revision_number);
 
             // Fire-and-forget: notify then review (review runs even if notification fails)
             notifyRegistryEdit({

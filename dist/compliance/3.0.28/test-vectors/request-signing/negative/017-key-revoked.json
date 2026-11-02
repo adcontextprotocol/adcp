@@ -1,0 +1,38 @@
+{
+  "name": "Signing keyid is listed in the revocation list",
+  "spec_reference": "#verifier-checklist-requests step 9",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-revoked-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:U51PJzU9nMJxMAH_u-UDpSecT5SQX1-deSnWE3XpFo-BLT2_2h5FgMltntNCW05chhmFnjZEzkRmaYKeU0UUBw:"
+    },
+    "body": "{\"plan_id\":\"plan_001\",\"packages\":[{\"package_id\":\"pkg_1\",\"budget\":{\"amount\":1000,\"currency\":\"USD\"}}]}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-revoked-2026"],
+  "test_harness_state": {
+    "$comment": "Pre-populate revocation list with test-revoked-2026 revoked. Harness sets revocation_list = { revoked_kids: ['test-revoked-2026'], revoked_jtis: [], fresh: true, issuer: 'https://seller.example.com', updated: '2026-04-18T14:00:00Z', next_update: '2026-04-18T14:15:00Z' }. Black-box runners rely on the agent having pre-configured this state per test-kits/signed-requests-runner.yaml → stateful_vector_contract.revocation (pre_revoked_keyid: test-revoked-2026).",
+    "revocation_list": {
+      "issuer": "https://seller.example.com",
+      "updated": "2026-04-18T14:00:00Z",
+      "next_update": "2026-04-18T14:15:00Z",
+      "revoked_kids": ["test-revoked-2026"],
+      "revoked_jtis": []
+    }
+  },
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_key_revoked",
+    "failed_step": 9
+  },
+  "requires_contract": "revocation",
+  "$comment": "Revocation check runs BEFORE cryptographic verify (step 9, before step 10) — this prevents cheap amplification where an attacker replays a revoked key's valid signature and forces the verifier to do an Ed25519/ECDSA verify for every rejection. Verifier MUST reject at step 9 without computing the signature base or running crypto verification. Implementations that defer the revocation check until after crypto verify will fail this vector because the committed Signature bytes are a placeholder copied from positive/001 and do not verify cryptographically against this vector's own signature base (different keyid in @signature-params); a crypto-first verifier will return request_signature_invalid instead of request_signature_key_revoked, which is a graded mismatch. Graders SHOULD surface this specific mismatch (_invalid where _key_revoked was expected) in operator-facing diagnostics as a step-ordering bug (still a graded FAIL) rather than as a generic vector failure — the vector is deliberately designed as a step-ordering canary and a verifier that runs crypto before revocation is exploitable (cheap amplification on revoked-key replay), which is the very failure mode the step-9-before-step-10 ordering exists to prevent. The keyid test-revoked-2026 is a dedicated revoked keypair in keys.json so this vector does not conflict with the purpose-mismatch vector (009) or the runner signing keys (test-ed25519-2026, test-es256-2026)."
+}

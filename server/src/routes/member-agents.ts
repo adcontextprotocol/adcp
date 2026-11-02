@@ -211,9 +211,18 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       };
     }
 
+    // The identity key folds a trailing slash; authorization matching does
+    // not (#7829). Keep the registered spelling whenever the key dropped
+    // something, so `find_agents_for_property` still matches a publisher's
+    // adagents.json entry byte for byte — see declaredAgentUrl.
+    const declared = candidate.url.trim();
     return {
       ok: true,
-      body: { ...candidate, url: canonicalUrl },
+      body: {
+        ...candidate,
+        url: canonicalUrl,
+        ...(declared === canonicalUrl ? {} : { declared_url: declared }),
+      },
       targetUrl: canonicalUrl,
     };
   }

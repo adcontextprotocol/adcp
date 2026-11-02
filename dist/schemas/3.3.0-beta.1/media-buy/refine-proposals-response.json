@@ -1,0 +1,516 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/media-buy/refine-proposals-response.json",
+  "title": "Refine Proposals Response",
+  "description": "One ordered result per requested source proposal. Revision results may carry multiple immutable draft proposals when alternatives were requested; finalization and hold extension each return one committed proposal per source. Products contains the compact canonical products needed to evaluate the resulting terms.",
+  "type": "object",
+  "anyOf": [
+    {
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        }
+      },
+      "required": [
+        "results",
+        "products"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "task_id"
+            ]
+          },
+          {
+            "required": [
+              "expected_confirmation_at"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/compact-task-submitted.json"
+    }
+  ],
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/version-envelope.json#/properties/adcp_version"
+    },
+    "results": {
+      "type": "array",
+      "description": "Results in the request's refinements[] order; position carries no ranking. If any result is finalized, every result MUST be finalized; under inventory_hold semantics a finalize batch either creates every requested hold or none, and under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics, or a draft hold_policy with available false) it commits every requested proposal's terms or none, with no inventory hold placed for those entries. An extend_hold batch either extends every requested hold or none. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "outcome"
+        },
+        "properties": {
+          "source_proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "proposal"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "revised",
+              "partial",
+              "finalized",
+              "unable"
+            ],
+            "description": "finalized also reports a successful extend_hold: the proposal is the new committed successor whose parent_proposal_id is the extended source and whose expires_at is the later deadline."
+          },
+          "proposal": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-proposal.json"
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-proposal.json"
+            },
+            "minItems": 1,
+            "description": "Draft successors produced for a revision. Without alternatives this contains one proposal. With alternatives.count, revised contains exactly that many proposals with unique terms_digest values; fewer or commercially duplicate proposals require partial."
+          },
+          "reason_code": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/proposal-refinement-reason.json",
+            "description": "Single most-significant code for this result. constraint_unsatisfiable takes precedence over every other code; an alternatives shortfall alongside an unsatisfied constraint remains visible through proposals.length."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unsatisfied_constraints": {
+            "type": "array",
+            "description": "Stable keys from the request constraints object that were not satisfied by every returned draft. A result carrying any key here MUST use outcome partial or unable, never revised.",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "unsatisfied_product_changes": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/product-change-map.json"
+              }
+            ],
+            "description": "Requested product actions not satisfied by every returned draft. This is a subset of the request product_changes map and is valid only on partial or unable results."
+          },
+          "unsatisfied_installment_changes": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/installment-change-set.json"
+              }
+            ],
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Experimental (media_buy.installment_selection). Requested installment actions not satisfied by every returned draft, each entry repeated exactly as the request carried it. This is a subset of the request installment_changes list and is valid only on partial or unable results, whose reason_code is constraint_unsatisfiable."
+          },
+          "drifted_pins": {
+            "x-added-in": "3.3.0",
+            "type": "array",
+            "description": "Pins from the source proposal's commercial_terms.definition_pins[] whose published definition no longer resolves to the pinned content_digest, in the pins' canonical order. Required on, and valid only with, reason_code definition_changed.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pin": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/definition-pin.json",
+                  "description": "The drifted pin exactly as carried by the source proposal."
+                },
+                "current_content_digest": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "description": "Lowercase-hex SHA-256 the definition resolves to now. Omitted only when the entry was withdrawn from a successfully fetched, validated document."
+                }
+              },
+              "required": [
+                "pin"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "targeting_resolution": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/media-buy/get-products-targeting-resolution.json",
+            "description": "Confirmation of structured targeting interpreted from this refinement's explicit hard prose instructions. Required when that interpretation materially affects the revised proposal's eligibility, pricing, or forecast; otherwise a best practice."
+          }
+        },
+        "required": [
+          "source_proposal_id",
+          "outcome"
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "revised"
+              },
+              "proposals": {
+                "items": {
+                  "properties": {
+                    "proposal_status": {
+                      "type": "string",
+                      "const": "draft"
+                    }
+                  },
+                  "required": [
+                    "proposal_status",
+                    "parent_proposal_id"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "outcome",
+              "proposals"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "proposal"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_constraints"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_product_changes"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_installment_changes"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "partial"
+              },
+              "proposals": {
+                "items": {
+                  "properties": {
+                    "proposal_status": {
+                      "type": "string",
+                      "const": "draft"
+                    }
+                  },
+                  "required": [
+                    "proposal_status",
+                    "parent_proposal_id"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "outcome",
+              "proposals",
+              "reason_code",
+              "reason"
+            ],
+            "not": {
+              "required": [
+                "proposal"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "finalized"
+              },
+              "proposal": {
+                "properties": {
+                  "proposal_status": {
+                    "type": "string",
+                    "const": "committed"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "proposal_status",
+                  "expires_at",
+                  "parent_proposal_id"
+                ]
+              }
+            },
+            "required": [
+              "outcome",
+              "proposal"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "proposals"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_constraints"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_product_changes"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_installment_changes"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "unable"
+              }
+            },
+            "required": [
+              "outcome",
+              "reason_code",
+              "reason"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "proposal"
+                  ]
+                },
+                {
+                  "required": [
+                    "proposals"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "reason_code": {
+                  "const": "definition_changed"
+                }
+              },
+              "required": [
+                "reason_code"
+              ]
+            },
+            "then": {
+              "properties": {
+                "outcome": {
+                  "const": "unable"
+                }
+              },
+              "required": [
+                "drifted_pins"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "drifted_pins"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "reason_code": {
+                  "const": "constraint_unsatisfiable"
+                }
+              },
+              "required": [
+                "reason_code"
+              ]
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "required": [
+                    "unsatisfied_constraints"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_product_changes"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_installment_changes"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true
+      },
+      "allOf": [
+        {
+          "if": {
+            "contains": {
+              "properties": {
+                "outcome": {
+                  "type": "string",
+                  "const": "finalized"
+                }
+              },
+              "required": [
+                "outcome"
+              ]
+            }
+          },
+          "then": {
+            "items": {
+              "properties": {
+                "outcome": {
+                  "type": "string",
+                  "const": "finalized"
+                }
+              },
+              "required": [
+                "outcome"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "products": {
+      "type": "array",
+      "description": "Canonical products needed to evaluate the resulting terms. For revised or partial results whose effective criteria contain property or collection lists, each affected product MUST carry fresh list_applications receipts from the revision's product reevaluation. Finalization changes no terms and MAY repeat the receipts already bound to the source proposal rather than reevaluating them.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-product.json"
+      }
+    },
+    "collections": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the collections selectors of the returned products. Sellers MUST NOT return this array unless the request set include_collections to true; when it is set, sellers SHOULD include every referenced collection and MUST NOT include one that no returned product references. At most one entry per (publisher_domain, collection_id). If a key appears more than once, that collection is unresolvable from this response; buyers fall back to the publisher's adagents.json, as they do for an omitted collection, and ignore entries that no returned product references. These are convenience copies, never authorization evidence: a copy wins over adagents.json only on images, sample_content, url, description, season, cadence and distribution[].followers (see core/response-collection.json). Present only alongside products.",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/response-collection.json"
+      },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "submitted"
+      ]
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "task"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "expected_confirmation_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-added-in": "3.3.0",
+      "description": "Optional estimate, on a submitted response to a finalize-only or extend_hold-only request, of when the seller expects to resolve the finalize or extension, for example when a creator, host or talent must agree before the hold or its extension. Same semantics as on `create_media_buy`: an estimate, not a commitment or expiry; buyers SHOULD schedule a status check for it and MUST NOT treat a passed timestamp as failure. Sellers SHOULD NOT send it on revise requests."
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/ext.json"
+    },
+    "replayed": {
+      "type": "boolean",
+      "const": true
+    }
+  },
+  "dependencies": {
+    "collections": [
+      "products"
+    ]
+  },
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "proposals"
+        ]
+      },
+      {
+        "required": [
+          "refinement_applied"
+        ]
+      },
+      {
+        "required": [
+          "pagination"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}

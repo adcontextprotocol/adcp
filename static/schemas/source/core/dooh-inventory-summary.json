@@ -3,6 +3,7 @@
   "$id": "/schemas/core/dooh-inventory-summary.json",
   "title": "DOOH Inventory Summary",
   "description": "Aggregate geographic footprint for a DOOH/OOH network product, for network/regional products where per-screen location disclosure via placement dooh_placement_attributes.location is not practical. The two are not mutually exclusive: a product may disclose concrete placement locations, an aggregate summary, or both.",
+  "x-added-in": "3.3.0",
   "type": "object",
   "definitions": {
     "DoohVenueCount": {

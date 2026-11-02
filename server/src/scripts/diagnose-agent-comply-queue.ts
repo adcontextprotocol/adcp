@@ -91,10 +91,14 @@ async function main(): Promise<void> {
     monitoring_paused_at: Date | null;
     next_compliance_check_at: Date | null;
     compliance_inconclusive_streak: number;
+    heartbeat_claim_owner: string | null;
+    heartbeat_started_at: Date | null;
+    heartbeat_orphan_streak: number;
   }>(
     `SELECT lifecycle_stage, compliance_opt_out, monitoring_paused,
             check_interval_hours, monitoring_paused_at, next_compliance_check_at,
-            compliance_inconclusive_streak
+            compliance_inconclusive_streak, heartbeat_claim_owner,
+            heartbeat_started_at, heartbeat_orphan_streak
        FROM agent_registry_metadata WHERE agent_url = $1`,
     [agentUrl],
   );
@@ -113,6 +117,9 @@ async function main(): Promise<void> {
     console.log(`   check_interval_hours: ${interval}`);
     console.log(`   next_check_at:         ${m.next_compliance_check_at?.toISOString() ?? '(due)'}`);
     console.log(`   inconclusive_streak:   ${m.compliance_inconclusive_streak}`);
+    console.log(`   heartbeat claim owner: ${m.heartbeat_claim_owner ?? '(none)'}`);
+    console.log(`   heartbeat started_at:  ${m.heartbeat_started_at?.toISOString() ?? '(not running)'}`);
+    console.log(`   orphan_streak:         ${m.heartbeat_orphan_streak}${m.heartbeat_orphan_streak > 0 ? ' (worker died while this agent was running; it runs alone in its batch)' : ''}`);
   }
 
   // 3) Current status
@@ -143,7 +150,10 @@ async function main(): Promise<void> {
   if (position < 0) {
     console.log('   ✗ NOT in due queue (check source freshness, badge, metadata, and schedule)');
   } else {
-    console.log(`   position: ${position + 1} (batch size = 10 per heartbeat run)`);
+    console.log(`   position: ${position + 1}`);
+    if (dueQueue[position].heartbeat_orphan_streak > 0) {
+      console.log('   orphan suspect: never shares a batch; agents ahead of it run first, then it runs alone');
+    }
     console.log('   Actual pickup depends on earlier runs and available capacity.');
   }
   console.log(`   total due queue:          ${dueQueue[0]?.eligible_backlog ?? 0}`);

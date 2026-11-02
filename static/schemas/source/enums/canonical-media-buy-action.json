@@ -2,9 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/canonical-media-buy-action.json",
   "title": "Canonical Media Buy Action Name",
-  "description": "Fine-grained MediaBuy action vocabulary for compact product and lifecycle surfaces. Deprecated coarse 3.x actions are absent.",
+  "description": "Fine-grained MediaBuy action vocabulary for compact product and lifecycle surfaces. Deprecated coarse 3.x actions are absent. report_media_buy_issue is new in 3.3 and routes to the seller's operational issue-reporting task.",
   "type": "string",
   "enum": [
+    "report_media_buy_issue",
     "pause",
     "resume",
     "cancel",

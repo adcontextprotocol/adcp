@@ -60,7 +60,7 @@ async function check(args: Record<string, unknown>) {
 }
 
 function claims(result: Record<string, any>) {
-  expect(result.status, JSON.stringify(result)).toBe('approved');
+  expect(result.verdict, JSON.stringify(result)).toBe('approved');
   expect(result.governance_context).toEqual(expect.any(String));
   return decodeJwt(result.governance_context as string);
 }
@@ -516,6 +516,39 @@ describe('check_governance request-shape binding', () => {
     expect(approved.verdict, JSON.stringify(approved)).toBe('approved');
     expect(approved.governance_context).toEqual(expect.any(String));
     expect(approved).not.toHaveProperty('consultation_context');
+  });
+
+  it('dates a conditions verdict for 3.1 and 3.0 callers, whose releases require expires_at on it', async () => {
+    const results = await runWithSessionContext(async () => {
+      await handleSyncPlans({
+        plans: [{
+          ...PLAN,
+          plan_id: 'plan-with-legacy-condition',
+          custom_policies: [{ policy_id: 'frequency', policy: 'Apply a frequency cap.', enforcement: 'must' }],
+        }],
+      }, CTX);
+      const out: Record<string, Record<string, any>> = {};
+      for (const servedAdcpVersion of ['3.2', '3.1', '3.0']) {
+        out[servedAdcpVersion] = await handleCheckGovernance({
+          plan_id: 'plan-with-legacy-condition',
+          brand: PLAN.brand,
+          caller: 'https://buyer.example',
+          tool: 'create_media_buy',
+          target_agent: 'https://seller.example', payload: { total_budget: { amount: 1_000, currency: 'USD' } },
+        }, { ...CTX, servedAdcpVersion }) as Record<string, any>;
+      }
+      return out;
+    });
+
+    expect(results['3.2'].verdict).toBe('conditions');
+    expect(results['3.2']).not.toHaveProperty('expires_at');
+    for (const version of ['3.1', '3.0']) {
+      expect(results[version].verdict, version).toBe('conditions');
+      expect(Date.parse(results[version].expires_at), version).toBeGreaterThan(Date.now());
+      // The date is a wire-shape obligation only: a conditions verdict still
+      // carries no authorization context.
+      expect(results[version], version).not.toHaveProperty('governance_context');
+    }
   });
 
   it('emits whole-request condition paths that can be applied before re-checking', async () => {

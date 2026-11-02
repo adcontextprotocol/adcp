@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add per-source archive to `sync_event_sources`. Each `event_sources[]` request item takes an optional `archived` boolean: `true` archives the source and `false` undoes the archive. When `archived` is present it is the item's only change, and every field except `event_source_id` is ignored. The per-source `action` enum gains `archived`, and undoing an archive reports `updated`. Response items carry `archived: true` for archived sources, which stay in discovery responses so buyers can restore them. An archived source keeps its configuration, stops accepting events, and stops resolving for new optimization goals. Sellers declare `media_buy.event_source_archive: true` in `get_adcp_capabilities`; a seller without it MUST reject a request that sends `archived` with an operation-level `UNSUPPORTED_FEATURE` error. `delete_missing` does not remove archived sources. Additive and non-breaking: requests without `archived` are unchanged, and sellers return `action: "archived"` only to callers that sent `archived`. Refs #7807.

@@ -10,6 +10,7 @@ import { logger } from '../logger.js';
 import { openGroupDM, sendChannelMessage, sendDirectMessage } from './client.js';
 import type { SlackBlockMessage, SlackBlock } from './types.js';
 import type { SeatLimits, SeatType } from '../db/organization-db.js';
+import { sanitizeSlackLine, sanitizeSlackLinkLabel } from '../utils/slack-escape.js';
 
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
@@ -28,12 +29,12 @@ interface OrgAdminGroupDM {
 // ==================== Utilities ====================
 
 /**
- * Escape user-supplied strings for safe interpolation into Slack mrkdwn.
- * Prevents &, <, > from being interpreted as formatting or link injection.
+ * Names, org names and request reasons that land in an admin group DM. Every
+ * one of them is set by a member or by WorkOS, and the DM reads as
+ * platform-authored, so they go through the shared single-line sanitizer:
+ * escaping alone left a newline free to forge an extra line (adcp#8326).
  */
-export function escapeSlackMrkdwn(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+const NAME_MAX = 160;
 
 /**
  * Format a seat count as "N / M" or "N / unlimited"
@@ -264,15 +265,16 @@ export async function notifyJoinRequest(data: {
     ? `${data.requesterFirstName} ${data.requesterLastName}`
     : null;
 
-  const safeDisplayName = escapeSlackMrkdwn(
-    requesterName ? `${requesterName} (${data.requesterEmail})` : data.requesterEmail
+  const safeDisplayName = sanitizeSlackLine(
+    requesterName ? `${requesterName} (${data.requesterEmail})` : data.requesterEmail,
+    NAME_MAX,
   );
-  const safeOrgName = escapeSlackMrkdwn(data.orgName);
+  const safeOrgName = sanitizeSlackLine(data.orgName, NAME_MAX);
 
   const teamPageUrl = `${APP_URL}/team?org=${data.orgId}`;
 
   const message: SlackBlockMessage = {
-    text: `New join request for ${escapeSlackMrkdwn(data.orgName)}`,
+    text: `New join request for ${sanitizeSlackLine(data.orgName, NAME_MAX)}`,
     blocks: [
       {
         type: 'header',
@@ -329,8 +331,8 @@ export async function notifyMemberAdded(data: {
     ? `${data.memberFirstName} ${data.memberLastName}`
     : null;
 
-  const safeDisplayName = escapeSlackMrkdwn(memberName || data.memberEmail);
-  const safeOrgName = escapeSlackMrkdwn(data.orgName);
+  const safeDisplayName = sanitizeSlackLine(memberName || data.memberEmail, NAME_MAX);
+  const safeOrgName = sanitizeSlackLine(data.orgName, NAME_MAX);
 
   const blocks: SlackBlock[] = [
     {
@@ -378,7 +380,7 @@ export async function notifyMemberAdded(data: {
   }
 
   const message: SlackBlockMessage = {
-    text: `New member joined ${escapeSlackMrkdwn(data.orgName)}`,
+    text: `New member joined ${sanitizeSlackLine(data.orgName, NAME_MAX)}`,
     blocks,
   };
 
@@ -402,7 +404,7 @@ export async function notifySubscriptionThankYou(data: {
     action: 'created' | 'published';
   };
 }): Promise<boolean> {
-  const safeOrgName = escapeSlackMrkdwn(data.orgName);
+  const safeOrgName = sanitizeSlackLine(data.orgName, NAME_MAX);
 
   let welcomeText = `Thank you for becoming a member! Your membership supports the development of open standards for AI-powered advertising.\n\nThis group chat is for *${safeOrgName}* admins. You'll receive notifications here about:\n• Join requests from new team members\n• New members joining your organization\n• Seat usage and capacity alerts`;
 
@@ -435,7 +437,8 @@ export async function notifySubscriptionThankYou(data: {
     // (slugify → [a-z0-9-]; WorkOS orgIds are opaque `org_...`). Encode
     // both before interpolating into the Slack `<URL|label>` link syntax
     // so a future policy shift can't break the link or inject into it.
-    const safeSlug = escapeSlackMrkdwn(data.listing.slug);
+    // The label half of `<url|label>`, so it also has to lose `|`.
+    const safeSlug = sanitizeSlackLinkLabel(data.listing.slug, NAME_MAX);
     const encodedOrgId = encodeURIComponent(data.orgId);
     const listingUrl = `${APP_URL}/members/${encodeURIComponent(data.listing.slug)}`;
     const editUrl = `${APP_URL}/member-profile?org=${encodedOrgId}`;
@@ -500,7 +503,7 @@ export async function notifySeatWarning(data: {
   usage: number;
   limit: number;
 }): Promise<boolean> {
-  const safeOrgName = escapeSlackMrkdwn(data.orgName);
+  const safeOrgName = sanitizeSlackLine(data.orgName, NAME_MAX);
   const label = data.seatType === 'contributor' ? 'contributor' : 'community';
 
   let text: string;
@@ -515,7 +518,7 @@ export async function notifySeatWarning(data: {
   }
 
   const message: SlackBlockMessage = {
-    text: `Seat usage alert for ${escapeSlackMrkdwn(data.orgName)}`,
+    text: `Seat usage alert for ${sanitizeSlackLine(data.orgName, NAME_MAX)}`,
     blocks: [
       {
         type: 'header',
@@ -561,11 +564,11 @@ export async function notifySeatFreed(data: {
   usage: number;
   limit: number;
 }): Promise<boolean> {
-  const safeOrgName = escapeSlackMrkdwn(data.orgName);
+  const safeOrgName = sanitizeSlackLine(data.orgName, NAME_MAX);
   const label = data.seatType === 'contributor' ? 'contributor' : 'community';
 
   const message: SlackBlockMessage = {
-    text: `A ${label} seat has freed up for ${escapeSlackMrkdwn(data.orgName)}`,
+    text: `A ${label} seat has freed up for ${sanitizeSlackLine(data.orgName, NAME_MAX)}`,
     blocks: [
       {
         type: 'section',
@@ -591,7 +594,7 @@ export async function notifyTierChange(data: {
   newLimits: SeatLimits;
   currentUsage: { contributor: number; community_only: number };
 }): Promise<boolean> {
-  const safeOrgName = escapeSlackMrkdwn(data.orgName);
+  const safeOrgName = sanitizeSlackLine(data.orgName, NAME_MAX);
   const teamUrl = `${APP_URL}/team?org=${data.orgId}`;
 
   const isUpgrade = data.newLimits.contributor > data.oldLimits.contributor ||
@@ -636,7 +639,7 @@ export async function notifyTierChange(data: {
   }
 
   const message: SlackBlockMessage = {
-    text: `Plan changed for ${escapeSlackMrkdwn(data.orgName)}`,
+    text: `Plan changed for ${sanitizeSlackLine(data.orgName, NAME_MAX)}`,
     blocks: [
       {
         type: 'header',
@@ -683,15 +686,15 @@ export async function notifySeatRequest(data: {
   resourceType: string;
   resourceName?: string;
 }): Promise<boolean> {
-  const safeMemberName = escapeSlackMrkdwn(data.memberName);
-  const safeOrgName = escapeSlackMrkdwn(data.orgName);
+  const safeMemberName = sanitizeSlackLine(data.memberName, NAME_MAX);
+  const safeOrgName = sanitizeSlackLine(data.orgName, NAME_MAX);
   const resourceLabel = data.resourceName
-    ? escapeSlackMrkdwn(data.resourceName)
+    ? sanitizeSlackLine(data.resourceName, NAME_MAX)
     : data.resourceType.replace(/_/g, ' ');
   const teamUrl = `${APP_URL}/team?org=${data.orgId}&action=promote&user=${encodeURIComponent(data.memberEmail)}`;
 
   const message: SlackBlockMessage = {
-    text: `Seat upgrade request from ${escapeSlackMrkdwn(data.memberName)}`,
+    text: `Seat upgrade request from ${sanitizeSlackLine(data.memberName, NAME_MAX)}`,
     blocks: [
       {
         type: 'header',
@@ -755,7 +758,7 @@ export async function notifyMemberSeatChanged(data: {
   let text: string;
 
   if (data.context === 'request_approved') {
-    const resource = data.resourceName ? escapeSlackMrkdwn(data.resourceName) : 'the resource you requested';
+    const resource = data.resourceName ? sanitizeSlackLine(data.resourceName, NAME_MAX) : 'the resource you requested';
     text = `Your request to access *${resource}* has been approved! You now have contributor access.\n\nYou can join working groups, councils, and product summits.`;
   } else if (data.context === 'request_denied') {
     text = `Your admin has reviewed your access request. Your access remains community-only.\n\nYou still have access to Addie, certification, training, and chapters. Contact your org admin for details.`;

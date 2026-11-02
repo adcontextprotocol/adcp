@@ -19,6 +19,7 @@
     "url",
     "webhook",
     "brief",
+    "video_brief",
     "catalog",
     "published_post"
   ]

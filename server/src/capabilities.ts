@@ -89,6 +89,8 @@ export interface MeasurementAccreditation {
 
 export interface MeasurementMetric {
   metric_id: string;
+  /** Vendor-authored display label. Not an identifier — never key on it. */
+  name?: string;
   standard_reference?: string;
   accreditations?: MeasurementAccreditation[];
   unit?: string;
@@ -315,6 +317,7 @@ const MEASUREMENT_LIMITS = {
   MAX_METRICS: 500,
   MAX_DESCRIPTION_LEN: 2000,
   MAX_METRIC_ID_LEN: 256,
+  MAX_NAME_LEN: 100,
   MAX_URI_LEN: 2048,
   MAX_ACCREDITATIONS_PER_METRIC: 32,
   MAX_ACCREDITING_BODY_LEN: 128,
@@ -354,6 +357,12 @@ function validateUri(value: string, field: string): string {
   }
   return parsed.toString();
 }
+
+// C1 controls and every Unicode format character (Cf): zero-width and
+// directional marks, bidi embeddings/overrides/isolates, word joiner and
+// invisible operators, soft hyphen, BOM. All are invisible in a rendered label
+// and can split a scriptish pattern without changing what it displays.
+const INVISIBLE_LABEL_CHARS = /[\u0080-\u009F\p{Cf}]/gu;
 
 function clampString(value: unknown, max: number, field: string): string {
   if (typeof value !== 'string') {
@@ -403,6 +412,22 @@ export function sanitizeMeasurementCapabilities(raw: unknown): MeasurementCapabi
     seenIds.add(metric_id);
 
     const out: MeasurementMetric = { metric_id };
+    if (metric.name !== undefined) {
+      // A display label: drop invisible and bidi-override characters (which
+      // could hide or reverse the rendered text) before the scriptish check,
+      // so removing them cannot assemble a pattern after it has run. Then
+      // collapse whitespace runs (including newlines) to one space so a label
+      // renders on one line. An empty result violates the schema's
+      // non-whitespace pattern.
+      const visible = typeof metric.name === 'string' ? metric.name.replace(INVISIBLE_LABEL_CHARS, '') : metric.name;
+      const name = clampString(visible, MEASUREMENT_LIMITS.MAX_NAME_LEN, `metrics[${i}].name`)
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (name.length === 0) {
+        throw new Error(`measurement.metrics[${i}].name: empty`);
+      }
+      out.name = name;
+    }
     if (metric.standard_reference !== undefined) {
       out.standard_reference = validateUri(String(metric.standard_reference), `metrics[${i}].standard_reference`);
     }

@@ -4,6 +4,10 @@
   "title": "Compact Task Working",
   "description": "Bounded progress payload shared by the compact lifecycle tools.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    { "$ref": "/schemas/core/task-working.json" }
+  ],
   "properties": {
     "percentage": { "type": "number", "minimum": 0, "maximum": 100 },
     "current_step": { "type": "string", "maxLength": 500 },

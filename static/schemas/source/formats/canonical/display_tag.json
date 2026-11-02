@@ -9,7 +9,7 @@
     },
     {
       "title": "Size-mode mutex",
-      "description": "Exactly one of: (a) fixed (`width` + `height` both set), (b) multi-size (`sizes` set), (c) responsive (any of `min_width`/`max_width`/`min_height`/`max_height` set), (d) none (no size constraint declared — accepts any dimensions). Combining modes is rejected at schema layer.",
+      "description": "Exactly one of: (a) fixed (`width` + `height` both set), (b) multi-size (`sizes` set), (c) responsive (any of `min_width`/`max_width`/`min_height`/`max_height` set), (d) none (no size fields). Combining modes is rejected at schema layer. Omitted size fields mean no constraint only when the enclosing declaration asserts technical_requirements_complete: true; otherwise acceptance is undeclared. Semantic validators check responsive bound ordering and intersect all applicable declaration layers.",
       "oneOf": [
         {
           "title": "fixed",
@@ -195,12 +195,12 @@
     "width": {
       "type": "integer",
       "minimum": 1,
-      "description": "Required tag rendering width in pixels — use for fixed-size slots. For multi-size flexible slots use `sizes[]`; for responsive use `min_width`/`max_width`/`min_height`/`max_height`. Exactly one of `(width, height)`, `sizes[]`, or `min/max_width` + `min/max_height` ranges MUST be set."
+      "description": "Accepted logical entry-canvas width in pixels for a fixed-size tag slot; height must also be set. Alternatively use `sizes[]` or responsive `min_width`/`max_width`/`min_height`/`max_height` bounds. These modes are mutually exclusive, but no size mode is also structurally valid. Omission follows the enclosing declaration's technical_requirements_complete assertion."
     },
     "height": {
       "type": "integer",
       "minimum": 1,
-      "description": "Required tag rendering height in pixels. See `width` for size-mode mutual exclusion."
+      "description": "Accepted logical entry-canvas height in pixels for a fixed-size tag slot; width must also be set. See `width` for size-mode mutual exclusion and omission semantics."
     },
     "sizes": {
       "type": "array",
@@ -228,22 +228,22 @@
     "min_width": {
       "type": "integer",
       "minimum": 1,
-      "description": "Minimum accepted width for responsive third-party tags. Pair with `max_width`. Mutually exclusive with `(width, height)` and `sizes[]`."
+      "description": "Inclusive minimum accepted logical width for responsive third-party tags. May be one-sided; when max_width is also declared, min_width MUST be <= max_width. Omitted bounds follow the enclosing declaration's technical_requirements_complete assertion. Mutually exclusive with `(width, height)` and `sizes[]`."
     },
     "max_width": {
       "type": "integer",
       "minimum": 1,
-      "description": "Maximum accepted width for responsive third-party tags. Pair with `min_width`."
+      "description": "Inclusive maximum accepted logical width for responsive third-party tags. May be one-sided; when min_width is also declared, max_width MUST be >= min_width. Omitted bounds follow the enclosing declaration's technical_requirements_complete assertion."
     },
     "min_height": {
       "type": "integer",
       "minimum": 1,
-      "description": "Minimum accepted height for responsive third-party tags. Pair with `max_height`."
+      "description": "Inclusive minimum accepted logical height for responsive third-party tags. May be one-sided; when max_height is also declared, min_height MUST be <= max_height. Omitted bounds follow the enclosing declaration's technical_requirements_complete assertion."
     },
     "max_height": {
       "type": "integer",
       "minimum": 1,
-      "description": "Maximum accepted height for responsive third-party tags. Pair with `min_height`."
+      "description": "Inclusive maximum accepted logical height for responsive third-party tags. May be one-sided; when min_height is also declared, max_height MUST be >= min_height. Omitted bounds follow the enclosing declaration's technical_requirements_complete assertion."
     },
     "supported_tag_types": {
       "type": "array",
@@ -294,6 +294,14 @@
       "type": "boolean",
       "description": "Whether the buyer's tag must integrate IAB Open Measurement SDK for viewability."
     }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "responsive_bound_order": "When both bounds are declared, min_width MUST be <= max_width and min_height MUST be <= max_height. Reversed bounds invalidate the declaration; validators MUST NOT swap or discard endpoints. One-sided bounds and equal endpoints are valid.",
+      "effective_acceptance_intersection": "Intersect the complete width/height pairs and inclusive responsive bounds of every applicable product, publisher, and placement declaration, including referenced narrowing artifacts. Each serving pair MUST satisfy every layer. An empty intersection is ineligible for that placement; neither declaration order nor a broader option overrides a narrower layer.",
+      "omitted_size_constraints": "Omitted size modes or bounds mean no constraint only when the enclosing layer asserts technical_requirements_complete: true. Otherwise the acceptance envelope is undeclared; unresolved layers or artifacts MUST NOT be discarded to claim full compatibility."
+    },
+    "spec": "docs/creative/canonical-formats.mdx#responsive-bounds-and-effective-acceptance"
   },
   "additionalProperties": true
 }

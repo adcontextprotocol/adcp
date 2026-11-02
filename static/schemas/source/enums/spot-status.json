@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/spot-status.json",
   "title": "Spot Status",
   "description": "Lifecycle status of a by_spot row. Experimental in AdCP 3.3. A spot_id moves scheduled → aired or scheduled → preempted; a makegood is a separate row, with its own spot_id, that replaces a preempted spot.",
+  "x-added-in": "3.3.0",
   "type": "string",
   "x-status": "experimental",
   "enum": [

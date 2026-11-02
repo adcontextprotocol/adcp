@@ -2,7 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/error-details/account-moved.json",
   "title": "Account Moved Details",
-  "description": "Recommended details shape for ACCOUNT_MOVED. Provides the current canonical account reference after an authorized caller used a tombstoned natural key.",
+  "deprecated": true,
+  "x-deprecated-in": "3.3.0",
+  "description": "Deprecated in 3.3 with ACCOUNT_MOVED and planned for removal in 4.0. Recommended details shape for ACCOUNT_MOVED. Provides the current canonical account reference after an authorized caller used a tombstoned natural key.",
   "type": "object",
   "properties": {
     "current_account": {

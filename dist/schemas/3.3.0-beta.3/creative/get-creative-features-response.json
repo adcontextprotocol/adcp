@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/creative/get-creative-features-response.json",
+  "title": "Get Creative Features Response",
+  "description": "Response payload for the get_creative_features task. Exactly one shape is returned: terminal success with results, terminal error, or a submitted acknowledgement carrying the pollable task identity. In AdCP 3.x providers SHOULD also include a stable evaluation_id on accepted work; it becomes required in AdCP 4.0.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/creative/get-creative-features-terminal-success.json"
+    },
+    {
+      "title": "GetCreativeFeaturesError",
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional provider evaluation identity when failure occurred after the evaluation was accepted. When present, it is the same value returned on the submitted acknowledgement.",
+          "x-entity": "creative_evaluation"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "results"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/task-submitted.json"
+        }
+      ],
+      "title": "GetCreativeFeaturesSubmitted",
+      "type": "object",
+      "description": "Async acknowledgement returned after the provider accepts an evaluation but cannot complete it within the response window. Exact keyed request replays return this original acknowledgement with replayed: true and the same task_id. In AdCP 3.x providers SHOULD also return evaluation_id; it becomes required in AdCP 4.0. When present, exact replays and terminal results preserve it. The caller polls get_task_status using task_id.",
+      "properties": {
+        "evaluation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provider-generated identity allocated when the evaluation is accepted. Optional in AdCP 3.x and required in AdCP 4.0. Providers SHOULD emit it in 3.x; when present, exact replays and the terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
+          "x-entity": "creative_evaluation"
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json"
+        }
+      },
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "results"
+            ]
+          },
+          {
+            "required": [
+              "errors"
+            ]
+          },
+          {
+            "required": [
+              "detail_url"
+            ]
+          },
+          {
+            "required": [
+              "pricing_option_id"
+            ]
+          },
+          {
+            "required": [
+              "vendor_cost"
+            ]
+          },
+          {
+            "required": [
+              "currency"
+            ]
+          },
+          {
+            "required": [
+              "consumption"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "properties": {}
+}

@@ -208,6 +208,68 @@ The runner captures `media_buy_id` from `create_buy`'s response (after its valid
 
 Capture failures grade the *generating* step, not the reader: if the response doesn't contain `media_buy_id` at the declared path, `create_buy` fails with `capture_path_not_resolvable`. This is deliberate — the contract the storyboard declared ("this step produces a `media_buy_id`") is what failed, not the step that tried to use it.
 
+### Every `$context.<name>` must have a writer
+
+`injectContext()` substitutes a `$context.<name>` token only when the key is
+already in the run context. When it isn't, the token survives into the request
+and the runner refuses to send it: the step comes back `skipped` with
+`skip_reason: prerequisite_failed` and a failed `unresolved_substitution`
+validation. The storyboard can never pass — but it reports as a *skip*, which
+is also what legitimate capability gating produces, so nobody notices.
+
+That is how #7797 shipped: the 3.0.x governance scenarios registered the
+governance agent with `url: "$context.governance_agent_url"` and never declared
+the key, so `sync_governance` could only ever skip. On the 3.0-compat tenants
+that step already skips on `missing_tool`, which hid the difference entirely,
+and the defect rode every released 3.0 bundle up to 3.0.26 before #7801 added
+the default.
+
+So every key a storyboard reads needs a writer that runs first. "Reads" is
+wider than `sample_request`: the runner also substitutes `validations[].value`
+and `validations[].allowed_values[]`, resolves `validations[].context_key`
+from the same snapshot, and substitutes a webhook step's `filter`. Those
+assertion surfaces are resolved against the context as it stood *before* the
+step, and nothing guards them — an unresolved `value` quietly becomes the
+comparand (the check grades the response against the literal string
+`"$context.<name>"`), an absent `context_key` makes the check *pass* with a
+`context_key_absent` observation, and a token left in a `filter` yields a
+selector no delivery can match. A step's own `context_outputs` land after its
+validations run, so a step cannot assert against a key it captures itself
+(#8328).
+
+The writers:
+
+- **test topology** (an agent URL, a fixed sandbox id) — declare it in the
+  storyboard's root `context:` block, which seeds the run context before step
+  one. A `--<flag>` override on the runner replaces the default; it does not
+  substitute for it;
+- **flow-derived values** — capture them with `context_outputs` on an *earlier*
+  step. A step cannot read the key its own `context_outputs` writes;
+- **convention-extracted values** (for example `media_buy_id` after
+  `create_media_buy`) — the runner writes these from the response without any
+  YAML declaration. The lint models them per task, so the key only counts as
+  written once a step that produces it has run.
+
+`scripts/lint-storyboard-context-resolution.cjs` replays the runner's
+substitution over requests (`context_placeholder_unresolved`) and over every
+assertion comparand (`context_assertion_unresolved`), and fails on anything
+left unresolved. It runs as a hard gate in
+`npm run build:compliance` — a bundle must not ship the defect, because
+`dist/**` release artifacts are immutable — and
+`npm run test:storyboard-context-resolution` re-checks the source tree plus
+every bundled release.
+
+Five keys are stricter than "declare it somewhere": `governance_agent_url`,
+`seller_agent_url`, `signal_agent_url`, `brand_agent_url` and
+`creative_agent_url` are seeded by hosted grading from server config, so they
+may only come from the root `context:` block. Capturing one from a response
+would let the agent under test choose the governance agent it is told to trust.
+
+This applies to buyer-track storyboards too. Their `sample_request` is
+nominally the reference shape the buyer agent's own call is graded against, but
+the SDK has no `interaction_model` awareness and will hand them to the ordinary
+runner, so a token with no writer is just as broken there.
+
 ### Context block and the echo contract
 
 Storyboards that assert on response `context` MUST send a `context:` block on the sample_request:

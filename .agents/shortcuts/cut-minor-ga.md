@@ -197,31 +197,27 @@ marker to get unblocked. Without it, `npm run version` refuses to generate
 
 16. **[H]** Redeploy the worker (`npm run deploy:cdn-artifacts-worker`) if
     `main` changed it after step 9.
-17. **[H]** Refresh the root `/schemas/index.json` and `/schemas/latest.json`.
-    No script path refreshes them today:
-    - release uploads use `--skip-latest`;
-    - deploys use `--latest-only`, which excludes the root indexes;
-    - `backfill-cdn-artifacts.sh` refuses `--version` without `--skip-latest`.
+17. **[A]** The root `/schemas/index.json` and `/schemas/latest.json` refresh
+    themselves on the next successful `main` deploy after the release
+    artifacts land. `backfill-cdn-artifacts.sh --latest-only` rebuilds them
+    through `scripts/build-schema-discovery-pointers.cjs` from the releases
+    the bucket actually serves, and `deploy.yml` fails if the public documents
+    are not the ones it just uploaded (#8318). No one-off upload here.
 
-    Pick one of two ways:
-    - land a reviewed tooling PR that adds a root-index-only mode before GA
-      day; or
-    - get explicit maintainer authorization for a tracked one-off under the
-      publication-authority rules in `RELEASING.md`. It uploads exactly these
-      two mutable files from the `v3.2.1` tag, with the headers the script
-      uses.
-
-    Never touch semver paths this way. The one-off, run with R2 credentials:
+    Confirm. If an alias still trails, read the deploy log for the
+    `Schema versions missing from the CDN` warning — that names a release
+    whose `schemas/<version>/index.json` never reached R2, which is a release
+    recovery, not a pointer problem. To inspect without deploying:
 
     ```bash
-    git checkout v3.2.1
-    for file in index.json latest.json; do
-      aws s3 cp "dist/schemas/$file" "s3://$ADCP_ARTIFACT_R2_BUCKET/schemas/$file" \
-        --endpoint-url "$R2_ENDPOINT" --no-guess-mime-type \
-        --cache-control 'public, no-cache, must-revalidate' \
-        --content-type 'application/json; charset=utf-8'
-    done
-    curl -s https://adcontextprotocol.org/schemas/index.json | jq .latest_stable   # "3.2.1"
+    npm run backfill:cdn-artifacts -- --bucket "$ADCP_ARTIFACT_R2_BUCKET" \
+      --build-latest --latest-only --aws-dry-run
+    ```
+
+    ```bash
+    curl -s https://adcontextprotocol.org/schemas/index.json \
+      | jq '{latest_stable, v3: .aliases.v3, "v3.2": .aliases["v3.2"]}'
+    # {"latest_stable": "3.2.1", "v3": "3.2.1", "v3.2": "3.2.1"}
     ```
 
 ## Phase 6: docs snapshot

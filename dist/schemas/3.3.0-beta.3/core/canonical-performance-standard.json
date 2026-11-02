@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/canonical-performance-standard.json",
+  "title": "Canonical Performance Standard",
+  "description": "Compact committed metric threshold with resolvable vendor identity and no creative or brand-asset graph. metric_id has the semantics of performance-standard.json metric_id.",
+  "type": "object",
+  "properties": {
+    "metric": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/performance-standard-metric.json"
+    },
+    "threshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "standard": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/viewability-standard.json"
+    },
+    "vendor": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/brand-key.json"
+    },
+    "metric_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/vendor-metric-id.json",
+      "x-added-in": "3.3.0"
+    }
+  },
+  "required": [
+    "metric",
+    "threshold",
+    "vendor"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "metric": {
+            "enum": [
+              "viewability",
+              "completion_rate"
+            ]
+          }
+        },
+        "required": [
+          "metric"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "metric_id"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

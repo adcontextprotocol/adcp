@@ -18,6 +18,8 @@
  */
 
 import { Request, Response, NextFunction } from "express";
+import { CREATIVE_FEATURES_VERIFIER_PATH } from "../training-agent/creative-features-verifier-path.js";
+import { TRAINING_AGENT_LAB_MCP_PATHS } from "../training-agent/lab-route-paths.js";
 import crypto from "crypto";
 import { createLogger } from "../logger.js";
 
@@ -72,6 +74,15 @@ const EXEMPT_MCP_EXACT = [
   // check_governance there. Bearer-authenticated; no cookie route handles
   // POST / on any host.
   "/",
+  // Public conformance verifier for provenance truth-of-claim storyboards
+  // (adcp#8199). Server-to-server and deliberately unauthenticated: stateless,
+  // cookie-less, and serving only fixture-keyed get_creative_features. Two
+  // segments before /mcp, so PER_TENANT_MCP_PATH does not match it.
+  CREATIVE_FEATURES_VERIFIER_PATH,
+  // Training-agent lab routes with more than one segment before /mcp: the
+  // proposal-negotiation profiles and the 3.3 identity route. Bearer- or
+  // Web Bot Auth-authenticated, never cookie-authenticated.
+  ...TRAINING_AGENT_LAB_MCP_PATHS,
 ];
 
 /** Other exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */

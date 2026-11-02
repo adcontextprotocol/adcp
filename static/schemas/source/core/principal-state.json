@@ -26,6 +26,16 @@
       "$ref": "/schemas/core/principal-declarations-state.json",
       "description": "Declared consumption facts and the seller-computed accepted intersection. Present when and only when the seller supports the declarations section."
     },
+    "reporting_subscriptions": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "items": {
+        "$ref": "/schemas/core/reporting-subscription-state.json"
+      },
+      "maxItems": 64,
+      "description": "Current and deactivated reporting subscriptions (experimental, media_buy.reporting_subscriptions). A subscription omitted from a later sync stays here as inactive while its obligations are retained."
+    },
     "retired_destinations": {
       "type": "array",
       "items": {

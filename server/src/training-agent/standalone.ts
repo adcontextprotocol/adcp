@@ -16,7 +16,12 @@ import type { TrainingContext } from './types.js';
 const PORT = parseInt(process.env.PORT || '4100', 10);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, bytes) => {
+    (req as unknown as { rawBody: string }).rawBody = bytes.toString('utf8');
+    (req as unknown as { creative33RawBody: Buffer }).creative33RawBody = Buffer.from(bytes);
+  },
+}));
 
 // CORS
 app.use((_req, res, next) => {
@@ -52,7 +57,12 @@ async function handleMcpRequest(req: Request, res: Response) {
   let server: ReturnType<typeof createTrainingAgentServer> | null = null;
   try {
     const principal = extractPrincipalFromBearer(req);
-    const ctx: TrainingContext = principal ? { mode: 'open', principal } : { mode: 'open' };
+    const ctx: TrainingContext = {
+      mode: 'open',
+      ...(principal && { principal }),
+      // Explicit local source-schema preview; deployed routes keep released contracts.
+      ...(process.env.ADCP_TRAINING_CORE_GENDER_PREVIEW === '1' && { developmentCoreGender: true }),
+    };
     server = createTrainingAgentServer(ctx);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

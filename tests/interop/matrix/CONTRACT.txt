@@ -1,0 +1,110 @@
+Buyer-against-seller interop matrix: process contract
+=====================================================
+
+Every seller and buyer below is started by tests/interop/matrix/run.cjs with
+lib/env.cjs childEnv() (ADCP_INTEROP_ENV, ICU_TIMEZONE_FILES_DIR, PYTHONTZPATH='',
+NODE_ENV=test). Each SDK side lives in its own directory:
+
+  tests/interop/matrix/ts/seller.mjs   tests/interop/matrix/ts/buyer.mjs
+  tests/interop/matrix/py/seller.py    tests/interop/matrix/py/buyer.py
+
+and imports only its own SDK from the isolated environment (ADCP_INTEROP_ENV).
+
+Seller
+------
+Start:  seller --start <RFC 3339 instant>     (virtual clock starts there)
+It listens on 127.0.0.1 (ephemeral ports) and prints exactly one line to stdout:
+
+  {"ready":true,"sdk":"ts"|"py","sdk_version":"...","mcp":"http://127.0.0.1:<p>/mcp","control":"http://127.0.0.1:<p>/<path>"}
+
+then logs only to stderr. It serves AdCP over MCP (streamable HTTP) through its
+SDK's own server, on the SDK's managed reporting-subscriptions path
+(TS: createReliableReportingService({ storage, subscriptions: { principal, ... } });
+ Python: ReliableReportingService(..., subscriptions=SubscriptionOptions(...))).
+
+Authentication: Authorization: Bearer <token>; the principal is the token string
+(e.g. "buyer-ts", "buyer-py"). The request can never name its own principal.
+
+Fixed world, identical in both sellers:
+  account acct_1: name "Acme", brand {"domain":"acme.example"}, operator "agency.example",
+    timezone "America/Santiago", status active. A principal sees it in list_accounts
+    only while granted; authorization.allowed_tasks while granted:
+    get_reporting_status, get_media_buys, sync_reporting_status, sync_reporting_receipts.
+    authorization.authorized_at / regranted_at come from the SDK grant journal.
+  offerings (capabilities media_buy.reporting_delivery.offerings), both with
+    feed_purpose analytics, supported_finality ["official"], reconciliation_mode
+    delivery_only, standard_dimensions ["package"], delivery_sla PT6H, and
+    reporting_profile.primary_keys ["account_id","package_id"]:
+      off_daily_local  schedule { period_duration P1D, alignment account_timezone }
+                       (the TypeScript managed path refuses account_timezone offerings and
+                       Santiago local days, so ts/seller.mjs publishes it as source_timezone,
+                       period_timezone_policy fixed, period_timezone America/New_York;
+                       run.cjs LOCAL_ALIGNMENT selects it per seller)
+      off_daily_utc    schedule { period_duration P1D, alignment utc }
+  status_retention_days 30, subscriptions.backfill_on_regrant false (or absent).
+  Buys come only from control put_buy, as complete wire media buys (media_buy_id,
+  status, currency, total_budget, revision, confirmed_at, start_time, end_time,
+  packages[{package_id, reporting_delivery_offering_ids}], and cancellation /
+  flight_history when set); get_media_buys returns them as given to a granted
+  principal.
+
+Control: POST <control> with a JSON body; reply 200 {"ok":true,...} or
+{"ok":false,"error":"..."}.
+  {"op":"set_time","at":ISO}
+  {"op":"grant","principal":P,"account_id":A,"at":ISO}      grant via the SDK grant journal
+  {"op":"revoke","principal":P,"account_id":A,"at":ISO}
+  {"op":"put_buy","account_id":A,"buy":{...wire media buy...}}
+  {"op":"run_cycle"}                 reconcile every subscribed principal and plan obligations
+                                     -> {"ok":true,"errors":[...]}
+  {"op":"obligations","principal":P,"account_id":A,"subscription_id":S}
+       the seller's own owed set from its engine (not the wire):
+       -> {"ok":true,"rows":[{subscription_version,media_buy_id,offering_id,period_start,period_end[,stub]}]}
+       instants in Z form, ".mmm" only when non-zero; rows sorted by period_start,
+       subscription_version, offering_id, media_buy_id (byte order).
+  {"op":"account_request","request_id":R,"action":"approve"|"reject"}
+       resolve an in_review request (approve: resolved/created, reject: rejected).
+
+request_account (account.requests advertised in capabilities): scripted by brand
+domain on open, and by the changed field on change (account_id + change fields):
+  open, brand review.example   -> in_review, pending_action {kind "url" style action
+                                   with a url to show a person}; control approves/rejects
+  open, brand ready.example    -> resolved, resolution created, account (new account_id)
+  open, brand acme.example     -> resolved, resolution matched, account acct_1
+  open, brand ambiguous.example-> ambiguous, candidates [acct_1]
+  open, brand reject.example   -> rejected, errors [...]
+  change, timezone             -> resolved, resolution updated, account with the new timezone
+  change, currency             -> resolved, resolution created (separate account), not_carried_over
+  change, billing              -> in_review (pending_action), then control approves -> updated, effective_at
+  change, sandbox              -> rejected
+A repeat open for the same key returns the open request, never a duplicate.
+
+Buyer
+-----
+Run:  buyer <command>   with one JSON object on stdin: {"url":MCP,"token":T, ...args}
+Prints one JSON object to stdout ({"ok":false,"error":...} on failure); logs to stderr.
+  subscribe   {subscription}           client reporting subscribe (patch-shaped write)
+              -> {"ok":true,"action":...,"subscription_version":N}
+  unsubscribe {subscription_id}        -> {"ok":true,"action":...}
+  owed        {subscription_id, account_id, now}
+       Reads only the wire (get_adcp_capabilities, get_principal, list_accounts,
+       get_media_buys, get_reporting_status), builds the canonical coverage input
+       (case.schema.json input), and computes owed periods with its own SDK.
+       -> {"ok":true,"rows":[...same row shape as control obligations...],
+           "wire_obligations":[...rows from get_reporting_status periods...],
+           "input":{...the coverage input it built...}}
+  account_open    {brand, operator, billing?, payment_terms?}   accounts.ensure
+       -> {"ok":true,"kind":"ready"|"pending"|"ambiguous"|"rejected","next_step":...,
+           "account_id"?,"request_id"?,"action"?:{...}}
+  account_refresh {}                    accounts.refresh (pending requests re-read)
+       -> {"ok":true,"moved":[{"kind","account_id"?,"request_id"?}]}
+  account_change  {account_id, changes:{...}, revision?}         request_account change
+       -> {"ok":true,"state":...,"resolution"?,"account_id"?,"request_id"?,
+           "pending_action"?,"not_carried_over"?,"effective_at"?}
+  account_requests {request_ids:[...]}  list_accounts request_ids (read back requests)
+       -> {"ok":true,"requests":[{"request_id","state","resolution"?,"account_id"?,
+           "effective_at"?, ...}]}
+The harness never asks for owed periods while the buyer is unauthorized on the
+account (it cannot read get_media_buys then); it checks again after the re-grant.
+Buyer state that must persist between invocations (the SDK account registry, the
+subscription versions it sent) goes in a file under $ADCP_INTEROP_STATE_DIR,
+one per (sdk, token, seller url).

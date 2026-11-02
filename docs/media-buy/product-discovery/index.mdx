@@ -195,7 +195,8 @@ envelope use [`control_media_buy`](/docs/media-buy/task-reference/control_media_
 
 When the seller offers post-acceptance change rights, it places them in
 `commercial_terms.change_terms[]`. Each entry names one canonical action, its
-service mode, lifecycle statuses, an optional elapsed-time processing SLA,
+service mode, lifecycle statuses, an optional processing SLA (elapsed by default,
+or explicit business time using a declared calendar),
 portable constraints, stable conditions, and an optional contract reference.
 Because the array is inside `commercial_terms`, the proposal `terms_digest`
 binds those rights. When the array is present, an omitted action was not

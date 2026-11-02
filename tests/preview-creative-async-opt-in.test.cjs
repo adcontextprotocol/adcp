@@ -31,6 +31,7 @@ async function compile(schemaId) {
 }
 
 const completedPreview = {
+  status: 'completed',
   response_type: 'single',
   previews: [{
     preview_id: 'prev_async_001',
@@ -55,10 +56,13 @@ describe('preview_creative opt-in async contract', () => {
   it('adds one submitted task arm without changing build_creative', () => {
     const submitted = response.oneOf.find((arm) => arm.title === 'PreviewCreativeSubmitted');
     assert.ok(submitted);
-    assert.deepEqual(submitted.required, ['response_type', 'status', 'task_id']);
+    // core/task-submitted.json carries status: submitted and the required
+    // task_id; the arm keeps only its response_type discriminator.
+    assert.deepEqual(submitted.required, ['response_type']);
     assert.equal(submitted.properties.response_type.const, 'submitted');
-    assert.equal(submitted.properties.status.const, 'submitted');
-    assert.equal(submitted.properties.task_id['x-entity'], 'task');
+    assert.ok(submitted.allOf.some((member) => member.$ref === '/schemas/core/task-submitted.json'));
+    assert.equal(submitted.properties.status, undefined);
+    assert.equal(submitted.properties.task_id, undefined);
     assert.equal(response.oneOf.length, 4);
   });
 

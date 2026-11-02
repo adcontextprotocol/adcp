@@ -512,14 +512,24 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               message: `agents[${i}].url must not contain query strings or fragments`,
             });
           }
-          const canonical = canonicalizeAgentUrl(a.url);
+          const rawUrl = a.url.trim();
+          const canonical = canonicalizeAgentUrl(rawUrl);
           if (!canonical) {
             return res.status(400).json({
               error: 'invalid_agent_url',
               message: `agents[${i}].url is not a valid agent URL`,
             });
           }
+          // Keep the registered spelling when the identity key folded one
+          // away (#8322). The key folds a trailing slash; AUTHORIZATION
+          // matching against a publisher's adagents.json does not (#7829),
+          // so without this an agent registered as `/mcp/` through this
+          // surface loses an authorization it still holds. The per-agent
+          // POST and the admin writers already do this; the bulk paths were
+          // the gap. `gateAgentVisibilityForCaller` below preserves it,
+          // because it keys back to this exact agent.
           a.url = canonical;
+          if (rawUrl !== canonical) (a as AgentConfig).declared_url = rawUrl;
         }
       }
 
@@ -847,14 +857,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               message: `agents[${i}].url must not contain query strings or fragments`,
             });
           }
-          const canonical = canonicalizeAgentUrl(a.url);
+          const rawUrl = a.url.trim();
+          const canonical = canonicalizeAgentUrl(rawUrl);
           if (!canonical) {
             return res.status(400).json({
               error: 'invalid_agent_url',
               message: `agents[${i}].url is not a valid agent URL`,
             });
           }
+          // Same as the POST create path: preserve the registered spelling
+          // the identity key folded away, so spec-exact authorization
+          // matching still sees the bytes the member registered (#8322).
           a.url = canonical;
+          if (rawUrl !== canonical) (a as AgentConfig).declared_url = rawUrl;
         }
 
         // Hostname ownership check (#4499 MVP). The bulk PUT had been a
@@ -1289,7 +1304,21 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
-      agents[index] = { ...agent, visibility: target };
+      // Visibility belongs to the AGENT, not to one row (#8322). A profile
+      // can hold two spellings of one agent — legacy rows predate the
+      // identity fold — and the public-effect gates that read this field
+      // (`ComplianceDatabase.setComplianceOptOut`, `isAgentPublic`) ask by
+      // identity, "did an owner list THIS agent publicly". Flipping only the
+      // indexed row would leave a sibling spelling public after the owner
+      // demoted the agent to private, so apply the change to every entry
+      // that is the same agent.
+      const targetKey = canonicalizeAgentUrl(agent.url) ?? agent.url;
+      for (let i = 0; i < agents.length; i++) {
+        const entry = agents[i];
+        if (!entry || typeof entry.url !== 'string') continue;
+        if (i !== index && (canonicalizeAgentUrl(entry.url) ?? entry.url) !== targetKey) continue;
+        agents[i] = { ...entry, visibility: target };
+      }
       await client.query(
         `UPDATE member_profiles
          SET agents = $1::jsonb, updated_at = NOW()
@@ -2251,9 +2280,76 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
         });
       }
 
-      // Even an admin caller cannot pin an agent type that contradicts the
-      // probed capability snapshot — see resolveAgentTypes() + issue #3495.
+      // Key every agent URL to the registry identity before the write
+      // (#8322). Every other writer keys it — `routes/member-agents.ts`,
+      // `routes/admin/agents.ts`, and the member create/update paths above —
+      // so without this, the handler was the one surface still producing
+      // unfolded `agents[].url` rows, which every identity-keyed reader then
+      // missed. The registered spelling is preserved in `declared_url`,
+      // because AUTHORIZATION matching against a publisher's adagents.json is
+      // spec-exact and must still see the registered bytes (#7829/#7830).
+      //
+      // This is keying only. The admin surface stays deliberately more
+      // permissive than the member ones in every other respect (it does not
+      // reject query strings, gate visibility by tier, or drop an unknown
+      // `type`) — this loop does not change that.
       if (Array.isArray(updates.agents)) {
+        // A URL the key rejects is grandfathered when the profile already
+        // holds it byte for byte, mirroring how the bulk member PUT above
+        // grandfathers its hostname gate. This handler is the last-resort
+        // repair surface for exactly the legacy rows this issue is about;
+        // 400ing the whole PUT would lock an admin out of every other field
+        // on the profile. A NEW unkeyable URL is still rejected.
+        const existingAgentUrls = new Set(
+          (existingProfile.agents ?? [])
+            .map((a) => (a && typeof a.url === 'string' ? a.url : null))
+            .filter((u): u is string => u !== null),
+        );
+        for (let i = 0; i < updates.agents.length; i++) {
+          const a = updates.agents[i] as AgentConfig & { url?: unknown; declared_url?: unknown };
+          // Reject malformed entries outright rather than skipping them, the
+          // same way the member paths do — a skipped entry is an unkeyed row
+          // written by the back door this change is closing.
+          if (!a || typeof a.url !== 'string') {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}] must be an object with a string url`,
+            });
+          }
+          const rawUrl = a.url.trim();
+          const canonical = canonicalizeAgentUrl(rawUrl);
+          if (!canonical) {
+            if (existingAgentUrls.has(a.url)) continue;
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url is not a valid agent URL`,
+            });
+          }
+          // `declared_url` is the URL authorization matching compares
+          // against, so a supplied one is honoured only when it keys back to
+          // this exact agent — otherwise an admin write could point a
+          // member's agent at someone else's authorization. Same rule as
+          // `gateAgentVisibilityForCaller` (#7829/#7830); honouring a valid
+          // one is what makes a GET→PUT round trip lossless. A mismatched
+          // one is rejected rather than silently replaced: on a field that
+          // decides authorization, a quiet substitution leaves the admin
+          // believing they set something they did not.
+          const suppliedDeclared = typeof a.declared_url === 'string'
+            ? a.declared_url.trim()
+            : undefined;
+          if (suppliedDeclared !== undefined
+            && canonicalizeAgentUrl(suppliedDeclared) !== canonical) {
+            return res.status(400).json({
+              error: 'invalid_declared_url',
+              message: `agents[${i}].declared_url must be another spelling of agents[${i}].url`,
+            });
+          }
+          const declared = suppliedDeclared ?? rawUrl;
+          a.url = canonical;
+          if (declared === canonical) delete a.declared_url;
+          else a.declared_url = declared;
+        }
+
         const adminAgentsBeforeWrite = updates.agents;
         updates.agents = await resolveAgentTypes(updates.agents);
         // Audit-log any flips (closes #3550). `id` here is the profile id

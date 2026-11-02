@@ -194,7 +194,9 @@ the same plan context.
 
 After acceptance, Sam supplies the assets through `sync_creatives` and assigns
 them to the returned packages. The buy remains `pending_creatives` until every
-required format has coverage, then moves to `pending_start` or `active`.
+required format has coverage. It reports `pending_start` while seller review
+blocks delivery, then starts eligible approved assignments. See the [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review)
+for the AdCP 3.3 option to hold a package until every assignment is approved.
 
 <Accordion title="A library-backed creative sync">
 

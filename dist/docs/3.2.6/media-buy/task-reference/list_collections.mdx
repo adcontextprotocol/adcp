@@ -1,0 +1,318 @@
+---
+title: list_collections
+description: "Read a sales agent's catalog of collection cards (shows, creators, podcasts) by key or with filters, and keep a card mirror current with collection card webhooks."
+"og:title": "AdCP list_collections Task"
+testable: true
+---
+
+`list_collections` reads the sales agent's catalog of collection cards: the shows, creators, series and podcasts it sells, with their pictures, samples, links and follower counts. One task covers two jobs: looking up specific collections by key, and browsing the catalog with filters and pages. It returns collections only, never products, pricing or availability. It is side-effect free and never provisions an account.
+
+It is not [`list_collection_lists`](/dist/docs/3.2.6/governance/collection/tasks/collection_lists#list_collection_lists), which lists buyer-owned collection targeting lists on a governance agent.
+
+<Note>
+**Experimental.** `list_collections` and the `collection_card.updated`, `collection_card.removed` and `collection_catalog.bulk_change` webhooks are experimental in AdCP 3.3 under the feature id `media_buy.collection_catalog` ([#8183](https://github.com/adcontextprotocol/adcp/issues/8183)). A seller that implements any of them lists `media_buy.collection_catalog` in `experimental_features`, and also lists `media_buy.collection_cards`, because the response carries card fields. The shape may change between 3.x releases with notice; see [experimental status](/dist/docs/3.2.6/reference/experimental-status).
+</Note>
+
+The task returns the same [`core/response-collection.json`](https://adcontextprotocol.org/schemas/3.2.6/core/response-collection.json) copies that `include_collections` adds to product and proposal reads, under the same [authority rules](/dist/docs/3.2.6/media-buy/product-discovery/collections-and-installments#collections-in-responses). Account-level webhooks push card changes to buyer mirrors, with `list_collections` as the bootstrap and repair read.
+
+## When to use it
+
+| Buyer need | Use |
+|---|---|
+| Cards for the products in an answer (brief, proposal, feed page) | `include_collections: true` on that read: one round trip, scoped to what is being offered |
+| A catalog page: browse creators or shows outside a brief | `list_collections` with filters |
+| Refreshing one card (a new thumbnail, or a follower count you want to recheck) | `list_collections` with a key selector |
+| Keeping a card mirror current (a catalog site, or cards beside a webhook-fed product mirror) | Bootstrap with an unfiltered `list_collections`, subscribe to the [collection card webhooks](#collection-card-webhooks), and repair with `list_collections`. Join cards to products on the selector keys. |
+| A collection the seller omitted from an `include_collections` response | `list_collections` by key, then fall back to the publisher's `adagents.json` |
+| Following a [`get_brand_identity`](/dist/docs/3.2.6/brand-protocol/tasks/get_brand_identity) `collections` link that has `seller_agent_url` | `list_collections` by key on that agent. The URL is a routing hint; authorization is still checked in `adagents.json`. |
+| Products for a chosen collection | A brief through [`request_proposals`](/dist/docs/3.2.6/media-buy/task-reference/request_proposals), or [`list_products`](/dist/docs/3.2.6/media-buy/task-reference/list_products) with `targeting_overlay.collection_selection`. `list_collections` never returns products. |
+| Whether an agent may sell a collection | Only the publisher's [`adagents.json`](/dist/docs/3.2.6/governance/property/adagents#collections) |
+
+## Request
+
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/3.2.6/media-buy/list-collections-request.json`](https://adcontextprotocol.org/schemas/3.2.6/media-buy/list-collections-request.json)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `collections` | CollectionSelector[] | Optional. The same `{publisher_domain, collection_ids}` selectors a product carries, so a buyer can pass a product's selectors through unchanged. A selector with `collection_ids` is a key lookup. A selector with only `publisher_domain` means every collection of that publisher that this seller represents. At most 100 collection IDs in total across all selectors. Omit to browse the whole catalog. |
+| `filters` | object | Optional. `kinds`, `genres_include`, `genres_exclude` and `genre_taxonomy` (the same semantics as on [collection lists](/dist/docs/3.2.6/governance/collection/tasks/collection_lists)), `statuses`, `languages` (BCP 47 language ranges, matched by RFC 4647 basic filtering, so `en` matches `en-US`), `talent` (`{domain, brand_id}` matched against `talent[].brand_ref`), `platforms` (domains matched against `distribution[].publisher_domain`) and `name_contains`. |
+| `pagination` | object | Optional. `max_results` (default 50, maximum 100) and `cursor`, the shared pagination object used by [`list_creatives`](/dist/docs/3.2.6/creative/task-reference/list_creatives), [`list_accounts`](/dist/docs/3.2.6/accounts/tasks/list_accounts) and [`list_collection_lists`](/dist/docs/3.2.6/governance/collection/tasks/collection_lists#list_collection_lists). |
+| `account` | AccountRef | Optional. Without it, the response is `cache_scope: "public"`. |
+| `if_collections_version` | string | Optional. A `collections_version` from an earlier response for the same selectors and filters. See [versioning](#versioning-and-caching). |
+
+The request rejects unknown fields. Values within one filter are alternatives (OR); different filters combine with AND. The seller applies selectors and filters before pagination. A seller that cannot apply a filter it receives fails the request with [`VALIDATION_ERROR`](/dist/docs/3.2.6/building/verification/compliance-catalog#error-code-validation-error) and never returns a broader result. More than 100 collection IDs is also a `VALIDATION_ERROR`.
+
+Order is seller-defined and stable within one `collections_version`. There is no sort parameter, and in particular no sort by follower count: `followers` must not be summed or compared across distribution entries.
+
+A key lookup that refreshes two cards, with the first selector copied from a product's `collections`:
+
+```json
+{
+  "$schema": "/schemas/3.2.6/latest/media-buy/list-collections-request.json",
+  "adcp_version": "3.3",
+  "collections": [
+    { "publisher_domain": "novacreators.example", "collection_ids": ["kitchen_lab"] },
+    { "publisher_domain": "pinnaclepods.example", "collection_ids": ["founders_hour"] }
+  ]
+}
+```
+
+Browsing a catalog page of active English video series featuring one creator, on one platform:
+
+```json
+{
+  "$schema": "/schemas/3.2.6/latest/media-buy/list-collections-request.json",
+  "adcp_version": "3.3",
+  "account": { "account_id": "acct_nova_agency" },
+  "filters": {
+    "kinds": ["series"],
+    "statuses": ["active"],
+    "languages": ["en"],
+    "talent": [{ "domain": "jordanvega.example" }],
+    "platforms": ["videoplatform.example"]
+  },
+  "pagination": { "max_results": 50 }
+}
+```
+
+Filters run on the seller's copy, so a match on an anchored field (`genre`, `status`, `talent` or `kind`) is a discovery hint. Before relying on those fields for suitability, buyers check them against the publisher's `adagents.json`, exactly as they do for a response copy from `include_collections`.
+
+## Response
+
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Response schema:** [`/schemas/3.2.6/media-buy/list-collections-response.json`](https://adcontextprotocol.org/schemas/3.2.6/media-buy/list-collections-response.json)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome` | string | `listed` when the response carries a page; `unchanged` when `if_collections_version` matched. |
+| `collections` | ResponseCollection[] | The matching cards on this page. Required on `listed`, even when empty; omitted on `unchanged`. |
+| `pagination` | object | `has_more`, and `cursor` when there is a next page. Omitted on `unchanged`. |
+| `collections_version` | string | Opaque version of the selected catalog. |
+| `cache_scope` | string | `public` or `account`. |
+
+```json
+{
+  "$schema": "/schemas/3.2.6/latest/media-buy/list-collections-response.json",
+  "outcome": "listed",
+  "collections": [
+    {
+      "publisher_domain": "novacreators.example",
+      "collection_id": "kitchen_lab",
+      "name": "Kitchen Lab with Jordan Vega",
+      "kind": "series",
+      "status": "active",
+      "language": "en",
+      "cadence": "weekly",
+      "description": "Weekly food science experiments for home cooks",
+      "url": "https://novacreators.example/creators/kitchen-lab",
+      "images": [
+        {
+          "asset_type": "image",
+          "url": "https://cdn.novacreators.example/kitchen-lab/avatar.jpg",
+          "width": 800,
+          "height": 800,
+          "alt_text": "Kitchen Lab channel avatar"
+        }
+      ],
+      "talent": [
+        { "role": "creator", "name": "Jordan Vega", "brand_ref": { "domain": "jordanvega.example" } }
+      ],
+      "distribution": [
+        {
+          "publisher_domain": "videoplatform.example",
+          "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }],
+          "followers": {
+            "lower_bound": 1230000,
+            "upper_bound": 1239999,
+            "precision": "approximate",
+            "as_of": "2026-10-15T00:00:00Z"
+          }
+        }
+      ]
+    }
+  ],
+  "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=" },
+  "collections_version": "cc_2026_10_16_r88",
+  "cache_scope": "account"
+}
+```
+
+- **One entry per key.** A response has at most one entry per `(publisher_domain, collection_id)`. If a key appears more than once, that collection is unresolvable from the response and the buyer falls back to `adagents.json`, the same [duplicate rule](/dist/docs/3.2.6/media-buy/product-discovery/collections-and-installments#collections-in-responses) as for `include_collections`.
+- **Silent omission.** A selector key that is unknown, or not visible to the caller, is omitted with no per-key error. "Doesn't exist" and "not yours" look the same, as with the [uniform response rule](/dist/docs/3.2.6/building/by-layer/L3/error-handling#standard-error-codes) behind [`REFERENCE_NOT_FOUND`](/dist/docs/3.2.6/building/verification/compliance-catalog#error-code-reference-not-found). Buyers detect omissions by comparing their selectors with the returned entries, as they already do for `include_collections`.
+- **What is returned.** The seller returns only collections it represents and can sell to the caller, meaning collections that its products offered to that caller can reference. Ended and upcoming collections are allowed, with their `status`. It SHOULD return only collections whose publisher's `adagents.json` authorizes it, directly or through a collection-scoped selector. Card fields are public display data: the response carries no pricing, availability or account terms.
+
+### Authority
+
+A `list_collections` entry is a response copy, and the rules in [Collections in responses](/dist/docs/3.2.6/media-buy/product-discovery/collections-and-installments#collections-in-responses) apply unchanged: `adagents.json` is authoritative, the copy wins only on its closed list of display fields, a copy is never authorization evidence, an unverified copy (of an undeclared collection, or from an agent `adagents.json` does not authorize) is display-only and never feeds carriage verification, and [definition pins](/dist/docs/3.2.6/media-buy/specification#definition-pins) hash `adagents.json`, never the copy. This page does not restate that list.
+
+**Consistency with `include_collections`.** Both reads serve the same copy. For the same key, account and moment, a seller MUST return the same copy from `list_collections` as from a product or proposal read with `include_collections: true`, and the same copy it pushes in `collection_card.updated`.
+
+## Versioning and caching
+
+`collections_version` and `if_collections_version` are this task's own conditional-fetch tokens. When `if_collections_version` matches, the seller returns `outcome: "unchanged"` without `collections`:
+
+```json
+{
+  "$schema": "/schemas/3.2.6/latest/media-buy/list-collections-request.json",
+  "adcp_version": "3.3",
+  "account": { "account_id": "acct_nova_agency" },
+  "filters": {
+    "kinds": ["series"],
+    "statuses": ["active"],
+    "languages": ["en"],
+    "talent": [{ "domain": "jordanvega.example" }],
+    "platforms": ["videoplatform.example"]
+  },
+  "if_collections_version": "cc_2026_10_16_r88"
+}
+```
+
+```json
+{
+  "$schema": "/schemas/3.2.6/latest/media-buy/list-collections-response.json",
+  "outcome": "unchanged",
+  "collections_version": "cc_2026_10_16_r88",
+  "cache_scope": "account"
+}
+```
+
+- **Scope.** The version is scoped to the agent, the canonicalized `collections` selectors and the canonicalized `filters`, plus account identity when `cache_scope` is `account`. Arrays have set semantics. `pagination.cursor` is outside the scope. A token presented with different selectors or filters is a mismatch and gets a full `listed` response.
+- **What moves it.** The version changes when any copy the selection would return changes, or when the set of collections it selects changes. A follower refresh that leaves a count's `lower_bound`, `upper_bound` and `precision` unchanged is not a change: it moves no version and keeps the earlier `as_of` (see [follower counts](/dist/docs/3.2.6/media-buy/product-discovery/collections-and-installments#follower-counts)).
+- **Pages.** If a later page arrives with a different `collections_version`, the catalog changed mid-walk: restart from the first page, as with wholesale feed versioning.
+- **Independent of product feeds.** `collections_version` is not the `include_collections` scope of `feed_version` or `wholesale_feed_version`. A change to one says nothing about the others, so card churn never forces a product mirror to refetch.
+- **`cache_scope`.** A request without `account` gets `public`. A request with `account` gets `public` or `account`, as the seller declares, with the same downgrade semantics as wholesale feeds: a later `public` on a conditional request that was `account` means the account no longer has its own visible set. Only the set of visible collections may vary by account. The content of a copy for a given key never does: there is one card per collection per seller.
+
+There is no delta read (`updated_since`). Push goes through webhooks.
+
+## Collection card webhooks
+
+Registry `collection.*` events report the publisher's authoritative `adagents.json` declaration. A seller's card fields (`images`, `sample_content`, `url`, `description`, `season`, `cadence`, `distribution[].followers`) never reach the registry, so three account-level events push them to buyer mirrors, the way `product.*` events push products.
+
+### Registration
+
+Subscriptions are account-level and durable, through `sync_accounts.accounts[].notification_configs[]`, exactly like `product.*` and `wholesale_feed.bulk_change`. A `list_collections` call never creates one: the request takes no `push_notification_config`. A seller that emits these events lists them in `wholesale_feed_webhooks.event_types` on [`get_adcp_capabilities`](/dist/docs/3.2.6/protocol/get_adcp_capabilities#wholesale_feed_webhooks). Buyers register only types the seller lists, and sellers reject undeclared types. Subscribing requires an account; buyers browsing without one poll.
+
+```json
+{
+  "$schema": "/schemas/3.2.6/latest/account/sync-accounts-request.json",
+  "idempotency_key": "9b1e6f2c-4d8a-4c51-9f0e-3a7d2c8b6e41",
+  "accounts": [
+    {
+      "account": { "account_id": "acct_nova_agency" },
+      "notification_configs": [
+        {
+          "subscriber_id": "card-mirror",
+          "url": "https://buyer.example/hooks/collection-cards",
+          "event_types": [
+            "collection_card.updated",
+            "collection_card.removed",
+            "collection_catalog.bulk_change"
+          ],
+          "active": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Events
+
+| Event | Fires when | `event.payload` |
+|---|---|---|
+| `collection_card.updated` | A card enters the seller's catalog for a scope, or any field of its copy changes. This is an upsert; there is no `created` event. | `collection`: the full post-change card, which replaces the mirror entry. Also optional advisory `changed_fields[]`, and required `applies_to`. |
+| `collection_card.removed` | The seller no longer offers the card in that scope | `publisher_domain`, `collection_id`, optional `removal_reason` and required `applies_to`. Never a card. |
+| `collection_catalog.bulk_change` | One operation touches more cards than the threshold below | `summary`, `affected_count`, `recommendation: "wholesale_resync"` and `applies_to`. No cards. |
+
+The names are not `collection.*`, which registry events use for the publisher's declaration: a buyer dispatching both feeds on the type string must never read a seller's display copy as the publisher's declaration. The bulk event is separate from `wholesale_feed.bulk_change`, so existing product and signal subscribers never receive it.
+
+### Envelope
+
+The events reuse the [wholesale feed webhook](/dist/docs/3.2.6/media-buy/task-reference/list_products#wholesale-feed-webhooks) envelope (`core/wholesale-feed-webhook.json`) unchanged, with one receiver, one signing profile and one set of delivery rules:
+
+- `notification_id` equals `event.event_id`, and `notification_type` equals `event.event_type`.
+- `account_id` is required, and `cache_scope` equals `event.payload.applies_to.scope`.
+- `product_payload_view` is omitted.
+- `wholesale_feed_version` carries the post-change `collections_version` of the unfiltered catalog, the same way the [`list_products`](/dist/docs/3.2.6/media-buy/task-reference/list_products) `feed_version` travels in that field.
+- `event.entity_type` is `collection` for card events and `feed` for the bulk event. `entity_id` is opaque: receivers key the mirror on the payload's `(publisher_domain, collection_id)`, never on `entity_id`.
+- Delivery follows the persistent webhook contract unchanged: at least once, deduped on `idempotency_key`, no ordering guarantee, and RFC 9421 signing (`webhook_signing.supported` is `true` once `wholesale_feed_webhooks.supported` is).
+
+```json
+{
+  "$schema": "/schemas/3.2.6/latest/core/wholesale-feed-webhook.json",
+  "idempotency_key": "whk_01JAC2N4S8J4TK8M6D3K9Q2P1A7",
+  "notification_id": "0192a6f0-0000-7000-8000-000000000101",
+  "notification_type": "collection_card.updated",
+  "fired_at": "2026-10-17T14:00:02Z",
+  "subscriber_id": "card-mirror",
+  "account_id": "acct_nova_agency",
+  "wholesale_feed_version": "cc_2026_10_17_r89",
+  "previous_wholesale_feed_version": "cc_2026_10_16_r88",
+  "cache_scope": "public",
+  "event": {
+    "event_id": "0192a6f0-0000-7000-8000-000000000101",
+    "event_type": "collection_card.updated",
+    "entity_type": "collection",
+    "entity_id": "card_7f3a91",
+    "created_at": "2026-10-17T14:00:00Z",
+    "payload": {
+      "collection": {
+        "publisher_domain": "novacreators.example",
+        "collection_id": "kitchen_lab",
+        "name": "Kitchen Lab with Jordan Vega",
+        "kind": "series",
+        "status": "active",
+        "url": "https://novacreators.example/creators/kitchen-lab",
+        "sample_content": [
+          {
+            "asset_type": "published_post",
+            "post_url": "https://videoplatform.example/watch/kl-0143",
+            "platform": "videoplatform.example",
+            "published_at": "2026-10-16T15:00:00Z"
+          }
+        ]
+      },
+      "changed_fields": ["sample_content"],
+      "applies_to": { "scope": "public" }
+    }
+  }
+}
+```
+
+### Volume
+
+- Per-card `collection_card.updated` is for an editorial change to one card (a new thumbnail, a new sample, a description or `season` edit, a status change) and for one card entering the catalog. `collection_card.removed` is for one card leaving it.
+- A seller SHOULD send one `collection_catalog.bulk_change` instead of per-card events when one operation touches more than 5% of the catalog or more than 100 cards, whichever is smaller. This is the wholesale feed threshold. A scheduled sweep that refreshes follower counts is the typical case and SHOULD always go out as one bulk event, never as a stream of per-card events.
+- A refresh that leaves a count's bounds and `precision` unchanged is not a card change: it fires nothing and produces no new version, and the earlier `as_of` stays.
+
+### Versions and repair
+
+These follow the [wholesale feed rules](/dist/docs/3.2.6/media-buy/task-reference/list_products#wholesale-feed-webhooks), applied to `list_collections`:
+
+1. **Bootstrap** from an unfiltered `list_collections` read (no selectors, no filters) of every page, and store `collections_version` and `cache_scope`. Webhook versions describe the unfiltered catalog for their `cache_scope`, so tokens from filtered reads cannot be compared with them.
+2. **Apply** each event, then store the event's version.
+3. **On a gap** (`previous_wholesale_feed_version` doesn't match the stored version), a failed signature, or a stale version, repair with `list_collections` and `if_collections_version` set to the **last applied** version. The webhook's version is never the conditional token for a stale mirror.
+4. **On `collection_catalog.bulk_change`**, or any uncertain state, drop the token and replace the mirror from a complete unfiltered read.
+
+Conditional reads are the repair path. A mirror does not need to poll while webhooks are healthy.
+
+### Authority, scope and privacy
+
+- A pushed card is a response copy, and the [authority rules](#authority) apply unchanged. `collection_card.removed` means only that this seller stopped offering the card. It does not mean the collection was retired or that authorization changed; those facts arrive as registry `collection.removed` and `authorization.revoked`.
+- A buyer recomputes its merged view when either feed fires. A card event changes closed-list fields, a registry event changes anchored fields, and neither overrides the other's fields.
+- `applies_to` is required on every event. Because copy content does not vary by account, account-scoped events only move a card into or out of an account's visible set, and content changes to a public card are `public` events.
+- Sellers MUST apply the `list_collections` visibility predicate when they emit. A subscriber whose account cannot see a card through `list_collections` MUST NOT receive its events.
+
+## Capability and version gate
+
+- **Feature id.** `media_buy.collection_catalog` covers `list_collections`, its request and response schemas, and the three webhook event types. A seller that lists it MUST also list `media_buy.collection_cards`. A seller can serve cards in-band through `include_collections` without running this read, and the two surfaces can graduate separately.
+- **Discovery.** The task is not in `media_buy.lifecycle_tools`, which lists the product and MediaBuy lifecycle. Buyers see the feature id, and the tool in `tools/list` or the A2A skills.
+- **Webhooks are optional within the feature.** A seller can declare the read without push. Listing any `collection_card.*` event or `collection_catalog.bulk_change` in `wholesale_feed_webhooks.event_types` requires listing `media_buy.collection_catalog`, because `list_collections` is the repair path.
+- **Version gate.** `list_collections` is a 3.3 task. A seller MUST NOT serve it to a caller whose `adcp_version` is below 3.3, and fails such a request with [`UNSUPPORTED_FEATURE`](/dist/docs/3.2.6/building/verification/compliance-catalog#error-code-unsupported-feature).
+
+## Conformance
+
+The [`collection-copies` test vectors](/dist/docs/3.2.6/reference/test-vectors) grade the buyer's merged view of a copy and `adagents.json`, seller responses, webhook payloads, and mirror application, before any agent emits these events. Storyboards follow once the training agent supports the task.

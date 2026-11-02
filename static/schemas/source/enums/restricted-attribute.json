@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/restricted-attribute.json",
   "title": "Restricted Attribute",
-  "description": "Personal data categories that may be restricted from use in audience targeting. Combines GDPR Article 9 special categories with US civil-rights protected classes (FHA familial_status, ADEA age). Used in two places: (1) on campaign plans via restricted_attributes to declare which categories are prohibited, and (2) on signal-definition.json via restricted_attributes to declare which categories a signal touches. Governance agents match plan restrictions against signal declarations for structural validation.",
+  "description": "Personal data categories that may be restricted from use in audience targeting. Includes GDPR Article 9 special categories and other policy-sensitive attributes such as age, familial_status, and sex_gender. The enum does not itself prohibit an attribute or establish its legal classification. Campaign plans declare prohibited categories through restricted_attributes; signals declare categories they touch. Direct demographic age and gender predicates map to age and sex_gender, respectively. Governance agents match effective targeting against applicable plan and policy restrictions.",
   "type": "string",
   "enum": [
     "racial_ethnic_origin",
@@ -14,7 +14,8 @@
     "genetic_data",
     "biometric_data",
     "age",
-    "familial_status"
+    "familial_status",
+    "sex_gender"
   ],
   "enumDescriptions": {
     "racial_ethnic_origin": "Race or ethnic origin. GDPR Article 9(1), US FHA/ECOA/EEOC protected class.",
@@ -26,6 +27,7 @@
     "genetic_data": "Genetic data. GDPR Article 9(1), US GINA.",
     "biometric_data": "Biometric data used for identification. GDPR Article 9(1).",
     "age": "A person's age or age range. US ADEA (40+) for employment, US FHA for housing, EU AVMSD for content-directed targeting. Restricted for regulated verticals.",
-    "familial_status": "Whether a household includes children under 18, a pregnant person, or a person seeking custody of a minor. US FHA protected class."
+    "familial_status": "Whether a household includes children under 18, a pregnant person, or a person seeking custody of a minor. US FHA protected class.",
+    "sex_gender": "Sex- or gender-based audience classifications. Core demographic gender targeting, including female, male, and non_binary, maps to this category. Distinct from sex life or sexual orientation; the applicable campaign or seller policy determines restrictions. Experimental in AdCP 3.3 as part of media_buy.gender_targeting; the 3.2 enum is unchanged."
   }
 }

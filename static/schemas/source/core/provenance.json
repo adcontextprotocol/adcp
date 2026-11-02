@@ -19,15 +19,18 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')"
+          "description": "Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')",
+          "x-max-length-4.0": 128
         },
         "version": {
           "type": "string",
-          "description": "Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For generative models, use the model version rather than the API version."
+          "description": "Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For generative models, use the model version rather than the API version.",
+          "x-max-length-4.0": 32
         },
         "provider": {
           "type": "string",
-          "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')"
+          "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')",
+          "x-max-length-4.0": 128
         }
       },
       "required": ["name"]
@@ -109,11 +112,13 @@
           },
           "standard": {
             "type": "string",
-            "description": "Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7 text manifest embedding)"
+            "description": "Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7 text manifest embedding)",
+            "x-max-length-4.0": 128
           },
           "provider": {
             "type": "string",
-            "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc'). Display label and audit context — not a wire identifier."
+            "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc'). Display label and audit context — not a wire identifier.",
+            "x-max-length-4.0": 128
           },
           "verify_agent": {
             "type": "object",
@@ -127,7 +132,8 @@
               },
               "feature_id": {
                 "type": "string",
-                "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `encypher.markers_present_v2`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `encypher.markers_present_v2`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog.",
+                "x-max-length-4.0": 128
               }
             },
             "required": ["agent_url"],
@@ -140,7 +146,8 @@
           }
         },
         "required": ["method", "provider"]
-      }
+      },
+      "x-max-items-4.0": 4
     },
     "watermarks": {
       "type": "array",
@@ -155,7 +162,8 @@
           },
           "provider": {
             "type": "string",
-            "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher'). Display label and audit context — not a wire identifier."
+            "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher'). Display label and audit context — not a wire identifier.",
+            "x-max-length-4.0": 128
           },
           "verify_agent": {
             "type": "object",
@@ -169,7 +177,8 @@
               },
               "feature_id": {
                 "type": "string",
-                "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog.",
+                "x-max-length-4.0": 128
               }
             },
             "required": ["agent_url"],
@@ -186,7 +195,8 @@
           }
         },
         "required": ["media_type", "provider"]
-      }
+      },
+      "x-max-items-4.0": 4
     },
     "disclosure": {
       "type": "object",
@@ -204,19 +214,23 @@
             "properties": {
               "country": {
                 "type": "string",
-                "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')"
+                "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')",
+                "x-max-length-4.0": 128
               },
               "region": {
                 "type": "string",
-                "description": "Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)"
+                "description": "Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)",
+                "x-max-length-4.0": 128
               },
               "regulation": {
                 "type": "string",
-                "description": "Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synthesis')"
+                "description": "Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synthesis')",
+                "x-max-length-4.0": 128
               },
               "label_text": {
                 "type": "string",
-                "description": "Required disclosure label text for this jurisdiction, in the local language"
+                "description": "Required disclosure label text for this jurisdiction, in the local language",
+                "x-max-length-4.0": 256
               },
               "render_guidance": {
                 "type": "object",
@@ -249,7 +263,8 @@
             },
             "required": ["country", "regulation"]
           },
-          "minItems": 1
+          "minItems": 1,
+          "x-max-items-4.0": 8
         }
       },
       "required": ["required"]
@@ -263,7 +278,8 @@
         "properties": {
           "verified_by": {
             "type": "string",
-            "description": "Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Reality Defender')"
+            "description": "Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Reality Defender')",
+            "x-max-length-4.0": 128
           },
           "verified_time": {
             "type": "string",
@@ -288,7 +304,8 @@
           }
         },
         "required": ["verified_by", "result"]
-      }
+      },
+      "x-max-items-4.0": 4
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

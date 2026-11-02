@@ -179,7 +179,8 @@ The final per-audience `audiences` array lands on the task completion artifact, 
 | Field | Description |
 |-------|-------------|
 | `audience_id` | Echoed from request (buyer's identifier) |
-| `seller_id` | Seller-assigned ID in their ad platform |
+| `platform_id` | ID assigned to this audience by the seller's ad platform (optional; new in AdCP 3.3) |
+| `seller_id` | Deprecated compatibility alias for `platform_id` |
 | `action` | `created`, `updated`, `unchanged`, `deleted`, or `failed` |
 | `status` | `processing`, `ready`, or `too_small`. Present when action is `created`, `updated`, or `unchanged`; absent when action is `deleted` or `failed`. |
 | `uploaded_count` | Members submitted in this sync operation (delta, not cumulative). 0 for discovery-only calls. |
@@ -193,6 +194,14 @@ The final per-audience `audiences` array lands on the task completion artifact, 
 | `last_synced_at` | ISO 8601 timestamp of the most recent sync. Omitted if the seller does not track this. |
 | `minimum_size` | Minimum matched audience size for targeting on this platform. Populated when `status: "too_small"`. |
 | `errors` | Per-audience errors (only when `action: "failed"`) |
+
+## Platform identifier migration (AdCP 3.3)
+
+`platform_id` identifies the audience in the seller's ad platform. Continue using `audience_id` in AdCP sync requests and targeting; the platform ID is for cross-referencing the platform's object.
+
+When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both `platform_id` and the deprecated `seller_id` alias with identical values, including in discovery-only responses. Both fields remain optional when no platform identifier is available. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when `platform_id` is absent. A response containing only the legacy alias remains schema-valid for compatibility with older sellers.
+
+The alias remains functional throughout 3.x. Removal is no earlier than AdCP 4.0 and follows the [six-month deprecation policy](/docs/reference/versioning#deprecation-policy). At this location, `seller_id` continues to mean the audience's platform ID; it MUST NOT be repurposed to identify the seller.
 
 ## Audience size
 

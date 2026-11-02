@@ -499,6 +499,39 @@ An unreachable endpoint, an authorization error, a missing `creative` block, or 
 
 </Accordion>
 
+## Reference agent rate limits
+
+The reference creative agent applies separate per-client-IP quotas to MCP POSTs
+and preview-asset downloads. Configure the creative agent's environment before
+startup to change either quota:
+
+| Variable | Default |
+| --- | --- |
+| `CREATIVE_AGENT_MCP_RATE_LIMIT_MAX` | 60 requests |
+| `CREATIVE_AGENT_MCP_RATE_LIMIT_WINDOW_MS` | 60000 milliseconds |
+| `CREATIVE_AGENT_PREVIEW_ASSET_RATE_LIMIT_MAX` | 30 requests |
+| `CREATIVE_AGENT_PREVIEW_ASSET_RATE_LIMIT_WINDOW_MS` | 60000 milliseconds |
+
+For example, pass these environment variables to the creative-agent container in
+a test stack shared by several workers:
+
+```dotenv
+CREATIVE_AGENT_MCP_RATE_LIMIT_MAX=6000
+CREATIVE_AGENT_MCP_RATE_LIMIT_WINDOW_MS=60000
+CREATIVE_AGENT_PREVIEW_ASSET_RATE_LIMIT_MAX=3000
+CREATIVE_AGENT_PREVIEW_ASSET_RATE_LIMIT_WINDOW_MS=60000
+```
+
+Values must be positive decimal integers without spaces, fractions, or units.
+Request limits must not exceed `9007199254740991`; window values must not exceed
+`2147483647` milliseconds, Node's timer limit. Invalid values stop startup, and
+zero does not disable a quota. MCP initialization and notifications also count
+as POST requests.
+
+Use an image built from a commit or tag containing these settings. An older
+pinned image retains its hard-coded limits. Higher limits should be chosen for
+the capacity and access controls of the deployment receiving the requests.
+
 ## Integration patterns
 
 ### Pattern 1: creative agency

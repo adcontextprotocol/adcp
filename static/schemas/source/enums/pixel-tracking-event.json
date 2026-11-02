@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/pixel-tracking-event.json",
   "title": "Pixel Tracking Event",
-  "description": "Closed AdCP event vocabulary for renderer-fired pixel trackers. Impression and viewability values through `viewable_video_50` map to IAB OpenRTB Native event tracker types 1-4. `audible_video_complete` is an AdCP-defined first-class event, not an assigned IAB Native event type; Native reserves 500+ for exchange-specific use. `click` represents Native click trackers and `custom` is the explicit adopter-defined extension point.",
+  "description": "Closed AdCP event vocabulary for renderer-fired pixel trackers. Impression and viewability values through `viewable_video_50` map to IAB OpenRTB Native event tracker types 1-4. `audible_video_complete` is an AdCP-defined first-class event, not an assigned IAB Native event type; Native reserves 500+ for exchange-specific use. `start`, `first_quartile`, `midpoint`, `third_quartile` and `complete` (added in 3.3.0) are AdCP-defined playback events with the same meaning as the VAST events of the same name, spelled in snake_case to match this enum; they apply to formats with a playback timeline (`video_hosted`, `audio_hosted`) and are ignored on formats without one, like `viewable_video_50`. `click` represents Native click trackers and `custom` is the explicit adopter-defined extension point.",
   "type": "string",
   "enum": [
     "impression",
@@ -10,7 +10,26 @@
     "viewable_mrc_100",
     "viewable_video_50",
     "audible_video_complete",
+    "start",
+    "first_quartile",
+    "midpoint",
+    "third_quartile",
+    "complete",
     "click",
     "custom"
-  ]
+  ],
+  "enumDescriptions": {
+    "impression": "Fires when the ad is served (IAB Native event type 1).",
+    "viewable_mrc_50": "IAB MRC viewable: 50% of pixels in view for at least 1 second (IAB Native event type 2).",
+    "viewable_mrc_100": "IAB MRC viewable: 100% of pixels in view for at least 1 second (IAB Native event type 3).",
+    "viewable_video_50": "Video viewable: 50% of pixels in view for at least 2 seconds; audio not required (IAB Native event type 4). Ignored on formats with no playback timeline.",
+    "audible_video_complete": "AdCP-defined: the creative played to 100% completion with audio on. The audio-on variant of `complete`.",
+    "start": "Playback of the creative begins. Same meaning as VAST `start`. Added in 3.3.0.",
+    "first_quartile": "25% of the creative's duration has played. Same meaning as VAST `firstQuartile`. Added in 3.3.0.",
+    "midpoint": "50% of the creative's duration has played. Same meaning as VAST `midpoint`. Added in 3.3.0.",
+    "third_quartile": "75% of the creative's duration has played. Same meaning as VAST `thirdQuartile`. Added in 3.3.0.",
+    "complete": "The creative played to the end, whether or not audio was on. Same meaning as VAST `complete`; `audible_video_complete` is the audio-on variant. Added in 3.3.0.",
+    "click": "Fires when the user clicks the creative (IAB Native click trackers).",
+    "custom": "Adopter-defined event; MUST also set `custom_event_name`."
+  }
 }

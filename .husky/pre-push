@@ -67,7 +67,10 @@ if echo "$CHANGED" | grep -Eq "$STORYBOARD_PATHS"; then
     echo "   Commit or stash to run it against HEAD, or run: bash scripts/run-storyboards-matrix.sh"
   else
     echo "🔍 Training-agent or compliance source changed — running storyboard matrix (~3min, advisory; CI is authoritative)..."
-    bash scripts/run-storyboards-matrix.sh || exit 1
+    # Mirror CI (training-agent-storyboards.yml): current-source runs on main
+    # grade the package's own candidate version in candidate mode.
+    ADCP_STORYBOARD_CANDIDATE_VERSION_MODE="${ADCP_STORYBOARD_CANDIDATE_VERSION_MODE:-1}" \
+      bash scripts/run-storyboards-matrix.sh || exit 1
     echo "🔍 Verifying 3.0 storyboard compatibility..."
     bash scripts/run-storyboards-3-0-compat.sh || exit 1
   fi

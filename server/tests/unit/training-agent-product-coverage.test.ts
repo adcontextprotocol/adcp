@@ -77,7 +77,7 @@ describe('product coverage across retained and compact discovery', () => {
     expect(response.code, JSON.stringify(response)).toBeUndefined();
     expect(response.products).toHaveLength(1);
     expect(response.products[0].is_custom).toBe(true);
-    expect(response.products[0].pricing_options[0].fixed_price).toBe(10);
+    expect(response.products[0].pricing_options[0].floor_price).toBe(10);
   });
 
   it('distinguishes no matches from unsupported coverage evaluation', async () => {

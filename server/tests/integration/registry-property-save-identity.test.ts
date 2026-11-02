@@ -62,14 +62,16 @@ import type { MCPAuthContext } from '../../src/mcp/auth.js';
 
 const DOMAIN_PREFIX = 'save-identity';
 const DOMAIN_LIKE = `${DOMAIN_PREFIX}-%`;
-const WITH_AGENTS = `${DOMAIN_PREFIX}-with-agents.registry-baseline.example`;
-const NO_AGENTS = `${DOMAIN_PREFIX}-no-agents.registry-baseline.example`;
-const EDIT_DOMAIN = `${DOMAIN_PREFIX}-edit.registry-baseline.example`;
-const HTTP_HOSTED_DOMAIN = `${DOMAIN_PREFIX}-http-hosted.registry-baseline.example`;
-const HTTP_COMMUNITY_DOMAIN = `${DOMAIN_PREFIX}-http-community.registry-baseline.example`;
-const HTTP_EDIT_DOMAIN = `${DOMAIN_PREFIX}-http-edit.registry-baseline.example`;
-const ADDIE_DOMAIN = `${DOMAIN_PREFIX}-addie.registry-baseline.example`;
-const MCP_DOMAIN = `${DOMAIN_PREFIX}-mcp.registry-baseline.example`;
+// These cases exercise production persistence; reserved .example names are
+// only accepted with sandbox:true, which intentionally does not persist.
+const WITH_AGENTS = `${DOMAIN_PREFIX}-with-agents.registry-baseline.com`;
+const NO_AGENTS = `${DOMAIN_PREFIX}-no-agents.registry-baseline.com`;
+const EDIT_DOMAIN = `${DOMAIN_PREFIX}-edit.registry-baseline.com`;
+const HTTP_HOSTED_DOMAIN = `${DOMAIN_PREFIX}-http-hosted.registry-baseline.com`;
+const HTTP_COMMUNITY_DOMAIN = `${DOMAIN_PREFIX}-http-community.registry-baseline.com`;
+const HTTP_EDIT_DOMAIN = `${DOMAIN_PREFIX}-http-edit.registry-baseline.com`;
+const ADDIE_DOMAIN = `${DOMAIN_PREFIX}-addie.registry-baseline.com`;
+const MCP_DOMAIN = `${DOMAIN_PREFIX}-mcp.registry-baseline.com`;
 const ATTACKER_AGENT = 'https://agent.attacker.example';
 
 const mcpAuth: MCPAuthContext = {

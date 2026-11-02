@@ -16,6 +16,19 @@ required_tools:
 invariants:
   - status.monotonic
 
+narrative: |
+  This scenario grades total_budget redistribution, not currency selection —
+  that is graded by media_buy_seller/pricing_currency_filter. A media buy
+  carries a single currency, and update_media_buy cannot redenominate it, so
+  every total_budget this scenario sends must repeat the currency the buy was
+  committed in.
+
+  The buyer therefore reads the committed buy back before updating it and
+  reuses media_buys[0].currency, which get_media_buys requires. Reading the
+  currency off the buy instead of restating the seeded rate card keeps the
+  grading on the redistribution arithmetic whichever currency the seller
+  committed in.
+
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -27,7 +40,11 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
-  description: "The controller seeds two fixed-budget products in one currency."
+  description: |
+    The controller seeds two fixed-budget products in one currency, so the buy
+    below commits in exactly one. The scenario then asserts against the currency
+    the seller reports on the committed buy rather than against the seeded rate
+    card; it does not grade which currency that is.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -57,7 +74,7 @@ fixtures:
 
 phases:
   - id: setup
-    title: "Create a fixed-allocation buy"
+    title: "Create a fixed-allocation buy and read its committed state"
     steps:
       - id: sync_account
         title: "Establish the buyer account"
@@ -103,7 +120,9 @@ phases:
         context_outputs:
           - name: media_buy_id
             path: "media_buy_id"
-          - name: revision
+          # Not `revision`: get_media_buys writes that key by convention, and the
+          # read below would overwrite the revision create_media_buy returned.
+          - name: created_revision
             path: "revision"
           - name: first_package_id
             path: "packages[0].package_id"
@@ -112,6 +131,25 @@ phases:
           - check: field_value
             path: "total_budget"
             value: 100000
+
+      - id: read_committed_currency
+        title: "Read the committed buy's currency"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        context_outputs:
+          - name: media_buy_currency
+            path: "media_buys[0].currency"
+        validations:
+          - check: response_schema
 
   - id: redistribute
     title: "Apply a media-buy-level total atomically"
@@ -128,10 +166,10 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
-          revision: "$context.revision"
+          revision: "$context.created_revision"
           total_budget:
             amount: 50000
-            currency: "USD"
+            currency: "$context.media_buy_currency"
           idempotency_key: "$generate:uuid_v4#total_budget_redistribution_update"
         validations:
           - check: response_schema
@@ -161,6 +199,10 @@ phases:
         validations:
           - check: response_schema
           - check: field_value
+            path: "media_buys[0].currency"
+            value: "$context.media_buy_currency"
+            description: "Redistribution rescales the buy without redenominating it"
+          - check: field_value
             path: "media_buys[0].total_budget"
             value: 50000
           - check: field_value
@@ -172,13 +214,15 @@ phases:
 
   - id: reject_ambiguous_update
     title: "Reject an inconsistent total_budget assertion"
+    depends_on:
+      - setup
     steps:
       - id: reject_total_with_packages
         title: "Reject total_budget that does not match the explicit package sum"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
-        stateful: false
+        stateful: true
         expect_error: true
         sample_request:
           account:
@@ -188,7 +232,7 @@ phases:
           media_buy_id: "$context.media_buy_id"
           total_budget:
             amount: 60000
-            currency: "USD"
+            currency: "$context.media_buy_currency"
           packages:
             - package_id: "$context.first_package_id"
               budget: 99999

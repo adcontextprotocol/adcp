@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/principal-relationship.json",
+  "title": "Principal Relationship",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "The seller's commercial relationship with the authenticated caller, as get_principal reports it. Present when a relationship or an application exists; omitted when the seller has no relationship with the caller and no application in progress, as for an identity-established caller (docs/building/by-layer/L1/security.mdx#web-bot-auth-identities). See docs/protocol/get_principal.mdx#relationship-status.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/principal-relationship-status.json",
+      "description": "Current state of the relationship."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship lapses unless renewed. Absent means no scheduled expiry. principal.changed fires with reason relationship_expiring at a seller-chosen lead time before this instant."
+    },
+    "setup": {
+      "type": "object",
+      "description": "The caller's next step while status is pending_approval, in the same shape as sync_accounts setup. Specific to the authenticated caller, never seller-wide.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL where a human at the buyer completes the step."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable description of what is needed."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this step expires."
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "additionalProperties": true
+}

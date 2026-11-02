@@ -589,6 +589,41 @@ test('branch advancement during draft byte verification prevents public edit', t
   assert.doesNotMatch(f.calls(), /github publish|r2 /);
 });
 
+// A later maintained-branch commit; the publication checkout stays put.
+function laterCommit(f, files) {
+  f.git('checkout', '-q', '-b', 'later');
+  for (const [file, body] of Object.entries(files)) f.write(file, body);
+  f.git('add', '--', ...Object.keys(files));
+  f.git('commit', '-qm', 'Later maintained commit');
+  const later = f.git('rev-parse', 'HEAD');
+  f.git('checkout', '-q', '--detach', f.merged);
+  return later;
+}
+
+test('an unrelated maintained-branch advance during publication does not invalidate it', t => {
+  const f = mergedFixture(t);
+  absentRelease(f);
+  const later = laterCommit(f, { 'server/app.ts': 'export {};\n' });
+  const published = f.publish({ADVANCE_DOWNLOAD:'1', ADVANCE_TO:later});
+  successful(published);
+  assert.match(published.stdout, /Publication fence accepted origin\/3\.1\.x advance/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.dir, 'release.json'))).isDraft, false);
+  successful(f.upload(immutable, {ADVANCE_AWS:'1', ADVANCE_TO:later}));
+  assert.ok(f.calls().includes(`r2 put protocol/${version}.tgz.crt`), f.calls());
+  // Generation-time checks still require the exact tested head.
+  refused(f.script('current', f.authority), /stale tested SHA/);
+  refused(f.script('pending', f.authority), /stale tested SHA/);
+});
+
+test('a maintained-branch advance that changes release artifacts still stops publication', t => {
+  const f = mergedFixture(t);
+  absentRelease(f);
+  const later = laterCommit(f, { [`dist/protocol/${version}.tgz.sig`]: 'resigned\n' });
+  refused(f.publish({ADVANCE_DOWNLOAD:'1', ADVANCE_TO:later}), /later commits change release paths/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.dir, 'release.json'))).isDraft, true);
+  assert.doesNotMatch(f.calls(), /github publish|r2 /);
+});
+
 for (const kind of ['signed tuple substitution','executable mode','untracked schema','ignored compliance','symlink file','symlink directory','missing compliance','local package version','wrong checkout']) {
   test(`committed preflight rejects ${kind} before any release mutation`, t => {
     const f = mergedFixture(t);

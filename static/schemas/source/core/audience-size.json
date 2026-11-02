@@ -3,6 +3,7 @@
   "$id": "/schemas/core/audience-size.json",
   "title": "Audience Size",
   "description": "A count of people reported as a range with a stated precision, so a seller never has to invent a point value for a size its platform only reports as an interval, an approximation, or a bucket. lower_bound MUST be less than or equal to upper_bound, and MUST equal upper_bound when precision is 'exact' (JSON Schema cannot express this cross-field rule; it is enforced by conformance, not validation). A seller MUST NOT use this object to disclose a size below its minimum audience size; follow the audience's too_small status and minimum_size instead. Defined once so every surface that reports an audience size uses the same shape.",
+  "x-added-in": "3.3.0",
   "type": "object",
   "properties": {
     "lower_bound": {

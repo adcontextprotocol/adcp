@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/principal-relationship-status.json",
+  "title": "Principal Relationship Status",
+  "description": "State of the seller's commercial relationship with the authenticated caller, as get_principal reports it in relationship.status.",
+  "type": "string",
+  "enum": ["pending_approval", "active", "suspended", "blocked"],
+  "enumDescriptions": {
+    "pending_approval": "The seller is reviewing an application or approval for this caller. The same value and meaning as enums/account-status.json pending_approval, which the same human sees on sync_accounts. setup, when present, carries the caller's next step.",
+    "active": "The relationship is in good standing.",
+    "suspended": "The relationship is temporarily paused; calls that need it fail with AGENT_SUSPENDED.",
+    "blocked": "The relationship is permanently denied; calls that need it fail with AGENT_BLOCKED."
+  },
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

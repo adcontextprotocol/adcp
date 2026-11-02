@@ -8,6 +8,13 @@ on:
   schedule:
     - cron: "0 0 * * 0"
 
+# Cancel a PR's superseded analysis when a newer commit is pushed. Push and
+# schedule runs each get their own group (run_id), so main-branch analyses are
+# never cancelled or evicted.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   analyze:
     name: Analyze

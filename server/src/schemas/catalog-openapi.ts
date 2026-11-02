@@ -13,47 +13,27 @@
 
 import { z } from 'zod';
 import { registry, ErrorSchema } from './registry.js';
+import { CatalogResolveRequestSchema } from './catalog-resolve.js';
 
 // ── Shared shapes ───────────────────────────────────────────────
 
 const CatalogIdentifierSchema = z
   .object({
-    type: z.string().openapi({ example: 'domain' }),
-    value: z.string().openapi({ example: 'nytimes.com' }),
+    type: CatalogResolveRequestSchema.shape.identifiers.element.shape.type.openapi({ example: 'domain' }),
+    value: CatalogResolveRequestSchema.shape.identifiers.element.shape.value.openapi({ example: 'streamhaus.com' }),
   })
   .openapi('CatalogIdentifier');
 
-const FactProvenanceSchema = z
-  .object({
-    type: z.enum([
-      'agency_allowlist',
-      'publisher_declaration',
-      'impression_log',
-      'ssp_inventory',
-      'deal_history',
-      'crawl',
-      'data_partner',
-      'member_assertion',
-    ]).openapi({
-      description:
-        'How the caller knows these identifiers — the trust/audit envelope on the fact. Determines the confidence the catalog assigns. `crawl` is reserved for server-side pipelines; callers use the others.',
-    }),
-    context: z.string().optional().openapi({ example: 'unilever_q3', description: 'Optional free-text annotation (campaign, dataset).' }),
-  })
-  .openapi('FactProvenance');
+const FactProvenanceSchema = CatalogResolveRequestSchema.shape.provenance.openapi('FactProvenance');
 
 // ── POST /api/registry/resolve ──────────────────────────────────
 
-const ResolveRequestSchema = z.object({
-  identifiers: z.array(CatalogIdentifierSchema).min(1).max(10000).openapi({
-    description: 'Identifiers to resolve (and, in resolve mode, contribute). Max 10,000 per call for all callers.',
-  }),
+const ResolveRequestSchema = CatalogResolveRequestSchema.safeExtend({
+  identifiers: z.array(CatalogIdentifierSchema).min(1).max(10000).describe(CatalogResolveRequestSchema.shape.identifiers.description!),
   provenance: FactProvenanceSchema,
-  mode: z.enum(['resolve', 'lookup']).default('resolve').openapi({
-    description:
-      "`resolve` (default) contributes the identifiers, auto-creates missing catalog entries, logs demand activity, and returns rids — requires authentication. `lookup` is a pure read: no write, no activity log, no auth.",
-  }),
-}).openapi('ResolveRequest');
+}).openapi('ResolveRequest', {
+  description: 'Up to 10,000 identifiers plus provenance. resolve requires authentication and contributes unknown identifiers; lookup is read-only. Domain/subdomain values must follow core/identifier.json; production rejects reserved test domains. sandbox: true simulates contributions without writes.',
+});
 
 const ResolvedEntrySchema = z.object({
   identifier: CatalogIdentifierSchema,
@@ -66,6 +46,7 @@ const ResolvedEntrySchema = z.object({
 }).openapi('ResolvedEntry');
 
 const ResolveResponseSchema = z.object({
+  sandbox: z.literal(true).optional().openapi({ description: 'Present for a non-persistent sandbox simulation. New property handles are ephemeral.' }),
   resolved: z.array(ResolvedEntrySchema),
   summary: z.object({
     total: z.number().int(),

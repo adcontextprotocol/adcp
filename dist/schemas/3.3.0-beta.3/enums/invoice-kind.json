@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/invoice-kind.json",
+  "title": "Invoice Kind",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Kind of an invoice record in get_account_financials. Amounts on invoices and invoice lines are non-negative, so the kind carries the sign: a credit_note reduces what the buyer owes by its amount. A document is one direction: net-negative corrections go on a credit_note, never on an invoice. Experimental in AdCP 3.3. Absent means invoice. Sellers MUST NOT send credit_note records to callers pinned below AdCP 3.3, because a caller that sums invoices[].amount without knowing the kind would count the credit as a charge; a caller with no declared pin is treated as pinned below AdCP 3.3.",
+  "type": "string",
+  "enum": [
+    "invoice",
+    "credit_note"
+  ],
+  "enumDescriptions": {
+    "invoice": "A charge. The amount is owed by the buyer. This is the implied kind when invoice_kind is absent. A rebill is a new invoice that carries adjusts_invoice_id pointing at the invoice it replaces; the replaced invoice is reported void or offset by a credit_note, so buyers do not count both.",
+    "credit_note": "A reduction of an earlier invoice. The amount is non-negative and is subtracted from what the buyer owes; it MUST NOT be sent as a negative number. It SHOULD carry adjusts_invoice_id pointing at the invoice it reduces (a goodwill credit with no target omits it); the target MAY fall outside the returned invoices window. due_date is omitted on a credit note, and paid_date, when present, is the date the credit was applied or refunded."
+  }
+}

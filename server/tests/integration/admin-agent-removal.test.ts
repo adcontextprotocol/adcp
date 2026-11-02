@@ -179,7 +179,9 @@ describe('Admin cross-org agent management (/api/admin/accounts/:orgId/agents)',
   it('POST registers a canonicalized agent, seeds metadata, and writes an audit row', async () => {
     const orgId = `${TEST_PREFIX}_post_create`;
     const domain = `create.${TEST_DOMAIN_SUFFIX}`;
-    const agentUrl = `https://sales.${domain}/mcp/`;
+    // Scheme and host case, a default port and surrounding whitespace fold;
+    // the path does not, so the key keeps /mcp exactly (#7830).
+    const agentUrl = ` HTTPS://SALES.${domain.toUpperCase()}:443/mcp `;
     const canonicalUrl = `https://sales.${domain}/mcp`;
     await seedOrgWithAgents(orgId, 'repair-post-create', []);
     await seedVerifiedDomain(orgId, domain);
@@ -259,7 +261,7 @@ describe('Admin cross-org agent management (/api/admin/accounts/:orgId/agents)',
     const res = await request(app)
       .post(`/api/admin/accounts/${orgId}/agents`)
       .send({
-        url: `HTTPS://SALES.${domain.toUpperCase()}/mcp/`,
+        url: `HTTPS://SALES.${domain.toUpperCase()}:443/mcp`,
         type: 'creative',
         name: 'Updated agent',
         visibility: 'private',

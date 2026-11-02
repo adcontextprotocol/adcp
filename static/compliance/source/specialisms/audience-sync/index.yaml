@@ -216,6 +216,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-audience_sync-05028b55"
+            sandbox: true
 
           idempotency_key: "$generate:uuid_v4#audience_sync_audience_sync_discover_audiences"
           context:
@@ -259,6 +260,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-audience_sync-05028b55"
+            sandbox: true
           audiences:
             - audience_id: "adcp-test-audience-001"
               name: "AdCP test audience"
@@ -323,6 +325,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-audience_sync-05028b55"
+            sandbox: true
           audiences:
             - audience_id: "adcp-test-audience-001"
               delete: true

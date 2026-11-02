@@ -1,0 +1,284 @@
+---
+title: Async identity and convergence
+description: "Normative AdCP rules for correlating asynchronous work across direct responses, polling, continuations, A2A tasks, and webhooks."
+"og:title": "AdCP — Async identity and convergence"
+---
+
+AdCP operations can be observed through more than one channel. A direct task
+response, an AdCP task-status read, an A2A transport Task, a continuation, and
+a webhook can all describe related work, but their identifiers are not
+interchangeable.
+
+This page defines the normative identity, convergence, resumability, and
+publication rules shared by every AdCP task. Task-specific documentation can
+narrow these rules, but MUST NOT weaken them.
+
+## Identity model
+
+Implementations MUST retain each identity in its own namespace and MUST NOT
+substitute one identity for another.
+
+| Identity | Authority and purpose | MUST NOT be used as |
+|---|---|---|
+| Client operation ID (`operation_id`, when present) | Client-generated correlation for one logical operation across local attempts and webhook routing | A seller work handle, replay fence, or authorization grant |
+| Request `idempotency_key` | Client-generated replay identity for one canonical mutating request | An operation ID, AdCP task ID, A2A Task ID, or webhook delivery key |
+| AdCP `task_id` | Seller-generated handle for durable AdCP work, read through `get_task_status` or legacy `tasks/get` | An A2A Task ID, continuation token, or idempotency key |
+| A2A `Task.id` | A2A transport identity for one invocation or native A2A continuation | The AdCP `task_id` returned inside an AdCP Submitted result |
+| A2A `contextId` | A2A conversation correlation | A work handle, replay fence, or continuation capability by itself |
+| Webhook `idempotency_key` | Sender-generated delivery identity, stable across retries of the same payload | The request idempotency key or stable identity of a re-emitted logical observation |
+| Webhook `notification_id`, when defined for the event | Stable identity of one logical notification across re-emissions | A delivery-attempt key or authorization grant |
+| Continuation token or descriptor | Current, generation-scoped authority to resume a paused transport interaction | A polling handle or general operation credential |
+
+An SDK MAY present a composite operation object containing several of these
+values. That convenience object does not merge their semantics.
+
+### Stable seller-work identity
+
+Once an operation is bound to an AdCP `task_id`, every later AdCP observation
+of that operation—`submitted`, subsequent status reads, paused states,
+terminal results, task webhooks, and reconciliation—MUST repeat that value or
+inherit it from an envelope whose binding is unambiguous. A different explicit
+AdCP `task_id` for the same operation is a protocol conflict. A client MUST NOT
+silently rebind the operation or treat the new value as a successor.
+
+An A2A transport Task can complete with an AdCP Submitted result. In that case,
+the A2A `Task.id` identifies the completed transport invocation and the AdCP
+`task_id` identifies the continuing seller work. Polling uses only the AdCP
+handle. Native A2A continuation uses only the A2A Task and context identifiers.
+
+## One operation, competing observations
+
+Direct responses, AdCP polling results, continuation responses, and
+authenticated webhooks are competing observations of one logical operation.
+They are not independent state machines.
+
+An observation is authoritative only after the receiver has:
+
+1. authenticated its source;
+2. validated its envelope and task-specific payload;
+3. matched the operation, account, task type, and all bound identities; and
+4. verified that the observation is permitted from the operation's current
+   state.
+
+The first authoritative terminal observation wins. The receiver MUST durably
+record its terminal identity and canonical payload before publishing terminal
+business side effects. Later behavior is:
+
+- an exact terminal duplicate is acknowledged and does not republish effects;
+- a non-terminal observation after terminal settlement is acknowledged as
+  stale and does not reopen the operation; and
+- a different terminal payload or terminal status is a protocol conflict and
+  MUST NOT replace, merge with, or republish over the winner.
+
+`completed`, `failed`, `canceled`, and `rejected` are terminal. `working`,
+`submitted`, `input-required`, and `auth-required` are non-terminal. None can
+displace an accepted terminal result. `unknown` is indeterminate and is not an
+authoritative terminal observation: the receiver MUST reconcile it, and it
+cannot settle or reopen an operation. A terminal webhook MAY arrive before the
+originating request returns `working` or `submitted`; this is an allowed race,
+not an unknown-task error. The implementation preserves the validated terminal
+observation and converges the later response onto it.
+
+### Terminal identity and equivalence
+
+For asynchronous work already bound to a seller task, one terminal settlement
+is identified by `(authenticated seller identity, AdCP task_id)`. `task_type`,
+operation, account, and principal bindings are validated constraints on that
+identity. A mismatch is a correlation conflict, not a second settlement.
+Synchronous inline terminal responses have no AdCP task identity and cannot
+race a task webhook: 3.x sellers MUST NOT synthesize a task webhook for an
+inline terminal response.
+
+Channels wrap the task result differently. Before duplicate comparison, a
+receiver extracts the task-specific terminal value:
+
+| Channel | Terminal value used for comparison |
+|---|---|
+| Direct response or A2A artifact | The task-specific response body selected by the invoked task schema, before transport-envelope fields are injected |
+| `get_task_status` / `tasks/get` | `result` when the terminal artifact is present. A legacy failed poll carrying only singular `error` proves terminal status but not full payload equivalence; a canceled poll with no artifact has canonical value `null` |
+| Task webhook | `result`, validated against the originating task's terminal response schema; a fatal error is normalized to the same core Error shape used by polling |
+
+The canonical comparison record is RFC 8785 JCS of `{task_type, status,
+value}`. Transport-only observation fields—including A2A Task and context
+identifiers, webhook `idempotency_key`, `notification_id`, `operation_id`,
+AdCP `task_id`, delivery timestamp, envelope `message`, and `replayed`—are not
+part of `value`. A field declared by the task-specific response schema remains
+part of `value`, including task-body `context` or `errors` when declared.
+
+When both a terminal `result` and the polling convenience `error` are present,
+the error MUST agree with the canonical fatal error in `result`. A legacy 3.x
+poll that exposes only singular `error` can establish that the task failed, but
+cannot prove that a later full terminal artifact is an exact duplicate. The
+receiver preserves the failure fence and reconciles the complete artifact; it
+does not publish from the incomplete observation or call a different payload
+equivalent. More generally, when a channel cannot be validated or normalized
+to the selected task schema, it is not authoritative for publication.
+
+## Normative race table
+
+“Acknowledge” below means return the success form appropriate to the channel.
+For an authenticated HTTP webhook, that is a `2xx` response.
+
+| Race or recovery point | Required winner and state transition | Retry or acknowledgement behavior |
+|---|---|---|
+| Direct terminal response vs. terminal webhook | The first authoritative terminal observation wins | Exact duplicate: acknowledge. Different terminal result: reject as a protocol conflict and preserve the winner |
+| Poll terminal result vs. terminal webhook | The first authoritative terminal observation wins regardless of channel | Exact duplicate: acknowledge. Conflict: reject; polling or webhook order gives neither channel priority |
+| Terminal webhook arrives before the request returns `submitted` or `working` | Preserve the terminal result; the later non-terminal response inherits the bound seller-work identity and is stale | Do not reject the webhook merely because local request completion has not yet been observed |
+| Terminal callback vs. input or authorization resume | Terminal settlement wins once authoritative | A resume that has not dispatched becomes stale and MUST NOT dispatch. If dispatch already crossed its commitment boundary, reconcile and surface ambiguity rather than inventing an outcome |
+| Same webhook delivery key and identical payload, first copy still active | Exactly one receiver owns publication | Other copies return a retryable failure, normally `503`, until the owner durably acknowledges; after acknowledgement they return `2xx` |
+| Same webhook delivery key and different payload | Neither payload may redefine the delivery key after its first binding | Return non-retryable `409 Conflict`; do not dispatch the changed payload |
+| Different delivery keys for the same logical terminal observation | The first authoritative terminal observation owns publication | Correlate by `(authenticated seller identity, AdCP task_id)` and canonical terminal payload; use stable notification identity as supplemental evidence when present; acknowledge duplicates without republishing |
+| Two receivers attempt terminal publication | One durable publication owner is established before the application handler or other externally visible side effect runs | Non-owners wait or return a retryable response. Recording acknowledgement only after both handlers run is non-conformant |
+| Pause A is resumed and produces pause B | B becomes the current generation | B MUST be durably established and recoverable before A is consumed; only B can accept later input |
+| Crash after B is stored but before A points to B | Recovery completes or rolls back the staged handoff without losing the only usable generation | A remains usable until B is discoverable through the operation, or reconciliation returns B; an unreachable B is non-conformant |
+| Crash after A points to B but before B reaches the caller | B remains discoverable from the operation and the old generation | Retrying or reconciling A returns the current descriptor for B without dispatching input again |
+| Stale or concurrent resume of A after B is current | B remains current; A cannot dispatch | Fail closed with a typed stale-generation or in-progress result; never advance seller work twice |
+| Crash after publication ownership but before durable acknowledgement | The same owner or a recovery owner reconciles the reserved publication | Do not hand the same observation to an unconstrained second publisher; retry remains safe and bounded |
+| Legacy atomic operation projected onto multiple compact mutations | No step runs unless the facade can preserve the legacy all-or-none boundary | Otherwise reject before the first mutation. A compensating saga is recovery, not atomic compatibility |
+
+## Webhook delivery-key binding
+
+A webhook publisher MUST bind `(authenticated sender identity,
+idempotency_key)` to the complete authenticated payload's RFC 8785 JSON
+Canonicalization Scheme (JCS) form for the advertised retry window. Duplicate
+object keys MUST be rejected before canonicalization. It reuses that key only
+for JCS-equivalent retries of that delivery. A re-emission of the same logical
+notification with a changed
+envelope or payload uses a fresh delivery key and retains the same
+`notification_id` when that event type defines one.
+
+A receiver MUST establish the same immutable binding before application side
+effects. It fingerprints the authenticated canonical payload and stores that
+fingerprint with the delivery claim. The three outcomes are distinct:
+
+| Delivery state | HTTP behavior | Meaning |
+|---|---|---|
+| Same key and payload, actively processing | Retryable `503` | No second publisher runs; sender retries later |
+| Same key and payload, durably acknowledged | `2xx` | Exact duplicate is complete |
+| Same key, different payload | Non-retryable `409` | Delivery identity conflict; sender must not retry that key with either changed payload |
+
+The delivery key prevents duplicate transport processing. The stable terminal
+observation identity prevents duplicate terminal publication across distinct
+deliveries. Implementations need both protections.
+
+## Resumability and continuation generations
+
+`input-required` and `auth-required` describe why work is paused. They do not,
+by themselves, prove that the interaction can be resumed.
+
+An SDK or transport exposes a resume operation only when it has a verified
+continuation descriptor containing the native protocol and transport identity
+required for that continuation. For A2A, that includes the native A2A Task ID
+and context ID. An AdCP `task_id` from `get_task_status` is only a polling
+handle and MUST NOT be copied into a missing A2A Task ID or otherwise used to
+fabricate a continuation.
+
+AdCP 3.2 defines no transport-neutral continuation request or generic
+continuation descriptor in task-body schemas. Application-layer
+`input-required` and `auth-required` responses are therefore resumable only
+when the active transport independently supplies its native verified resume
+identity, such as A2A `Task.id` plus `contextId`. Standardizing a portable
+descriptor without a matching redemption method would create an unusable
+credential; that wire surface is deferred to AdCP 4.0.
+
+If a transport did not return enough verified identity to continue, the client
+fails closed and directs the caller to polling, reconciliation, or a new
+operation as allowed by the task. A `context_id` or status label alone does not
+authorize a resume.
+
+Continuation tokens are opaque bearer capabilities. They MUST:
+
+- contain at least 128 bits of cryptographically random entropy;
+- be bound to the authenticated principal, operation, transport identity, and
+  one continuation generation;
+- be single-generation and expire after a bounded interval;
+- never appear in logs, analytics, URLs, error messages, or telemetry; and
+- be compared and stored using the same protections as other bearer secrets.
+
+When resuming generation A yields generation B, the transition is
+create-B, make-B discoverable from the operation, then consume A. These are
+protocol invariants even when an implementation uses more than one durable
+store. Ordering that merely prevents duplicate dispatch but can strand B after
+a crash is not recoverable and is non-conformant.
+
+## Publication and durable acknowledgement
+
+Deduplication is not complete when a receiver checks a marker and plans to
+write an acknowledgement later. Before invoking an adopter callback, billing
+hook, fulfillment handler, or other externally visible side effect, the
+receiver MUST durably establish a single publication owner for that terminal
+observation.
+
+After successful publication it records durable acknowledgement. Exact
+duplicates then return success without invoking the handler. If publication
+fails, ownership can be released or expire under a bounded recovery policy.
+If a crash makes the external side effect uncertain, the receiver reconciles
+that side effect or preserves the uncertainty fence; it MUST NOT assume failure
+and give a second publisher unrestricted ownership.
+
+## Retry horizons
+
+An agent's capability response advertises the request idempotency replay
+window and, when it emits webhooks, its maximum webhook delivery retry window
+as `webhook_signing.delivery_retry_horizon_seconds`.
+These are guaranteed floors for retained replay evidence, not suggestions to
+keep retrying until the last second.
+
+Receivers retain the immutable webhook delivery-key-to-payload binding and
+terminal publication proof for at least the greater of 24 hours and the
+sender's advertised retry window.
+When no webhook retry window is advertised by a 3.x peer, both sides use the
+3.x compatibility floor of 24 hours. A publisher MUST NOT retry after the
+window it advertised for the delivery.
+
+Retention is measured from the first accepted request or delivery. Extending
+retention on every retry would allow a hostile or broken peer to keep state
+alive indefinitely. Clock-skew tolerance cannot shorten the advertised
+window.
+
+## Composite and compatibility operations
+
+Splitting one legacy task into multiple compact tasks changes transaction and
+failure boundaries. A compatibility facade is lossless only if it preserves
+the legacy task's validation and atomic-commit semantics, not merely its final
+field values.
+
+For example, a legacy `create_media_buy` can include packages, creatives, and
+assignments in one request. Structural, reference, and routing validation of
+those inline creatives occurs before commit, so one such validation failure
+rejects the request without creating the buy. Later asynchronous policy or
+human review can still reject a creative without rolling back an already valid
+buy. A facade implemented as compact purchase followed by creative sync moves
+the pre-commit validation boundary and can commit spend before it discovers a
+structural or routing failure. That sequence is not a lossless implementation.
+
+A compatibility facade therefore either:
+
+1. validates and commits every component through one private all-or-none
+   boundary; or
+2. rejects before the first mutation.
+
+When a caller deliberately uses the compact tasks as separate operations,
+partial success is valid but MUST be explicit. Each step has its own
+authorization, idempotency key, task identity, terminal outcome, and recovery
+path. Compensation is a new mutation with its own observable result; it MUST
+NOT be described as rollback of the earlier committed step.
+
+See [Legacy and compact lifecycle compatibility](https://github.com/adcontextprotocol/adcp/blob/main/specs/legacy-compact-lifecycle-compatibility.md)
+for the media-buy transaction-boundary matrix.
+
+## Implementation checklist
+
+For every asynchronous or compatibility workflow, document and test:
+
+1. every identity and its issuing authority;
+2. the point at which seller-work identity becomes stable;
+3. the canonical terminal payload and conflict comparison;
+4. publication ownership before external effects and acknowledgement after;
+5. continuation generation, supersession, and crash discovery;
+6. advertised request and webhook retry horizons;
+7. every mutation boundary and possible partial-success state; and
+8. recovery after a crash at each boundary.
+
+Failing closed prevents an unsafe duplicate. Conformance also requires a
+durable route to discover and complete legitimate committed work.

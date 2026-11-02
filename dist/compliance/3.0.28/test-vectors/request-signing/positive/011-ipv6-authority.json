@@ -1,0 +1,30 @@
+{
+  "name": "IPv6 literal authority; brackets preserved in @target-uri and @authority",
+  "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 2: IPv6 brackets preserved; @authority derivation)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://[2001:db8::1]/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:QplWbT2vVnF_TSfY5w5d8zQYkLpD7Bp4rxE9uKHl14UjBmUnF6mwKB8pEgoFTKHF1jVwwL14hx_AM6sFBtT9CA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://[2001:db8::1]/adcp/create_media_buy\n\"@authority\": [2001:db8::1]\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true
+  },
+  "$comment": "Bare IPv6 literal in authority. RFC 9421 canonicalizes @target-uri and @authority with brackets retained; common host-parsing libraries strip brackets during authority split and must reinstate them in the canonical form. A verifier that emits '2001:db8::1' without brackets (or with an extra ':' splitting ambiguity) will fail step 10. Paired with 012-ipv6-authority-default-port-stripped to cover the '@target-uri must not strip the bracket while stripping the default port' interaction. Signature generated with the test-ed25519-2026 private key from the expected_signature_base."
+}

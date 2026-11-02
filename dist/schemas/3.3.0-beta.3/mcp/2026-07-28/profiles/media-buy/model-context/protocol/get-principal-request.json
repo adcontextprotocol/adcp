@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string"
+    },
+    "adcp_major_version": {
+      "type": "integer"
+    },
+    "reporting_subscription_page": {
+      "type": "object",
+      "properties": {
+        "subscription_id": {
+          "type": "string"
+        },
+        "list": {
+          "enum": [
+            "accounts_with_exceptions",
+            "accounts_unauthorized",
+            "prior_versions"
+          ]
+        },
+        "pagination": {
+          "$ref": "#/$defs/external:core~1pagination-request.json"
+        }
+      },
+      "required": [
+        "subscription_id",
+        "list"
+      ]
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "$defs": {
+    "external:core/pagination-request.json": {
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer"
+        },
+        "cursor": {
+          "type": "string"
+        }
+      }
+    },
+    "external:core/context.json": {
+      "type": "object"
+    }
+  }
+}

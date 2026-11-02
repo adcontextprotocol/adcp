@@ -158,6 +158,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-property_lists-017bea48"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           name: "Acme Outdoor approved properties"
@@ -222,6 +223,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-property_lists-017bea48"
+            sandbox: true
           name_contains: "Acme Outdoor"
 
           context:
@@ -265,6 +267,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-property_lists-017bea48"
+            sandbox: true
 
           context:
             correlation_id: "property_lists--get_property_list"
@@ -313,6 +316,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-property_lists-017bea48"
+            sandbox: true
           base_properties:
             - selection_type: "identifiers"
               identifiers:
@@ -371,6 +375,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-property_lists-017bea48"
+            sandbox: true
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
@@ -434,6 +439,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-property_lists-017bea48"
+            sandbox: true
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_outdoor_001"
@@ -480,6 +486,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-property_lists-017bea48"
+            sandbox: true
           list_id: "$context.property_list_id"
           records:
             - record_id: "delivery_random_001"
@@ -527,6 +534,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-property_lists-017bea48"
+            sandbox: true
 
           idempotency_key: "$generate:uuid_v4#property_lists_delete_list_delete_property_list"
           context:

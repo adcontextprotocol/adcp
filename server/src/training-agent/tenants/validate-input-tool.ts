@@ -63,6 +63,8 @@ export function validateInputTool(options: Partial<TrainingContext> = {}) {
     },
     {
       annotations: { readOnlyHint: true, idempotentHint: true },
+      // A 3.0 caller gets "Unknown tool" from the handler.
+      gatesOwnRelease: true,
       trainingContext: options,
     },
   );

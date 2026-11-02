@@ -1,0 +1,31 @@
+{
+  "name": "Content-Type header sent as multiple field values (malformed — field covered by signature must be single-valued)",
+  "spec_reference": "#verifier-checklist-requests step 1 (covered component fields must be single-valued; RFC 9421 §2.1 derivation rules do not permit concatenation for non-list headers)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json, text/plain",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_header_malformed",
+    "failed_step": 1
+  },
+  "$comment": "Content-Type is not a List-Structured-Field — it has a single canonical value with optional parameters. RFC 9421 §2.1 says covered field values are the field's canonical in-order concatenation only for fields the HTTP spec treats as list-typed. A proxy inserting a second Content-Type (or a client with a bug emitting two) leaves the field's meaning undefined relative to the signature base. Verifier MUST reject at parse time rather than pick one value and hope for the best."
+}

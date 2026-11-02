@@ -1,6 +1,6 @@
 import dns from "node:dns/promises";
 import net from "node:net";
-import { canonicalTargetUri } from "@adcp/sdk/signing";
+import { specExactAgentUrl } from "./db/registry-agent-url-key.js";
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import type {
   AdAgentsJson,
@@ -665,11 +665,9 @@ export class AgentValidator {
    * URLs the algorithm rejects, which never match.
    */
   private normalizeUrl(value: string): string | null {
-    try {
-      return canonicalTargetUri(value);
-    } catch {
-      return null;
-    }
+    // Shared with the registry's directory reads so the directory can never
+    // report an authorization this validator would deny (#7830).
+    return specExactAgentUrl(value);
   }
 
   private buildAdAgentsUrl(normalizedDomain: string): URL {

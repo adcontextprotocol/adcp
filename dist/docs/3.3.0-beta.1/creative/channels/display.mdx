@@ -1,0 +1,210 @@
+---
+title: Display Ads
+description: "Canonical image, HTML5, and display-tag creative contracts for AdCP 3.2."
+"og:title": "AdCP — Display Ads"
+---
+
+Display inventory uses three canonical kinds: `image`, `html5`, and `display_tag`. Size, file, interaction, and slot constraints live in `params`; a size-specific named format ID is not needed.
+
+## Static image
+
+```json
+{
+  "format_option_id": "homepage_image_300x250",
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "max_file_size_kb": 200,
+    "image_formats": ["jpg", "png", "webp"],
+    "slots": [
+      { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "image",
+  "format_option_ref": { "scope": "product", "format_option_id": "homepage_image_300x250" },
+  "assets": {
+    "image_main": {
+      "asset_type": "image",
+      "url": "https://cdn.acmeoutdoor.example/trail-pro-300x250.png",
+      "width": 300,
+      "height": 250,
+      "alt_text": "Trail Pro boot on a mountain path"
+    },
+    "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/trail-pro" }
+  }
+}
+```
+
+## Multi-size image
+
+Use `sizes[]` when one creative contract accepts a closed set of sizes:
+
+```json
+{
+  "format_kind": "image",
+  "params": {
+    "sizes": [{ "w": 300, "h": 250 }, { "w": 728, "h": 90 }, { "w": 320, "h": 50 }],
+    "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true }]
+  }
+}
+```
+
+Use min/max width and height for a genuinely responsive envelope. Exact-size, multi-size, and responsive modes are mutually exclusive.
+
+## HTML5 and third-party tags
+
+`html5` describes a buyer-supplied zip bundle that the seller hosts. `display_tag` describes a third-party-served representation. Keep them separate because validation, hosting, security, and measurement differ. Inline third-party markup is never an `html5` bundle.
+
+Display tags have three delivery types:
+
+| Delivery type | Asset contract |
+|---|---|
+| `tag_url` | One `url` asset with `url_type: "ad_request"`, or a `display_tag` asset with `delivery_type: "tag_url"` |
+| `inline_markup` | One `display_tag` asset with byte-preserved markup and its markup type |
+| `paired_redirect` | One `display_tag` asset containing both `ad_request_url` and `clickthrough_url` |
+
+The existing `tag_url` slot remains the backward-compatible default. A seller accepting inline or paired delivery publishes an explicit option with a `display_tag` slot.
+
+### Asset-rendered size
+
+Starting in AdCP 3.3, `zip`, `html`, and `display_tag` assets can describe their own rendered size, independently of a product or `format_option_ref`. This lets a buyer save a sized HTML5 creative to a library before selecting inventory.
+
+Use `width` and `height` together for a fixed size. Both are positive integers in logical entry-canvas pixels, independent of embedded image density. For expandable units, these describe the initial canvas; `sizes` lists alternative entry sizes rather than expanded states. For example, this bundle renders at 300×250:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/creative-manifest.json",
+  "format_kind": "html5",
+  "assets": {
+    "html5_bundle": {
+      "asset_type": "zip",
+      "url": "https://cdn.acme.example/creatives/spring-300x250.zip",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
+
+Use `sizes` for an asset that can render at any one of several discrete sizes. Each entry contains positive integer `width` and `height`, with no additional fields. For example, a third-party tag capable of either size carries:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/assets/display-tag-asset.json",
+  "asset_type": "display_tag",
+  "delivery_type": "tag_url",
+  "url": "https://ads.acme.example/render",
+  "sizes": [
+    { "width": 300, "height": 250 },
+    { "width": 728, "height": 90 }
+  ]
+}
+```
+
+The same fields apply to inline HTML and every display-tag delivery type, including inline markup and paired redirects. `width`/`height` and `sizes` are mutually exclusive. Omitting all three preserves the existing unsized or responsive asset shape. Responsive `min_width`/`max_width`/`min_height`/`max_height` bounds remain format-side acceptance constraints.
+
+Asset dimensions describe what the creative renders; `params` describes what a placement accepts. The following checks compare a rendered size with the selected option's published size constraints. They do not establish full technical acceptance: apply every applicable product, publisher, and placement constraint, including the [technical completeness rules](/dist/docs/3.3.0-beta.1/creative/canonical-formats#technical-completeness-and-file-size-units). Omitted fields mean no constraint only at a layer that asserts `technical_requirements_complete: true`; otherwise they remain undeclared.
+
+| Option size mode | Compatible rendered size |
+|---|---|
+| Fixed `width`/`height` | Both dimensions equal the option's dimensions. |
+| `sizes` | The complete width/height pair occurs in the option's list. |
+| Responsive bounds | Each dimension falls within every declared bound, inclusively. An omitted bound is unconstrained only when that layer asserts technical completeness. |
+| No size constraint | Any rendered size only when all applicable layers assert technical completeness; otherwise the accepted size envelope remains undeclared. |
+
+For a multi-size asset, the asset and option need at least one compatible pair. Only compatible pairs may be used when serving that option; matching width from one pair and height from another is invalid. Every listed pair must be renderable by the same supplied representation. The seller must be able to constrain execution to a compatible pair through the representation's viewport/runtime contract or supported size-macro resolution, such as `{AD_WIDTH}` and `{AD_HEIGHT}`. Metadata alone does not make a fixed tag resize. If the seller cannot enforce a compatible rendering, overlap is insufficient and the asset cannot be treated as compatible.
+
+When a backup image is required, each eligible serving size also needs a compatible backup. Compare image dimensions in logical rendered pixels, accounting for intrinsic dimensions and `pixel_ratio`; a 600×500 image at 2× covers 300×250, not 728×90. A repeatable backup slot can provide several images only when the option's slot declaration permits that array. A single-size backup narrows the sizes at which the main asset can safely serve.
+
+For pre-flight previews, select a concrete compatible size through an explicitly narrowed preview manifest or a supported size-macro contract, and check the returned render dimensions. When delivery readback includes a served variant's resolved `manifest`, its main asset records the actual rendered `width`/`height` rather than leaving a `sizes` list to be selected again during replay. This describes the served output; it does not mutate the reusable source creative or its revision. Distinct rendered sizes use distinct execution variants under the [delivery identity rules](/dist/docs/3.3.0-beta.1/creative/task-reference/get_creative_delivery#revision-attribution).
+
+An unsized asset remains schema-valid, but absence of dimensions does not establish a match with a size-constrained option. Additional inspection or validation is needed to establish compatibility. Supplied dimensions are claims about the content and must agree with the actual rendering; they are not proof that the inspected bytes or third-party response satisfy the contract.
+
+Size metadata does not replace `format_option_ref` when multiple options share a `format_kind`. Product-specific checks apply when the target option is known, whether during sync or assignment; storing a library creative without a target does not assert compatibility with a product.
+
+When projecting to size-specific legacy formats, use the main slot asset's `width`/`height` to select a compatible legacy ID. A multi-size asset needs a compatible selected pair and an unambiguous legacy candidate; otherwise the projection cannot choose a size. A creative-level `format_parameters` object is not part of this contract. The backward-compatible `url` asset does not gain size fields: to carry size with URL delivery, use a `display_tag` asset with `delivery_type: "tag_url"` in an option that declares that asset type.
+
+### Inline iframe/JavaScript
+
+```json
+{
+  "format_option_id": "inline_iframe_javascript_300x250",
+  "format_kind": "display_tag",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "supported_delivery_types": ["inline_markup"],
+    "slots": [
+      { "asset_group_id": "serving_tag", "asset_type": "display_tag", "required": true }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "display_tag",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "inline_iframe_javascript_300x250"
+  },
+  "assets": {
+    "serving_tag": {
+      "asset_type": "display_tag",
+      "delivery_type": "inline_markup",
+      "markup_type": "iframe_javascript",
+      "markup": "<iframe src=\"https://ads.acme-example.com/render?cb=%%CACHEBUSTER%%\"></iframe>"
+    }
+  }
+}
+```
+
+### Internal Redirect
+
+A two-URL internal redirect is represented portably as `paired_redirect`; the canonical kind remains `display_tag`. The asset is atomic so its two URLs cannot be mixed across rows or revisions.
+
+```json
+{
+  "format_option_id": "acme_internal_redirect_300x250",
+  "format_kind": "display_tag",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "supported_delivery_types": ["paired_redirect"],
+    "slots": [
+      { "asset_group_id": "serving_tag", "asset_type": "display_tag", "required": true }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "display_tag",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "acme_internal_redirect_300x250"
+  },
+  "assets": {
+    "serving_tag": {
+      "asset_type": "display_tag",
+      "delivery_type": "paired_redirect",
+      "ad_request_url": "https://ads.acme-example.com/ad?slot=42&cb=%%CACHEBUSTER%%",
+      "clickthrough_url": "https://click.acme-example.com/redirect?dest=%%DEST_URL_ESC%%"
+    }
+  }
+}
+```
+
+Both fields are required by schema. A half-present pair is invalid. Do not split the pair into independent URL slots.
+
+Buyers discover seller acceptance from `Product.format_options[]`. Creative agents that can build or validate these contracts advertise matching `creative.supported_formats[]` entries.
+
+See [Creative representation sets](/dist/docs/3.3.0-beta.1/creative/representation-sets), [Canonical formats](/dist/docs/3.3.0-beta.1/creative/canonical-formats), [Creative manifests](/dist/docs/3.3.0-beta.1/creative/creative-manifests), and [Universal macros](/dist/docs/3.3.0-beta.1/creative/universal-macros).

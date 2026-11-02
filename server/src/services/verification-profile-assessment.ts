@@ -84,6 +84,7 @@ export function deriveVerificationProfileRoleAssessments(input: {
   const verification = deriveVerificationStatus(
     input.result.agent_profile?.specialisms ?? [],
     input.storyboardStatuses,
+    input.result.adcp_version,
   );
   const bundles = input.result.bundle_results ?? [];
   const failures = input.result.failures ?? [];

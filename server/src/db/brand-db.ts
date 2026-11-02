@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import { isValidRelationshipTrust } from '../types.js';
 import { preserveBrandTrustFields, stripBrandTrustFields } from '../services/brand-trust-fields.js';
+import { BRAND_REVISION_SNAPSHOT_FIELDS, pickSnapshotFields } from './registry-revision-snapshot.js';
 
 /**
  * Brand-manifest keys that must not be accepted from caller-supplied
@@ -37,7 +38,7 @@ import { preserveBrandTrustFields, stripBrandTrustFields } from '../services/bra
  *
  * See issue #3467 and the architecture follow-up there.
  */
-const DISALLOWED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification', 'brand_context']);
+export const DISALLOWED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification', 'brand_context']);
 
 /**
  * Stable precedence for selecting a registry fact when legacy or partially
@@ -71,7 +72,19 @@ export function sanitizeBrandManifest(
   return stripped ?? manifest;
 }
 
+/**
+ * Reduce a `brands` row to the fields a revision snapshot may carry, then
+ * apply the brand manifest's own rules on top. The row-level allowlist lives
+ * in `registry-revision-snapshot.ts` and is what keeps ownership, contact and
+ * verification columns out of revision history; the manifest pass below keeps
+ * classifier output and private brand context out of it as well.
+ */
 export function sanitizeBrandSnapshot<T extends Record<string, unknown>>(snapshot: T): T {
+  const picked = pickSnapshotFields(snapshot, BRAND_REVISION_SNAPSHOT_FIELDS);
+  return sanitizeBrandSnapshotManifest(picked);
+}
+
+function sanitizeBrandSnapshotManifest<T extends Record<string, unknown>>(snapshot: T): T {
   const rawManifest = snapshot.brand_manifest;
   let manifest: Record<string, unknown> | undefined;
 
@@ -1167,6 +1180,12 @@ export class BrandDatabase {
 
   /**
    * Delete a discovered brand and record removal of any hierarchy edge.
+   *
+   * `options.onlyIfPending` makes the delete conditional on the row
+   * still being unreviewed, inside the same statement. A caller that
+   * checks `review_status` first and then deletes has a window in which
+   * the record is approved and published between the two — the admin
+   * moderation queue's "reject" is exactly that shape (adcp#8338).
    */
   async deleteDiscoveredBrand(
     domain: string,
@@ -1174,6 +1193,7 @@ export class BrandDatabase {
       actor_user_id: 'system:brand-database',
       source: 'delete_discovered_brand',
     },
+    options?: { onlyIfPending?: boolean },
   ): Promise<boolean> {
     const canonicalDomain = domain.toLowerCase();
     const client = await getClient();
@@ -1181,7 +1201,7 @@ export class BrandDatabase {
       await client.query('BEGIN');
       await lockBrandHouseDomainWriter(client, canonicalDomain);
       const result = await client.query<{ domain: string; house_domain: string | null }>(
-        'DELETE FROM brands WHERE domain = $1 RETURNING domain, house_domain',
+        `DELETE FROM brands WHERE domain = $1${options?.onlyIfPending ? " AND review_status = 'pending'" : ''} RETURNING domain, house_domain`,
         [canonicalDomain],
       );
       const deleted = result.rows[0];
@@ -1584,10 +1604,16 @@ export class BrandDatabase {
 
   /**
    * Approve a pending brand (called by Addie after review).
+   *
+   * `options.onlyIfPending` narrows the UPDATE to a row that is still
+   * unreviewed, so a caller that read the status first cannot approve a
+   * record whose state changed underneath it (adcp#8338).
    */
-  async approveBrand(domain: string): Promise<boolean> {
+  async approveBrand(domain: string, options?: { onlyIfPending?: boolean }): Promise<boolean> {
     const result = await query(
-      `UPDATE brands SET review_status = 'approved' WHERE domain = $1`,
+      `UPDATE brands SET review_status = 'approved' WHERE domain = $1${
+        options?.onlyIfPending ? " AND review_status = 'pending'" : ''
+      }`,
       [domain.toLowerCase()]
     );
     return result.rowCount !== null && result.rowCount > 0;
@@ -1796,6 +1822,15 @@ export class BrandDatabase {
         // Content edits never add, change, or drop trust fields (agents,
         // keys, authorized_operators, brand_refs). Those have dedicated
         // writers; see services/brand-trust-fields.ts.
+        //
+        // Note for the registry reviewer's trust boundary (adcp#8326): this
+        // carries a prior party's text into *this* editor's snapshot, and
+        // `sanitizeBrandSnapshot` does not strip it. Rows that carry trust
+        // fields are domain-control-verified and therefore rejected for
+        // community edit before they get here, which is what keeps the
+        // reviewer's "only the submitter's own content" invariant true. If
+        // trust fields ever become writable on an unverified row, the
+        // review prompt has to stop quoting them.
         const contentManifest = sanitizedManifest
           ? preserveBrandTrustFields(sanitizedManifest, priorManifest)
           : sanitizedManifest;
@@ -1889,7 +1924,17 @@ export class BrandDatabase {
   async rollbackBrand(
     domain: string,
     toRevisionNumber: number,
-    editor: { user_id: string; email?: string; name?: string }
+    editor: { user_id: string; email?: string; name?: string },
+    /**
+     * `onlyIfNoRollbackSince` refuses when a rollback has already
+     * restored the record past `toRevisionNumber`. Checked inside this
+     * transaction, after the row lock, because a caller that checks
+     * first and rolls back second can be overtaken: the moderation
+     * queue's revert is exactly that shape, and restoring a revision
+     * above an intervening rollback puts the undone edits back
+     * (adcp#8338).
+     */
+    options?: { onlyIfNoRollbackSince?: boolean },
   ): Promise<{ brand: DiscoveredBrand; revision_number: number }> {
     const canonicalDomain = domain.toLowerCase();
     const client = await getClient();
@@ -1924,6 +1969,16 @@ export class BrandDatabase {
       }
       if (current.review_status === 'pending') {
         throw new Error('Cannot roll back brand pending review');
+      }
+      if (options?.onlyIfNoRollbackSince) {
+        const since = await client.query(
+          `SELECT 1 FROM brand_revisions
+            WHERE brand_domain = $1 AND is_rollback AND revision_number > $2 LIMIT 1`,
+          [canonicalDomain, toRevisionNumber],
+        );
+        if ((since.rowCount ?? 0) > 0) {
+          throw new Error('Cannot roll back brand past a later rollback');
+        }
       }
 
       // Get next revision number

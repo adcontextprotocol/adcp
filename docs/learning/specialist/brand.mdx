@@ -48,7 +48,7 @@ Keep three relationship types distinct — they are easy to conflate:
 | Operator authorization | `authorized_operators[]` in `brand.json` | brand → operator (**buy-side**) | Who may buy / act *for* this brand? |
 | Agent delegation | `authorized_agents[]` in `adagents.json` | publisher → agent (**sell-side**) | Who may *sell* this publisher's inventory? |
 
-At runtime the operator axis surfaces in the **Accounts Protocol**: every action carries an `account` whose natural key is `{brand, operator}` (the `operator` is the domain of the entity operating the account; it equals the brand's own domain when the brand operates directly). The seller's `require_operator_auth` capability selects the reference shape — `true` ⇒ seller-assigned `account_id` namespaces with independent operator auth; `false` ⇒ buyer-declared `{brand, operator}` pairs via `sync_accounts`. `get_brand_identity`'s **authorized** tier is exactly an operator (linked-account) view of the identity.
+At runtime the operator axis surfaces in the **Accounts Protocol**: every action carries an `account` whose natural key is `{brand, operator}` (the `operator` is the domain of the entity operating the account; it equals the brand's own domain when the brand operates directly). The seller's `require_operator_auth` capability selects how the buyer gets its accounts. With `true`, the buyer discovers seller-assigned accounts by `account_id`, and each operator authenticates independently. With `false`, the buyer opens accounts for `{brand, operator}` through `sync_accounts`. Later calls send `account_id` in both models. `get_brand_identity`'s **authorized** tier is exactly an operator (linked-account) view of the identity.
 
 ## What you can — and can't — know
 

@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Define media-buy startup with mixed creative approval states. Sellers retain valid pending-review and rejected assignments and start eligible approved assignments by default. Add the optional package `start_requires_all_creatives_approved` gate across compatibility create/update, compact package control, and readback, with discoverable `media_buy.features.creative_start_policy` support. A structured-only `update_creative_start_policy` action routes the control independently of creative assignment mutations. The gate is consumed at first enablement for serving, independently of measured impressions. Buyers assign the complete launch set atomically or keep delivery paused during staged supply. Distinguish seller review (`pending_start`) from buyer-actionable missing coverage or blocking rejection (`pending_creatives`), and preserve existing serving and impairment rules after enablement. The new pre-activation `pending_start` to `pending_creatives` transition requires corresponding SDK transition-validator support before adopting this behavior.

@@ -9,6 +9,8 @@
  * `TestControllerStore` bound to our JSONB-persisted `SessionState`.
  */
 
+import { FORCE_HOLD_UNAVAILABLE, forceHoldUnavailable, holdsServed } from './holds/service.js';
+import { promoteStagedUpdate, stagedOnRejection } from './live-creative-updates.js';
 import {
   TestControllerError,
   SESSION_ENTRY_CAP,
@@ -38,8 +40,10 @@ import type {
 import {
   atLeastAdcpVersion,
   supportsAccountChangeFeed,
+  supportsAccountSurfaces33,
   supportsGetProductsRejected,
   supportsReliableReporting,
+  supportsSalesFixedRate,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from './types.js';
 import {
@@ -77,6 +81,7 @@ import {
   mintWrongAudDemoToken,
 } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { handleSeedCollection, SEED_COLLECTION_SCENARIO } from './collections/seed-collection.js';
 import {
   getSharedAccountCreative,
   removeSharedAccountCreative,
@@ -91,6 +96,9 @@ import {
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
 import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
+import { resetSandbox } from './account-sandbox.js';
+import { resetAccountRequests } from './account-requests.js';
+import { handleReportingSubscriptionProbe, REPORTING_SUBSCRIPTION_PROBE } from './subscription-probe.js';
 import {
   taskRegistryNamespaceForTenant,
   type TaskRegistryTenant,
@@ -873,6 +881,62 @@ async function emitCreativeStatusChanged(
   }
 }
 
+/**
+ * Experimental (creative.live_updates): report the review outcome of a staged
+ * update to subscribers that registered `creative.staged_update_changed`. The
+ * creative's status does not transition on a staged outcome, so this never
+ * rides on `creative.status_changed`.
+ */
+async function emitCreativeStagedUpdateChanged(
+  sessionKey: string,
+  principal: string | undefined,
+  creative: CreativeState,
+  outcome: 'promoted' | 'rejected',
+  creativeStatus: string,
+  rejectionReason?: string,
+): Promise<void> {
+  const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.staged_update_changed', principal, creative.accountId, creative.accountRef);
+  if (subscribers.length === 0) return;
+  const firedAt = new Date().toISOString();
+  const notificationId = `su_${creative.creativeId}_${randomUUID()}`;
+  for (const subscriber of subscribers) {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: notificationId,
+      notification_type: 'creative.staged_update_changed',
+      fired_at: firedAt,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+      creative_id: creative.creativeId,
+      outcome,
+      ...(outcome === 'rejected' && rejectionReason && { rejection_reason: rejectionReason }),
+      creative_status: creativeStatus,
+      observed_at: firedAt,
+      initiator: 'seller',
+    };
+    const activityBase = {
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      fired_at: firedAt,
+      notification_type: 'creative.staged_update_changed',
+      payload_size_bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+    } as const;
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: 'creative.staged_update_changed',
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
+    } catch (err) {
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, undefined, err);
+    }
+  }
+}
+
 function recordCreativeWebhookActivity(
   creative: CreativeState,
   record: NonNullable<CreativeState['webhookActivity']>[number],
@@ -888,7 +952,13 @@ function createStore(
   controllerAccount?: NaturalAccountIdentity,
   controllerAccountRef?: AccountRef,
   controllerAccountId?: string,
+  servedAdcpVersion?: string,
 ): TestControllerStore {
+  // A seller review rejection can introduce buyer work before activation in
+  // 3.3. Older profiles retain their published transition contract.
+  const mediaBuyTransitions = atLeastAdcpVersion(servedAdcpVersion, '3.3-beta')
+    ? { ...MEDIA_BUY_TRANSITIONS, pending_start: ['pending_creatives', ...MEDIA_BUY_TRANSITIONS.pending_start!] }
+    : MEDIA_BUY_TRANSITIONS;
   return {
     async forceAudienceStatus(audienceId, status, reason) {
       const audience = findAudienceInSession(sessionKey, audienceId);
@@ -957,6 +1027,46 @@ function createStore(
       }
 
       const prev = creative.status;
+      let stagedRejectionStops = false;
+      // A pending staged update is the review in flight: approved promotes it,
+      // rejected rejects it under the seller's on_rejection policy.
+      // A rejected staged update is not under review: forcing a status then
+      // acts on the serving version as usual.
+      if (creative.stagedUpdate?.status === 'pending_review' && prev === 'approved' && (status === 'approved' || status === 'rejected')) {
+        if (status === 'rejected' && !rejectionReason) {
+          throw new TestControllerError('INVALID_PARAMS', 'rejection_reason is required when status = rejected', prev);
+        }
+        if (status === 'rejected' && stagedOnRejection() === 'stops') {
+          delete creative.stagedUpdate;
+          stagedRejectionStops = true;
+        } else {
+          if (status === 'approved') promoteStagedUpdate(creative);
+          else creative.stagedUpdate = { ...creative.stagedUpdate, status: 'rejected', rejectionReason };
+          const stagedAccountId = creative.accountId
+            ?? resolveAccountIdForRef(sessionKey, principal, creative.accountRef);
+          const outcome = status === 'approved' ? 'promoted' : 'rejected';
+          if (stagedAccountId) {
+            upsertSharedAccountCreative(stagedAccountId, creative);
+            const change = recordAccountChange(principal, {
+              resource: { type: 'creative', account_id: stagedAccountId, resource_id: creativeId },
+              action: 'updated',
+              origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+              changed_paths: outcome === 'promoted' ? ['/manifest', '/staged_update'] : ['/staged_update'],
+              repair: { task: 'list_creatives' },
+              reason: outcome === 'promoted' ? 'review_passed' : 'review_failure',
+              summary: `Connected training platform ${outcome} a staged creative update.`,
+            });
+            await emitAccountChangeRecordedWebhook(principal, change);
+          }
+          await emitCreativeStagedUpdateChanged(sessionKey, principal, creative, outcome, 'approved', rejectionReason);
+          return {
+            success: true,
+            previous_state: prev,
+            current_state: 'approved',
+            message: `Staged update for creative ${creativeId} ${outcome}`,
+          };
+        }
+      }
       if (prev === status) {
         return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} is already ${status}` };
       }
@@ -968,6 +1078,8 @@ function createStore(
       }
 
       creative.status = status;
+      // Leaving approved discards a pending or rejected staged update.
+      if (prev === 'approved' && status !== 'approved') delete creative.stagedUpdate;
       if (status === 'archived') {
         enforceMapCap(session.complyExtensions.forcedCreativeTerminalStates, creativeId, 'creative terminal states');
         session.complyExtensions.forcedCreativeTerminalStates.set(creativeId, status);
@@ -998,6 +1110,12 @@ function createStore(
         await emitAccountChangeRecordedWebhook(principal, change);
       }
       await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
+      // Under on_rejection stops the creative also leaves approved, which is
+      // an ordinary status transition fired above; the staged outcome is
+      // reported separately to subscribers that asked for it.
+      if (stagedRejectionStops) {
+        await emitCreativeStagedUpdateChanged(sessionKey, principal, creative, 'rejected', status, rejectionReason);
+      }
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
 
@@ -1020,17 +1138,22 @@ function createStore(
       if (!mb) {
         const priorTerminalState = session.complyExtensions.forcedMediaBuyTerminalStates.get(mediaBuyId);
         if (priorTerminalState) {
-          validateTransition(MEDIA_BUY_TRANSITIONS, MEDIA_BUY_TERMINAL, priorTerminalState, status, 'media buy');
+          validateTransition(mediaBuyTransitions, MEDIA_BUY_TERMINAL, priorTerminalState, status, 'media buy');
         }
         throw new TestControllerError('NOT_FOUND', `Media buy ${mediaBuyId} not found`, null);
       }
 
-      const prev = mb.status;
+      // A provisional buy (confirmed_at null) is held pending seller review and
+      // is never active, whatever its stored lifecycle flag says. Validate the
+      // transition from its pending state so rejection of a held buy is legal.
+      const prev = mb.confirmedAt === null && (mb.status === 'active' || mb.status === 'paused')
+        ? 'pending_start'
+        : mb.status;
       if (prev === status) {
         return { success: true, previous_state: prev, current_state: status, message: `Media buy ${mediaBuyId} is already ${status}` };
       }
 
-      validateTransition(MEDIA_BUY_TRANSITIONS, MEDIA_BUY_TERMINAL, prev, status, 'media buy');
+      validateTransition(mediaBuyTransitions, MEDIA_BUY_TERMINAL, prev, status, 'media buy');
 
       if (status === 'rejected' && !rejectionReason) {
         throw new TestControllerError('INVALID_PARAMS', 'rejection_reason is required when status = rejected', prev);
@@ -1508,8 +1631,10 @@ function createStore(
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
   'reset_state',
+  'reporting_subscription_probe',
   'expire_account_change_cursor',
   'force_create_media_buy_arm',
+  'force_media_buy_confirmation',
   'force_get_products_arm',
   'force_get_signals_arm',
   'force_task_completion',
@@ -1529,6 +1654,7 @@ const LOCAL_SCENARIOS = [
   'query_account_governance_binding',
   'evaluate_distributed_brand_resolution',
   'verify_governance_token',
+  'force_hold_unavailable',
 ] as const;
 
 async function resolveOrCreateReportingProbeAccount(
@@ -1955,8 +2081,10 @@ async function handleReliableReportingReconciledBillingProbe(
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   const scenarios = ctx.storyboardCompat?.version === '3.0'
-    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding')
-    : [...LOCAL_SCENARIOS];
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding' && s !== 'force_media_buy_confirmation')
+    : supportsSalesFixedRate(ctx.servedAdcpVersion)
+      ? [...LOCAL_SCENARIOS]
+      : LOCAL_SCENARIOS.filter(s => s !== 'force_media_buy_confirmation');
   const currentOnly = supportsReliableReporting(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? scenarios
     : scenarios.filter(s => (
@@ -1965,9 +2093,11 @@ function localScenariosFor(ctx: TrainingContext): string[] {
       && s !== 'reliable_reporting_managed_delivery_probe'
       && s !== 'reliable_reporting_reconciled_billing_probe'
     ));
-  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withChangeFeed = supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? currentOnly
     : currentOnly.filter(s => s !== 'expire_account_change_cursor');
+  // Experimental 3.3 holds (media_buy.hold_policy).
+  return holdsServed(ctx) ? withChangeFeed : withChangeFeed.filter(s => s !== FORCE_HOLD_UNAVAILABLE);
 }
 
 /**
@@ -2130,7 +2260,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     );
   const targetsPublicTaskState = scenario === 'seed_media_buy'
     || scenario === 'seed_creative'
-    || scenario === 'force_create_media_buy_arm';
+    || scenario === 'force_create_media_buy_arm'
+    || scenario === 'force_media_buy_confirmation';
   // The frozen 3.0 runner injects a synthetic natural account into controller
   // and fixture calls, sometimes without copying its brand to the top level.
   // Platform methods on that compatibility surface historically key by brand.
@@ -2216,7 +2347,29 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ctx.moduleId,
       targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
     );
+  if (scenario === SEED_COLLECTION_SCENARIO) {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: 'seed_collection is an experimental AdCP 3.3 scenario' };
+    }
+    return handleSeedCollection(rawArgs, ctx);
+  }
+  if (scenario === REPORTING_SUBSCRIPTION_PROBE) {
+    if (ctx.storyboardCompat?.version === '3.0' || !supportsAccountSurfaces33(ctx.servedAdcpVersion)) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'reporting_subscription_probe is an experimental AdCP 3.3 scenario',
+      };
+    }
+    return handleReportingSubscriptionProbe(params, ctx);
+  }
+  if (scenario === FORCE_HOLD_UNAVAILABLE) {
+    return forceHoldUnavailable(params, ctx);
+  }
   if (scenario === 'reset_state') {
+    // The caller's sandbox clock, grants, and account requests reset too.
+    await resetSandbox(ctx.principal);
+    await resetAccountRequests(ctx);
     // These stores intentionally use the same keys as their public handlers,
     // which differ from the principal-aware controller-fixture session above.
     const accountSessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
@@ -2232,6 +2385,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (
     scenario === 'simulate_delivery'
     || scenario === 'force_media_buy_status'
+    || scenario === 'force_media_buy_confirmation'
     || scenario === 'simulate_budget_spend'
   ) {
     const mediaBuyId = isRecord(rawArgs.params) && typeof rawArgs.params.media_buy_id === 'string'
@@ -2283,6 +2437,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   // we delegate. New scenarios from spec PRs land here until adopted upstream.
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
+  }
+  if (scenario === 'force_media_buy_confirmation') {
+    return handleForceMediaBuyConfirmation(session, rawArgs, ctx);
   }
   if (scenario === 'force_get_signals_arm') {
     return handleForceGetSignalsArm(session, rawArgs);
@@ -2598,6 +2755,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     sandboxControllerIdentity(args.account),
     args.account,
     controllerAccountId,
+    ctx.servedAdcpVersion,
   );
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, {
     seedCache: seedCacheForSession(sessionKey),
@@ -3221,6 +3379,93 @@ function handleForceCreateMediaBuyArm(session: SessionState, rawArgs: Record<str
     success: true,
     forced: { arm, task_id: taskId },
     message: `Next create_media_buy call from this sandbox account will return the submitted arm with task_id ${taskId}`,
+  };
+}
+
+/**
+ * force_media_buy_confirmation: drive the optional seller-review hold of a
+ * fixed-rate seller. Spec: `force_media_buy_confirmation` in
+ * `comply-test-controller-request.json` and
+ * `docs/building/by-layer/L3/comply-test-controller.mdx`.
+ *
+ * - `hold` registers a single-shot directive; `handleCreateMediaBuy` consumes it
+ *   when it creates a media buy and returns synchronous success with
+ *   `confirmed_at: null`.
+ * - `confirm` commits a held buy: sets `confirmed_at` once and increments
+ *   `revision`. Confirming an already confirmed buy is an idempotent no-op.
+ */
+function handleForceMediaBuyConfirmation(
+  session: SessionState,
+  rawArgs: Record<string, unknown>,
+  ctx: TrainingContext,
+): object {
+  if (ctx.storyboardCompat?.version === '3.0' || !supportsSalesFixedRate(ctx.servedAdcpVersion)) {
+    return {
+      success: false,
+      error: 'UNKNOWN_SCENARIO',
+      error_detail: 'force_media_buy_confirmation requires AdCP 3.2 or later',
+    };
+  }
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || typeof params !== 'object') {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: 'force_media_buy_confirmation requires params' };
+  }
+  const action = params.action;
+  if (action === 'hold') {
+    session.complyExtensions.forcedMediaBuyHold = true;
+    return {
+      success: true,
+      simulated: { action: 'hold' },
+      message: 'Next create_media_buy call from this sandbox account will return synchronous success with confirmed_at null',
+    };
+  }
+  if (action !== 'confirm') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: `Invalid action: ${String(action)}. Must be 'hold' or 'confirm'.`,
+    };
+  }
+  const mediaBuyId = params.media_buy_id;
+  if (typeof mediaBuyId !== 'string' || mediaBuyId.length === 0) {
+    return { success: false, error: 'INVALID_PARAMS', error_detail: "media_buy_id is required when action = 'confirm'" };
+  }
+  const mb = session.mediaBuys.get(mediaBuyId);
+  if (!mb) {
+    return { success: false, error: 'NOT_FOUND', error_detail: `Media buy ${mediaBuyId} not found`, current_state: null };
+  }
+  if (mb.confirmedAt !== null) {
+    return {
+      success: true,
+      previous_state: 'confirmed',
+      current_state: 'confirmed',
+      message: `Media buy ${mediaBuyId} is already confirmed`,
+    };
+  }
+  if (mb.canceledAt || mb.status === 'rejected' || mb.status === 'canceled' || mb.status === 'completed') {
+    return {
+      success: false,
+      error: 'INVALID_TRANSITION',
+      error_detail: `Cannot confirm media buy ${mediaBuyId}: it already reached a terminal state`,
+      current_state: 'unconfirmed',
+    };
+  }
+  const now = new Date().toISOString();
+  mb.confirmedAt = now;
+  mb.revision += 1;
+  mb.updatedAt = now;
+  mb.history.push({
+    revision: mb.revision,
+    timestamp: now,
+    actor: 'seller',
+    action: 'confirmed',
+    summary: 'Seller committed to the media buy (confirmed_at set)',
+  });
+  return {
+    success: true,
+    previous_state: 'unconfirmed',
+    current_state: 'confirmed',
+    message: `Media buy ${mediaBuyId} confirmed; revision incremented to ${mb.revision}`,
   };
 }
 

@@ -11,7 +11,7 @@ Sandbox mode lets buyers test the full media buying lifecycle — discovery, cam
 Sandbox is **account-level**, not per-request. Once a request references a sandbox account, the entire request is treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
 
 <Warning>
-`account.sandbox` in `get_adcp_capabilities` only advertises support; it does not turn the next media-buy request into a test request. In a natural-key account reference, `sandbox: true` is part of the key that selects the distinct sandbox account and must be repeated on every account-scoped request. In an account-ID namespace, sandbox status belongs to the pre-existing account selected by `account_id`; adding a sandbox boolean to `{ "account_id": "..." }` is invalid and cannot convert a production account. Discover or otherwise obtain the sandbox ID, verify the returned account has `sandbox: true`, and then use only that ID. Resolve and verify the sandbox account before any spend-committing call. Omitting the selector from a natural key defaults to production and can book real inventory.
+`account.sandbox` in `get_adcp_capabilities` only advertises support; it does not turn the next media-buy request into a test request. A buyer-declared sandbox account is its own account with its own `account_id`. In a natural-key account reference, `sandbox: true` selects the sandbox account and must be repeated on every account-scoped request. In an account-ID namespace, sandbox status belongs to the pre-existing account selected by `account_id`; adding a sandbox boolean to `{ "account_id": "..." }` is invalid and cannot convert a production account. Discover or otherwise obtain the sandbox ID, verify the returned account has `sandbox: true`, and then use only that ID. Resolve and verify the sandbox account before any spend-committing call. Omitting the selector from a natural key defaults to production and can book real inventory.
 </Warning>
 
 ## Capabilities discovery
@@ -34,7 +34,7 @@ How you enter sandbox mode depends on the seller's account model (`require_opera
 
 ### Buyer-declared accounts (`require_operator_auth: false`)
 
-The seller trusts the agent and does not require per-operator authentication. Sandbox is part of the **natural key** — the same brand/operator pair can have both a production and a sandbox account, distinguished by `sandbox: true`.
+The seller trusts the agent and does not require per-operator authentication. Sandbox is an **account attribute** — the same brand/operator pair can have both a production and a sandbox account, each with its own `account_id`.
 
 **Setup:** Declare a sandbox account via `sync_accounts` with `sandbox: true` on the account entry:
 
@@ -50,7 +50,7 @@ The seller trusts the agent and does not require per-operator authentication. Sa
 }
 ```
 
-**Usage:** Reference the sandbox account by natural key with `sandbox: true` on every request:
+**Usage:** Reference the sandbox account by the `account_id` that `sync_accounts` returned. During 3.x, a natural-key reference with `sandbox: true` on every request also selects it:
 
 ```json
 // get_products — implicit sandbox
@@ -222,12 +222,12 @@ You can combine them — `dry_run: true` on a sandbox account previews the sync 
 The `X-Dry-Run`, `X-Test-Session-ID`, and `X-Mock-Time` HTTP headers are **deprecated**. Sandbox mode replaces them as a protocol-level parameter.
 
 - **Sellers MUST NOT** alter behavior based on these headers. Sandbox mode is determined solely by the account reference. Sellers SHOULD ignore the headers entirely and MAY log a deprecation warning to help buyers identify stale integrations.
-- **Buyers MUST NOT** rely on these headers to prevent production side effects. Use a natural-key account reference with `sandbox: true`, or a preverified sandbox `account_id`; an account ID cannot carry a sandbox flag or convert a production account.
+- **Buyers MUST NOT** rely on these headers to prevent production side effects. Reference the sandbox account by its `account_id`, returned by `sync_accounts` or `list_accounts` or preverified out of band. During 3.x, a natural-key reference with `sandbox: true` also works. An account ID cannot carry a sandbox flag or convert a production account.
 </Warning>
 
 ## Seller implementation
 
-When a request references a sandbox account (either via `sandbox: true` in the natural key or via a sandbox `account_id`), agents MUST NOT persist production state or cause real-world side effects:
+A request references a sandbox account by its `account_id`, or during 3.x by a natural-key reference with `sandbox: true`. When it does, agents MUST NOT persist production state or cause real-world side effects:
 
 - **MUST NOT** make real ad platform API calls (no real orders, line items, etc.)
 - **MUST NOT** charge real money or create real billing records
@@ -239,7 +239,7 @@ Sandbox errors are real validation errors. If a buyer sends an invalid budget us
 
 For **account-id namespace sellers**: ensure your platform has pre-existing sandbox/test accounts that `list_accounts` can return when filtered with `sandbox: true`, or supply sandbox IDs out-of-band.
 
-For **buyer-declared account sellers**: accept `sandbox: true` as part of the natural key in `sync_accounts` and account references. Treat `(brand, operator, sandbox: true)` as a distinct account from `(brand, operator)`.
+For **buyer-declared account sellers**: accept `sandbox: true` in `sync_accounts` and in natural-key account references. A sandbox account is a distinct account from the production account for the same `(brand, operator)`, with its own `account_id`.
 
 ## Protocol compliance
 

@@ -21,7 +21,7 @@ import {
   type ComplyControllerConfig,
   type ComplyControllerContext,
 } from '@adcp/sdk/testing';
-import { TOOL_INPUT_SHAPE, type TaskRegistry, type TaskRegistryScope } from '@adcp/sdk/server';
+import { TOOL_INPUT_SHAPE, createSeedFixtureCache, type SeedFixtureCache, type TaskRegistry, type TaskRegistryScope } from '@adcp/sdk/server';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import {
   canonicalizeAccountRef,
@@ -35,6 +35,19 @@ import {
   type TrainingTaskRegistryScope,
 } from '../task-registry-scope.js';
 import { registerSharedPublicBrandPartition } from '../state.js';
+import { getTrainingCallerScope } from '../mcp-task-store.js';
+
+// Native seed replay keys omit the authenticated caller. Use the scope
+// already established by the tenant router before checking a seed replay.
+function createPrincipalScopedSeedCache(): SeedFixtureCache {
+  const cache = createSeedFixtureCache();
+  const scoped = (key: string): string => JSON.stringify([getTrainingCallerScope(), key]);
+  return {
+    get: key => cache.get(scoped(key)),
+    has: key => cache.has(scoped(key)),
+    set: (key, fixture) => cache.set(scoped(key), fixture),
+  };
+}
 
 const TRAINING_PRINCIPAL_FIELD = '__training_principal';
 const TRAINING_TASK_OWNER_SCOPE_FIELD = '__training_task_owner_scope';
@@ -467,6 +480,7 @@ export function buildGovernanceComplyConfig(
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
+    seedCache: createPrincipalScopedSeedCache(),
     seed: {
       ...(storyboardCompat?.version === '3.0' ? {} : {
         account: cast(seedAdapter('seed_account', storyboardCompat)),
@@ -500,6 +514,7 @@ export function buildCreativeComplyConfig(
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
+    seedCache: createPrincipalScopedSeedCache(),
     seed: {
       ...(storyboardCompat?.version === '3.0' ? {} : {
         account: cast(seedAdapter('seed_account', storyboardCompat)),
@@ -528,6 +543,7 @@ export function buildSignalsComplyConfig(
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
+    seedCache: createPrincipalScopedSeedCache(),
     ...(storyboardCompat?.version === '3.0' ? {} : {
       seed: {
         account: cast(seedAdapter('seed_account', storyboardCompat)),
@@ -555,6 +571,7 @@ export function buildSalesComplyConfig(
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
+    seedCache: createPrincipalScopedSeedCache(),
     seed: {
       account: cast(seedAdapter('seed_account', storyboardCompat)),
       product: cast(seedAdapter('seed_product', storyboardCompat)),

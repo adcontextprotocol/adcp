@@ -1,0 +1,211 @@
+id: get_signals_pagination_integrity
+version: "1.0.0"
+title: "get_signals pagination cursor integrity"
+category: schema_validation
+summary: "Validates the cursor↔has_more invariant on a paginated get_signals response by walking from a continuation page to the next page under a broad query."
+track: signals
+required_tools:
+  - get_signals
+
+narrative: |
+  `get_signals` is the buyer's primary entry point into the signals
+  marketplace. The response carries the standard `pagination` envelope, so
+  the cursor↔has_more invariant that gates `list_creatives` (covered by
+  universal/pagination-integrity) gates this endpoint too.
+
+  This storyboard sends a deliberately broad `signal_spec` ("audience") so
+  any non-trivial signal catalog matches more than one entry, then asks
+  for `pagination.max_results: 1`. Conformant agents MUST report
+  `has_more: true` with a `cursor` on this page — an agent that caps
+  internally and reports `has_more: false` while more candidates match
+  fails the page-1 assertion. That's the dishonest-pagination shape this
+  storyboard exists to catch.
+
+  After capturing the cursor, the storyboard follows it on the second
+  call. The terminal state of that page depends on the agent's catalog
+  size and is not pinned — the second-page validations check
+  response-schema conformance only. The cursor↔has_more invariant on
+  any single page is enforced statically across all schema and storyboard
+  fixtures by `scripts/lint-pagination-invariant.cjs`; the storyboard's
+  job is the runtime catch on the page where the agent first decides
+  whether to honor `max_results`.
+
+  Catalog sizing: agents whose catalogs return zero or one match for
+  "audience" SHOULD declare themselves outside the catalog_signals
+  capability rather than passing this storyboard with a one-page result —
+  a signal marketplace with a single audience signal isn't a marketplace.
+  When such an agent runs the storyboard the first-page assertion fails
+  loud, which is the right grading: this is not a `not_applicable` case,
+  it's a too-thin catalog claiming a capability it can't honor.
+
+agent:
+  interaction_model: marketplace_catalog
+  capabilities:
+    - catalog_signals
+  examples:
+    - "Any AdCP agent that exposes a paginated get_signals over a non-trivial catalog"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No fixtures required. The agent's signal catalog is treated as given —
+    the storyboard sends a broad query and asserts pagination shape
+    invariants on whatever match set the agent returns. Any agent
+    declaring catalog_signals SHOULD have a non-trivial catalog matching
+    "audience".
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent supports the signals protocol before exercising
+      get_signals.
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares signals in supported_protocols
+          before driving paginated get_signals.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring signals in supported_protocols.
+
+        sample_request:
+          context:
+            correlation_id: "get_signals_pagination_integrity--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "get_signals_pagination_integrity--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: pagination_walk
+    title: "Walk pages with a small max_results"
+    narrative: |
+      A broad `signal_spec` ("audience") against any non-trivial signals
+      catalog matches more than one entry. With `max_results: 1` the
+      first call MUST return a continuation page; the second call follows
+      the captured cursor.
+
+    steps:
+      - id: first_page
+        title: "Request the first page with max_results=1"
+        narrative: |
+          The buyer asks for up to one signal under a broad
+          natural-language query. Agents whose catalogs contain more than
+          one match (the expected case for any agent claiming
+          catalog_signals) MUST report `has_more=true` and a `cursor` the
+          buyer can follow.
+
+          The runner captures `pagination.cursor` into
+          `$context.signals_next_cursor` for the follow-up step. If the
+          agent reports `has_more=false` while more matches exist (the
+          dishonest pagination case), the field_value check on
+          `pagination.has_more` fires — surfacing the bug class this
+          storyboard exists to catch.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: get_signals_pagination_integrity
+        stateful: true
+        context_outputs:
+          - name: signals_next_cursor
+            path: "pagination.cursor"
+        expected: |
+          Return up to one signal matching the broad audience query with:
+          - pagination.has_more = true
+          - pagination.cursor present (an opaque continuation token)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          signal_spec: "audience"
+          pagination:
+            max_results: 1
+
+          context:
+            correlation_id: "get_signals_pagination_integrity--first_page"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: true
+            description: "A broad query against any non-trivial signal catalog must yield more than one match — first page is non-terminal"
+          - check: field_present
+            path: "pagination.cursor"
+            description: "has_more=true requires a cursor — without one the caller cannot continue"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "get_signals_pagination_integrity--first_page"
+            description: "Context correlation_id returned unchanged"
+
+      - id: next_page
+        title: "Follow the cursor"
+        narrative: |
+          The buyer follows the captured cursor under the same broad
+          query. The terminal state of this page depends on the agent's
+          catalog size — some agents exhaust the result set in two
+          pages, others continue paginating — so we do not pin
+          `has_more` here. Schema conformance MUST hold; the
+          cursor↔has_more invariant on this page is enforced by
+          `scripts/lint-pagination-invariant.cjs` against any sample
+          fixture and by the round-trip on `universal/
+          pagination-integrity.yaml`.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: get_signals_pagination_integrity
+        stateful: true
+        expected: |
+          Return the next page of signals with a schema-valid response.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          signal_spec: "audience"
+          pagination:
+            cursor: "$context.signals_next_cursor"
+            max_results: 1
+
+          context:
+            correlation_id: "get_signals_pagination_integrity--next_page"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "get_signals_pagination_integrity--next_page"
+            description: "Context correlation_id returned unchanged"

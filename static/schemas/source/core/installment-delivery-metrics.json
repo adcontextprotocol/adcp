@@ -16,10 +16,29 @@
         "scheduled_at": {
           "type": "string",
           "format": "date-time",
-          "description": "Convenience echo of the installment's scheduled publication or air time."
+          "description": "Convenience echo of the installment's scheduled publication or air time. A postponed installment keeps its installment_ref and gets a new scheduled_at."
+        },
+        "installment_status": {
+          "$ref": "/schemas/enums/installment-status.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Lifecycle status of this installment. Absent means a delivery row, as in AdCP 3.2. A cancelled row carries no delivery metrics: it omits impressions, and spend reflects only what the accepted terms bill. A seller that declares cancelled in available_installment_statuses MUST report a sold installment that will not run as cancelled rather than drop the row. Metrics on a scheduled or tentative row are expectations, not delivery. Sellers MUST NOT send rows with scheduled, tentative, postponed, or cancelled to callers pinned below AdCP 3.3; a caller with no declared pin counts as below 3.3."
+        },
+        "publication": {
+          "$ref": "/schemas/core/installment-publication.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Proof the installment was published. Seller-reported evidence, not by itself a billing event: billing follows the accepted terms. Sellers SHOULD populate it for a digital installment (creator post, newsletter edition, podcast episode) reported as published. MUST be absent when installment_status is scheduled, tentative, postponed, cancelled, or live."
         }
       },
-      "required": ["installment_ref", "spend"]
+      "required": ["installment_ref", "spend"],
+      "if": {
+        "properties": {
+          "installment_status": { "enum": ["scheduled", "tentative", "postponed", "cancelled", "live"] }
+        },
+        "required": ["installment_status"]
+      },
+      "then": { "not": { "required": ["publication"] } }
     }
   ]
 }

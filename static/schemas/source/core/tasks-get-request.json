@@ -11,9 +11,8 @@
   ],
   "properties": {
     "task_id": {
-      "type": "string",
-      "description": "Unique identifier of the task to retrieve",
-      "x-entity": "task"
+      "$ref": "/schemas/core/task-id.json",
+      "description": "Unique identifier of the task to retrieve"
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",

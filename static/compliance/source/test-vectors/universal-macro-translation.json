@@ -1,7 +1,7 @@
 {
   "$schema": "./universal-macro-translation.schema.json",
   "$schema_version": "1.0",
-  "version": "3.2",
+  "version": "3.3",
   "name": "Universal macro translation — cross-SDK conformance fixtures",
   "spec_reference": "docs/creative/universal-macros.mdx#implementing-translation-with-the-sdk",
   "description": "Language-neutral golden vectors for ratified producer-side universal-macro translation behavior, including typed rejection cases and the complete successful result shape.",
@@ -140,6 +140,331 @@
         "dropped_consent_macros": [],
         "frozen_consent_macros": [],
         "suspect_native_values": []
+      }
+    },
+    {
+      "name": "additional-consent-native-with-tcf",
+      "input_pixel_url": "https://pixel.example/i?gdpr={GDPR}&gdpr_consent={GDPR_CONSENT_755}&addtl_consent={ADDTL_CONSENT}",
+      "mapping": {
+        "{GDPR}": { "native": "${GDPR}" },
+        "{GDPR_CONSENT_755}": { "native": "${GDPR_CONSENT_755}" },
+        "{ADDTL_CONSENT}": { "native": "${ADDTL_CONSENT}" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_755}&addtl_consent=${ADDTL_CONSENT}",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "additional-consent-existing-native-pass-through",
+      "input_pixel_url": "https://pixel.example/i?c=${GDPR_CONSENT_755}&a=${ADDTL_CONSENT}",
+      "mapping": {},
+      "expected": {
+        "url": "https://pixel.example/i?c=${GDPR_CONSENT_755}&a=${ADDTL_CONSENT}",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "additional-consent-unmapped-reported",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}&a={ADDTL_CONSENT}&again={ADDTL_CONSENT}",
+      "mapping": { "{GDPR_CONSENT_755}": { "native": "${GDPR_CONSENT_755}" } },
+      "expected": {
+        "url": "https://pixel.example/i?c=${GDPR_CONSENT_755}",
+        "dropped_params": ["a", "again"],
+        "unmapped_macros": ["{ADDTL_CONSENT}"],
+        "dropped_consent_macros": ["{ADDTL_CONSENT}"],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "additional-consent-value-reported",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}&a={ADDTL_CONSENT}",
+      "mapping": {
+        "{GDPR_CONSENT_755}": { "native": "${GDPR_CONSENT_755}" },
+        "{ADDTL_CONSENT}": { "value": "2~41.1.35~dv.21.9" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?c=${GDPR_CONSENT_755}&a=2~41.1.35~dv.21.9",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": ["{ADDTL_CONSENT}"],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "additional-consent-unavailable-empty",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}&a={ADDTL_CONSENT}",
+      "mapping": {
+        "{GDPR_CONSENT_755}": { "native": "${GDPR_CONSENT_755}" },
+        "{ADDTL_CONSENT}": { "value": "" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?c=${GDPR_CONSENT_755}&a=",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": ["{ADDTL_CONSENT}"],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-existing-native-pass-through",
+      "input_pixel_url": "https://pixel.example/i?c=${GDPR_CONSENT_755}",
+      "mapping": {},
+      "expected": {
+        "url": "https://pixel.example/i?c=${GDPR_CONSENT_755}",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-native-preserves-id",
+      "input_pixel_url": "https://pixel.example/i?gdpr={GDPR}&gdpr_consent={GDPR_CONSENT_755}",
+      "mapping": {
+        "{GDPR}": {
+          "native": "${GDPR}"
+        },
+        "{GDPR_CONSENT_755}": {
+          "native": "${GDPR_CONSENT_755}"
+        }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_755}",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-other-id-preserved",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_42}",
+      "mapping": {
+        "{GDPR_CONSENT_42}": {
+          "native": "${GDPR_CONSENT_42}"
+        }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?c=${GDPR_CONSENT_42}",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-missing-vendor-id-empty",
+      "input_pixel_url": "https://pixel.example/i?gdpr={GDPR}&gdpr_consent={GDPR_CONSENT}",
+      "mapping": {
+        "{GDPR}": {
+          "native": "${GDPR}"
+        },
+        "{GDPR_CONSENT}": {
+          "value": ""
+        }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [
+          "{GDPR_CONSENT}"
+        ],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-value-reported",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}",
+      "mapping": {
+        "{GDPR_CONSENT_755}": {
+          "value": "CPc7TgP/consent+value"
+        }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?c=CPc7TgP%2Fconsent%2Bvalue",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [
+          "{GDPR_CONSENT_755}"
+        ],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-unmapped-reported",
+      "input_pixel_url": "https://pixel.example/i?gdpr={GDPR}&c={GDPR_CONSENT_755}",
+      "mapping": {
+        "{GDPR}": {
+          "native": "${GDPR}"
+        }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?gdpr=${GDPR}",
+        "dropped_params": [
+          "c"
+        ],
+        "unmapped_macros": [
+          "{GDPR_CONSENT_755}"
+        ],
+        "dropped_consent_macros": [
+          "{GDPR_CONSENT_755}"
+        ],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-unscoped-mapping-does-not-match",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}",
+      "mapping": {
+        "{GDPR_CONSENT}": {
+          "native": "%%GDPR_CONSENT%%"
+        }
+      },
+      "expected": {
+        "url": "https://pixel.example/i",
+        "dropped_params": [
+          "c"
+        ],
+        "unmapped_macros": [
+          "{GDPR_CONSENT_755}"
+        ],
+        "dropped_consent_macros": [
+          "{GDPR_CONSENT_755}"
+        ],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-counted-after-parameter-dropping",
+      "input_pixel_url": "https://pixel.example/i?discard={GDPR_CONSENT_42}-{UNKNOWN}&c={GDPR_CONSENT_755}",
+      "mapping": {
+        "{GDPR_CONSENT_42}": {
+          "native": "${GDPR_CONSENT_42}"
+        },
+        "{GDPR_CONSENT_755}": {
+          "native": "${GDPR_CONSENT_755}"
+        }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?c=${GDPR_CONSENT_755}",
+        "dropped_params": [
+          "discard"
+        ],
+        "unmapped_macros": [
+          "{UNKNOWN}"
+        ],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-alternate-native-duplicates-rejected",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}&again={GDPR_CONSENT_755}",
+      "mapping": { "{GDPR_CONSENT_755}": { "native": "%%CONSENT_755%%" } },
+      "expected_error": {
+        "code": "multiple_vendor_consent_macros",
+        "macro": "{GDPR_CONSENT_755}"
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-existing-native-duplicates-rejected",
+      "input_pixel_url": "https://pixel.example/i?c=${GDPR_CONSENT_755}&other=${GDPR_CONSENT_42}",
+      "mapping": {},
+      "expected_error": {
+        "code": "multiple_vendor_consent_macros",
+        "macro": "{GDPR_CONSENT_42}"
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-repeated-occurrence-rejected",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}&c={GDPR_CONSENT_755}",
+      "mapping": {
+        "{GDPR_CONSENT_755}": {
+          "native": "${GDPR_CONSENT_755}"
+        }
+      },
+      "expected_error": {
+        "code": "multiple_vendor_consent_macros",
+        "macro": "{GDPR_CONSENT_755}"
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-different-vendors-rejected",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}&other={GDPR_CONSENT_42}",
+      "mapping": {
+        "{GDPR_CONSENT_755}": {
+          "native": "${GDPR_CONSENT_755}"
+        },
+        "{GDPR_CONSENT_42}": {
+          "native": "${GDPR_CONSENT_42}"
+        }
+      },
+      "expected_error": {
+        "code": "multiple_vendor_consent_macros",
+        "macro": "{GDPR_CONSENT_42}"
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-repeated-within-value-rejected",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}-{GDPR_CONSENT_755}",
+      "mapping": {
+        "{GDPR_CONSENT_755}": {
+          "native": "${GDPR_CONSENT_755}"
+        }
+      },
+      "expected_error": {
+        "code": "multiple_vendor_consent_macros",
+        "macro": "{GDPR_CONSENT_755}"
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-existing-native-occurrence-rejected",
+      "input_pixel_url": "https://pixel.example/i?existing=${GDPR_CONSENT_42}&c={GDPR_CONSENT_755}",
+      "mapping": {
+        "{GDPR_CONSENT_755}": {
+          "native": "${GDPR_CONSENT_755}"
+        }
+      },
+      "expected_error": {
+        "code": "multiple_vendor_consent_macros",
+        "macro": "{GDPR_CONSENT_755}"
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-indirect-native-occurrence-rejected",
+      "input_pixel_url": "https://pixel.example/i?c={GDPR_CONSENT_755}&other={VENDOR_TOKEN}",
+      "mapping": {
+        "{GDPR_CONSENT_755}": {
+          "native": "${GDPR_CONSENT_755}"
+        },
+        "{VENDOR_TOKEN}": {
+          "native": "${GDPR_CONSENT_42}"
+        }
+      },
+      "expected_error": {
+        "code": "multiple_vendor_consent_macros",
+        "macro": "{GDPR_CONSENT_42}"
       }
     },
     {

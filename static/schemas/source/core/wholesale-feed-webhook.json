@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/wholesale-feed-webhook.json",
   "title": "Wholesale Feed Webhook",
-  "description": "Account-level webhook payload fired when a seller's wholesale product feed or wholesale signals feed changes. Registered through sync_accounts.accounts[].notification_configs[] using product.* / signal.* / wholesale_feed.bulk_change event_types. The payload carries the actual change event so receivers can update a local mirror without polling. list_products(if_feed_version) and get_signals(if_wholesale_feed_version) are the canonical repair paths after missed, stale, or distrusted pushes; wholesale get_products remains the 3.x product compatibility path.",
+  "description": "Account-level webhook payload fired when a seller's wholesale product feed, wholesale signals feed, or (experimental, media_buy.collection_catalog) collection card catalog changes. Registered through sync_accounts.accounts[].notification_configs[] using product.* / signal.* / wholesale_feed.bulk_change / collection_card.* / collection_catalog.bulk_change event_types. The payload carries the actual change event so receivers can update a local mirror without polling. list_products(if_feed_version), get_signals(if_wholesale_feed_version) and list_collections(if_collections_version) are the canonical repair paths after missed, stale, or distrusted pushes; wholesale get_products remains the 3.x product compatibility path.",
   "type": "object",
   "x-adcp-validation": {
     "verifier_constraints": {
@@ -38,7 +38,10 @@
         "signal.updated",
         "signal.priced",
         "signal.removed",
-        "wholesale_feed.bulk_change"
+        "wholesale_feed.bulk_change",
+        "collection_card.updated",
+        "collection_card.removed",
+        "collection_catalog.bulk_change"
       ],
       "description": "Wholesale feed notification type discriminator. MUST match event.event_type."
     },
@@ -61,7 +64,7 @@
     },
     "wholesale_feed_version": {
       "type": "string",
-      "description": "Opaque post-change version token for the affected wholesale feed. Store it only after applying the event. A stale mirror repairs with its last applied version; uncertain or bulk repair omits the conditional token."
+      "description": "Opaque post-change version token for the affected wholesale feed. For collection_card.* and collection_catalog.bulk_change it carries the post-change list_collections collections_version of the unfiltered catalog (no selectors, no filters) for this cache_scope, so only a mirror bootstrapped from an unfiltered list_collections read can compare it. Store it only after applying the event. A stale mirror repairs with its last applied version; uncertain or bulk repair omits the conditional token."
     },
     "product_payload_view": {
       "type": "string",
@@ -70,7 +73,7 @@
     },
     "previous_wholesale_feed_version": {
       "type": "string",
-      "description": "Opaque version token for the affected wholesale feed before this change, when the seller can cheaply provide it. Receivers MAY use this to detect obvious gaps, but MUST NOT require it."
+      "description": "Opaque version token for the affected wholesale feed (for collection events, the unfiltered collections_version) before this change, when the seller can cheaply provide it. Receivers MAY use this to detect obvious gaps, but MUST NOT require it."
     },
     "cache_scope": {
       "type": "string",
@@ -78,11 +81,11 @@
         "public",
         "account"
       ],
-      "description": "Cache layer affected by this change. MUST equal event.payload.applies_to.scope. Mirrors the cache_scope returned by list_products / get_signals for the affected wholesale feed."
+      "description": "Cache layer affected by this change. MUST equal event.payload.applies_to.scope. Mirrors the cache_scope returned by list_products / get_signals / list_collections for the affected feed."
     },
     "event": {
       "$ref": "/schemas/core/wholesale-feed-event.json",
-      "description": "The actual product, signal, or bulk-change event. Consumers MAY apply this payload to their local mirror. Before any binding action, or when ordering/gap checks fail, consumers MUST reconcile through list_products / get_signals."
+      "description": "The actual product, signal, collection card, or bulk-change event. Consumers MAY apply this payload to their local mirror. Before any binding action, or when ordering/gap checks fail, consumers MUST reconcile through list_products / get_signals / list_collections."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -133,6 +136,35 @@
             "previous_pricing_option_ids": [
               "po_cpm_v1"
             ],
+            "applies_to": {
+              "scope": "public"
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Collection card removal webhook (experimental, media_buy.collection_catalog); the version is the unfiltered list_collections collections_version",
+      "data": {
+        "idempotency_key": "whk_01JAC2N4S8J4TK8M6D3K9Q2P1B8",
+        "notification_id": "0192a6f0-0000-7000-8000-000000000102",
+        "notification_type": "collection_card.removed",
+        "fired_at": "2026-10-17T15:10:02Z",
+        "subscriber_id": "card-mirror",
+        "account_id": "acct_nova_agency",
+        "wholesale_feed_version": "cc_2026_10_17_r90",
+        "previous_wholesale_feed_version": "cc_2026_10_17_r89",
+        "cache_scope": "public",
+        "event": {
+          "event_id": "0192a6f0-0000-7000-8000-000000000102",
+          "event_type": "collection_card.removed",
+          "entity_type": "collection",
+          "entity_id": "card_2b8c44",
+          "created_at": "2026-10-17T15:10:00Z",
+          "payload": {
+            "publisher_domain": "pinnaclepods.example",
+            "collection_id": "founders_hour",
+            "removal_reason": "withdrawn",
             "applies_to": {
               "scope": "public"
             }
@@ -384,6 +416,84 @@
             "properties": {
               "event_type": {
                 "const": "wholesale_feed.bulk_change"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "collection_card.updated"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "collection_card.updated"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "collection_card.removed"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "collection_card.removed"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "collection_catalog.bulk_change"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "collection_catalog.bulk_change"
               }
             },
             "required": [

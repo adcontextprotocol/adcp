@@ -1,5 +1,6 @@
 import { query } from './client.js';
 import { createLogger } from '../logger.js';
+import { flattenToSingleLine } from '../utils/slack-escape.js';
 
 const logger = createLogger('notification-db');
 
@@ -10,6 +11,38 @@ const logger = createLogger('notification-db');
 const countCache = new Map<string, { count: number; expiresAt: number }>();
 const COUNT_CACHE_TTL_MS = 30_000; // Match the 30s client poll interval
 
+/**
+ * Caps for the two halves of a notification (adcp#8320). The title is one
+ * line in a Slack DM and one line in the web notification list, so it stays
+ * short. The body carries the detail a recipient needs to act — an agent's
+ * error text, a run summary — and gets more room, but still a fixed ceiling,
+ * because the party being reported on decides how long its message is.
+ *
+ * Enforced here rather than in `notifyUser` so the invariant holds for the
+ * callers that write a notification row directly.
+ */
+export const NOTIFICATION_TITLE_MAX_LENGTH = 200;
+export const NOTIFICATION_BODY_MAX_LENGTH = 500;
+
+/**
+ * Notification links are site-relative paths. The stored value is rendered
+ * both as an HTML `href` and as the target of a Slack `<url|View>` link,
+ * and neither can be escaped the way text can: `javascript:` would run on
+ * click, `//evil.example` is a protocol-relative jump off-site, and a `>`
+ * or `|` closes the Slack link early and leaves the remainder as top-level
+ * mrkdwn. Anything that is not an unambiguous local path is dropped.
+ *
+ * Backslashes are rejected outright because the WHATWG URL parser folds
+ * them to `/` for http(s) — so a browser reads `/\evil.example` as the
+ * protocol-relative `//evil.example` that the second check exists to stop.
+ */
+export function isSafeNotificationPath(url: string): boolean {
+  return url.startsWith('/')
+    && !url.startsWith('//')
+    // eslint-disable-next-line no-control-regex
+    && !/[<>|\\\s\u0000-\u001f\u007f]/u.test(url);
+}
+
 export interface Notification {
   id: string;
   recipient_user_id: string;
@@ -18,6 +51,8 @@ export interface Notification {
   reference_id: string | null;
   reference_type: string | null;
   title: string;
+  /** Untrusted detail (agent error text, run summaries). Renderers must escape it. */
+  body: string | null;
   url: string | null;
   is_read: boolean;
   created_at: string;
@@ -28,6 +63,13 @@ export interface Notification {
 }
 
 export class NotificationDatabase {
+  /**
+   * Insert a notification row. `title` must be a fixed template plus
+   * platform-controlled fields; anything an agent, a member, or a remote
+   * service can influence belongs in `body`. Both are flattened to a single
+   * line and truncated here, so no caller can store an unbounded or
+   * multi-line value (adcp#8320).
+   */
   async createNotification(data: {
     recipientUserId: string;
     actorUserId?: string;
@@ -35,11 +77,12 @@ export class NotificationDatabase {
     referenceId?: string;
     referenceType?: string;
     title: string;
+    body?: string;
     url?: string;
   }): Promise<Notification> {
     const result = await query<Notification>(
-      `INSERT INTO notifications (recipient_user_id, actor_user_id, type, reference_id, reference_type, title, url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO notifications (recipient_user_id, actor_user_id, type, reference_id, reference_type, title, body, url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         data.recipientUserId,
@@ -47,8 +90,9 @@ export class NotificationDatabase {
         data.type,
         data.referenceId || null,
         data.referenceType || null,
-        data.title,
-        data.url || null,
+        flattenToSingleLine(data.title, NOTIFICATION_TITLE_MAX_LENGTH),
+        data.body ? flattenToSingleLine(data.body, NOTIFICATION_BODY_MAX_LENGTH) : null,
+        data.url && isSafeNotificationPath(data.url) ? data.url : null,
       ]
     );
     this.invalidateCountCache(data.recipientUserId);

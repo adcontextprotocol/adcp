@@ -1,0 +1,212 @@
+{
+  "version": "1.0.0",
+  "description": "Semantic reference vectors for executable display acceptance. All size pairs are logical entry-canvas dimensions. Layers are applicable declarations, not alternative options. Evidence fields describe facts established by an integration; they are test-harness inputs, not AdCP wire fields or proof of renderer behavior. These vectors do not implement network fetching, byte inspection, macro substitution, or execution. A compatible result covers only the modeled size, selection, and fallback constraints; it is not a general approval or byte-inspection result. Incomplete declarations cannot establish full technical acceptance. Image-density inference remains covered by canonical-image-pixel-ratio.json; backup vectors here use explicit density or ordinary 1x images.",
+  "acceptance_vectors": [
+    {
+      "id": "equal-inclusive-responsive-endpoints",
+      "layers": [{ "technical_requirements_complete": true, "params": { "min_width": 300, "max_width": 300, "min_height": 250, "max_height": 250 } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "compatible", "eligible_sizes": [{ "width": 300, "height": 250 }] }
+    },
+    {
+      "id": "reversed-responsive-width-is-invalid",
+      "layers": [{ "technical_requirements_complete": true, "params": { "min_width": 970, "max_width": 300 } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "invalid", "reason": "responsive_bound_order" }
+    },
+    {
+      "id": "reversed-responsive-height-is-invalid",
+      "layers": [{ "technical_requirements_complete": true, "params": { "min_height": 250, "max_height": 90 } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "invalid", "reason": "responsive_bound_order" }
+    },
+    {
+      "id": "one-sided-complete-bounds-are-valid",
+      "layers": [{ "technical_requirements_complete": true, "params": { "min_width": 300, "max_height": 250 } }],
+      "asset": { "asset_type": "html", "content": "<div>Acme</div>", "width": 728, "height": 90 },
+      "expected": { "status": "compatible", "eligible_sizes": [{ "width": 728, "height": 90 }] }
+    },
+    {
+      "id": "one-sided-incomplete-bounds-do-not-prove-acceptance",
+      "layers": [{ "params": { "min_width": 300, "max_height": 250 } }],
+      "asset": { "asset_type": "html", "content": "<div>Acme</div>", "width": 728, "height": 90 },
+      "expected": { "status": "undeclared", "reason": "technical_contract_incomplete" }
+    },
+    {
+      "id": "no-size-complete-declaration-imposes-no-size-constraint",
+      "layers": [{ "technical_requirements_complete": true, "params": {} }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "compatible", "eligible_sizes": [{ "width": 300, "height": 250 }] }
+    },
+    {
+      "id": "no-size-omitted-completeness-is-undeclared",
+      "layers": [{ "params": {} }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "undeclared", "reason": "technical_contract_incomplete" }
+    },
+    {
+      "id": "explicit-false-completeness-is-undeclared",
+      "layers": [{ "technical_requirements_complete": false, "params": {} }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "undeclared", "reason": "technical_contract_incomplete" }
+    },
+    {
+      "id": "known-violation-rejects-even-an-incomplete-contract",
+      "layers": [{ "params": { "max_width": 300 } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 728, "height": 90 },
+      "expected": { "status": "incompatible", "reason": "no_compatible_size" }
+    },
+    {
+      "id": "product-publisher-placement-intersect-every-layer",
+      "layers": [
+        { "technical_requirements_complete": true, "params": { "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }] } },
+        { "technical_requirements_complete": true, "params": { "min_width": 300, "max_width": 970, "min_height": 50, "max_height": 250 } },
+        { "technical_requirements_complete": true, "params": { "max_width": 728, "max_height": 90 } }
+      ],
+      "asset": { "asset_type": "display_tag", "delivery_type": "tag_url", "url": "https://ads.acme.example/render", "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }] },
+      "evidence": { "size_selection_enforceable": true },
+      "expected": { "status": "compatible", "eligible_sizes": [{ "width": 728, "height": 90 }] }
+    },
+    {
+      "id": "individually-valid-layer-ranges-can-have-empty-intersection",
+      "layers": [
+        { "technical_requirements_complete": true, "params": { "min_width": 300, "max_width": 400 } },
+        { "technical_requirements_complete": true, "params": { "min_width": 500, "max_width": 728 } }
+      ],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "incompatible", "reason": "no_compatible_size" }
+    },
+    {
+      "id": "publisher-fixed-size-narrows-broader-product",
+      "layers": [
+        { "technical_requirements_complete": true, "params": { "min_width": 300, "max_width": 970 } },
+        { "technical_requirements_complete": true, "params": { "width": 728, "height": 90 } }
+      ],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "incompatible", "reason": "no_compatible_size" }
+    },
+    {
+      "id": "pair-intersection-cannot-combine-independent-dimensions",
+      "layers": [
+        { "technical_requirements_complete": true, "params": { "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }] } },
+        { "technical_requirements_complete": true, "params": { "sizes": [{ "width": 300, "height": 90 }, { "width": 728, "height": 250 }] } }
+      ],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "incompatible", "reason": "no_compatible_size" }
+    },
+    {
+      "id": "one-incomplete-layer-prevents-full-acceptance",
+      "layers": [
+        { "technical_requirements_complete": true, "params": { "width": 300, "height": 250 } },
+        { "params": {} }
+      ],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "undeclared", "reason": "technical_contract_incomplete" }
+    },
+    {
+      "id": "unresolved-extension-cannot-be-dropped",
+      "layers": [{ "technical_requirements_complete": true, "params": { "width": 300, "height": 250, "platform_extensions": [{ "uri": "https://publisher.acme.example/ext/display", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }] } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "evidence": { "referenced_artifacts_resolved": false },
+      "expected": { "status": "undeclared", "reason": "referenced_artifact_unresolved" }
+    },
+    {
+      "id": "extension-resolution-cannot-be-inferred-from-a-complete-assertion",
+      "layers": [{ "technical_requirements_complete": true, "params": { "width": 300, "height": 250, "platform_extensions": [{ "uri": "https://publisher.acme.example/ext/display", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }] } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "undeclared", "reason": "referenced_artifact_unresolved" }
+    },
+    {
+      "id": "verified-cached-extension-keeps-its-narrowing",
+      "layers": [
+        { "technical_requirements_complete": true, "params": { "min_width": 300, "max_width": 970 } },
+        { "technical_requirements_complete": true, "params": { "width": 300, "height": 250 } }
+      ],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 728, "height": 90 },
+      "evidence": { "referenced_artifacts_resolved": true },
+      "expected": { "status": "incompatible", "reason": "no_compatible_size" }
+    },
+    {
+      "id": "unsized-asset-does-not-prove-fixed-compatibility",
+      "layers": [{ "technical_requirements_complete": true, "params": { "width": 300, "height": 250 } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip" },
+      "expected": { "status": "undeclared", "reason": "rendered_size_unproven" }
+    },
+    {
+      "id": "overlap-without-enforceable-selection-is-insufficient",
+      "layers": [{ "technical_requirements_complete": true, "params": { "width": 728, "height": 90 } }],
+      "asset": { "asset_type": "display_tag", "delivery_type": "tag_url", "url": "https://ads.acme.example/render", "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }] },
+      "evidence": { "size_selection_enforceable": false },
+      "expected": { "status": "undeclared", "reason": "size_selection_unproven" }
+    },
+    {
+      "id": "required-single-size-backup-narrows-multisize-main",
+      "layers": [{ "technical_requirements_complete": true, "params": { "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }], "backup_image_required": true } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }] },
+      "backups": [{ "asset_type": "image", "url": "https://cdn.acme.example/backup.jpg", "width": 300, "height": 250 }],
+      "evidence": { "size_selection_enforceable": true },
+      "expected": { "status": "compatible", "eligible_sizes": [{ "width": 300, "height": 250 }] }
+    },
+    {
+      "id": "retina-backup-covers-logical-size-not-intrinsic-size",
+      "layers": [{ "technical_requirements_complete": true, "params": { "sizes": [{ "width": 300, "height": 250 }, { "width": 600, "height": 500 }], "backup_image_required": true, "slots": [{ "asset_group_id": "backup_image", "asset_type": "image", "pixel_ratios": [2] }] } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "sizes": [{ "width": 300, "height": 250 }, { "width": 600, "height": 500 }] },
+      "backups": [{ "asset_type": "image", "url": "https://cdn.acme.example/backup-2x.jpg", "width": 600, "height": 500, "pixel_ratio": 2 }],
+      "evidence": { "size_selection_enforceable": true },
+      "expected": { "status": "compatible", "eligible_sizes": [{ "width": 300, "height": 250 }] }
+    },
+    {
+      "id": "required-backup-cannot-cover-another-canvas",
+      "layers": [{ "technical_requirements_complete": true, "params": { "width": 728, "height": 90, "backup_image_required": true } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 728, "height": 90 },
+      "backups": [{ "asset_type": "image", "url": "https://cdn.acme.example/backup.jpg", "width": 300, "height": 250 }],
+      "expected": { "status": "incompatible", "reason": "required_backup_size_missing" }
+    },
+    {
+      "id": "required-backup-is-not-satisfied-by-main-size-metadata",
+      "layers": [{ "technical_requirements_complete": true, "params": { "width": 300, "height": 250, "backup_image_required": true } }],
+      "asset": { "asset_type": "zip", "url": "https://cdn.acme.example/ad.zip", "width": 300, "height": 250 },
+      "expected": { "status": "incompatible", "reason": "required_backup_size_missing" }
+    }
+  ],
+  "legacy_projection_vectors": [
+    {
+      "id": "fixed-size-selects-one-legacy-candidate",
+      "asset": { "width": 300, "height": 250 },
+      "candidates": [{ "id": "mrec", "width": 300, "height": 250 }, { "id": "leaderboard", "width": 728, "height": 90 }],
+      "expected": { "status": "selected", "id": "mrec" }
+    },
+    {
+      "id": "same-size-legacy-candidates-remain-ambiguous",
+      "asset": { "width": 300, "height": 250 },
+      "candidates": [{ "id": "mrec_a", "width": 300, "height": 250 }, { "id": "mrec_b", "width": 300, "height": 250 }],
+      "expected": { "status": "ambiguous" }
+    },
+    {
+      "id": "multisize-source-needs-a-selected-pair",
+      "asset": { "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }] },
+      "candidates": [{ "id": "mrec", "width": 300, "height": 250 }, { "id": "leaderboard", "width": 728, "height": 90 }],
+      "expected": { "status": "ambiguous" }
+    },
+    {
+      "id": "selected-pair-disambiguates-multisize-projection",
+      "asset": { "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }] },
+      "selected_size": { "width": 728, "height": 90 },
+      "candidates": [{ "id": "mrec", "width": 300, "height": 250 }, { "id": "leaderboard", "width": 728, "height": 90 }],
+      "expected": { "status": "selected", "id": "leaderboard" }
+    },
+    {
+      "id": "selected-pair-cannot-create-a-size-source-never-offered",
+      "asset": { "sizes": [{ "width": 300, "height": 250 }, { "width": 728, "height": 90 }] },
+      "selected_size": { "width": 300, "height": 90 },
+      "candidates": [{ "id": "mixed", "width": 300, "height": 90 }],
+      "expected": { "status": "unavailable" }
+    },
+    {
+      "id": "missing-sized-legacy-candidate-fails-closed",
+      "asset": { "width": 300, "height": 250 },
+      "candidates": [{ "id": "leaderboard", "width": 728, "height": 90 }],
+      "expected": { "status": "unavailable" }
+    }
+  ]
+}

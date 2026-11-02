@@ -121,7 +121,7 @@ resource.
 | Resource family | Authoritative current-state read | 3.2 requirement |
 | --- | --- | --- |
 | Account identity, status, authorization, billing configuration | `list_accounts` | Complete current state; source-neutral changes recorded. |
-| Account spend, credit, payment, invoices | `get_account_financials` | Complete when account financials and this resource type are advertised. |
+| Account spend, credit, payment, invoices | `get_account_financials` | Complete when account financials and the resource type are advertised. Resource types: `account_financials` (spend, credit, payment status; `resource_id` is the account id) and `invoice` (`resource_id` is the invoice id). |
 | Media buys and packages | `get_media_buys` | Every caller-visible account buy, including external creation and modification; buyers enumerate every status and page. |
 | Delivery and reporting | `get_media_buy_delivery` | Current results within declared parity; corrections, adjustment, and finality revisions recorded. Routine metric increments are excluded. |
 | Creative library | `list_creatives` | Every caller-visible creative regardless origin, with current content revision or digest and lifecycle state. |
@@ -222,11 +222,24 @@ Every `account-change.json` record has:
 - open `action`, with standard values `created`, `discovered`, `updated`,
   `status_changed`, `linked`, `unlinked`, `deleted`, and `purged`;
 - server-derived origin kind;
+- `changed_paths` whenever the origin kind is `adcp` or `seller_operator`
+  (a non-empty set, with the root pointer `""` when the whole resource was
+  created, deleted, or purged), and best-effort otherwise;
 - an allowlisted read-only `repair.task` hint. Buyers construct and validate
   arguments locally from the authenticated account and resource identity and
   never dispatch feed data directly; and
-- optional revision, changed JSON Pointer paths, redaction-safe actor, reason,
-summary, and bounded extension metadata.
+- optional revision, redaction-safe actor, reason, summary, and bounded
+  extension metadata;
+- for `adcp` origin only, an optional echo of the originating request's
+  `idempotency_key`, included solely on records served to the principal that
+  sent that request. Every other reader sees the record with the field
+  omitted. Apart from that field, the seller does not vary whether a record
+  appears, or its `change_id`, `resource`, `action`, `origin.kind`, or
+  `changed_paths`, by reader; `actor` and `origin.connection_id` redaction is
+  unchanged. A record never coalesces changes across origin kinds or
+  principals. A record that
+  coalesces several originating requests omits it, and the
+  `account.change_recorded` notification never carries it.
 
 Each encoded record is limited to 64 KiB, with at most 64 changed paths and 20
 extension namespaces. IDs, paths, summaries, reasons, actor labels, and
@@ -321,8 +334,10 @@ Capability-gated conformance MUST test:
    authorization-epoch changes, and rebootstrap are gap-free;
 6. subscriber activation, fan-out, retry and re-emission identity, and
    specialized-notification overlap behave as specified;
-7. cross-account and cross-principal isolation, actor redaction, and absence of
-   secrets and PII; and
+7. cross-account and cross-principal isolation, actor redaction, absence of
+   secrets and PII, where a seller echoes `idempotency_key`, the echo reaching
+   only the originating principal, and `changed_paths` present on every `adcp` and
+   `seller_operator` record; and
 8. retention and connected-source freshness classifications match their
    advertised timestamps and `stale_after_seconds` thresholds.
 

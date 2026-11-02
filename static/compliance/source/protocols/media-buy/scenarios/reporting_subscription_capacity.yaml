@@ -1,0 +1,435 @@
+id: media_buy_seller/reporting_subscription_capacity
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Reporting subscription admission under max_accounts"
+category: media_buy_seller
+summary: "With max_accounts 3, opens four accounts an hour apart under one all-accounts subscription. The fourth waits with a capacity exception, listed in accounts_with_exceptions; when the first account's grant is revoked it is admitted, the capacity exception closes, and the revoked account is listed under accounts_unauthorized."
+track: media_buy
+
+requires_all_capabilities:
+  - path: "media_buy.reporting_delivery.subscriptions.max_accounts"
+    equals: 3
+  - path: "experimental_features"
+    contains: "media_buy.reporting_subscriptions"
+  - path: "compliance_testing.scenarios"
+    contains: "reporting_subscription_probe"
+
+requires:
+  - controller
+
+required_tools:
+  - sync_principal
+  - get_principal
+  - get_reporting_status
+  - sync_accounts
+  - comply_test_controller
+
+narrative: |
+  Experimental (`media_buy.reporting_subscriptions`). A seller may limit how
+  many accounts one subscription serves with `subscriptions.max_accounts`.
+  Admission is deterministic, computable from `list_accounts`, and sticky:
+  candidates are the in-scope authorized accounts, including accounts with no
+  buys, ordered by `authorization.authorized_at` and then `account_id`. An
+  admitted account keeps its place until it leaves coverage, and a waiting
+  account carries an account-level `capacity` exception until it is admitted.
+
+  This storyboard runs only for a seller that declares `max_accounts: 3`. It
+  opens four accounts an hour apart on the sandbox clock under one
+  all-accounts subscription narrowed to the run's operator, then revokes the
+  first account's grant so the fourth is admitted.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - reporting_subscriptions
+  examples:
+    - "Sellers that cap how many accounts one reporting subscription serves"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller declares media_buy.reporting_delivery.subscriptions with
+    max_accounts 3 and the reporting_subscription_probe controller scenario.
+    The sandbox clock starts before 2030-06-01, so the first account's grant
+    begins before the others, and the caller holds no other account for the
+    capacity-agency.example operator.
+
+phases:
+  - id: setup
+    title: "Open four accounts an hour apart"
+    steps:
+      - id: read_capacity_capability
+        title: "Read the subscription capability"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: capacity_unit_a
+            generate: uuid_v4
+          - name: capacity_unit_b
+            generate: uuid_v4
+          - name: capacity_unit_c
+            generate: uuid_v4
+          - name: capacity_unit_d
+            generate: uuid_v4
+        validations:
+          - check: field_value
+            path: "media_buy.reporting_delivery.subscriptions.max_accounts"
+            value: 3
+            description: "Each subscription serves at most three accounts"
+
+      - id: open_account_a
+        title: "Open account A"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_capacity_open_a"
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "capacity-agency.example"
+              operator_unit:
+                id: "$context.capacity_unit_a"
+                name: "Capacity run A"
+              timezone: "America/New_York"
+              billing: "operator"
+              sandbox: true
+        context_outputs:
+          - name: capacity_a_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The sandbox account resolves without review"
+      - id: advance_after_a
+        title: "Advance the sandbox clock to 2030-06-01T01:00:00Z"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.capacity_a_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-01T01:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+      - id: open_account_b
+        title: "Open account B"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_capacity_open_b"
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "capacity-agency.example"
+              operator_unit:
+                id: "$context.capacity_unit_b"
+                name: "Capacity run B"
+              timezone: "America/New_York"
+              billing: "operator"
+              sandbox: true
+        context_outputs:
+          - name: capacity_b_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The sandbox account resolves without review"
+      - id: advance_after_b
+        title: "Advance the sandbox clock to 2030-06-01T02:00:00Z"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.capacity_a_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-01T02:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+      - id: open_account_c
+        title: "Open account C"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_capacity_open_c"
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "capacity-agency.example"
+              operator_unit:
+                id: "$context.capacity_unit_c"
+                name: "Capacity run C"
+              timezone: "America/New_York"
+              billing: "operator"
+              sandbox: true
+        context_outputs:
+          - name: capacity_c_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The sandbox account resolves without review"
+      - id: advance_after_c
+        title: "Advance the sandbox clock to 2030-06-01T03:00:00Z"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.capacity_a_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-01T03:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+      - id: open_account_d
+        title: "Open account D"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_capacity_open_d"
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "capacity-agency.example"
+              operator_unit:
+                id: "$context.capacity_unit_d"
+                name: "Capacity run D"
+              timezone: "America/New_York"
+              billing: "operator"
+              sandbox: true
+        context_outputs:
+          - name: capacity_d_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The sandbox account resolves without review"
+      - id: advance_after_d
+        title: "Advance the sandbox clock to 2030-06-01T04:00:00Z"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.capacity_a_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-01T04:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+  - id: admission
+    title: "The fourth account waits, then is admitted"
+    depends_on: [setup]
+    steps:
+      - id: subscribe_all_accounts
+        title: "Subscribe to every account of the run's operator"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#reporting_subscription_capacity_subscribe"
+          configuration:
+            reporting_subscriptions:
+              - subscription_id: "capacity-feed"
+                subscription_version: 1
+                active: true
+                scope:
+                  all_authorized_accounts: true
+                operator_domains: ["capacity-agency.example"]
+                selector:
+                  feed_purpose: "analytics"
+                  period_duration: "P1D"
+                  required_finality: "official"
+                  alignment: "account_timezone"
+                reconciliation_mode: "delivery_only"
+        validations:
+          - check: response_schema
+            description: "The applied response matches sync-principal-response.json"
+          - check: field_equals_context
+            path: "result.configuration.reporting_subscriptions[0].accounts_with_exceptions[0].account_id"
+            context_key: "capacity_d_id"
+            description: "The account authorized last waits for capacity"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].accounts_with_exceptions[0].reasons[0]"
+            value: "capacity"
+            description: "The exception reason is capacity"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].accounts_with_exceptions_count"
+            value: 1
+            description: "Only one account waits"
+
+      - id: waiting_account_status
+        title: "The waiting account reads as excluded for capacity"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.capacity_d_id"
+          view: "summary"
+        validations:
+          - check: response_schema
+            description: "The summary matches get-reporting-status-response.json"
+          - check: field_value
+            path: "subscription_coverage[0].status"
+            value: "excluded"
+            description: "An open account-level exception excludes the account"
+          - check: field_value
+            path: "subscription_coverage[0].excluded[0].reason"
+            value: "capacity"
+            description: "The seller refused for its account limit"
+          - check: field_absent
+            path: "subscription_coverage[0].excluded[0].until"
+            description: "The capacity exception is still open"
+
+      - id: admitted_account_status
+        title: "An admitted account reads as active"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.capacity_c_id"
+          view: "summary"
+        validations:
+          - check: field_value
+            path: "subscription_coverage[0].status"
+            value: "active"
+            description: "The third account authorized holds its place"
+
+      - id: advance_before_revoke
+        title: "Advance the sandbox clock to 2030-06-03T12:00:00Z"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.capacity_a_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-06-03T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+      - id: revoke_first
+        title: "Revoke the first account's grant"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.capacity_a_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "revoke_grant"
+            account_id: "$context.capacity_a_id"
+        validations:
+          - check: field_value
+            path: "simulated.unauthorized_at"
+            value: "2030-06-03T12:00:00.000Z"
+            description: "Authority ends on the sandbox clock"
+
+      - id: fourth_admitted
+        title: "The waiting account takes the freed place"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.capacity_d_id"
+          view: "summary"
+        validations:
+          - check: response_schema
+            description: "The summary matches get-reporting-status-response.json"
+          - check: field_value
+            path: "subscription_coverage[0].status"
+            value: "active"
+            description: "The account is admitted once a place frees"
+          - check: field_value
+            path: "subscription_coverage[0].excluded[0].until"
+            value: "2030-06-04T04:00:00.000Z"
+            description: "The capacity exception ends at the first boundary at or after admission"
+
+      - id: readback_after_revocation
+        title: "The subscription lists the revoked account and no waiting one"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        stateful: false
+        sample_request: {}
+        validations:
+          - check: response_schema
+            description: "The readback matches get-principal-response.json"
+          - check: field_equals_context
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized[0].account_id"
+            context_key: "capacity_a_id"
+            description: "The revoked account is listed under accounts_unauthorized"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].accounts_with_exceptions_count"
+            value: 0
+            description: "No account waits for capacity any more"

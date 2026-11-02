@@ -1,8 +1,9 @@
-import type { StoryboardRunOptions } from '@adcp/sdk/testing';
+import type { CreativeBuildProbeInputFixture, StoryboardRunOptions } from '@adcp/sdk/testing';
 
 export interface LoadedTestKit {
   brand?: { house?: { domain?: string }; brand_id?: string };
   commercial_relationship?: string;
+  creative_build_probes?: CreativeBuildProbeInputFixture[];
   auth?: {
     api_key?: string;
     basic?: { username?: string; password?: string; credentials?: string };
@@ -26,21 +27,26 @@ export const PROBE_TASK_BY_TENANT: Record<string, string> = {
 };
 
 /**
- * Thread the test-kit's auth material through to the storyboard runner so
- * kit-gated auth phases execute instead of being skipped by `skip_if`.
+ * Thread the test-kit's allowed auth and creative-probe inputs through to the
+ * storyboard runner so authored fixture prerequisites remain available.
  */
 export function testKitOptionsFromKit(
   kit: LoadedTestKit | undefined,
   tenantPath = process.env.TENANT_PATH,
 ): StoryboardRunOptions['test_kit'] | undefined {
   const auth = kit?.auth;
-  if (!auth?.api_key && !auth?.basic && !auth?.probe_task) return undefined;
+  const creativeBuildProbes = kit?.creative_build_probes;
+  const creativeProbeOptions = creativeBuildProbes === undefined
+    ? undefined
+    : { creative_build_probes: creativeBuildProbes };
+  if (!auth?.api_key && !auth?.basic && !auth?.probe_task) return creativeProbeOptions;
   if (!auth.probe_task) {
     throw new Error('test kit declares auth credentials without auth.probe_task — required by runner');
   }
   const probeTask = (tenantPath && PROBE_TASK_BY_TENANT[tenantPath]) ?? auth.probe_task;
   const commercialRelationship = kit?.commercial_relationship;
   return {
+    ...creativeProbeOptions,
     ...(commercialRelationship !== undefined && {
       commercial_relationship: commercialRelationship,
     }),

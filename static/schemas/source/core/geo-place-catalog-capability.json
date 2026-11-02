@@ -14,14 +14,16 @@
     "current_version": {
       "type": "string",
       "minLength": 1,
-      "description": "Version applied when a buyer omits system_version. Sellers MUST echo this version on persisted package state."
+      "description": "Version applied when a buyer omits system_version. Sellers MUST echo this version on persisted package state.",
+      "x-max-length-4.0": 32
     },
     "supported_versions": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": { "type": "string", "minLength": 1, "x-max-length-4.0": 128 },
       "minItems": 1,
       "uniqueItems": true,
-      "description": "Exact catalog versions accepted for new targeting or target-changing updates. Must include current_version. Removing a version does not mutate or silently invalidate targets already pinned to it."
+      "description": "Exact catalog versions accepted for new targeting or target-changing updates. Must include current_version. Removing a version does not mutate or silently invalidate targets already pinned to it.",
+      "x-max-items-4.0": 32
     },
     "resolver": {
       "$ref": "/schemas/core/geo-place-resolver.json"

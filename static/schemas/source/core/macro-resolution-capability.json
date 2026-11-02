@@ -14,8 +14,8 @@
   "properties": {
     "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
     "dialect_namespace": { "type": "string", "format": "uri" },
-    "dialect_revision": { "type": "string", "minLength": 1 },
-    "dialect_semantic": { "type": "string", "minLength": 1 },
+    "dialect_revision": { "type": "string", "minLength": 1, "x-max-length-4.0": 128 },
+    "dialect_semantic": { "type": "string", "minLength": 1, "x-max-length-4.0": 128 },
     "mapping_status": {
       "type": "string",
       "enum": ["verified_universal", "dialect_defined"]
@@ -35,14 +35,16 @@
           { "$ref": "/schemas/enums/macro-value-context.json" },
           { "not": { "const": "opaque" } }
         ]
-      }
+      },
+      "x-max-items-4.0": 32
     },
     "supported_encodings": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
       "items": { "$ref": "/schemas/core/macro-encoding.json" },
-      "description": "Exact supported encoding profiles, not a maximum depth. Required for value resolution."
+      "description": "Exact supported encoding profiles, not a maximum depth. Required for value resolution.",
+      "x-max-items-4.0": 32
     },
     "translation_target": { "$ref": "/schemas/core/macro-translation-target.json" }
   },

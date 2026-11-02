@@ -5,7 +5,6 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import YAML from 'yaml';
 import {
-  getComplianceStoryboardById,
   runStoryboard,
   type ComplianceResult,
   type Storyboard,
@@ -16,6 +15,7 @@ import {
   complianceResultToDbInput,
   deriveStoryboardStatuses,
 } from '../../server/src/addie/services/compliance-testing.js';
+import { getCachedComplianceStoryboardById } from '../../server/src/compliance/storyboard-cache.js';
 
 const require = createRequire(import.meta.url);
 const { buildTo } = require('../../scripts/build-compliance.cjs');
@@ -36,7 +36,7 @@ afterAll(() => rmSync(bundleDir, { recursive: true, force: true }));
 function loadStoryboard(name: string, surface: string): Storyboard {
   const source = YAML.parse(readFileSync(path.join(sourceDir, 'universal', `${name}.yaml`), 'utf8'));
   if (surface === 'source') return source;
-  const published = getComplianceStoryboardById(source.id, { complianceDir: bundleDir, version });
+  const published = getCachedComplianceStoryboardById(source.id, { complianceDir: bundleDir, version });
   expect(published).toBeDefined();
   expect(published!.adcp_version).toBe(version);
   // The loader stamps the release version. Omit only that transport setting

@@ -1,0 +1,1047 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/media-buy/control-media-buy-response.json",
+  "title": "Control Media Buy Response",
+  "description": "Result of applying operational controls without embedding the package or creative object graphs.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "title": "Control Applied",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        },
+        "media_buy_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "media_buy_status": {
+          "$ref": "#/$defs/external:enums~1media-buy-status.json"
+        },
+        "implementation_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "affected_package_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "package"
+          },
+          "uniqueItems": true
+        },
+        "available_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-media-buy-action.json"
+          },
+          "uniqueItems": true
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Non-blocking observations about this completed control. The control was still applied exactly as represented. Continuing conditions also appear as indicators on get_media_buys.",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1warning.json"
+              },
+              {
+                "properties": {
+                  "code": {
+                    "const": "inventory_shortfall_forecast"
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "media_buy_id",
+        "revision"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "Control Error",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "failed"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "warnings"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Control Submitted",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          }
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "warnings"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "external:enums/media-buy-status.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/media-buy-status.json",
+      "title": "Media Buy Status",
+      "description": "Status of a media buy. Status is the buyer-actionable readiness axis; seller commitment is the independent `confirmed_at` field. A buy with `confirmed_at: null` is never `active`.",
+      "type": "string",
+      "enum": [
+        "pending_creatives",
+        "pending_start",
+        "active",
+        "paused",
+        "completed",
+        "rejected",
+        "canceled"
+      ],
+      "enumDescriptions": {
+        "pending_creatives": "**Buyer-side action required.** No package can begin delivery because required creative coverage is missing or a blocking rejection requires correction or replacement. A rejected assignment does not block an otherwise eligible approved subset when start_requires_all_creatives_approved is false. Seller review of already assigned creatives alone is pending_start, not pending_creatives. Seller commitment is the independent confirmed_at axis; neither pending status means the seller has accepted the buy.",
+        "pending_start": "The buy has not started and is waiting for its flight date, seller confirmation (confirmed_at: null), or seller review of already assigned creatives needed for delivery. This includes the initial package gate start_requires_all_creatives_approved: true while all required assignments await approval. Review completion may allow automatic start only when commitment, flight, pause, and creative-readiness conditions permit it; rejection may instead require buyer correction and pending_creatives. Inspect package creative_approvals and, for library sellers, list_creatives for review state. A provisional buy never becomes active until the seller commits.",
+        "active": "Media buy is currently running. Reported only for a committed buy: a buy whose `confirmed_at` is null MUST NOT be `active`.",
+        "paused": "Media buy is temporarily paused",
+        "completed": "Media buy has finished running",
+        "rejected": "Media buy was declined by the seller after creation",
+        "canceled": "Media buy was terminated before natural completion. Check cancellation.canceled_by to determine whether the buyer or seller initiated."
+      }
+    },
+    "external:core/canonical-media-buy-action.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-media-buy-action.json",
+      "title": "Canonical Media Buy Action",
+      "description": "A currently available MediaBuy action with the compact-lifecycle task an SDK calls to exercise it. Deprecated coarse action values are absent. In AdCP 3.3, update_creative_start_policy is an operational package control with an explicit eligible package scope, independent of commercial change terms.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "change_term_link": "When change_term_id is present, it resolves to the accepted proposal change term governing this action. The projected sla agrees with processing_sla. Issue reporting is an operational capability, not a negotiated change right.",
+          "legacy_alias_agreement": "When both change_term_id and deprecated terms_ref are emitted as proposal-term links, their values are identical."
+        }
+      },
+      "type": "object",
+      "discriminator": {
+        "propertyName": "task"
+      },
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-media-buy-action-fields.json"
+            }
+          ],
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "type": "string",
+              "const": "report_media_buy_issue"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "report_media_buy_issue"
+              ]
+            },
+            "mode": {
+              "type": "string",
+              "const": "seller_managed"
+            },
+            "sla": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/escalation-sla.json"
+            },
+            "change_term_id": false,
+            "terms_ref": false
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-media-buy-action-fields.json"
+            },
+            {
+              "if": {
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "update_creative_start_policy"
+                  }
+                },
+                "required": [
+                  "action"
+                ]
+              },
+              "then": {
+                "required": [
+                  "applicable_package_ids"
+                ],
+                "properties": {
+                  "change_term_id": false,
+                  "terms_ref": false
+                }
+              }
+            }
+          ],
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "const": "control_media_buy"
+            },
+            "action": {
+              "enum": [
+                "pause",
+                "resume",
+                "cancel",
+                "update_name",
+                "update_creative_start_policy",
+                "increase_budget",
+                "decrease_budget",
+                "reallocate_budget",
+                "update_budget_allocation",
+                "update_targeting",
+                "update_pacing",
+                "update_bidding",
+                "update_frequency_caps",
+                "update_media_buy_frequency_cap",
+                "update_catalog_assignments",
+                "update_keywords",
+                "update_optimization_goals",
+                "update_impression_goal",
+                "update_spend_target",
+                "update_reporting_webhook",
+                "remove_packages"
+              ]
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-media-buy-action-fields.json"
+            }
+          ],
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "const": "refine_proposals"
+            },
+            "action": {
+              "enum": [
+                "cancel",
+                "extend_flight",
+                "shorten_flight",
+                "update_flight_dates",
+                "increase_budget",
+                "decrease_budget",
+                "reallocate_budget",
+                "update_budget_allocation",
+                "update_targeting",
+                "update_pacing",
+                "update_bidding",
+                "update_frequency_caps",
+                "update_media_buy_frequency_cap",
+                "add_packages",
+                "remove_packages"
+              ]
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-media-buy-action-fields.json"
+            }
+          ],
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "const": "sync_creatives"
+            },
+            "action": {
+              "enum": [
+                "replace_creative",
+                "update_creative_assignments",
+                "remove_creative"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "external:core/canonical-media-buy-action-fields.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-media-buy-action-fields.json",
+      "title": "Canonical Media Buy Action Fields",
+      "description": "Shared closed field set for task-discriminated canonical MediaBuy actions.",
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string",
+          "enum": [
+            "control_media_buy",
+            "refine_proposals",
+            "sync_creatives",
+            "report_media_buy_issue"
+          ]
+        },
+        "action": {
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/canonical-media-buy-action-mode.json"
+        },
+        "sla": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/sla-window.json"
+        },
+        "review_sla": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/creative-review-sla.json",
+          "x-added-in": "3.3.0",
+          "description": "Product review commitment resolved for applicable packages, independent of negotiated change rights."
+        },
+        "change_term_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/media-buy-change-term-id.json"
+        },
+        "terms_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/media-buy-legacy-terms-ref.json"
+        },
+        "applicable_package_ids": {
+          "type": "array",
+          "description": "Exact eligible packages for a package-scoped action; omission means all relevant packages.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/applicable-package-id.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "task",
+        "action",
+        "mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "review_sla"
+            ]
+          },
+          "then": {
+            "properties": {
+              "task": {
+                "const": "sync_creatives"
+              },
+              "action": {
+                "enum": [
+                  "replace_creative",
+                  "update_creative_assignments"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/canonical-media-buy-action-mode.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/canonical-media-buy-action-mode.json",
+      "title": "Canonical Media Buy Action Mode",
+      "description": "How a seller honors a routed compact-lifecycle action.",
+      "type": "string",
+      "enum": [
+        "self_serve",
+        "conditional_self_serve",
+        "seller_managed",
+        "requires_approval"
+      ],
+      "enumDescriptions": {
+        "self_serve": "The declared task completes synchronously without approval.",
+        "conditional_self_serve": "The declared task completes synchronously inside seller tolerances and may become asynchronous outside them.",
+        "seller_managed": "The seller processes the action through the standard async lifecycle. The internal use of people, models, queues, or other controls is intentionally opaque.",
+        "requires_approval": "Legacy 3.x mode indicating an approval-dependent async path. New proposal-bound terms SHOULD use seller_managed so they do not expose an internal implementation."
+      }
+    },
+    "external:core/sla-window.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/sla-window.json",
+      "title": "SLA Window",
+      "description": "Optional commitment; absence means none, not zero. Duration predicates MUST require presence. Elapsed time includes non-working time (P1D = PT24H). Business time uses the referenced calendar's working periods and business_day_minutes for P1D. Compare clocks using deadlines for the same receipt time.",
+      "type": "object",
+      "properties": {
+        "clock": {
+          "type": "string",
+          "enum": [
+            "elapsed",
+            "business"
+          ],
+          "default": "elapsed",
+          "x-added-in": "3.3.0",
+          "description": "Business time starts at seller receipt, advancing to the next working period when outside working time."
+        },
+        "business_calendar_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "business_calendar",
+          "x-added-in": "3.3.0",
+          "description": "Immutable seller-local ID in get_adcp_capabilities.business_calendars; required only for business time."
+        },
+        "response_max": {
+          "type": "string",
+          "description": "ISO 8601 acknowledgement bound: synchronous response for self_serve, tolerance decision for conditional_self_serve, queue receipt for seller_managed/requires_approval. Elapsed action SLAs start at buyer issuance. Review and report SLAs start at seller receipt; reports require human acknowledgement.",
+          "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+          "examples": [
+            "PT5M",
+            "PT4H",
+            "P1D"
+          ]
+        },
+        "completion_max": {
+          "type": "string",
+          "description": "ISO 8601 completion bound: mutation applied, proposal finalized, or seller-managed decision resolved. Elapsed action SLAs start at buyer issuance. Review SLAs start at seller receipt and complete at an approved or rejected decision.",
+          "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+          "examples": [
+            "PT1H",
+            "PT24H",
+            "P2D"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "clock": {
+                "const": "business"
+              }
+            },
+            "required": [
+              "clock"
+            ]
+          },
+          "then": {
+            "required": [
+              "business_calendar_id"
+            ],
+            "properties": {
+              "response_max": {
+                "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+              },
+              "completion_max": {
+                "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "business_calendar_id"
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "calendar_reference": "A business_calendar_id resolves to exactly one immutable get_adcp_capabilities.business_calendars declaration whose coverage includes receipt and the computed deadline. Invalid or unresolved calendars never fall back to elapsed time.",
+          "request_snapshot": "Pending requests retain the SLA and calendar resolved at receipt. Maxima are independent upper bounds; a completion maximum shorter than the response maximum does not invalidate either commitment."
+        }
+      }
+    },
+    "external:core/creative-review-sla.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/creative-review-sla.json",
+      "title": "Creative Review SLA",
+      "description": "Time from seller receipt of a creative review submission to an approved or rejected decision for a format the product accepts. Ingestion, processing, pending_review, and suspended are not terminal decisions. Applies to each accepted review submission independently. Idempotent replay does not restart the clock; changed content requiring review starts a new clock. Absence means no review commitment.",
+      "x-added-in": "3.3.0",
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/sla-window.json"
+        }
+      ],
+      "required": [
+        "completion_max"
+      ]
+    },
+    "external:core/media-buy-change-term-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/media-buy-change-term-id.json",
+      "title": "Media Buy Change Term ID",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "x-entity": "media_buy_change_term",
+      "description": "The accepted proposal change_terms[].term_id from which this current-state action projection was derived."
+    },
+    "external:core/media-buy-legacy-terms-ref.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/media-buy-legacy-terms-ref.json",
+      "title": "Media Buy Terms Reference",
+      "type": "string",
+      "deprecated": true,
+      "x-deprecated-in": "3.2.0",
+      "x-removed-in": "4.0.0",
+      "description": "Deprecated 3.1 opaque commercial-terms pointer. A 3.2 compatibility projection MAY echo change_term_id here for older buyers, but new buyers MUST prefer change_term_id and MUST NOT assume an arbitrary 3.1 value identifies an accepted change term."
+    },
+    "external:core/applicable-package-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/applicable-package-id.json",
+      "title": "Applicable Package ID",
+      "description": "A package identifier to which a package-scoped media-buy action currently applies.",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "package"
+    },
+    "external:core/escalation-sla.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/escalation-sla.json",
+      "title": "Escalation SLA",
+      "x-added-in": "3.3.0",
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/sla-window.json"
+        }
+      ],
+      "required": [
+        "response_max"
+      ],
+      "properties": {
+        "clock": {
+          "type": "string",
+          "const": "elapsed"
+        },
+        "response_max": {
+          "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+        },
+        "completion_max": false
+      },
+      "description": "Critical-report commitment. response_max is the maximum elapsed time from seller receipt to human acknowledgement. Business time and resolution-time commitments are outside this contract."
+    },
+    "external:core/warning.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/warning.json",
+      "title": "Warning",
+      "description": "A non-blocking observation returned with a successful operation. The operation succeeded exactly as its success arm states. Warnings are immediate receipts, not durable lifecycle state; a continuing condition MUST also appear on its authoritative read surface as an indicator, defect, delivery issue, approval state, or other applicable resource state.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/warning-code.json"
+        },
+        "message": {
+          "type": "string",
+          "description": "Short human-readable explanation. Treat as untrusted seller text and do not require buyers to parse it for routing.",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "affected_resource": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/warning-resource.json",
+          "description": "Resource or relationship affected by this warning. Required so multi-package and multi-creative responses remain machine-joinable."
+        },
+        "details": {
+          "type": "object",
+          "description": "Optional seller-specific structured diagnostics. AdCP 3.2 defines interoperability through code and affected_resource only; buyers MUST NOT require portable keys inside details. Seller extensions that are not direct diagnostics belong in ext.",
+          "additionalProperties": true
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "affected_resource"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "enum": [
+                  "inventory_shortfall_forecast",
+                  "flight_change_creates_pacing_risk"
+                ]
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "affected_resource": {
+                "properties": {
+                  "resource_type": {
+                    "const": "package"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "fields_ignored_due_to_precedence"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "affected_resource": {
+                "properties": {
+                  "resource_type": {
+                    "enum": [
+                      "media_buy",
+                      "package"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "warning_capability_requirements": {
+            "inventory_shortfall_forecast": {
+              "supported_indicator_type": "inventory_shortfall_forecast"
+            },
+            "flight_change_creates_pacing_risk": {
+              "supported_indicator_type": "pacing_risk"
+            },
+            "fields_ignored_due_to_precedence": null
+          }
+        },
+        "spec": "specs/relationship-scoped-indicators.md#warning-contract"
+      },
+      "additionalProperties": true
+    },
+    "external:enums/warning-code.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/warning-code.json",
+      "title": "Warning Code",
+      "description": "Closed warning vocabulary for the negotiated AdCP release. A non-blocking condition observed while an operation still succeeded. New values are added through normal protocol releases; buyers validate against the negotiated release.",
+      "type": "string",
+      "enum": [
+        "inventory_shortfall_forecast",
+        "flight_change_creates_pacing_risk",
+        "fields_ignored_due_to_precedence"
+      ],
+      "enumDescriptions": {
+        "inventory_shortfall_forecast": "The operation succeeded, but the seller's current forecast is materially below the requested delivery goal. If the condition remains current, the seller also exposes inventory_shortfall_forecast on the affected package read.",
+        "flight_change_creates_pacing_risk": "The requested flight change was accepted, but the seller projects material over- or under-delivery risk. If the condition remains current, the seller also exposes pacing_risk on the affected package read.",
+        "fields_ignored_due_to_precedence": "The operation succeeded, but one or more submitted fields were intentionally ignored because another field has defined precedence, such as canceled: true overriding other media-buy updates. details SHOULD list the ignored field paths."
+      }
+    },
+    "external:core/warning-resource.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/warning-resource.json",
+      "title": "Warning affected resource",
+      "description": "Typed AdCP identity for the resource or relationship affected by a successful-operation warning. Buyers use this locator to join the receipt to durable readback without parsing message or details.",
+      "type": "object",
+      "properties": {
+        "resource_type": {
+          "type": "string",
+          "enum": [
+            "media_buy",
+            "package",
+            "creative",
+            "creative_assignment"
+          ]
+        },
+        "media_buy_id": {
+          "type": "string",
+          "x-entity": "media_buy"
+        },
+        "package_id": {
+          "type": "string",
+          "x-entity": "package"
+        },
+        "creative_id": {
+          "type": "string",
+          "x-entity": "creative"
+        }
+      },
+      "required": [
+        "resource_type"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "media_buy"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "package"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id",
+              "package_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "creative"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "creative_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "creative_assignment"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id",
+              "package_id",
+              "creative_id"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/ext.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+      "title": "Extension Object",
+      "description": "Extension object for optional parameters under an owner-controlled namespace (e.g., ext.gam, ext.roku). The reserved ext.adcp namespace is maintained by the AdCP Working Group and is limited to its documented bindings. Used for custom capabilities, partner-specific configuration, and features being proposed for standardization. Namespace support does not imply support for undocumented future bindings.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/context.json",
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/error.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/error.json",
+      "title": "Error",
+      "description": "Standard error structure for task-specific errors and warnings",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Error code for programmatic handling. The error-code vocabulary is open: `error.code` is wire-typed `string` (not a closed enum), the standard codes published in `enums/error-code.json` are documentary, and senders MAY emit codes outside that set (platform-specific codes, or codes introduced in a later AdCP version). Receivers MUST decode unknown codes — treat the response as well-formed, read `error.recovery` for the recovery classification, and fall back to `transient` when `recovery` is absent. See `error-handling.mdx#forward-compatible-decoding-normative` for the full forward-compat contract — this rule is what lets future maintenance lines ship new codes additively."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message",
+          "x-max-length-4.0": 1024
+        },
+        "buyer_reason": {
+          "type": "object",
+          "description": "Optional buyer-actionable classification of the failure. Use this when the enclosing error code or message is too coarse or contains producer-internal context that must not cross the buyer trust boundary. `code` reuses the comprehensive standard vocabulary and recovery classifications published in `enums/error-code.json`, including policy, governance, account, commercial, inventory, and creative failures. The wire field remains open for forward compatibility. `message` MUST be safe to show to the buyer and MUST NOT contain vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details. When present, the enclosing `error.recovery` MUST classify the buyer-actionable reason. If both the enclosing code and buyer reason are registered, their standard recovery classifications MUST agree with each other and with `error.recovery`; sellers MUST choose the closest compatible enclosing code rather than retain a conflicting upstream transport wrapper. One buyer_reason classifies one error object. If a rejection contains independently actionable failures from different classes, sellers MUST emit separate error objects or omit buyer_reason rather than select a misleading single class.",
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Machine-readable buyer-actionable reason from the standard `enums/error-code.json` vocabulary or a producer-specific extension. Extensions MUST follow the standard `X_{VENDOR}_{CODE}` naming rule. The wire field is open for forward compatibility. Receivers MUST accept unknown values and use the enclosing `error.recovery` plus this object's `message` as the fallback."
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Buyer-safe explanation of the actionable failure. MUST NOT expose vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details.",
+              "x-max-length-4.0": 1024
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": true
+        },
+        "field": {
+          "type": "string",
+          "description": "Field path associated with the error in JSONPath-lite format (e.g., 'packages[0].targeting'). When `issues[]` is also present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., '/packages/0/targeting' → 'packages[0].targeting') so pre-3.1 consumers reading `field` only get deterministic behavior. Will be deprecated in a future major version in favor of `issues[].pointer`.",
+          "x-max-length-4.0": 256
+        },
+        "suggestion": {
+          "type": "string",
+          "description": "Suggested fix for the error",
+          "x-max-length-4.0": 1024
+        },
+        "retry_after": {
+          "type": "number",
+          "description": "Seconds to wait before retrying the operation. AdCP 3.2 producers MUST emit an integer from 1 through 3600. The 3.x schema continues to accept finite fractional values for backward compatibility with earlier producers; consumers receiving one MUST round up to the next whole second before clamping so the retry is never scheduled earlier than intended. Non-finite values are treated as absent.",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "description": "Structured list of validation failures. Primary use is `VALIDATION_ERROR`, where multi-field rejections are common and `field` (singular) cannot carry the full pointer map. MAY appear on other error codes that reject multiple fields at once. When `issues` is present, sellers MUST also populate `field` from `issues[0]` for backward compatibility with pre-3.1 consumers that read `field` only — translating the RFC 6901 `pointer` format to the JSONPath-lite format `field` uses (e.g., `/packages/0/targeting` → `packages[0].targeting`). MUST (not SHOULD) so consumers reading `field` get deterministic behavior across sellers — the cost is one line of dual-write per seller; the cost of SHOULD is a long tail of seller-A-vs-seller-B inconsistency. Future major versions will deprecate `field` in favor of `issues[].pointer`.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string",
+                "description": "RFC 6901 JSON Pointer to the offending field in the request payload (e.g., '/packages/0/targeting/geo_countries/2'). Format chosen to match Ajv's native validation output (`instancePath`); standardized and unambiguous on keys containing `/` or `~`. NOTE: this differs from the legacy top-level `field` which uses JSONPath-lite (`packages[0].targeting.geo_countries[2]`). When sellers populate `field` from `issues[0].pointer` for backward compatibility (see `field` description), they MUST translate the format — `/packages/0/x` → `packages[0].x`. Future major versions will deprecate `field` in favor of `issues[].pointer`.",
+                "x-max-length-4.0": 256
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable description of why this specific field was rejected.",
+                "x-max-length-4.0": 512
+              },
+              "keyword": {
+                "type": "string",
+                "description": "Schema keyword that rejected the payload, drawn from the JSON Schema vocabulary (e.g., 'required', 'type', 'format', 'enum', 'pattern', 'minimum', 'maxLength'). Matches the keyword names emitted by JSON Schema validators (Ajv, jsonschema, etc.) so agents can pattern-match on rejection class without parsing message text. Implementers SHOULD use the validator's native keyword name; do not invent custom values here.",
+                "x-max-length-4.0": 64
+              },
+              "schemaPath": {
+                "type": "string",
+                "description": "Optional. JSON Schema tree path of the rejecting keyword (e.g. '#/properties/packages/items/oneOf/1'). 3.1+ consumers SHOULD prefer `schema_id`; `schemaPath` is retained for 3.0.x compatibility (renamed to `schema_path` in a future major). See error-handling.mdx for the validator-internals production-emit rules.",
+                "x-max-length-4.0": 256
+              },
+              "schema_id": {
+                "type": "string",
+                "description": "Optional. `$id` of the rejecting (sub-)schema (e.g. `/schemas/3.1.0/core/activation-key.json`). MUST resolve to a `$id` published in the spec at the version the seller advertises via `get_adcp_capabilities` — either a deep sub-schema (the typical case) or the response-root `$id` (the bundled-tree fallback for tools served from bundles built before #3868). Sellers MUST NOT emit when the rejection occurred against a private extension, server-only sub-schema, or pre-release element — the public-spec replay rationale only holds when the rejecting element is reachable from the public bundle. Sellers populating `schemaPath` SHOULD also populate `schema_id` when they have it so 3.1+ readers don't get strictly less than 3.0.x readers. See error-handling.mdx for resolution guidance and the bundled-tree caveat.",
+                "x-max-length-4.0": 256
+              },
+              "discriminator": {
+                "type": "array",
+                "description": "Optional. Const-discriminator property/value pair(s) identifying the variant the validator selected from values present in the payload. Sellers MUST populate only when (a) the rejecting schema is a const-discriminated `oneOf` / `anyOf` and (b) the discriminator property is present in the payload — emission on partial-match inference would fingerprint the seller's validator implementation. MUST omit when zero variants survive. Compound discriminators (e.g. `(type, value_type)`) produce multiple entries ordered by declaration in the rejecting schema's `properties` block. Same private-extensions / version-skew carve-out as `schema_id`. See error-handling.mdx.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string",
+                      "description": "Discriminator property name (e.g., `type`, `value_type`). Aligns with OpenAPI 3.x `discriminator.propertyName`.",
+                      "x-max-length-4.0": 128
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ],
+                      "description": "Value the caller sent at `property_name`. Typically a string for const-discriminated unions; numeric/boolean/null permitted. Object and array values are forbidden — const discriminators are scalars, and emitting a structured value would conflate 'caller sent a complex shape' with 'validator inferred from a structural match'.",
+                      "x-max-length-4.0": 128
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                "x-max-items-4.0": 8
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          },
+          "x-max-items-4.0": 10
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional task-specific error details. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers reading from `details`; new consumers SHOULD prefer the top-level `issues` field.\n\n**Canonical rejection-set shape (3.1+).** When the error reports a rejected value against a closed set of accepted values (e.g., enum mismatch, unsupported pricing option, invalid signal id), sellers SHOULD use the canonical key `accepted_values: <array>` under `details` rather than seller-specific variants observed in the wild (`available`, `allowed`, `accepted_values` at the error root, etc.). The canonical shape:\n\n```json\n{\n  \"code\": \"INVALID_PRICING_OPTION\",\n  \"message\": \"Pricing option not found: po_prism_abandoner_cpm\",\n  \"field\": \"pricing_option_id\",\n  \"details\": {\n    \"rejected_value\": \"po_prism_abandoner_cpm\",\n    \"accepted_values\": [\"po_prism_cart_cpm\", \"po_prism_view_cpm\"]\n  }\n}\n```\n\n- `rejected_value` (optional): the offending value the buyer supplied, echoed for buyer-side diagnostic clarity (especially when the offending field is nested or transformed before validation).\n- `accepted_values` (optional): the closed set the seller would have accepted at this field on this call. Sellers MUST NOT enumerate the full ecosystem-wide accepted set if it differs from what's accepted for *this caller in this context* (account, brand, scope) — leaking ecosystem-wide accepted sets to a per-caller rejection turns the error into an enumeration oracle.\n\nThis is **SHOULD-level guidance**, not MUST: `details` remains `additionalProperties: true` and pre-3.1 sellers using `available` / `allowed` / `accepted_values` at the error root remain conformant. The canonical shape lets buyer-side diagnostic tooling (SDK runner hints, dashboards, error classifiers) reliably surface the accepted-set without per-seller pattern matching. SDKs SHOULD accept any of the legacy variants and normalize on read; the canonical shape is what new sellers and 3.1+ adopters should emit going forward.",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ],
+          "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found). AdCP 3.2 producers MUST populate `recovery` on every error; 3.1 producers SHOULD populate it. The shared 3.x schema intentionally does not add `recovery` to `required` so retained and live errors from earlier 3.x producers remain decodable. When `buyer_reason` is present, `recovery` is required and MUST classify that buyer-actionable reason. If the enclosing code and buyer reason are both registered, their standard recovery classifications MUST agree with each other and with this field. A receiver that does not recognize `error.code` (a newer code, or a platform-specific code) MUST still be able to classify the error from `recovery`. When a legacy error omits `recovery`, receivers use the registered classification for a known code and fall back to `transient` for an unknown code, subject to the bounded retry budget. The `enumMetadata.recovery` block in `enums/error-code.json` is the documentary mirror for known top-level and buyer-reason codes; `error.recovery` on the wire is authoritative when present."
+        },
+        "mutation_outcome": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "examples": [
+            "not_applied",
+            "unknown",
+            "applied"
+          ],
+          "description": "Whether the failed request changed seller state. Optional; meaningful only on an error that terminates a state-changing request (an envelope `adcp_error`, a task-level `errors[]` entry that fails the request, or the terminal error of an async task that ends in `failed`). Pure reads never carry it, and it MUST NOT be set on warnings or used to describe individual items of a partially successful response. Values: `not_applied`: the seller has pre-commit evidence that no local or downstream write was attempted or committed. 'Pre-commit evidence' means the failure was raised before the request's idempotency claim row was inserted and before any write was issued, or was a typed AdCP rejection returned by validation that runs strictly before the first write is issued. A timeout, cancellation, connection error, or exception raised from within or after a write (including an in-flight database write or the claim insert itself), or caught by a handler-level catch-all or framework wrapper, is NOT pre-commit evidence. `unknown`: the seller cannot rule out that some or all of the requested change committed, and has fenced the idempotency claim so a same-key resend cannot run the mutation again. On a compound request (several packages, creatives, or items), `unknown` covers the whole request envelope; per-item outcomes are out of scope. `applied`: the seller holds durable evidence that the requested change committed and the error reports a later failure, as with `COMMITTED_RESOURCE_PURGED`. Absent: the seller makes no claim; buyers apply the absent-field guidance in Request Safety → Idempotency. The wire type is open: receivers MUST treat an unrecognized, empty, or non-string value as `unknown`, never as a reason to discard the error. The field is independent of `code` and `recovery`. See `error-handling.mdx#mutation-outcome` for the seller and buyer obligations, which bind sellers declaring AdCP 3.3 or later.",
+          "x-added-in": "3.3.0"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ],
+          "description": "Who emitted this error entry. `producer` (default when absent): emitted by the response's authoring agent (the seller for `get_products`, the creative agent for `build_creative`, etc.). `sdk`: augmented by a consuming SDK that detected a non-fatal advisory condition on consumption (e.g., `FORMAT_PROJECTION_FAILED` when the buyer SDK couldn't project a v1 format to a canonical, or `FORMAT_DECLARATION_DIVERGENT` when the SDK detected a producer bug on read). SDK-augmented entries SHOULD also set `sdk_id` so downstream consumers can identify which intermediate processor inserted the entry.\n\n**Multi-hop propagation (normative).** AdCP is a federated agent network — responses commonly traverse multiple SDKs (e.g., sales agent → interchange → DSP → buyer). When an SDK augments `errors[]` with a consumption-detected entry, the augmented response carries the entry forward to subsequent hops. Each hop that detects the same condition independently SHOULD deduplicate by `(code, field)` rather than re-emit; the existing entry's `sdk_id` identifies which earlier processor saw it first. Producer entries (those without `source: \"sdk\"`) are authoritative for what the response's authoring agent self-detected; SDK entries are observations made on top.\n\n**Replay/audit safety.** Persisted or replayed responses carry `source` and `sdk_id` so the audit trail can distinguish seller-emitted entries from SDK-augmented ones. Without `source`, a downstream consumer can't tell whether a code came from the seller or an intermediate SDK, which corrupts attribution."
+        },
+        "sdk_id": {
+          "type": "string",
+          "description": "Optional identifier for the SDK that augmented this error entry. Format: `<sdk_package_name>@<version>` (e.g., `@adcontextprotocol/adcp@7.3.0`, `adcontextprotocol-adcp-python@1.2.0`). MUST be set when `source: \"sdk\"`; MUST be absent when `source: \"producer\"` or absent. Lets downstream consumers identify which intermediate processor inserted the entry, useful for debugging cross-SDK divergence (e.g., one SDK detects a projection failure that another SDK's registry version doesn't).",
+          "x-max-length-4.0": 128
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true,
+      "dependentRequired": {
+        "buyer_reason": [
+          "recovery"
+        ]
+      }
+    }
+  }
+}

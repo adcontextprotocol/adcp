@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/pending-action-kind.json",
+  "title": "Pending Action Kind",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "What a pending account request, account, or relationship needs next (experimental): review by the seller, a grant, or a human completing a step at url. Receivers MUST accept unknown values and fall back to message and url.",
+  "type": "string",
+  "x-extensible": true,
+  "x-pattern": "^[a-z][a-z0-9_]*$",
+  "enum": [
+    "review",
+    "sign_up",
+    "accept_terms",
+    "credit_application",
+    "add_payment",
+    "grant",
+    "connect_credentials"
+  ]
+}

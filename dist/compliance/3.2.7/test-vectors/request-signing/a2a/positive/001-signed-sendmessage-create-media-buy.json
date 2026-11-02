@@ -1,0 +1,41 @@
+{
+  "name": "Signed A2A 1.0 SendMessage carrying create_media_buy; operation resolves from DataPart skill",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "tier": "contradiction-resolution",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/jsonrpc",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3",
+      "Content-Digest": "sha-256=:qpDIZjnVvwICqXyrH7tLuiTPiHGfoh+mUfOmtN6YZi4=:",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"QTJBLXBvcy0wMDEtc2lnbmVk\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:41ZkZDzqRGQDSvij/43FwY7AeVAhU+UD96ANXDEGhPCKyFEAFH4cXSigWpMNZ+PxbzRMbWShAwYO199tL4HOAA==:"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-pos-001\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-pos-001\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"create_media_buy\",\"input\":{\"idempotency_key\":\"vector-a2a-create-media-buy-0001\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}}}]}}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/a2a/jsonrpc\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:qpDIZjnVvwICqXyrH7tLuiTPiHGfoh+mUfOmtN6YZi4=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"QTJBLXBvcy0wMDEtc2lnbmVk\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true,
+    "status": "verified",
+    "resolved_operation": "create_media_buy"
+  },
+  "$comment": "AdCP 3.2 request-signing wire profile, unchanged: the signature covers content-digest and binary values are RFC 8941 sf-binary. Only the operation-resolution rule is new. A verifier that resolves the operation from the JSON-RPC method (SendMessage) instead of the skill would not match required_for and would skip the signature requirement for this operation."
+}

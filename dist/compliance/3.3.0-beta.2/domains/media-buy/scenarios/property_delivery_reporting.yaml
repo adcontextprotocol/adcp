@@ -1,0 +1,280 @@
+id: media_buy_seller/property_delivery_reporting
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Seller reports delivery by property from injected rows"
+category: media_buy_seller
+summary: "Verifies reporting_dimensions.property returns only controller-injected property rows with truncation, suppression, and applied-sort companions; gated on the seller-wide supports_property_breakdown rollup."
+track: reporting
+
+requires_capability:
+  path: media_buy.features.supports_property_breakdown
+  equals: true
+
+requires:
+  - controller
+
+required_tools:
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+narrative: |
+  A buyer that wants to verify where a buy delivered asks for
+  reporting_dimensions.property. The per-product flag
+  reporting_capabilities.supports_property_breakdown is the product's promise;
+  the seller-wide rollup media_buy.features.supports_property_breakdown is the
+  grading gate, so a seller that does not declare it grades not_applicable.
+
+  Property delivery is observed data. The test controller therefore injects
+  explicit property_delivery rows with simulate_delivery, and the seller must
+  echo exactly those rows. It must not derive them from catalog eligibility or
+  publisher_properties. The scenario proves the companions a buyer relies on to
+  interpret a partial list: by_property_truncated, by_property_suppressed, and
+  the applied sort metric and direction. Injected rows carry no suppression
+  control, so by_property_suppressed is asserted false; suppression behavior is
+  outside this scenario.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - reports_delivery
+  examples:
+    - "An ad network exposing domain and app bundle delivery per buy"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds a product whose reporting_capabilities declare
+    supports_property_breakdown. The scenario creates a buy, injects explicit
+    property_delivery rows, and requests the dimension twice
+    with different limits and orderings. The rows are injected out of impressions order so a seller that truncates before sorting fails. No delivery is inferred by the seller.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "property_reporting_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "property_reporting_display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 0
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        supports_property_breakdown: true
+        date_range_support: "date_range"
+  pricing_options:
+    - product_id: "property_reporting_display"
+      pricing_option_id: "property_reporting_display_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 10.0
+
+phases:
+  - id: setup
+    title: "Create a buy on a property-reportable product"
+    steps:
+      - id: sync_account
+        title: "Establish the buyer account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#property_delivery_reporting_sync_account"
+        validations:
+          - check: response_schema
+            description: "Account response matches the protocol schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The seller assigns an account identity"
+
+      - id: create_buy
+        title: "Create the buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "property_reporting_display"
+              pricing_option_id: "property_reporting_display_cpm"
+              budget: 1000
+          idempotency_key: "$generate:uuid_v4#property_delivery_reporting_create_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Create response matches the protocol schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "The seller assigns a media-buy identity"
+
+  - id: report
+    title: "Inject and retrieve property delivery"
+    steps:
+      - id: simulate_delivery
+        title: "Inject deterministic property rows"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 10000
+            property_delivery:
+              - publisher_domain: "nova-sports.example"
+                identifier: { type: "domain", value: "nova-sports.example" }
+                impressions: 2000
+                spend: 10
+              - publisher_domain: "acme-news.example"
+                identifier: { type: "domain", value: "acme-news.example" }
+                impressions: 5000
+                spend: 25
+              - publisher_domain: "streamhaus.example"
+                identifier: { type: "android_package", value: "example.streamhaus.app" }
+                impressions: 3000
+                spend: 90
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "The controller accepts the deterministic rows"
+
+      - id: get_truncated_by_impressions
+        title: "Request the top two rows by impressions"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids: ["$context.media_buy_id"]
+          reporting_dimensions:
+            property:
+              limit: 2
+              sort_by: "impressions"
+              sort_direction: "desc"
+        validations:
+          - check: response_schema
+            description: "Delivery response matches the protocol schema"
+          - check: field_equals_context
+            path: "media_buy_deliveries[0].media_buy_id"
+            context_key: "media_buy_id"
+            description: "The response belongs to the requested media buy"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_property"
+            description: "The seller returns the requested property breakdown"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property[0].identifier.value"
+            allowed_values: ["acme-news.example"]
+            description: "Highest-impression property orders first"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property[1].identifier.value"
+            allowed_values: ["example.streamhaus.app"]
+            description: "Second row is the app property, keyed by its own identifier type"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property[1].identifier.type"
+            allowed_values: ["android_package"]
+            description: "Non-web identifier types are preserved"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property_truncated"
+            allowed_values: [true]
+            description: "The two-row limit truncated the three injected rows"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property_suppressed"
+            allowed_values: [false]
+            description: "No row is threshold-suppressed"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property_sorted_by"
+            allowed_values: ["impressions"]
+            description: "The response echoes the metric actually used for sorting"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property_sort_direction"
+            allowed_values: ["desc"]
+            description: "The response echoes the applied descending direction"
+
+      - id: get_complete_by_spend
+        title: "Request every row ordered by ascending spend"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids: ["$context.media_buy_id"]
+          reporting_dimensions:
+            property:
+              limit: 3
+              sort_by: "spend"
+              sort_direction: "asc"
+        validations:
+          - check: response_schema
+            description: "Delivery response matches the protocol schema"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property_truncated"
+            allowed_values: [false]
+            description: "A limit equal to the injected row count discloses no truncation"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property_suppressed"
+            allowed_values: [false]
+            description: "No row is threshold-suppressed"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property_sorted_by"
+            allowed_values: ["spend"]
+            description: "The response echoes the metric actually used for sorting"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property_sort_direction"
+            allowed_values: ["asc"]
+            description: "The response echoes the applied ascending direction"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property[0].identifier.value"
+            allowed_values: ["nova-sports.example"]
+            description: "Ascending spend returns the cheapest property first"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property[1].identifier.value"
+            allowed_values: ["acme-news.example"]
+            description: "Ascending spend orders the middle property second"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].by_property[2].identifier.value"
+            allowed_values: ["example.streamhaus.app"]
+            description: "Ascending spend orders the most expensive property last"

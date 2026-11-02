@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/price-adjustments-mismatch.json",
+  "title": "Price Adjustments Mismatch Details",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "Recommended details shape for an INVALID_REQUEST that rejects a buyer-supplied pricing whose fixed_price or price_breakdown differs from the price the selected option's price_adjustments table resolves to for the purchase's selections and flight. Carries the resolved values so the buyer can see which row it disagrees on. Experimental (media_buy.price_adjustments).",
+  "type": "object",
+  "properties": {
+    "resolved_fixed_price": {
+      "type": "number",
+      "minimum": 0,
+      "description": "The price the table resolves to for this purchase."
+    },
+    "resolved_price_breakdown": {
+      "$ref": "/schemas/pricing-options/price-breakdown.json",
+      "description": "The resolved breakdown: declared adjustments followed by one entry per fired row."
+    }
+  },
+  "required": [
+    "resolved_fixed_price"
+  ],
+  "additionalProperties": true
+}

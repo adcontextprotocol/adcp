@@ -1,0 +1,134 @@
+name: SDK interop (reporting subscriptions)
+
+# Cross-SDK testing of AdCP 3.3 reporting subscriptions and account requests
+# against the published TypeScript (@adcp/sdk) and Python (adcp) pre-releases.
+# See tests/interop/README.md.
+#
+# - self-test (every run, and on pull requests touching the harness, the
+#   reference model or the vectors): the harness self-test, and vectors.json
+#   replayed through both SDKs.
+# - differential (nightly, workflow_dispatch): seeded scenarios through the
+#   reference model and both SDKs; any disagreement is minimized into a
+#   candidate vector (uploaded as an artifact) and fails the run.
+# - matrix (nightly, workflow_dispatch): {TS, Python} buyer x {TS, Python}
+#   seller over a scripted timeline, plus account-request round trips.
+#
+# workflow_dispatch can point either SDK at a git ref: ts_sdk git:<ref> builds
+# adcontextprotocol/adcp-client, py_sdk git:<ref> installs
+# adcontextprotocol/adcp-client-python.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+    inputs:
+      ts_sdk:
+        description: '@adcp/sdk: npm spec (default @adcp/sdk@beta) or git:<ref>'
+        required: false
+        default: '@adcp/sdk@beta'
+      py_sdk:
+        description: 'adcp: pip spec (default adcp>=10.0.0b0) or git:<ref>'
+        required: false
+        default: 'adcp>=10.0.0b0'
+      scenarios:
+        description: 'Differential scenarios to generate'
+        required: false
+        default: '3000'
+      seed:
+        description: 'First seed (default: derived from the date)'
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - 'tests/interop/**'
+      - 'scripts/reference/reporting-coverage/**'
+      - 'static/compliance/source/test-vectors/reporting-subscriptions/**'
+      - '.github/workflows/sdk-interop.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-interop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ADCP_INTEROP_ENV: ${{ github.workspace }}/.interop-env
+  TS_SDK: ${{ github.event.inputs.ts_sdk || '@adcp/sdk@beta' }}
+  PY_SDK: ${{ github.event.inputs.py_sdk || 'adcp>=10.0.0b0' }}
+
+jobs:
+  self-test:
+    name: Harness self-test and vectors through both SDKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install the SDKs
+        run: bash tests/interop/setup-env.sh --ts "$TS_SDK" --py "$PY_SDK"
+      - run: node --test --test-force-exit tests/interop/harness.test.cjs
+      - name: Replay vectors.json through both SDKs
+        run: node tests/interop/differential/run.cjs --vectors --count 0 --out "$RUNNER_TEMP/vectors"
+
+  differential:
+    name: Differential coverage (reference, TypeScript, Python)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install the SDKs
+        run: bash tests/interop/setup-env.sh --ts "$TS_SDK" --py "$PY_SDK"
+      - name: Run
+        env:
+          SCENARIOS: ${{ github.event.inputs.scenarios || '3000' }}
+          SEED: ${{ github.event.inputs.seed }}
+        run: |
+          node tests/interop/differential/run.cjs --vectors --count "$SCENARIOS" ${SEED:+--seed "$SEED"} \
+            --out "$RUNNER_TEMP/differential"
+      - name: Upload candidate vectors and the summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: differential-coverage
+          path: ${{ runner.temp }}/differential/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  matrix:
+    name: Buyer x seller matrix
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install the SDKs
+        run: bash tests/interop/setup-env.sh --ts "$TS_SDK" --py "$PY_SDK"
+      - name: Run
+        run: node tests/interop/matrix/run.cjs --out "$RUNNER_TEMP/matrix"
+      - name: Upload the summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: interop-matrix
+          path: ${{ runner.temp }}/matrix/
+          if-no-files-found: ignore
+          retention-days: 30

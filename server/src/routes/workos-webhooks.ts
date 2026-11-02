@@ -49,7 +49,13 @@ import { canonicalizeBrandDomain, assertClaimableBrandDomain } from '../services
 import { backfillPrimaryOrganization, resolvePreferredOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { canAddSeat, type SeatType, OrganizationDatabase } from '../db/organization-db.js';
-import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
+import { sendToOrgAdmins } from '../slack/org-group-dm.js';
+import { sanitizeSlackLine } from '../utils/slack-escape.js';
+
+/** Identifiers in an admin group DM. */
+const SLACK_NAME_MAX = 160;
+/** WorkOS-authored free text (the reason the add was refused). */
+const SLACK_FREE_TEXT_MAX = 400;
 import {
   upsertOrganizationMembership,
   deleteOrganizationMembership,
@@ -158,9 +164,11 @@ async function notifyAdminsOfRefusedMembership(input: {
       return;
     }
     const seatLabel = input.seatType === 'contributor' ? 'contributor' : 'community';
-    const safeEmail = escapeSlackMrkdwn(input.newUserEmail);
+    const safeEmail = sanitizeSlackLine(input.newUserEmail, SLACK_NAME_MAX);
     await sendToOrgAdmins(input.orgId, adminEmails, {
-      text: `Heads up: WorkOS tried to add ${input.newUserEmail} but you're at your ${seatLabel} seat cap`,
+      // Slack renders `text` in the notification preview, so it needs the
+      // same sanitizing as the block body.
+      text: `Heads up: WorkOS tried to add ${safeEmail} but you're at your ${seatLabel} seat cap`,
       blocks: [
         {
           type: 'header',
@@ -170,7 +178,7 @@ async function notifyAdminsOfRefusedMembership(input: {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `WorkOS tried to add *${safeEmail}* to your organization, but you're at your *${seatLabel}* seat cap. We didn't mirror the membership locally — they have the WorkOS record but won't appear in our team list, won't count toward billing, and won't get AAO features.\n\n${escapeSlackMrkdwn(input.reason)}`,
+            text: `WorkOS tried to add *${safeEmail}* to your organization, but you're at your *${seatLabel}* seat cap. We didn't mirror the membership locally — they have the WorkOS record but won't appear in our team list, won't count toward billing, and won't get AAO features.\n\n${sanitizeSlackLine(input.reason, SLACK_FREE_TEXT_MAX)}`,
           },
         },
         {

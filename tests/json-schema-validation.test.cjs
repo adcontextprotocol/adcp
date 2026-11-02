@@ -14,10 +14,19 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { ensureBuiltSchemas, readBuiltSchema, builtSchemaFiles, builtSchemaPath } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
 const SCHEMAS_DIR = path.join(__dirname, '../static/schemas/source');
+
+// Doc examples are wire payloads, so they validate against the published
+// schemas (dist/schemas/latest), the one tree every response validator reads.
+function loadComposedSchema(filePath) {
+  return readBuiltSchema(filePath);
+}
 
 // Test statistics
 let totalBlocks = 0;
@@ -55,10 +64,20 @@ function createAjvInstance() {
     strict: false,
     discriminator: true,
     loadSchema: async (uri) => {
+      // A source schema can deliberately pin a published object (for example
+      // ext.adcp.opportunity). Resolve that dependency from its immutable release.
+      const pinned = /^https:\/\/adcontextprotocol\.org\/schemas\/(\d+\.\d+\.\d+(?:-[^/]+)?)\/(.+)$/.exec(uri);
+      if (pinned) {
+        const releasedPath = containedSchemaPath(path.join(__dirname, '../dist/schemas', pinned[1]), pinned[2]);
+        if (fs.existsSync(releasedPath)) {
+          return JSON.parse(fs.readFileSync(releasedPath, 'utf8'));
+        }
+        throw new Error(`Cannot resolve pinned release schema: ${uri}`);
+      }
       // Convert URI to local path
       const localPath = uriToLocalPath(uri);
-      if (localPath && fs.existsSync(localPath)) {
-        return JSON.parse(fs.readFileSync(localPath, 'utf8'));
+      if (localPath && fs.existsSync(builtSchemaPath(localPath))) {
+        return loadComposedSchema(localPath);
       }
       throw new Error(`Cannot resolve schema: ${uri}`);
     }
@@ -70,6 +89,14 @@ function createAjvInstance() {
 /**
  * Convert a schema URI to a local file path
  */
+function containedSchemaPath(root, relativePath) {
+  const schemaPath = path.resolve(root, relativePath);
+  if (!schemaPath.startsWith(path.resolve(root) + path.sep) || path.extname(schemaPath) !== '.json') {
+    throw new Error(`Invalid schema path: ${relativePath}`);
+  }
+  return schemaPath;
+}
+
 function uriToLocalPath(uri) {
   // Handle various URI formats:
   // - https://adcontextprotocol.org/schemas/latest/adagents.json -> static/schemas/source/adagents.json
@@ -87,7 +114,7 @@ function uriToLocalPath(uri) {
   schemaPath = schemaPath.replace(/^\/schemas\//, '/');
 
   // Build local path
-  return path.join(SCHEMAS_DIR, schemaPath);
+  return containedSchemaPath(SCHEMAS_DIR, schemaPath.replace(/^\/+/, ''));
 }
 
 /**
@@ -100,8 +127,7 @@ async function loadAllSchemas(ajv) {
     if (schemasLoaded.has(filePath)) return;
 
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      const schema = JSON.parse(content);
+      const schema = loadComposedSchema(filePath);
 
       // Add schema by its $id if it has one
       if (schema.$id) {
@@ -124,20 +150,8 @@ async function loadAllSchemas(ajv) {
     }
   }
 
-  // Recursively load all .json files
-  function walkDir(dir) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walkDir(fullPath);
-      } else if (entry.name.endsWith('.json')) {
-        loadSchemaFile(fullPath);
-      }
-    }
-  }
-
-  walkDir(SCHEMAS_DIR);
+  // Every published schema (dist/schemas/latest).
+  for (const file of builtSchemaFiles()) loadSchemaFile(file);
   return schemasLoaded.size;
 }
 
@@ -357,20 +371,30 @@ async function validateJsonBlock(ajv, block) {
   const schemaUri = block.parsed.$schema;
   let validate;
 
+  const simplifiedUri = schemaUri.replace(/\/latest\//, '/').replace(/\/v?\d+(?:\.\d+)*(?:-[^/]+)?\//, '/');
   try {
     validate = ajv.getSchema(schemaUri);
     if (!validate) {
       // Try without the latest or semantic-version release prefix.
-      let simplifiedUri = schemaUri.replace(/\/latest\//, '/');
-      simplifiedUri = simplifiedUri.replace(/\/v?\d+(?:\.\d+)*(?:-[^/]+)?\//, '/');
       validate = ajv.getSchema(simplifiedUri);
     }
   } catch (e) {
-    failedBlocks++;
-    return {
-      status: 'error',
-      reason: `Schema not found: ${schemaUri}`
-    };
+    if (e.missingRef) {
+      // getSchema compiles synchronously. Load a pinned external dependency
+      // before validating, rather than reporting its parent schema as missing.
+      try {
+        validate = await ajv.compileAsync({ $ref: simplifiedUri });
+      } catch (dependencyError) {
+        failedBlocks++;
+        return { status: 'error', reason: `Cannot resolve schema ${schemaUri}: ${dependencyError.message}` };
+      }
+    } else {
+      failedBlocks++;
+      return {
+        status: 'error',
+        reason: `Schema not found: ${schemaUri}`
+      };
+    }
   }
 
   if (!validate) {
@@ -522,9 +546,13 @@ async function runTests() {
   }
 }
 
-// Run tests
-runTests().catch(error => {
-  log(`\nFatal error: ${error.message}`, 'error');
-  console.error(error);
-  process.exit(1);
-});
+module.exports = { createAjvInstance, uriToLocalPath };
+
+// Run the documentation CLI; exported helpers also support dependency regressions.
+if (require.main === module) {
+  runTests().catch(error => {
+    log(`\nFatal error: ${error.message}`, 'error');
+    console.error(error);
+    process.exit(1);
+  });
+}

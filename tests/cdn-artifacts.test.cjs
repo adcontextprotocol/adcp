@@ -22,6 +22,53 @@ const TYPES = {
   mdx: 'text/markdown; charset=utf-8',
   txt: 'text/plain; charset=utf-8',
 };
+// Stable releases the checkout knows about, newest first. PUBLISHED_STABLE is
+// what the bucket actually serves: 3.1.2 is released but never reached the
+// CDN, mirroring the live 3.0.27/3.0.28 gap behind #8318's stale v3.0 alias.
+const SOURCE_STABLE = ['3.1.2', '3.1.1', '3.1.0', '3.0.9'];
+const PUBLISHED_STABLE = ['3.1.1', '3.1.0', '3.0.9'];
+const PRIOR_POINTER_STABLE = '3.1.0';
+
+function discoverySource() {
+  const entry = (version, extra) => ({ version, ...extra,
+    path: `/schemas/${version}/`, index: `/schemas/${version}/index.json` });
+  return {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: 'https://adcontextprotocol.org/schemas/index.json',
+    title: 'AdCP Schema Discovery',
+    description: 'Root discovery document.',
+    latest: '3.1.2',
+    latest_stable: '3.1.2',
+    channel: 'stable',
+    aliases: { v3: '3.1.2', 'v3.1': '3.1.2', 'v3.0': '3.0.9' },
+    latest_by_major: { 3: '3.1.2' },
+    latest_by_minor: { '3.1': '3.1.2', '3.0': '3.0.9' },
+    versions: [
+      ...VERSIONS.map(version => entry(version, { stability: 'rc', prerelease: true, deprecated: false })),
+      ...SOURCE_STABLE.map(version => entry(version, { stability: 'stable', prerelease: false, deprecated: false })),
+    ],
+  };
+}
+
+// Bucket contents before the routine deploy runs: older version directories
+// plus the frozen pointer document those deploys never refreshed.
+function publishedFixtureObjects() {
+  const object = (key, value) => [`s3://test-bucket/${key}`, { key: `s3://test-bucket/${key}`,
+    body: Buffer.from(JSON.stringify(value)).toString('base64'),
+    contentType: 'application/json; charset=utf-8', cacheControl: REVALIDATE }];
+  return Object.fromEntries([
+    ...PUBLISHED_STABLE.map(version => object(`schemas/${version}/index.json`, { version })),
+    object('schemas/index.json', {
+      latest: PRIOR_POINTER_STABLE,
+      latest_stable: PRIOR_POINTER_STABLE,
+      aliases: { v3: PRIOR_POINTER_STABLE, 'v3.1': PRIOR_POINTER_STABLE, 'v3.0': '3.0.9' },
+      latest_by_major: { 3: PRIOR_POINTER_STABLE },
+      latest_by_minor: { '3.1': PRIOR_POINTER_STABLE, '3.0': '3.0.9' },
+      versions: PUBLISHED_STABLE.map(version => ({ version })),
+    }),
+  ]);
+}
+
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 // The JSONL fix can land before or after the publication gate. Only the test
 // fixture adapts; production must never regain live unscoped bulk publication.
@@ -57,6 +104,24 @@ function awsStub() {
       fs.writeFileSync(process.env.AWS_TEST_OBJECTS, JSON.stringify(objects));
       uploads.push(upload);
       record();
+    } else if (operation === 'list-objects-v2') {
+      const bucketPrefix = `s3://${value('--bucket')}/`;
+      const prefix = value('--prefix');
+      const delimiter = value('--delimiter');
+      const common = new Set();
+      const contents = [];
+      for (const stored of Object.keys(objects)) {
+        if (!stored.startsWith(bucketPrefix)) continue;
+        const key = stored.slice(bucketPrefix.length);
+        if (!key.startsWith(prefix)) continue;
+        const rest = key.slice(prefix.length);
+        const cut = delimiter ? rest.indexOf(delimiter) : -1;
+        if (cut >= 0) common.add(prefix + rest.slice(0, cut + delimiter.length));
+        else contents.push({ Key: key });
+      }
+      record();
+      console.log(JSON.stringify({ Contents: contents,
+        CommonPrefixes: [...common].sort().map(Prefix => ({ Prefix })) }));
     } else throw Error(`Unexpected s3api operation: ${operation}`);
     return;
   }
@@ -175,8 +240,14 @@ function fixture(t) {
     }
   }
   write('dist/compliance/storyboard-runner-options.js', 'excluded runtime file');
-  write('dist/schemas/index.json', '{}');
-  write('dist/schemas/latest.json', '{}');
+  // The routine deploy republishes the root pointers from the CDN's published
+  // version set, so the fixture needs a realistic discovery source and a
+  // bucket that already serves an older subset of it. SOURCE_STABLE's newest
+  // entry is deliberately absent from the bucket.
+  write('dist/schemas/index.json', JSON.stringify(discoverySource(), null, 2));
+  write('dist/schemas/latest.json', JSON.stringify({ latest: SOURCE_STABLE[0], latest_stable: SOURCE_STABLE[0],
+    channel: 'stable', path: `/schemas/${SOURCE_STABLE[0]}/`, index: `/schemas/${SOURCE_STABLE[0]}/index.json` }, null, 2));
+  fs.writeFileSync(path.join(dir, 'objects.json'), JSON.stringify(publishedFixtureObjects()));
   let authority;
   if (FENCED_PUBLICATION) {
     const git = args => execFileSync(REAL_GIT, args, { cwd: dir, encoding: 'utf8', env: {
@@ -254,7 +325,10 @@ for (const skipLatest of [false, true]) {
       for (const [i, result] of results.entries()) {
         const prefix = i < VERSIONS.length ? VERSIONS[i] : 'latest';
         assert.ok(result.uploads.length > 0);
-        assert.ok(result.uploads.every(upload => upload.key.includes(`/${prefix}/`) || upload.key.includes(`/${prefix}.`)));
+        assert.ok(result.uploads.every(upload => upload.key.includes(`/${prefix}/`)
+          || upload.key.includes(`/${prefix}.`)
+          // Routine deployment also refreshes the root discovery pointer.
+          || (prefix === 'latest' && upload.key === 's3://test-bucket/schemas/index.json')));
       }
       const ghCalls = fs.readFileSync(path.join(dir, 'gh.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
       for (const version of VERSIONS) {
@@ -290,8 +364,27 @@ for (const skipLatest of [false, true]) {
       assert.equal(upload.cacheControl, immutable ? IMMUTABLE : REVALIDATE, key);
     }
     assert.equal(uploads.some(upload => upload.key.includes('/latest')), !skipLatest);
-    assert.equal(uploads.some(upload => upload.key.endsWith('/schemas/index.json')), !FENCED_PUBLICATION && !skipLatest);
+    // #8318: routine deployment is the only step that runs on every main
+    // merge, so it must republish the root pointers or they freeze forever.
+    const pointer = uploads.filter(upload => upload.key === 's3://test-bucket/schemas/index.json');
+    assert.equal(pointer.length, skipLatest ? 0 : 1);
     if (!skipLatest) {
+      const published = JSON.parse(Buffer.from(pointer[0].body, 'base64').toString('utf8'));
+      assert.equal(pointer[0].cacheControl, REVALIDATE);
+      // Aliases advance to the newest release the bucket actually serves, and
+      // never to 3.1.2, which is released in-repo but absent from the CDN.
+      assert.equal(published.latest_stable, '3.1.1');
+      assert.deepEqual(published.aliases, { v3: '3.1.1', 'v3.1': '3.1.1', 'v3.0': '3.0.9' });
+      assert.deepEqual(published.latest_by_minor, { '3.1': '3.1.1', '3.0': '3.0.9' });
+      assert.ok(!published.versions.some(entry => entry.version === '3.1.2'));
+      // Prereleases published by this same run stay listed.
+      assert.ok(VERSIONS.every(version => published.versions.some(entry => entry.version === version)));
+      const latestPointer = uploads.filter(upload => upload.key === 's3://test-bucket/schemas/latest.json');
+      assert.equal(latestPointer.length, 1);
+      assert.deepEqual(JSON.parse(Buffer.from(latestPointer[0].body, 'base64').toString('utf8')), {
+        latest: '3.1.1', latest_stable: '3.1.1', channel: 'stable',
+        path: '/schemas/3.1.1/', index: '/schemas/3.1.1/index.json',
+      });
       assert.equal(uploads.filter(upload => upload.key === `s3://test-bucket/compliance/latest/${ROWS}`).length, 1);
     }
   });

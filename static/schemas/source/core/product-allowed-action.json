@@ -46,5 +46,11 @@
     }
   },
   "required": ["action", "modes"],
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "report_media_buy_issue" } }, "required": ["action"] },
+      "then": { "properties": { "sla": { "$ref": "/schemas/core/escalation-sla.json" }, "modes": { "items": { "const": "seller_managed" } }, "constraints": false, "terms_ref": false } }
+    }
+  ],
   "additionalProperties": false
 }

@@ -164,6 +164,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-get_media_buys_pagination_integrity-6a8319dc"
+            sandbox: true
 
           context:
             correlation_id: "get_media_buys_pagination_integrity--list_call"

@@ -147,6 +147,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-signals_baseline-2778ce3f"
+            sandbox: true
           signal_spec: "Adults interested in electric vehicles"
           context:
             correlation_id: "signals_baseline--search_signals"

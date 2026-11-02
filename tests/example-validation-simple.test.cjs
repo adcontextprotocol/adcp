@@ -582,6 +582,7 @@ async function runTests() {
         {
           "event_source_id": "website_pixel",
           "name": "Main Website Pixel",
+          "platform_id": "px_abc123",
           "seller_id": "px_abc123",
           "event_types": ["purchase", "lead", "add_to_cart", "page_view"],
           "managed_by": "buyer",
@@ -595,6 +596,7 @@ async function runTests() {
         {
           "event_source_id": "amazon_attribution",
           "name": "Amazon Sales Attribution",
+          "platform_id": "amz_attr_001",
           "seller_id": "amz_attr_001",
           "managed_by": "seller",
           "action": "unchanged"
@@ -602,6 +604,7 @@ async function runTests() {
         {
           "event_source_id": "creator_channel",
           "name": "Creator Channel Events",
+          "platform_id": "creator_attr_001",
           "seller_id": "creator_attr_001",
           "event_types": ["follow", "content_view", "watch_milestone"],
           "action_source": "system_generated",

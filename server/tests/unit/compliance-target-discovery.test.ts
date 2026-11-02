@@ -35,6 +35,10 @@ vi.mock('@adcp/sdk/testing', () => ({
 
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   hostedComplianceTarget: () => mocks.fallbackTarget,
+  // Read by the forward-introduced-specialism overlay; the fixture targets are
+  // synthetic, so no bundled release can define a specialism after them.
+  bundledComplianceVersions: () => [],
+  compareComplianceVersions: () => 0,
   hostedAuthProbeTaskForProfile: vi.fn(),
   hostedStaticApiKeyForProfile: vi.fn(),
   agentAdvertisesBadgeEligibleHostedComplianceTarget: vi.fn().mockReturnValue(false),

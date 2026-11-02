@@ -38,7 +38,7 @@
     },
     "account_id": {
       "type": "string",
-      "description": "Seller-assigned account identifier whose status changed. Sellers MUST assign account_id before activating an account.status_changed subscriber, including accounts still pending external approval, so later pending_approval -> rejected or pending_approval -> active transitions can be delivered and repaired through list_accounts.",
+      "description": "Seller-assigned account identifier whose status changed. Sellers MUST assign account_id before activating an account.status_changed subscriber, including accounts still pending external approval, so later pending_approval -> rejected or pending_approval -> active transitions can be delivered and repaired through list_accounts. Exception (experimental, account.requests): a seller that keeps a pending provisioning row as an account request without an account_id reports pending transitions through the caller-anchored account_request.changed webhook. When the request resolves, it activates the row's account-level subscribers first and then fires account.status_changed with previous_status pending_approval and the resolved account_id, so subscribers that predate account requests still learn the outcome.",
       "x-entity": "account"
     },
     "previous_status": {

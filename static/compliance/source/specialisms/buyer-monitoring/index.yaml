@@ -10,6 +10,14 @@ required_tools:
   - get_media_buys
   - get_media_buy_delivery
 
+# The fixture publisher serves the buy declared in
+# fixtures.fixture_publisher.active_buy; no step in this storyboard creates
+# one, so the id the delivery polls address has to be seeded here. Without it
+# `$context.media_buy_id` has no writer and the reads can only ever skip with
+# `prerequisite_failed`.
+context:
+  media_buy_id: "mb_monitoring_001"
+
 narrative: |
   You are a buyer agent monitoring an active media buy. After activation,
   you track delivery progress via polling (get_media_buy_delivery) and

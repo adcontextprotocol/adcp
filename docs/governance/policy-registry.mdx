@@ -327,7 +327,7 @@ The `restricted_attributes` on a category are authoritative — when a plan decl
 
 ## Restricted attribute definitions
 
-The registry defines restricted attribute categories — types of personal data that regulations restrict for ad targeting. These map to GDPR Article 9 special categories and are used across plans, signal definitions, and policy categories.
+The registry defines restricted attribute categories used across plans, signal definitions, and policy categories. They include GDPR Article 9 special categories and other policy-sensitive attributes such as age, familial status, and (in AdCP 3.3) sex or gender. Enum membership alone does not establish a legal classification or prohibit targeting. Applicable plan and policy restrictions determine whether an attribute can be used.
 
 Each attribute definition includes:
 
@@ -354,6 +354,13 @@ Each attribute definition includes:
 | `sex_life_sexual_orientation` | GDPR Article 9(1) | Sexual orientation, gender identity, relationship status indicators |
 | `genetic_data` | GDPR Article 9(1) | DNA profiles, genetic test results, hereditary conditions |
 | `biometric_data` | GDPR Article 9(1) | Fingerprints, facial geometry, voice prints, gait analysis |
+| `sex_gender` | Applicable campaign or seller policy | Sex- or gender-based audience classifications, including core `female`, `male`, and `non_binary` gender predicates; available in AdCP 3.3 |
+
+The new core `demographics.gender` predicate maps to `sex_gender` for structural matching, independently of whether execution uses native seller controls or signals. A signal carrying `demographic_predicate.gender` MUST declare `sex_gender` in `restricted_attributes`; a signal with both age and gender predicates MUST declare both corresponding attributes. The core predicate alone does not imply sex life or sexual orientation.
+
+The existing `sex_life_sexual_orientation` registry definition and provider-declared metadata retain their meaning. Adding a core gender predicate MUST NOT remove or rewrite any existing signal attribute declaration; a provider that already declares `sex_life_sexual_orientation` retains it and also declares `sex_gender` when it adds the new predicate. The table's legacy definition does not authorize automatic reclassification of external provider metadata.
+
+Adding the attribute does not alter the restrictions on existing seeded policy categories. Implementations MUST evaluate effective targeting against the applicable plan and resolved policies, including constraints inherited from product defaults or preserved from package state. For the separately agreed AdCP 3.2 interim binding, cooperating integrations use the custom `gender` restriction instead of sending the AdCP 3.3 enum value.
 
 Data providers can reference these definitions when declaring `restricted_attributes` on their signal definitions. See [Declaring governance metadata](/docs/signals/data-providers#declaring-governance-metadata). Governance agents match signal-declared attributes against plan-level `restricted_attributes` during [`check_governance`](/docs/governance/campaign/tasks/check_governance) validation — signals with matching restricted attributes are blocked from targeting for that campaign.
 

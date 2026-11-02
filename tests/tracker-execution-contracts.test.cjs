@@ -233,6 +233,65 @@ test('pixel selector rejects invalid method, custom shape, actor, and path', () 
   assert.doesNotMatch(eventSemantics, /audible_video_complete` \(IAB type 500\)/);
 });
 
+test('pixel tracking event enum carries the 3.3 playback events after audible_video_complete', () => {
+  const eventEnum = JSON.parse(fs.readFileSync(
+    path.join(SCHEMAS, 'enums/pixel-tracking-event.json'),
+    'utf8'
+  ));
+  const playback = ['start', 'first_quartile', 'midpoint', 'third_quartile', 'complete'];
+  assert.deepEqual(eventEnum.enum, [
+    'impression', 'viewable_mrc_50', 'viewable_mrc_100', 'viewable_video_50',
+    'audible_video_complete', ...playback, 'click', 'custom'
+  ]);
+  for (const value of eventEnum.enum) {
+    assert.ok(eventEnum.enumDescriptions[value], `${value} needs an enumDescriptions entry`);
+  }
+  for (const value of playback) {
+    assert.match(eventEnum.enumDescriptions[value], /Added in 3\.3\.0/, `${value} must note its 3.3.0 addition`);
+  }
+  assert.match(eventEnum.enumDescriptions.complete, /audible_video_complete/);
+
+  const validate = ajv.getSchema('/schemas/core/tracker-execution-selector.json');
+  for (const event of playback) {
+    assert.equal(validate(pixelSelector({ event })), true,
+      `${event} must be a valid pixel selector event: ${JSON.stringify(validate.errors)}`);
+    assert.equal(validate(pixelSelector({ event, custom_event_name: event })), false,
+      `${event} must forbid custom_event_name`);
+  }
+  assert.equal(validate(pixelSelector({ event: 'firstQuartile' })), false,
+    'pixel events are snake_case; VAST camelCase belongs to vast_tracker');
+});
+
+test('v2 to v1 pixel_tracker downgrade drops playback events and never emits them as impression_tracker', () => {
+  const pixelAsset = JSON.parse(fs.readFileSync(
+    path.join(SCHEMAS, 'core/assets/pixel-tracker-asset.json'),
+    'utf8'
+  ));
+  const row = pixelAsset.description.split('\n').find(line => line.includes('{event: start / first_quartile'));
+  assert.ok(row, 'downgrade table must have a playback event row');
+  assert.match(row, /dropped/);
+  assert.match(row, /PIXEL_TRACKER_LOSSY_DOWNGRADE/);
+  assert.doesNotMatch(row, /asset_id: impression_tracker/,
+    'a playback tracker emitted as impression_tracker would fire at impression time');
+  for (const value of ['start', 'first_quartile', 'midpoint', 'third_quartile', 'complete']) {
+    assert.ok(row.includes(value), `${value} missing from the downgrade row`);
+  }
+
+  const errorCodes = JSON.parse(fs.readFileSync(path.join(SCHEMAS, 'enums/error-code.json'), 'utf8'));
+  const rules = errorCodes.enumDescriptions.PIXEL_TRACKER_LOSSY_DOWNGRADE;
+  assert.match(rules, /`event: start` \/ `first_quartile`[^\n]*\*\*drop\*\*/,
+    'error-code downgrade rules must drop playback events');
+  const customRow = pixelAsset.description.split('\n').find(line => line.includes('custom_event_name: <start / first_quartile'));
+  assert.ok(customRow, 'downgrade table must cover the 3.2 interim custom form of a playback event');
+  assert.match(customRow, /dropped/);
+  assert.doesNotMatch(customRow, /asset_id: impression_tracker/);
+  assert.match(rules, /`event: custom` with `custom_event_name` equal to one of those five names/);
+  assert.match(pixelAsset.properties.event.description, /`first_quartile` \(AdCP-defined, added in 3\.3\.0\)/);
+  assert.match(pixelAsset.properties.event.description, /ignored/);
+  assert.ok(pixelAsset.examples.some(example => example.event === 'first_quartile'),
+    'pixel-tracker-asset needs a quartile example');
+});
+
 test('VAST selector enforces event, target, progress, and per-version constraints', () => {
   const validate = ajv.getSchema('/schemas/core/tracker-execution-selector.json');
   assert.equal(validate(vastSelector({ vast_event: 'creativeView' })), true,

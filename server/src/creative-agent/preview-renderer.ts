@@ -353,7 +353,9 @@ function renderSocial(manifest: ManifestInput, dims: RenderDimensions): string {
 }
 
 /**
- * Render an HTML display creative (html5 canonical kind, html_creative asset).
+ * Render an HTML display creative (html_creative asset). The legacy display_*_html
+ * formats project to display_tag inline markup, so the markup may arrive either as
+ * a legacy html asset's `content` or as a display_tag asset's `markup`.
  *
  * The HTML content is embedded in a sandboxed srcdoc iframe:
  * - sandbox without allow-scripts blocks JavaScript execution regardless of CSP.
@@ -376,7 +378,11 @@ function renderSocial(manifest: ManifestInput, dims: RenderDimensions): string {
  */
 export function renderHtmlDisplay(manifest: ManifestInput, dims: RenderDimensions): string {
   const assets = manifest.assets || {};
-  const htmlContent = assets.html_creative?.content ?? '';
+  const htmlCreative = assets.html_creative;
+  const inlineMarkup = htmlCreative?.delivery_type === 'inline_markup' && typeof htmlCreative.markup === 'string'
+    ? htmlCreative.markup
+    : undefined;
+  const htmlContent = htmlCreative?.content ?? inlineMarkup ?? '';
 
   // Canonical html5 manifests may use an html5_bundle (zip) slot instead of
   // the inline html_creative slot used by the reference agent's display_*_html
@@ -806,12 +812,16 @@ function resolvedRenderer(
   // Route to format-specific renderer.
   // Handles both training agent IDs (display_300x250) and reference agent IDs (display_300x250_image).
 
-  // HTML display formats (html5 canonical kind: display_html, display_300x250_html, etc.).
-  // Must be checked before the generic display_ catch-all.
+  // HTML display formats (display_html, display_300x250_html, etc.). These legacy
+  // formats project to display_tag inline markup; html5 zip manifests also land here
+  // and get the bundle placeholder. Must be checked before the generic display_ catch-all.
   // tracking_suppressed uses genericResult's default (false): submitted HTML may contain
   // anchor hrefs or img srcs that represent navigation/impression effects, so we cannot
   // claim suppression even though scripts are blocked.
-  if (formatKind === 'html5' || formatId.endsWith('_html')) {
+  const resolvedFormatId = String((format?.format_id as { id?: unknown } | undefined)?.id ?? '');
+  const inlineMarkup = formatKind === 'display_tag'
+    && (resolvedFormatId.endsWith('_html') || assets.html_creative?.delivery_type === 'inline_markup');
+  if (formatKind === 'html5' || formatId.endsWith('_html') || inlineMarkup) {
     return genericResult('renderHtmlDisplay', () => renderHtmlDisplay(manifest, dims));
   }
   // JS display tag (display_tag canonical kind). Script execution is blocked by sandbox +

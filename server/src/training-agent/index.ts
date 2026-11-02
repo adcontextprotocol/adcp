@@ -15,6 +15,7 @@
 
 import { Router } from 'express';
 import { trainingGcsReportingRouter } from './gcs-reporting-routes.js';
+import { mountCreativeFeaturesVerifier } from './creative-features-verifier.js';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
@@ -32,6 +33,7 @@ import {
 } from '@adcp/sdk/server';
 import { createLogger } from '../logger.js';
 import { mountTenantRoutes } from './tenants/router.js';
+import { mountCreative33Sandbox } from './creative33/router.js';
 import { toolsForTenant } from './tenants/tool-catalog.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { runWithSessionContext, flushDirtySessions, startSessionCleanup } from './state.js';
@@ -59,7 +61,10 @@ import {
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
-import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
+import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, trainingBuyerDocumentation, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
+import { requestPinsPreview } from './candidate-version.js';
+import { collectionAuthorizationSelectors, declaredCollections } from './collections/card-catalog.js';
+import { ensurePreviewSchemaBundle } from './schema-compat.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -278,7 +283,7 @@ const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-buil
  *  `_training_agent_tenants` discovery extension. Mirrors the per-tenant
  *  config builders in `tenants/<id>.ts`. */
 const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> = {
-  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', 'sales-dooh'],
+  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', 'sales-dooh', 'sales-fixed-rate'],
   signals: ['signal-marketplace', 'signal-owned'],
   governance: [
     'governance-spend-authority',
@@ -324,10 +329,19 @@ export function createTrainingAgentRouter(options: {
 } = {}): Router {
   const router = Router();
   const buyerOAuth = trainingBuyerOAuthConfig();
-  const requireSalesAuth = buyerOAuth ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault) : requireTokenDefault;
+  const buyerOAuthOptions = { rateLimit: !options.disableRateLimit };
+  const requireSalesAuth = buyerOAuth
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'sandbox', buyerOAuthOptions)
+    : requireTokenDefault;
+  const requireReportingAuth = buyerOAuth
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'private-reporting', buyerOAuthOptions)
+    : requireTokenDefault;
   if (buyerOAuth) router.get(TRAINING_BUYER_METADATA_PATH, (_req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(trainingBuyerMetadata(buyerOAuth));
+  });
+  if (buyerOAuth) router.get('/sales/oauth', (_req, res) => {
+    res.type('text/plain').send(trainingBuyerDocumentation(buyerOAuth));
   });
 
   startSessionCleanup();
@@ -350,7 +364,13 @@ export function createTrainingAgentRouter(options: {
     },
   });
 
-  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireSalesAuth, trainingGcsReportingRouter());
+  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireReportingAuth, trainingGcsReportingRouter());
+
+  // Public conformance verifier for provenance truth-of-claim storyboards
+  // (adcp#8199). Unauthenticated by design, rate limited per IP, and serves
+  // get_creative_features only. Mounted before the tenant routes so the
+  // tenant resolver never sees it.
+  mountCreativeFeaturesVerifier(router, { rateLimit: !options.disableRateLimit });
 
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
@@ -362,6 +382,13 @@ export function createTrainingAgentRouter(options: {
     requireGovernanceAuth: requireTokenGovernance,
     storyboardCompat: options.storyboardCompat,
   });
+
+  if (options.storyboardCompat?.version !== '3.0') {
+    mountCreative33Sandbox(router, {
+      ...(!options.disableRateLimit && { rateLimit: mcpRateLimiter }),
+      requireAuth: requireTokenDefault,
+    });
+  }
 
   // Legacy single-URL `/mcp` route — preserved as a back-compat alias for
   // existing AAO entries, Sage/Addie configs, docs, and external storyboard
@@ -404,6 +431,8 @@ export function createTrainingAgentRouter(options: {
         }
       }
 
+      // Served-release shaping reads the hosted preview's published bundle.
+      if (requestPinsPreview(req.body)) await ensurePreviewSchemaBundle();
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -491,6 +520,7 @@ export function createTrainingAgentRouter(options: {
           }
         }
 
+        if (requestPinsPreview(req.body)) await ensurePreviewSchemaBundle();
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
           enableJsonResponse: true,
@@ -786,6 +816,25 @@ export function createTrainingAgentRouter(options: {
             })),
           ),
         },
+        // The collections the sales agent sells, scoped by collection
+        // selectors: every collection each publisher declares below. Response
+        // copies of these collections (include_collections, list_collections)
+        // are verified against this file (#8181).
+        {
+          url: `${agentUrl}/sales/mcp`,
+          authorized_for: 'AdCP training — sales (collections: shows, podcasts, creator channels)',
+          authorization_type: 'inline_properties',
+          properties: PUBLISHERS
+            .filter(pub => (pub.shows?.length ?? 0) > 0)
+            .flatMap(pub => pub.properties.map(prop => ({
+              identifier_type: prop.identifierType,
+              identifier_value: prop.identifierValue,
+              name: prop.name,
+              supported_channels: prop.channels,
+              tags: prop.tags,
+            }))),
+          collections: collectionAuthorizationSelectors(),
+        },
         {
           url: `${agentUrl}/signals/mcp`,
           authorized_for: 'AdCP training — signals (marketplace + owned)',
@@ -793,6 +842,11 @@ export function createTrainingAgentRouter(options: {
           signal_tags: SIGNAL_TAG_VALUES,
         },
       ],
+      // The publishers' collection declarations. This shared file speaks for
+      // several publishers, so each carries its publisher_domain. Anchored
+      // facts live here; a selling agent's card copy wins only on its closed
+      // list of display fields.
+      collections: declaredCollections(),
       signals: SIGNAL_PROVIDERS.flatMap(provider =>
         provider.signals.map(signal => ({
           id: signal.signalAgentSegmentId,

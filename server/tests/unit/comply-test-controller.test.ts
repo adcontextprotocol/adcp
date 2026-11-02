@@ -254,10 +254,11 @@ describe('comply_test_controller', () => {
         'query_provenance_audit_observations',
         'evaluate_distributed_brand_resolution',
         'verify_governance_token',
+        'reporting_subscription_probe',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(29);
+      expect(scenarios.length).toBe(30);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });

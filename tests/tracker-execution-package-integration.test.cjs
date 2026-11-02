@@ -4,6 +4,9 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIGEST_A = `sha256:${'1'.repeat(64)}`;
@@ -15,7 +18,7 @@ function schemaPathFromId(schemaId) {
 
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-  return JSON.parse(fs.readFileSync(schemaPathFromId(uri), 'utf8'));
+  return readBuiltSchema(uri);
 }
 
 async function compile(schemaId) {
@@ -26,7 +29,7 @@ async function compile(schemaId) {
     loadSchema: loadExternalSchema
   });
   addFormats(ajv);
-  return ajv.compileAsync(JSON.parse(fs.readFileSync(schemaPathFromId(schemaId), 'utf8')));
+  return ajv.compileAsync(readBuiltSchema(schemaId));
 }
 
 const contract = {
@@ -51,6 +54,80 @@ const contractSnapshot = {
   tracker_execution_contract_digest: DIGEST_A,
   product_snapshot_digest: DIGEST_B
 };
+
+test('compact format-kind enum remains inline for SDK codegen and matches the canonical vocabulary', () => {
+  const compact = JSON.parse(fs.readFileSync(
+    path.join(SCHEMA_BASE_DIR, 'core/canonical-format-option.json'), 'utf8'
+  )).properties.format_kind;
+  const canonical = JSON.parse(fs.readFileSync(
+    path.join(SCHEMA_BASE_DIR, 'core/canonical-format-kind.json'), 'utf8'
+  ));
+  assert.equal(compact.type, 'string');
+  assert.equal(compact.$ref, undefined, 'SDK compact-format postprocessing requires an inline literal union');
+  assert.deepEqual(compact.enum, canonical.enum, 'compact discovery must preserve every canonical format kind');
+});
+
+test('compact lifecycle responses accept every canonical format kind', async () => {
+  const kinds = JSON.parse(fs.readFileSync(
+    path.join(SCHEMA_BASE_DIR, 'core/canonical-format-kind.json'), 'utf8'
+  )).enum;
+  const validators = await Promise.all([
+    compile('/schemas/media-buy/list-products-response.json'),
+    compile('/schemas/media-buy/request-proposals-response.json'),
+    compile('/schemas/media-buy/refine-proposals-response.json')
+  ]);
+  function responses(products) {
+    return [
+      { status: 'completed', outcome: 'listed', products, feed_version: 'creative-format-feed', cache_scope: 'account' },
+      {
+        status: 'completed', outcome: 'proposed', products,
+        proposals: [{
+          proposal_id: 'creative-format-proposal', proposal_kind: 'new_media_buy',
+          proposal_status: 'draft', name: 'Creative format plan',
+          expires_at: '2030-01-01T00:00:00Z',
+          terms_digest: `sha256:${'A'.repeat(43)}`,
+          commercial_terms: {
+            brand: { domain: 'acme.example' },
+            purchases: [{
+              product_id: 'creative-format-product', pricing_option_id: 'fixed-cpm',
+              pricing: {
+                pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 12
+              },
+              budget: 1000, start_time: '2030-02-01T00:00:00Z', end_time: '2030-03-01T00:00:00Z'
+            }],
+            start_time: '2030-02-01T00:00:00Z', end_time: '2030-03-01T00:00:00Z'
+          }
+        }]
+      },
+      {
+        status: 'completed',
+        products,
+        results: [{
+          source_proposal_id: 'creative-format-proposal', outcome: 'unable',
+          reason_code: 'commercially_declined', reason: 'The requested terms were declined.'
+        }]
+      }
+    ];
+  }
+  for (const kind of kinds) {
+    const format = { format_kind: kind, params: {} };
+    if (kind === 'custom') Object.assign(format, {
+      format_shape: 'branded_content', canonical_formats_only: true,
+      format_schema: { uri: 'https://ads.acme.example/custom.json', digest: DIGEST_A }
+    });
+    const products = [{
+      product_id: 'creative-format-product', name: 'Creative format product', format_options: [format]
+    }];
+    for (const [index, response] of responses(products).entries()) {
+      assert.equal(validators[index](response), true,
+        `${kind} failed lifecycle response ${index}: ${JSON.stringify(validators[index].errors)}`);
+      response.products[0].format_options[0].format_kind = 'unregistered_creative_format';
+      assert.equal(validators[index](response), false,
+        `lifecycle response ${index} accepted an unregistered format kind`);
+      response.products[0].format_options[0].format_kind = kind;
+    }
+  }
+});
 
 test('contract-bearing product and compact declarations require stable option identity', async () => {
   for (const schemaId of [

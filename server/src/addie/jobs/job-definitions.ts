@@ -40,6 +40,7 @@ import { runCredentialDigestJob } from './credential-digest.js';
 import { runCertificationRecoveryJob } from './certification-recovery.js';
 import { runBrandLogoDigestJob } from './brand-logo-digest.js';
 import { runCommunityMirrorDigestJob } from './community-mirror-digest.js';
+import { runRegistryReviewDigestJob } from './registry-review-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runWgSlackContextJob } from './wg-slack-context.js';
 import { runSecretariatExecutorJob } from './secretariat-executor.js';
@@ -488,6 +489,19 @@ export function registerAllJobs(): void {
     runner: runBrandLogoDigestJob,
     businessHours: { startHour: 9, endHour: 10 },
     shouldLogResult: (r) => r.posted || r.staleCount > 0,
+  });
+
+  // Registry submissions the automated review left for a human. Since
+  // #8337 an outage leaves records pending rather than publishing them,
+  // so the backlog needs a signal of its own (adcp#8338).
+  jobScheduler.register({
+    name: 'registry-review-digest',
+    description: 'Daily backlog signal for registry submissions pending moderator review',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 29, unit: 'minutes' },
+    runner: runRegistryReviewDigestJob,
+    businessHours: { startHour: 9, endHour: 10 },
+    shouldLogResult: (r) => r.posted || r.total > 0,
   });
 
   jobScheduler.register({

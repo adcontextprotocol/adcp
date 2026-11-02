@@ -20,6 +20,8 @@ const data = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
  * Returns null for error responses (isError: true) — those go through
  * the transport error extraction path instead.
  */
+const MAX_RESPONSE_BYTES = 4 * 1024 * 1024; // 4 MiB default; configurable per agent and per call
+
 function extractAdcpResponseFromMcp(response) {
   // Error responses are handled by extractAdcpErrorFromMcp (transport-errors.mdx)
   if (response.isError) return null;
@@ -41,7 +43,7 @@ function extractAdcpResponseFromMcp(response) {
   if (response.content && Array.isArray(response.content)) {
     for (const item of response.content) {
       if (item.type === 'text' && item.text) {
-        if (item.text.length > 1_048_576) continue; // 1MB size limit
+        if (item.text.length > MAX_RESPONSE_BYTES) continue; // same limit as the whole message
         try {
           const parsed = JSON.parse(item.text);
           if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {

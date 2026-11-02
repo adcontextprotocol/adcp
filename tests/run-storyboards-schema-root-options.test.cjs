@@ -83,7 +83,28 @@ test('candidate-bundle capability discovery registers the external schema root',
   );
 });
 
-test('candidate-version compatibility is explicit and resolver-scoped', () => {
+test('candidate schema root is entered in the SDK CommonJS loader as well as ESM', () => {
+  // The SDK's ESM build reads response schemas through its CommonJS loader
+  // for envelope-status shaping. A candidate that leads the published SDK is
+  // only resolvable there if the runner enters the root in that instance too.
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  assert.match(
+    source,
+    /createRequire\(import\.meta\.url\)[\s\S]*requireFromHere\.resolve\('@adcp\/sdk'\)[\s\S]*'validation', 'schema-loader\.js'/,
+    'resolve the CommonJS schema loader from the package entry the SDK itself loads',
+  );
+  assert.match(
+    source,
+    /function withCandidateSchemaRoot[\s\S]*sdkCommonJsSchemaRootScope\(version, root, fn\)[\s\S]*return withExternalSchemaRoot\(version, root, scoped\);/,
+  );
+  assert.match(
+    source,
+    /const run = complianceOptions\.schemaRoot && releasedComplianceVersion\s*\? \(\) => withCandidateSchemaRoot\(releasedComplianceVersion, complianceOptions\.schemaRoot!, main\)/,
+    'the whole run, including tenant construction and request handling, must see the candidate root in both SDK builds',
+  );
+});
+
+test('candidate-version negotiation is explicit and established before runtime imports', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
   assert.match(
     source,
@@ -94,15 +115,30 @@ test('candidate-version compatibility is explicit and resolver-scoped', () => {
     /candidateVersionMode[\s\S]*isCurrentSourceRun[\s\S]*releasedComplianceVersion[\s\S]*packageVersion !== releasedComplianceVersion/,
     'candidate mode must be limited to the generated current bundle matching package.json',
   );
+  assert.ok(source.indexOf('process.env.ADCP_TRAINING_CANDIDATE_VERSION =') < source.indexOf("await import('../../src/training-agent/types.js')"));
+  assert.doesNotMatch(source, /hostedStableLineAlias|candidatePrereleasePin/,
+    'a candidate must negotiate its actual release instead of borrowing a stable release alias');
   assert.match(
     source,
-    /resolveStoryboardsForCapabilities\([\s\S]*hostedStableLineAlias:\s*TRAINING_AGENT_CURRENT_ADCP_VERSION/,
-  );
-  assert.doesNotMatch(
-    source,
-    /supported_versions:\s*\[[^\]]*releasedComplianceVersion/,
+    /supported_versions:\s*profile\.adcp_supported_versions,/,
     'candidate mode must not rewrite the seller capability declaration',
   );
+  // A separate published stable root remains available for explicit stable
+  // requests when the source candidate opens a newer minor line.
+  assert.match(
+    source,
+    /const candidateOpensNewerLine = \(\(\) => \{\s*if \(!candidateVersionMode \|\| releasedComplianceVersion === undefined\) return false;/,
+  );
+});
+
+test('candidate server callbacks bind the exact schema root before runtime imports', () => {
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  const registration = source.indexOf('registerStoryboardCandidateSchemaRoot(');
+  assert.ok(registration > source.indexOf('packageVersion !== releasedComplianceVersion'),
+    'server schema registration must follow the package/compliance candidate identity check');
+  assert.ok(registration < source.indexOf("await import('../../src/training-agent/types.js')"),
+    'server schemas must be available before the SDK caches its per-release envelope policy');
+  assert.match(source, /registerStoryboardCandidateSchemaRoot\(\s*releasedComplianceVersion,\s*complianceOptions\.schemaRoot,?\s*\)/);
 });
 
 test('3.0 compatibility wrapper overrides inherited candidate mode', () => {
@@ -116,12 +152,12 @@ test('3.0 compatibility wrapper overrides inherited candidate mode', () => {
 
 test('storyboard runs use public roots and pin the intended wire surface', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
-  assert.match(source, /import \{ TRAINING_AGENT_CURRENT_ADCP_VERSION \} from/);
+  assert.match(source, /const \{ TRAINING_AGENT_CURRENT_ADCP_VERSION \} = await import/);
   assert.match(source, /process\.env\.ADCP_COMPLIANCE_DIR[\s\S]*complianceDir:/);
   assert.match(source, /process\.env\.ADCP_SCHEMA_ROOT[\s\S]*schemaRoot:/);
   assert.doesNotMatch(source, /node_modules[\s\S]*@adcp[\s\S]*sdk/);
   assert.doesNotMatch(source, /schemas-data/);
-  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*isCurrentSourceRun[\s\S]*\? TRAINING_AGENT_CURRENT_ADCP_VERSION[\s\S]*: undefined/);
+  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*isCurrentSourceRun[\s\S]*\? TRAINING_AGENT_CANDIDATE_ADCP_VERSION \?\? TRAINING_AGENT_CURRENT_ADCP_VERSION[\s\S]*: undefined/);
   assert.equal(
     (source.match(/\.\.\.\(wireAdcpVersion && \{ wireAdcpVersion \}\)/g) ?? []).length,
     3,

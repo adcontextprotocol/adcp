@@ -1,0 +1,26 @@
+{
+  "name": "Multiple Signature-Input labels — verifier MUST process exactly one",
+  "spec_reference": "#adcp-rfc-9421-profile (One signature per request)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\", sig2=(\"@method\" \"@target-uri\");created=1776520800;expires=1776521100;nonce=\"DIFFERENT-NONCE-FOR-SIG2____\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:U51PJzU9nMJxMAH_u-UDpSecT5SQX1-deSnWE3XpFo-BLT2_2h5FgMltntNCW05chhmFnjZEzkRmaYKeU0UUBw:, sig2=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\",\"packages\":[{\"package_id\":\"pkg_1\",\"budget\":{\"amount\":1000,\"currency\":\"USD\"}}]}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "expected_outcome": {
+    "success": true,
+    "verified_label": "sig1"
+  },
+  "$comment": "Two signature labels: sig1 is valid (copied from positive/001); sig2 has a different covered-components set, different nonce, and a zero-byte signature that would not verify. Per spec, verifiers MUST process exactly one Signature-Input label (conventionally sig1) and MUST ignore additional labels. This vector's expected_outcome is SUCCESS — sig1 verifies and the request is treated as authenticated. If a verifier attempts to verify sig2, it will fail and reject the request, which is non-conformant. This locks in option (a) of the relay model (ignore extras) ahead of #2324's full design; option (b) chained-signature semantics is a future RFC."
+}

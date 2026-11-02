@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildCatalog, buildProposals } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
-import { PUBLISHERS } from '../../src/training-agent/publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from '../../src/training-agent/publishers.js';
 import { SIGNAL_PROVIDERS, getAllSignals } from '../../src/training-agent/signal-providers.js';
 import {
   getSession,
@@ -1774,6 +1774,8 @@ describe('createTrainingAgentServer', () => {
     // Removed seller-level reporting (product-level is source of truth)
     expect(mediaBuy).not.toHaveProperty('reporting');
 
+    // The supported_metrics rollup is a 3.3 field (#8070), withheld from this
+    // unpinned (3.0) response (#8487).
     expect(mediaBuy.vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
     });
@@ -1829,10 +1831,71 @@ describe('createTrainingAgentServer', () => {
     expect(legacyCaps.media_buy.audience_targeting).not.toHaveProperty('supported_activation_methods');
   });
 
+  it('keeps the seller-level vendor_metric_optimization.supported_metrics rollup consistent with the catalog', async () => {
+    // The rollup is a 3.3 field (#8070), served only on a 3.3 response (#8487).
+    const result = await handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, servedAdcpVersion: '3.3-beta.1' });
+    const rollup = ((result as Record<string, any>).media_buy.vendor_metric_optimization.supported_metrics) as Array<{
+      vendor: { domain: string; brand_id?: string };
+      metric_id: string;
+      supported_targets?: string[];
+    }>;
+    const keyOf = (e: { vendor: { domain: string; brand_id?: string }; metric_id: string }) =>
+      `${e.vendor.domain}|${e.vendor.brand_id ?? ''}|${e.metric_id}`;
+    const catalogPairs = new Map<string, Set<string>>();
+    for (const cp of buildCatalog()) {
+      const supported = (cp.product as {
+        vendor_metric_optimization?: { supported_metrics?: Array<{ vendor: { domain: string; brand_id?: string }; metric_id: string; supported_targets?: string[] }> };
+      }).vendor_metric_optimization?.supported_metrics ?? [];
+      for (const entry of supported) {
+        const targets = catalogPairs.get(keyOf(entry)) ?? new Set<string>();
+        for (const t of entry.supported_targets ?? []) targets.add(t);
+        catalogPairs.set(keyOf(entry), targets);
+      }
+    }
+    expect(rollup.length).toBeGreaterThan(0);
+    // No pair listed unless at least one product supports it, and none omitted.
+    expect(rollup.map(keyOf).sort()).toEqual([...catalogPairs.keys()].sort());
+    for (const entry of rollup) {
+      expect([...(entry.supported_targets ?? [])].sort()).toEqual([...catalogPairs.get(keyOf(entry))!].sort());
+    }
+  });
+
+  it('rolls up vendor_metric_optimization pairs across publishers on (domain, brand_id, metric_id)', () => {
+    const pub = (entries: NonNullable<(typeof PUBLISHERS)[number]['vendorMetricOptimization']>['supported_metrics']) =>
+      ({ vendorMetricOptimization: { supported_metrics: entries } }) as (typeof PUBLISHERS)[number];
+    const v = { domain: 'v.example' };
+    const capability = buildVendorMetricOptimizationCapability([
+      pub([{ vendor: v, metric_id: 'm', supported_targets: ['cost_per'] }]),
+      pub([
+        { vendor: v, metric_id: 'm', supported_targets: ['threshold_rate'] },
+        { vendor: { ...v, brand_id: 'b' }, metric_id: 'm' },
+      ]),
+      {} as (typeof PUBLISHERS)[number],
+    ]);
+    expect(capability?.supported_metrics).toEqual([
+      { vendor: v, metric_id: 'm', supported_targets: ['cost_per', 'threshold_rate'] },
+      { vendor: { ...v, brand_id: 'b' }, metric_id: 'm' },
+    ]);
+    expect(capability?.supported_targets).toEqual(['cost_per', 'threshold_rate']);
+    expect(buildVendorMetricOptimizationCapability([{} as (typeof PUBLISHERS)[number]])).toBeUndefined();
+
+    // The rollup is a copy: mutating it never touches the catalog declaration.
+    const live = buildVendorMetricOptimizationCapability()!;
+    live.supported_metrics[0].metric_id = 'mutated';
+    expect(buildVendorMetricOptimizationCapability()!.supported_metrics[0].metric_id).not.toBe('mutated');
+  });
+
   it('keeps v6 sales vendor_metric_optimization capabilities aligned with legacy discovery', () => {
     const platform = new TrainingSalesPlatform();
     expect((platform.capabilities as Record<string, unknown>).vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
+      supported_metrics: [
+        {
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+          supported_targets: ['threshold_rate'],
+        },
+      ],
     });
     expect((platform.capabilities as Record<string, unknown>).performance_feedback).toEqual({
       reports_application_status: true,
@@ -2568,11 +2631,24 @@ describe('deprecated list_creative_formats compatibility handler', () => {
   it('omits post-3.0 format parameters from 3.0 compatibility responses', async () => {
     const currentServer = createTrainingAgentServer(DEFAULT_CTX);
     const { result: current } = await simulateCallTool(currentServer, 'list_creative_formats', {
+      adcp_version: CURRENT_ADCP_VERSION,
       format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_image' }],
     });
     const currentFormat = (current.formats as Array<Record<string, unknown>>)[0];
     expect(currentFormat.accepts_parameters).toEqual(['dimensions', 'pixel_ratio']);
     expect(currentFormat.description).toContain('pixel_ratio');
+
+    // FormatIDParameter is closed, and 3.0 and 3.1 predate `pixel_ratio`.
+    // An unpinned call is served (and echoed) at 3.0.
+    for (const version of ['3.1', '3.0', undefined]) {
+      const { result: older } = await simulateCallTool(currentServer, 'list_creative_formats', {
+        ...(version && { adcp_version: version }),
+        format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_image' }],
+      });
+      const olderFormat = (older.formats as Array<Record<string, unknown>>)[0];
+      expect(olderFormat.accepts_parameters, String(version)).toEqual(['dimensions']);
+      expect(olderFormat.description, String(version)).not.toContain('pixel_ratio');
+    }
 
     const compatServer = createTrainingAgentServer({
       ...DEFAULT_CTX,
@@ -4012,6 +4088,57 @@ describe('validate_input handler', () => {
         result_kind: 'unvalidatable_nondeterministic',
       },
     ]);
+  });
+
+  it('validates typed video briefs against the generative video reference product', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'typed-video-brief.example' }, operator: 'pinnacle-agency.example' };
+    const fixture = JSON.parse(readFileSync(new URL(
+      '../../../static/examples/products/canonical/veo_generative_video_15s.json', import.meta.url,
+    ), 'utf8'));
+    const { cases } = JSON.parse(readFileSync(new URL(
+      '../../../static/test-vectors/canonical-manifest-constructibility.json', import.meta.url,
+    ), 'utf8'));
+    const { manifest } = cases.find((row: { product_fixture: string }) =>
+      row.product_fixture === 'veo_generative_video_15s.json');
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account, brand: account.brand, scenario: 'seed_product',
+      params: { product_id: fixture.product_id, fixture },
+    });
+    expect(seed.result.success).toBe(true);
+    const targets = [{ kind: 'product', id: fixture.product_id }];
+    const accepted = await simulateCallTool(server, 'validate_input', { account, manifest, targets });
+    expect(accepted.result.results).toEqual([{ target: targets[0], result_kind: 'unvalidatable_nondeterministic' }]);
+
+    const missing = structuredClone(manifest);
+    delete missing.assets.video_brief;
+    const rejected = await simulateCallTool(server, 'validate_input', { account, manifest: missing, targets });
+    expect(rejected.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: [expect.objectContaining({ rule: 'required_slot', field: 'assets.video_brief' })],
+    });
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account, brand: account.brand, scenario: 'seed_product',
+      params: {
+        product_id: 'typed_brief_unsupported_image',
+        fixture: {
+          channels: ['display'], delivery_type: 'guaranteed',
+          format_options: [{ format_kind: 'image', params: {
+            slots: [{ asset_group_id: 'video_brief', asset_type: 'video_brief', required: true }],
+          } }],
+        },
+      },
+    });
+    const unrelated = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'image', assets: { video_brief: manifest.assets.video_brief } },
+      targets: [{ kind: 'product', id: 'typed_brief_unsupported_image' }],
+    });
+    expect(unrelated.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: [expect.objectContaining({ rule: 'allowed_slot_asset_types', field: 'params.slots[0].asset_type' })],
+    });
   });
 
   it('validates required product slots before reporting nondeterministic synthesis', async () => {
@@ -8094,6 +8221,42 @@ describe('create_media_buy handler', () => {
     expect(typeof result.media_buy_id).toBe('string');
   });
 
+  // platform_id is the 3.3 name for the seller-assigned id; a 3.2 caller gets
+  // the seller_id it defines alone (#8487). The 3.3 side is covered in
+  // training-agent-candidate-version.test.ts.
+  it('returns stable audience seller IDs, without the 3.3 platform_id, on 3.2 sync and discovery', async () => {
+    const account = { brand: { domain: 'nova-platform-ids.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const audience = {
+      audience_id: 'nova_loyalty',
+      name: 'Nova loyalty',
+      audience_type: 'crm',
+      add: [{ external_id: 'member_1', hashed_email: 'a'.repeat(64) }],
+    };
+    const { result: synced } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [audience],
+    });
+    const created = (synced.audiences as Array<Record<string, unknown>>)[0]!;
+    expect(created.action).toBe('created');
+    expect(typeof created.seller_id).toBe('string');
+    expect(created).not.toHaveProperty('platform_id');
+
+    const { result: updated } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [{ ...audience, name: 'Updated Nova loyalty' }],
+    });
+    const { result: discovered } = await simulateCallTool(server, 'sync_audiences', { account });
+    for (const [result, action] of [[updated, 'updated'], [discovered, 'unchanged']] as const) {
+      expect(result.audiences).toEqual([expect.objectContaining({
+        audience_id: 'nova_loyalty',
+        action,
+        seller_id: created.seller_id,
+      })]);
+      expect((result.audiences as Array<Record<string, unknown>>)[0]).not.toHaveProperty('platform_id');
+    }
+  });
+
   it('binds a declared external dataset source, preserves it in discovery, and accepts it for targeting', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'sourced-audience.example' }, operator: 'pinnacle-agency.example' };
@@ -10819,7 +10982,7 @@ describe('list_creatives handler', () => {
   it('falls back to compliance fixtures when nothing is synced', async () => {
     const account = { brand: { domain: 'emptycreatives.example' }, operator: 'emptycreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'list_creatives', { account });
+    const { result } = await simulateCallTool(server, 'list_creatives', { account, adcp_version: CURRENT_ADCP_VERSION });
 
     // Empty sessions fall back to compliance creative fixtures (e.g.
     // campaign_hero_video) so conformance storyboards can resolve stable IDs
@@ -10846,6 +11009,23 @@ describe('list_creatives handler', () => {
       }),
     ]);
     expect(legacyCreatives[0]?.format_kind).toBeUndefined();
+
+    // 3.0 requires format_id on every listed creative, so /mcp lists the
+    // canonical fixture by its legacy format for a 3.0 caller, and for an
+    // unpinned call, which is served (and echoed) at 3.0.
+    for (const version of ['3.0', undefined]) {
+      const { result: threeZero } = await simulateCallTool(server, 'list_creatives', {
+        account,
+        ...(version && { adcp_version: version }),
+      });
+      expect(threeZero.adcp_version).toBe('3.0');
+      const [fixture] = threeZero.creatives as Array<Record<string, unknown>>;
+      expect(fixture, String(version)).toMatchObject({
+        creative_id: 'campaign_hero_video',
+        format_id: expect.objectContaining({ id: 'video_preroll' }),
+      });
+      expect(fixture.format_kind, String(version)).toBeUndefined();
+    }
   });
 
   it('skips the compliance fallback when creative_ids filter is explicit', async () => {
@@ -13191,6 +13371,7 @@ describe('update_media_buy handler', () => {
 
     const { result: listedResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
       account,
+      adcp_version: CURRENT_ADCP_VERSION,
       creative_ids: ['inline_cr_v2'],
     });
     const listedCreative = (listedResult.creatives as Array<Record<string, unknown>>)[0];
@@ -13445,6 +13626,7 @@ describe('update_media_buy handler', () => {
 
     const { result: listedResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
       account,
+      adcp_version: CURRENT_ADCP_VERSION,
       creative_ids: ['inline_identity_transition'],
     });
     const listedCreative = (listedResult.creatives as Array<Record<string, unknown>>)[0];
@@ -16404,6 +16586,38 @@ describe('get_signals handler', () => {
     stopSessionCleanup();
   });
 
+  it.each([
+    { signalSpec: 123 },
+    { signalSpec: 0 },
+    { signalSpec: true },
+    { signalSpec: false },
+    { signalSpec: null },
+    { signalSpec: ['automotive'] },
+    { signalSpec: { text: 'automotive' } },
+  ])('rejects non-string signal_spec $signalSpec instead of returning a catalog', async ({ signalSpec }) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account,
+      signal_spec: signalSpec,
+    });
+
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('signal_spec');
+    expect(result.recovery).toBe('correctable');
+    expect(result.signals).toBeUndefined();
+  });
+
+  it.each([
+    { signal_spec: '' },
+    { brief: 'automotive purchase intent' },
+  ])('preserves valid string and legacy brief discovery %#', async (criteria) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', { account, ...criteria });
+
+    expect(Array.isArray(result.signals)).toBe(true);
+    expect((result.signals as unknown[]).length).toBeGreaterThan(0);
+  });
+
   it('returns full catalog (capped) when neither signal_spec nor signal_ids provided', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_signals', { account });
@@ -16949,6 +17163,7 @@ describe('activate_signal handler', () => {
   it('requires governance for rights services from account registration without a local plan', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const initialGrant = await simulateCallTool(server, 'acquire_rights', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       rights_id: 'janssen_likeness_voice',
       pricing_option_id: 'monthly_exclusive',
@@ -16960,6 +17175,7 @@ describe('activate_signal handler', () => {
     await syncGovernedAccount(server);
 
     const acquired = await simulateCallTool(server, 'acquire_rights', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       rights_id: 'janssen_likeness_voice',
       pricing_option_id: 'monthly_exclusive',
@@ -17772,11 +17988,14 @@ describe('get_adcp_capabilities handler', () => {
   });
 
   it('advertises anonymous product and signal discovery without claiming catalog completeness', async () => {
-    const [sales, signals] = await Promise.all([
-      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'sales' }),
-      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'signals' }),
+    // anonymous_discovery is a 3.2 field, withheld from a 3.0 response (#8487).
+    const [sales, signals, threeZero] = await Promise.all([
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'sales', servedAdcpVersion: CURRENT_ADCP_VERSION }),
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'signals', servedAdcpVersion: CURRENT_ADCP_VERSION }),
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'sales', servedAdcpVersion: '3.0' }),
     ]);
 
+    expect(threeZero.media_buy).not.toHaveProperty('anonymous_discovery');
     expect(sales.media_buy).toMatchObject({ anonymous_discovery: true });
     expect(signals.signals).toMatchObject({ anonymous_discovery: true });
   });
@@ -18098,18 +18317,36 @@ describe('get_adcp_capabilities handler', () => {
     const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
     expect(requiredFor.every(op => !isProtocolMethodName(op))).toBe(true);
 
-    expect(rs.protocol_methods_required_for).toEqual([
-      'tasks/cancel',
-      'tasks/pushNotificationConfig/set',
-    ]);
-    expect(rs.protocol_methods_supported_for).toEqual([
-      'tasks/cancel',
-      'tasks/pushNotificationConfig/set',
-    ]);
+    // This route serves releases before 3.2, whose schemas accept only one
+    // lowercase slash path; the verifier still enforces every listed method.
+    expect(rs.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(rs.protocol_methods_supported_for).toEqual(['tasks/cancel']);
 
     // Cross-namespace leak guard.
     const supportedFor = rs.supported_for as string[];
     expect(supportedFor.every(op => !isProtocolMethodName(op))).toBe(true);
+  });
+
+  it('advertises only protocol method names the served release schema accepts', async () => {
+    const legacyServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const currentServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+    const [{ result: majorOnly }, { result: current }] = await Promise.all([
+      // A major-only pin is served 3.1, the route's highest release.
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+      simulateCallTool(currentServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+    ]);
+
+    expect(majorOnly.adcp_version).toMatch(/^3\.1/);
+    const legacySigning = majorOnly.request_signing as Record<string, unknown>;
+    expect(legacySigning.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(legacySigning.protocol_methods_supported_for).toEqual(['tasks/cancel']);
+
+    const currentSigning = current.request_signing as Record<string, unknown>;
+    expect(currentSigning.protocol_methods_required_for).toEqual([
+      'tasks/cancel',
+      'tasks/pushNotificationConfig/set',
+      'CreateTaskPushNotificationConfig',
+    ]);
   });
 
   it('advertises 3.2 only on signing routes that require content-digest coverage', async () => {
@@ -21166,7 +21403,7 @@ describe('proposal lifecycle', () => {
     const projected = projectProductDiscoveryResult('request_proposals', {
       products: [{ product_id: 'brief-only-native', name: 'Brief-only native product' }],
       proposals: [],
-    }, {});
+    }, {}, TRAINING_AGENT_CURRENT_ADCP_VERSION);
 
     expect(projected).toEqual({
       outcome: 'rejected',

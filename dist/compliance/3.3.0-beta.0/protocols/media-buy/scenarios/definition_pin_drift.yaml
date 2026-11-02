@@ -1,0 +1,399 @@
+id: media_buy_seller/definition_pin_drift
+version: "1.0.0"
+title: "Seller detects drift in a pinned third-party definition"
+category: media_buy_seller
+summary: "Verifies that a covered publisher-published definition cannot change after commitment while terms_digest still verifies: accept_proposal returns REFERENCE_DEFINITION_CHANGED and finalize reports drifted pins."
+track: media_buy
+introduced_in: "3.3"
+
+requires:
+  - controller
+
+requires_capability:
+  path: compliance_testing.scenarios
+  contains: definition_pin_probe
+
+required_tools:
+  - request_proposals
+  - refine_proposals
+  - accept_proposal
+  - comply_test_controller
+
+narrative: |
+  A product sells inventory whose format option is declared in a publisher's
+  adagents.json catalog. Every draft carries a definition pin over that
+  published entry in commercial_terms.definition_pins, so terms_digest covers
+  the pin but not the definition. The sandbox controller then changes the
+  published definition. A cosmetic change (a rename) leaves the pin verifying
+  and finalize succeeds. A material change after finalize leaves terms_digest
+  valid but makes accept_proposal fail with REFERENCE_DEFINITION_CHANGED before
+  any state changes. A fresh draft re-pins the changed definition, and a
+  further material change before finalize makes finalize return an unable
+  outcome with reason_code definition_changed and drifted_pins. Sellers that do
+  not advertise definition_pin_probe are not graded. The scenario drives the
+  publisher-catalog format option kind; the preimage rules for every kind are
+  graded by the definition-pins test vectors.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - generates_proposals
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises definition_pin_probe and exposes the compact proposal lifecycle."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_62d0964c5964"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_definition_pin_drif-fcffe089"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: "pinned_catalog_video"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "pinned_catalog_video_30s"
+          publisher_domain: "sports-network.example"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "pinned_catalog_video"
+      pricing_option_id: "pinned_catalog_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 17
+
+phases:
+  - id: prepare_definition
+    title: "Prepare a product that references a published definition"
+    steps:
+      - id: prepare_pinned_product
+        title: "Prepare the seeded product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_definition_pin_drif-fcffe089"
+            sandbox: true
+          scenario: "definition_pin_probe"
+          params:
+            operation: "prepare"
+            product_id: "pinned_catalog_video"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares deterministic behavior"
+          - check: field_value
+            path: "simulated.prepared"
+            value: true
+            description: "The controller published the catalog definition behind the product"
+          - check: field_value
+            path: "simulated.product_id"
+            value: "pinned_catalog_video"
+            description: "The controller prepared the seeded product"
+
+  - id: cosmetic_change_is_not_drift
+    title: "A rename does not invalidate the pin"
+    depends_on: [prepare_definition]
+    steps:
+      - id: request_pinned_draft
+        title: "Request a draft that references the published definition"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#definition_pin_drift_request_a"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_definition_pin_drif-fcffe089"
+            sandbox: true
+          brief: "Plan a $50,000 online-video campaign from January 1 through March 31, 2099."
+          criteria:
+            product_ids: ["pinned_catalog_video"]
+        context_outputs:
+          - name: pinned_draft_id
+            path: "proposals[0].proposal_id"
+          - name: pinned_content_digest
+            path: "proposals[0].commercial_terms.definition_pins[0].content_digest"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json"
+          - check: field_value
+            path: "outcome"
+            value: "proposed"
+            description: "The seller creates a draft"
+          - check: field_value
+            path: "proposals[0].commercial_terms.definition_pins[0].ref_kind"
+            value: "publisher_format_option"
+            description: "The draft carries a pin for the covered publisher-catalog format option"
+          - check: field_present
+            path: "proposals[0].commercial_terms.definition_pins[0].content_digest"
+            description: "The pin carries the digest of the published definition"
+
+      - id: rename_definition
+        title: "Rename the published definition"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_definition_pin_drif-fcffe089"
+            sandbox: true
+          scenario: "definition_pin_probe"
+          params:
+            operation: "mutate_definition"
+            proposal_id: "$context.pinned_draft_id"
+            ref_kind: "publisher_format_option"
+            mutation: "cosmetic"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller applies the cosmetic mutation"
+          - check: field_equals_context
+            path: "simulated.current_content_digest"
+            context_key: "pinned_content_digest"
+            description: "A cosmetic change leaves the content digest unchanged"
+
+      - id: finalize_after_rename
+        title: "Finalize the draft after the rename"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#definition_pin_drift_finalize_a"
+          refinements:
+            - proposal_id: "$context.pinned_draft_id"
+              action: "finalize"
+        context_outputs:
+          - name: committed_id
+            path: "results[0].proposal.proposal_id"
+          - name: committed_terms_digest
+            path: "results[0].proposal.terms_digest"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "A rename is not drift, so finalize takes the hold"
+          - check: field_equals_context
+            path: "results[0].proposal.commercial_terms.definition_pins[0].content_digest"
+            context_key: "pinned_content_digest"
+            description: "The committed proposal carries the same pin as the draft"
+
+  - id: material_change_blocks_acceptance
+    title: "A content change fails acceptance while terms_digest verifies"
+    depends_on: [cosmetic_change_is_not_drift]
+    steps:
+      - id: change_definition_after_commit
+        title: "Materially change the published definition"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_definition_pin_drif-fcffe089"
+            sandbox: true
+          scenario: "definition_pin_probe"
+          params:
+            operation: "mutate_definition"
+            proposal_id: "$context.committed_id"
+            ref_kind: "publisher_format_option"
+            mutation: "material"
+        context_outputs:
+          - name: drifted_content_digest
+            path: "simulated.current_content_digest"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller applies the material mutation"
+          - check: field_present
+            path: "simulated.current_content_digest"
+            description: "The controller reports the digest the definition now resolves to"
+
+      - id: accept_after_definition_change
+        title: "Attempt to accept the committed proposal"
+        task: accept_proposal
+        schema_ref: "media-buy/accept-proposal-request.json"
+        response_schema_ref: "media-buy/accept-proposal-response.json"
+        doc_ref: "/media-buy/task-reference/accept_proposal"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#definition_pin_drift_accept"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_definition_pin_drif-fcffe089"
+            sandbox: true
+          proposal_id: "$context.committed_id"
+          proposal_terms_digest: "$context.committed_terms_digest"
+        validations:
+          - check: error_code
+            value: "REFERENCE_DEFINITION_CHANGED"
+            description: "The unchanged terms_digest verifies, and the pin fails before any state changes"
+          - check: field_value
+            path: "errors[0].field"
+            value: "commercial_terms.definition_pins[0]"
+            description: "error.field names the failing pin"
+          - check: field_equals_context
+            path: "errors[0].details.current_content_digest"
+            context_key: "drifted_content_digest"
+            description: "The error carries the digest the definition resolves to now"
+
+  - id: finalize_reports_drift
+    title: "Finalize reports which pin moved"
+    depends_on: [material_change_blocks_acceptance]
+    steps:
+      - id: request_repinned_draft
+        title: "Request a fresh draft after the change"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#definition_pin_drift_request_b"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_definition_pin_drif-fcffe089"
+            sandbox: true
+          brief: "Plan a $50,000 online-video campaign from January 1 through March 31, 2099."
+          criteria:
+            product_ids: ["pinned_catalog_video"]
+        context_outputs:
+          - name: repinned_draft_id
+            path: "proposals[0].proposal_id"
+          - name: repinned_content_digest
+            path: "proposals[0].commercial_terms.definition_pins[0].content_digest"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json"
+          - check: field_value
+            path: "outcome"
+            value: "proposed"
+            description: "The seller creates a draft"
+          - check: field_equals_context
+            path: "proposals[0].commercial_terms.definition_pins[0].content_digest"
+            context_key: "drifted_content_digest"
+            description: "A fresh draft re-pins the definition as it now stands"
+
+      - id: change_definition_before_finalize
+        title: "Materially change the published definition again"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_definition_pin_drif-fcffe089"
+            sandbox: true
+          scenario: "definition_pin_probe"
+          params:
+            operation: "mutate_definition"
+            proposal_id: "$context.repinned_draft_id"
+            ref_kind: "publisher_format_option"
+            mutation: "material"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller applies the material mutation"
+          - check: field_equals_context
+            path: "simulated.previous_content_digest"
+            context_key: "repinned_content_digest"
+            description: "The controller changed the definition the draft pinned"
+
+      - id: finalize_after_drift
+        title: "Finalize the draft after the change"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#definition_pin_drift_finalize_b"
+          refinements:
+            - proposal_id: "$context.repinned_draft_id"
+              action: "finalize"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "unable"
+            description: "Finalize does not take a hold over a drifted definition"
+          - check: field_value
+            path: "results[0].reason_code"
+            value: "definition_changed"
+            description: "The result names definition drift"
+          - check: field_equals_context
+            path: "results[0].drifted_pins[0].pin.content_digest"
+            context_key: "repinned_content_digest"
+            description: "drifted_pins reports the pin exactly as the draft carried it"
+          - check: field_present
+            path: "results[0].drifted_pins[0].current_content_digest"
+            description: "drifted_pins carries the digest the definition resolves to now"

@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/agent-onboarding-tier.json",
+  "title": "Agent Onboarding Tier",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "The onboarding mode for one billing party, or for sandbox access, with its requirements and an optional page of its own.",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/agent-onboarding-mode.json"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where a human starts for this mode. Defaults to the posture's top-level url. Untrusted: surface it, never fetch or execute it."
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/agent-onboarding-requirement.json"
+      },
+      "description": "What the counterparty must satisfy for this mode.",
+      "maxItems": 16
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "mode"
+  ],
+  "additionalProperties": true
+}

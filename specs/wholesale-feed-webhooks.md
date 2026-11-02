@@ -41,8 +41,13 @@ Wholesale feed webhooks use the shared `notification-type.json` enum and registe
 | `signal.priced` | Signal pricing options changed | Full post-change `pricing_options[]`, retired `previous_pricing_option_ids[]`, optional `effective_at` |
 | `signal.removed` | Signal no longer available | Signal id, `removal_reason`, and affected cache layer |
 | `wholesale_feed.bulk_change` | Bulk operation too large/noisy for per-entity pushes against one feed | Summary, affected feed type, and repair recommendation |
+| `collection_card.updated` | Experimental (`media_buy.collection_catalog`). A collection card entered the seller's catalog for a scope, or any field of its copy changed (upsert; no `created` event) | Full post-change card (`core/response-collection.json`), advisory `changed_fields[]`, and affected cache layer |
+| `collection_card.removed` | Experimental. The seller no longer offers the card in that scope | `publisher_domain`, `collection_id`, `removal_reason`, and affected cache layer; never a card |
+| `collection_catalog.bulk_change` | Experimental. One operation touches more cards than the bulk threshold (typically a follower-count sweep) | Summary, approximate count, and repair recommendation; no cards |
 
 `wholesale_feed.bulk_change` is the fast-forward event. Sellers SHOULD emit it when one operation affects **>5% of a wholesale feed** or **>100 entities**, whichever is smaller. A single bulk-change webhook describes either the wholesale product feed or the wholesale signals feed, not both, so the envelope's `wholesale_feed_version` is unambiguous. If one operation changes both feeds, the seller MUST emit one webhook per feed. Receivers repair products through `list_products` (`get_products` remains the deprecated 3.x fallback) and signals through `get_signals`.
+
+The collection card events (experimental, [`list_collections`](../docs/media-buy/task-reference/list_collections.mdx)) push a seller's copies of collection cards, whose display fields never reach the registry. They are deliberately not named `collection.*`: registry `collection.*` events report the publisher's authoritative `adagents.json` declaration, and a receiver that dispatches both feeds on the type string must never read a seller's display copy as that declaration. `collection_catalog.bulk_change` is its own type rather than a `wholesale_feed.bulk_change` with a new `affected_entity_type`, so existing product and signal bulk subscribers never receive an experimental event they did not register for. The same threshold applies: a seller SHOULD send one `collection_catalog.bulk_change` instead of per-card events when one operation touches more than 5% of the card catalog or more than 100 cards, whichever is smaller, and a follower-count sweep SHOULD always go out as one bulk event. A follower refresh that leaves a count's bounds and `precision` unchanged is not a card change and fires nothing.
 
 ## Webhook Payload
 
@@ -89,6 +94,7 @@ Example `product.priced` fire:
 - `previous_wholesale_feed_version` is optional. When present, receivers MAY use it to detect obvious gaps.
 - `cache_scope` mirrors the `cache_scope` returned by `get_products` / `get_signals` and MUST equal `event.payload.applies_to.scope`.
 - Payloads are denormalized: sellers SHOULD include the post-change object or changed sub-object needed to update a local mirror.
+- For `collection_card.*` and `collection_catalog.bulk_change`, `wholesale_feed_version` carries the post-change `collections_version` of the unfiltered catalog (no selectors, no filters) for the `cache_scope`, `product_payload_view` is omitted, and `entity_type` is `collection` (card events) or `feed` (bulk). `entity_id` is opaque; receivers key the card mirror on the payload's `(publisher_domain, collection_id)`.
 
 ### `effective_at` and Pre-Announce
 
@@ -145,8 +151,8 @@ Wholesale feed webhooks follow the persistent webhook contract:
 - **Event correlation.** Receivers correlate logical feed changes by `notification_id`.
 - **No global ordering guarantee.** Sellers SHOULD emit sortable event ids, but receivers MUST tolerate out-of-order arrival.
 - **Payload is usable but not binding authority.** Receivers MAY apply payloads to mirrors. Before any action that commits spend or authority, receivers MUST re-read through `list_products` / `get_signals`.
-- **Repair path.** If a receiver observes a gap, stale version, failed signature, or unexpected `previous_wholesale_feed_version`, it repairs using the mirror's last successfully applied version as the conditional token. For uncertain state or `wholesale_feed.bulk_change`, omit the conditional token and replace the mirror from a complete `list_products` / `get_signals` read. The webhook's `wholesale_feed_version` describes post-change state and MUST NOT be used as the conditional token for a stale mirror.
-- **Per-principal scope filter.** Sellers MUST apply the same account/caller authorization predicate used by the corresponding wholesale read at webhook emission time. A caller that could not see a product, signal, price, or account overlay through `list_products` or wholesale `get_signals` MUST NOT receive a webhook revealing that change. Agents unable to guarantee this per-principal filtering MUST NOT declare `wholesale_feed_webhooks.supported: true`.
+- **Repair path.** If a receiver observes a gap, stale version, failed signature, or unexpected `previous_wholesale_feed_version`, it repairs using the mirror's last successfully applied version as the conditional token. For uncertain state, `wholesale_feed.bulk_change` or `collection_catalog.bulk_change`, omit the conditional token and replace the mirror from a complete `list_products` / `get_signals` / unfiltered `list_collections` read. The webhook's `wholesale_feed_version` describes post-change state and MUST NOT be used as the conditional token for a stale mirror.
+- **Per-principal scope filter.** Sellers MUST apply the same account/caller authorization predicate used by the corresponding wholesale read at webhook emission time. A caller that could not see a product, signal, price, account overlay, or collection card through `list_products`, wholesale `get_signals`, or `list_collections` MUST NOT receive a webhook revealing that change. Agents unable to guarantee this per-principal filtering MUST NOT declare `wholesale_feed_webhooks.supported: true`.
 
 ### Headers
 
@@ -189,19 +195,20 @@ Agents declare support in `get_adcp_capabilities`:
 
 Agents that do not declare this stanza are presumed not to push wholesale feed changes. Consumers fall back to conditional reconciliation with `list_products` / `get_signals`.
 
-Capability consistency is part of the declaration. Agents listing any `product.*` value in `wholesale_feed_webhooks.event_types[]` MUST declare `list_products` in `media_buy.lifecycle_tools` or support deprecated wholesale `get_products` throughout the 3.x compatibility window. Agents listing any `signal.*` value MUST support wholesale `get_signals`. Agents listing `wholesale_feed.bulk_change` MUST have at least one declared repair path.
+Capability consistency is part of the declaration. Agents listing any `product.*` value in `wholesale_feed_webhooks.event_types[]` MUST declare `list_products` in `media_buy.lifecycle_tools` or support deprecated wholesale `get_products` throughout the 3.x compatibility window. Agents listing any `signal.*` value MUST support wholesale `get_signals`. Agents listing `wholesale_feed.bulk_change` MUST have at least one declared repair path. Agents listing any `collection_card.*` value or `collection_catalog.bulk_change` MUST list `media_buy.collection_catalog` in `experimental_features`, because `list_collections` is their repair path (the capabilities schema enforces this). Buyers MUST NOT register those types with a seller that does not list them, and sellers reject undeclared types.
 
 ## Consumer Pattern
 
-1. **Bootstrap:** Call `list_products` and/or `get_signals discovery_mode: "wholesale"`. Store entity IDs, payloads, the returned feed version, and `cache_scope`. A 3.x compatibility client may use wholesale `get_products` instead.
+1. **Bootstrap:** Call `list_products` and/or `get_signals discovery_mode: "wholesale"`, and for a collection card mirror an unfiltered `list_collections` (every page). Store entity IDs, payloads, the returned feed version (`collections_version` for cards), and `cache_scope`. A 3.x compatibility client may use wholesale `get_products` instead.
 2. **Subscribe:** Register `sync_accounts.accounts[].notification_configs[]` entries for the relevant event types.
 3. **Apply pushes:** On each valid webhook, dedupe by `idempotency_key`, correlate by `notification_id`, and apply `event.payload` to the local mirror.
-4. **Repair:** On a detected gap, send the mirror's last applied conditional version. On `wholesale_feed.bulk_change` or otherwise uncertain state, omit it and perform a complete replacement read.
+4. **Repair:** On a detected gap, send the mirror's last applied conditional version. On `wholesale_feed.bulk_change`, `collection_catalog.bulk_change` or otherwise uncertain state, omit it and perform a complete replacement read.
 
 ## Relationship to Other Specs
 
 - **`list_products`** defines the canonical wholesale product feed that bootstraps and repairs product mirrors. Deprecated `get_products` wholesale mode remains the 3.x compatibility path.
 - **`get_signals` wholesale mode** defines the wholesale signals feed that bootstraps and repairs signal mirrors.
+- **`list_collections`** (experimental, `media_buy.collection_catalog`) defines the collection card catalog that bootstraps and repairs card mirrors through `if_collections_version`. Its token is independent of product feed versions.
 - **Conditional fetch** through `list_products.if_feed_version` or `get_signals.if_wholesale_feed_version` is the repair probe used after missed or distrusted webhooks.
 - **`sync_accounts.accounts[].notification_configs[]`** is the account-level registration surface.
 - **`sync_catalogs`** is separate: buyer-provided campaign input feeds, not seller-side wholesale product/signals feeds.

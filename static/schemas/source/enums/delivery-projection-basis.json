@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/delivery-projection-basis.json",
+  "title": "Delivery Projection Basis",
+  "description": "The class of method a seller used to project a package's end-of-flight delivery. Names the method class, not its parameters: the trailing window length, model name, or seasonality inputs belong in the projection's `ext`. Values MAY be added in later minor releases; a client on an older schema version SHOULD treat a value it does not recognize like `seller_defined`.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": [
+    "trailing_daily_avg",
+    "trailing_hourly_avg",
+    "platform_model",
+    "seller_defined"
+  ],
+  "enumDescriptions": {
+    "trailing_daily_avg": "Extrapolates the package's recent daily delivery rate across the remaining flight.",
+    "trailing_hourly_avg": "Extrapolates the package's recent hourly delivery rate across the remaining flight, using hour-of-day data a daily breakdown does not expose.",
+    "platform_model": "Produced by the seller platform's predictive model (for example seasonality, inventory availability, or auction-pressure modeling) rather than a straight-line extrapolation.",
+    "seller_defined": "A method that fits none of the other values. The seller describes it in the projection's `ext`; buyers cannot compare it across sellers."
+  }
+}

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/list-accounts-request.json",
   "title": "List Accounts Request",
-  "description": "Request parameters for listing accounts accessible to the authenticated agent. For upstream-managed namespaces, this discovers seller/storefront account_id values. For buyer-declared accounts, responses return the natural-key fields needed to reconstruct an AccountRef after a cold start.",
+  "description": "Request parameters for listing accounts accessible to the authenticated agent. For upstream-managed namespaces, this discovers seller/storefront account_id values. For buyer-declared accounts, responses return each account_id with its brand, operator, and attributes, so a buyer recovers its account IDs after a cold start.",
   "x-tool-summary": "List accounts accessible to the caller and recover their canonical account references.",
   "type": "object",
   "allOf": [
@@ -13,7 +13,7 @@
   "properties": {
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Optional exact account filter. Use `account_id` to retrieve one known seller/storefront account, or the complete natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, buyer-selected account `timezone`, and `sandbox`) for buyer-declared accounts. When present, the seller returns only matching accounts visible to the authenticated caller."
+      "description": "Optional account filter. Use `account_id` to retrieve one known seller/storefront account, or the natural key (`brand` + `operator`, narrowed by any of `brand.countries`, `operator_unit`, `currency`, `timezone`, and `sandbox`, matched as in account-ref.json) to find buyer-declared accounts and their account_id values. When present, the seller returns every matching account visible to the authenticated caller; unlike an account reference on other tasks, several matches are not an error."
     },
     "status": {
       "type": "string",
@@ -33,6 +33,29 @@
     "sandbox": {
       "type": "boolean",
       "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform."
+    },
+    "include_requests": {
+      "type": "boolean",
+      "default": false,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). When true, also return the caller's account requests in account_requests[]: every open request (in_review or ambiguous) plus requests that changed state in the last 30 days. Sellers retain resolved and rejected requests for at least 30 days after their last state change. Only the caller's own requests are returned."
+    },
+    "request_ids": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). Return only these requests in account_requests[]; implies include_requests. Unknown IDs, and IDs belonging to other callers, are omitted silently.",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true
+    },
+    "requests_pagination": {
+      "$ref": "/schemas/core/pagination-request.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (account.requests). Pages account_requests[] independently of accounts; implies include_requests. Pass the cursor from account_requests_pagination to read the next page. The top-level pagination field pages accounts only."
     },
     "include_webhook_activity": {
       "type": "boolean",

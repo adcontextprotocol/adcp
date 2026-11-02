@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/reporting-custody.json",
+  "title": "Reporting Custody",
+  "description": "Whether the producer of a reporting feed is the system of record for the delivery numbers or derived them from an upstream system it does not control. Declared once in the pinned report definition source, so it holds for every revision of that definition. Read together with finality_basis. Experimental in AdCP 3.3.",
+  "type": "string",
+  "enum": [
+    "system_of_record",
+    "upstream_derived"
+  ],
+  "enumDescriptions": {
+    "system_of_record": "The producer's own platform recorded the delivery. No upstream system sits behind these figures.",
+    "upstream_derived": "The producer obtained the figures from the provider and system named in source and does not control it. A dispute may have to go to that upstream, and a later upstream correction can arrive as an adjustment the producer did not originate."
+  },
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

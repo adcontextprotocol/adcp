@@ -1,5 +1,5 @@
 id: error_compliance
-version: "1.0.0"
+version: "1.0.1"
 title: "Error handling and compliance"
 category: error_compliance
 summary: "Validates that agents return properly structured AdCP errors with correct codes, recovery hints, and transport bindings."
@@ -9,6 +9,10 @@ requires:
 
 required_tools:
   - get_products
+
+requires_capability:
+  path: supported_protocols
+  contains: media_buy
 
 narrative: |
   Every AdCP agent must handle invalid input gracefully. When a buyer sends a negative budget,
@@ -146,6 +150,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#error-negative-budget"
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
@@ -196,6 +201,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#error-nonexistent-product"
           start_time: "asap"
           end_time: "2099-05-31T23:59:59Z"
@@ -246,6 +252,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
 
           context:
             correlation_id: "error_compliance--missing_fields"
@@ -288,6 +295,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#error-reversed-dates"
           start_time: "2099-12-31T00:00:00Z"
           end_time: "2099-01-01T00:00:00Z"
@@ -347,6 +355,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#error-structure"
           start_time: "2099-12-31T00:00:00Z"
           end_time: "2099-01-01T00:00:00Z"
@@ -409,6 +418,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
 
           context:
             correlation_id: "error_compliance--unsupported_major_version"
@@ -465,6 +475,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
 
           context:
             correlation_id: "error_compliance--unsupported_release_version"
@@ -506,6 +517,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
 
           context:
             correlation_id: "error_compliance--supported_major_version"
@@ -555,6 +567,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance-efd88869"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#error-transport"
           start_time: "2099-12-31T00:00:00Z"
           end_time: "2099-01-01T00:00:00Z"

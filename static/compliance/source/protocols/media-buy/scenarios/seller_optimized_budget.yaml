@@ -44,7 +44,7 @@ narrative: |
   The scenario verifies the configuration boundary rather than an internal
   optimizer algorithm: acceptance, aggregate budget and pacing echo, package
   constraint echo, and durable readback. Continuous internal allocation is
-  delivery behavior and does not mutate package caps or the buy revision.
+  delivery behavior and does not mutate reported package caps or the buy revision.
   An optional phase for sellers advertising media-buy cost caps verifies that
   the outcome-cost control binds to the allocation goal, not independently to
   unrelated package-local goals. Proposal-derived package pacing is graded by

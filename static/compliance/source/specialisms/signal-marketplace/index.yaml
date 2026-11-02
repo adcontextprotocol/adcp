@@ -12,6 +12,7 @@ required_tools:
   - get_signals
   - activate_signal
 requires_scenarios:
+  - signal_marketplace/error_compliance
   - signal_marketplace/governance_approved
   - signal_marketplace/governance_denied
 
@@ -167,6 +168,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-signal_marketplace-99c54090"
+            sandbox: true
           signal_spec: "In-market EV buyers with high purchase propensity, near auto dealerships"
 
           context:
@@ -228,6 +230,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-signal_marketplace-99c54090"
+            sandbox: true
           signal_ids:
             - "$context.first_signal_id"
 
@@ -289,6 +292,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-signal_marketplace-99c54090"
+            sandbox: true
           signal_ids:
             - "$context.first_signal_id"
 
@@ -351,6 +355,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-signal_marketplace-99c54090"
+            sandbox: true
           signal_agent_segment_id: "$context.first_signal_agent_segment_id"
           pricing_option_id: "$context.first_signal_pricing_option_id"
           destinations:
@@ -440,6 +445,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-signal_marketplace-99c54090"
+            sandbox: true
           signal_agent_segment_id: "$context.first_signal_agent_segment_id"
           pricing_option_id: "$context.first_signal_pricing_option_id"
           destinations:

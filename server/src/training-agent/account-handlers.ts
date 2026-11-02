@@ -9,6 +9,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
 import { AdcpError, type WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
+import { atLeastAdcpVersion, supportsAccountSurfaces33, TRAINING_AGENT_CURRENT_ADCP_VERSION } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import {
   getSession,
@@ -38,8 +39,17 @@ import {
   proveAccountWebhookControl,
 } from './webhook-challenge.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { isCollectionCardEventType, supportsCollections33 } from './collections/card-catalog.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
 import { createLogger } from '../logger.js';
+import {
+  authorizationFor,
+  ensureGrant,
+  grantFor,
+  isRevoked,
+  loadSandbox,
+  sandboxNowIso,
+} from './account-sandbox.js';
 import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
 import {
   UnsupportedReportingFeatureError,
@@ -108,6 +118,7 @@ export const TRAINING_ACCEPTED_GOVERNANCE_AGENTS = {
 // ── Types ────────────────────────────────────────────────────────
 
 interface SyncAccountsInput extends ToolArgs {
+  idempotency_key?: string;
   accounts: SyncAccountInput[];
   dry_run?: boolean;
 }
@@ -148,6 +159,13 @@ interface AccountState {
   notificationConfigs: NotificationConfigState[];
   notificationConfigsTouched?: boolean;
   syncedAt: string;
+  /** Optimistic-concurrency revision (account.json `revision`). Absent means 1. */
+  revision?: number;
+  /** Attribute values changed after opening (request_account changes, the
+   * reporting_subscription_probe timezone change). The store keeps the account
+   * under the attributes it opened with, so its session partition and durable
+   * binding never move; the wire shows these values instead. */
+  attributeOverrides?: { countries?: string[]; timezone?: string };
 }
 
 export interface TrainingAccountChange {
@@ -166,6 +184,9 @@ export interface TrainingAccountChange {
     kind: 'adcp' | 'seller_operator' | 'seller_system' | 'connected_platform' | 'unknown';
     connection_id?: string;
   };
+  /** Echo of the originating request's idempotency_key. Held only for
+   * `adcp` origin; served solely to the principal that sent the request. */
+  idempotency_key?: string;
   resource_revision?: number | string;
   changed_paths?: string[];
   repair: {
@@ -180,6 +201,23 @@ export interface TrainingAccountChange {
 interface StoredAccountChange {
   sequence: number;
   change: TrainingAccountChange;
+  /** Principal that sent the originating request. Never serialized. */
+  originPrincipal?: string;
+}
+
+/** Project a stored record for one reader: the idempotency_key echo reaches
+ * only the principal that sent the originating request. */
+function accountChangeForReader(entry: StoredAccountChange, readerPrincipal: string | undefined): TrainingAccountChange {
+  const { idempotency_key: idempotencyKey, ...rest } = entry.change;
+  if (
+    idempotencyKey !== undefined
+    && entry.change.origin.kind === 'adcp'
+    && readerPrincipal !== undefined
+    && entry.originPrincipal === principalScope(readerPrincipal)
+  ) {
+    return { ...rest, idempotency_key: idempotencyKey };
+  }
+  return rest;
 }
 
 interface AccountChangeCursor {
@@ -249,6 +287,7 @@ const accountChangeNextSequence = new Map<string, number>();
 const accountChangeAvailableFrom = new Map<string, number>();
 const accountChangeVisibilityEpochs = new Map<string, number>();
 const ACCOUNT_CHANGE_CURSOR_SECRET = randomUUID();
+const ACCOUNT_CHANGE_IDEMPOTENCY_KEY = /^[A-Za-z0-9_.:-]{16,255}$/;
 const ACCOUNT_CHANGE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 function principalAccountChangeScope(principal: string | undefined, accountId: string): string {
@@ -302,6 +341,10 @@ export function recordAccountChange(
     },
     action: input.action,
     origin: { ...input.origin },
+    ...(input.origin.kind === 'adcp'
+      && typeof input.idempotency_key === 'string'
+      && ACCOUNT_CHANGE_IDEMPOTENCY_KEY.test(input.idempotency_key)
+      && { idempotency_key: input.idempotency_key }),
     ...(input.resource_revision !== undefined && { resource_revision: input.resource_revision }),
     ...(input.changed_paths && { changed_paths: [...input.changed_paths] }),
     repair: {
@@ -318,7 +361,9 @@ export function recordAccountChange(
   const changes = accountChanges(accountScopeId);
   const sequence = (accountChangeNextSequence.get(accountScopeId) ?? 0) + 1;
   accountChangeNextSequence.set(accountScopeId, sequence);
-  changes.push({ sequence, change });
+  // Anonymous callers share one scope, so they cannot be told apart: never
+  // match them as the originating principal.
+  changes.push({ sequence, change, ...(principal && { originPrincipal: principalScope(principal) }) });
   return change;
 }
 
@@ -732,8 +777,11 @@ interface AccountWireShape {
   rate_card?: string;
   credit_limit?: { amount: number; currency: string };
   sandbox?: true;
+  billing_entity?: Record<string, unknown>;
   notification_configs?: Array<Record<string, unknown>>;
   reporting_delivery_configs?: Array<Record<string, unknown>>;
+  revision?: number;
+  authorization?: Record<string, unknown>;
 }
 
 function accountStateToWire(account: AccountState): AccountWireShape {
@@ -747,7 +795,9 @@ function accountStateToWire(account: AccountState): AccountWireShape {
   // reaches the buyer.
   const wireBrand: { domain: string; brand_id?: string; countries?: string[] } = { domain: account.brand.domain };
   if (account.brand.brand_id !== undefined) wireBrand.brand_id = account.brand.brand_id;
-  if (account.brand.countries !== undefined) wireBrand.countries = [...account.brand.countries];
+  const countries = account.attributeOverrides?.countries ?? account.brand.countries;
+  if (countries !== undefined) wireBrand.countries = [...countries];
+  const timezone = account.attributeOverrides?.timezone ?? account.timezone;
   const wire: AccountWireShape = {
     account_id: account.accountId,
     name: displayName,
@@ -756,12 +806,17 @@ function accountStateToWire(account: AccountState): AccountWireShape {
     operator: account.operator,
     ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
     ...(account.currency && { currency: account.currency }),
-    ...(account.timezone && { timezone: account.timezone }),
+    ...(timezone && { timezone }),
     billing: account.billing,
     account_scope: account.accountScope,
     status: account.status,
     payment_terms: account.paymentTerms,
   };
+  if (account.billingEntity) {
+    // Bank details are write-only.
+    const { bank: _bank, ...billingEntity } = account.billingEntity as Record<string, unknown>;
+    wire.billing_entity = billingEntity;
+  }
   if (account.rateCard) wire.rate_card = account.rateCard;
   if (account.creditLimit) wire.credit_limit = account.creditLimit;
   if (account.sandbox) wire.sandbox = true;
@@ -774,6 +829,7 @@ function accountStateToWire(account: AccountState): AccountWireShape {
 export const ACCOUNT_ANCHORED_NOTIFICATION_TYPE_VALUES = [
   'creative.status_changed',
   'creative.purged',
+  'creative.staged_update_changed',
   'account.change_recorded',
   'product.created',
   'product.updated',
@@ -866,6 +922,9 @@ async function normalizeNotificationConfigs(
     existing: NotificationConfigState[];
     dryRun: boolean;
     proofDeadlineMs: number;
+    /** Collection card events (experimental, 3.3) are registrable only on
+     * the 3.3 wire, where the seller declares them. */
+    servedAdcpVersion?: string;
   },
 ): Promise<NotificationConfigState[] | { error: Record<string, unknown> } | undefined> {
   if (input.notification_configs === undefined) return undefined;
@@ -927,7 +986,8 @@ async function normalizeNotificationConfigs(
       }
       seenEventTypes.add(eventType);
     }
-    const invalidIndex = config.event_types.findIndex(t => !ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(t));
+    const invalidIndex = config.event_types.findIndex(t => !ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(t)
+      && !(isCollectionCardEventType(t) && supportsCollections33(options.servedAdcpVersion)));
     if (invalidIndex !== -1) {
       return {
         error: validationFailure(
@@ -1056,6 +1116,39 @@ export function getAccountNotificationSubscribers(
       for (const config of account.notificationConfigs) {
         if (!config.active || !config.eventTypes.includes(notificationType)) continue;
         const subscriberKey = `${account.accountId}\u001F${config.subscriberId}\u001F${notificationType}`;
+        if (seen.has(subscriberKey)) continue;
+        seen.add(subscriberKey);
+        out.push({
+          accountId: account.accountId,
+          subscriberId: config.subscriberId,
+          url: config.url,
+          eventTypes: [...config.eventTypes],
+          authentication: config.authentication,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Every active subscriber to `notificationType` on any account the principal
+ * holds, across its session partitions. For seller-wide changes the
+ * principal can see on every account, such as its collection cards.
+ */
+export function getPrincipalNotificationSubscribers(
+  principal: string | undefined,
+  notificationType: string,
+): AccountNotificationSubscriber[] {
+  const prefix = `${principalScope(principal)}\u001F`;
+  const out: AccountNotificationSubscriber[] = [];
+  const seen = new Set<string>();
+  for (const [storeKey, accounts] of accountStore) {
+    if (!storeKey.startsWith(prefix)) continue;
+    for (const account of accounts.values()) {
+      for (const config of account.notificationConfigs) {
+        if (!config.active || !config.eventTypes.includes(notificationType)) continue;
+        const subscriberKey = `${account.accountId}\u001F${config.subscriberId}`;
         if (seen.has(subscriberKey)) continue;
         seen.add(subscriberKey);
         out.push({
@@ -1721,24 +1814,39 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 
   for (const input of req.accounts) {
     if (input.account) {
-      const mixedProvisioningFields = [
-        input.brand !== undefined && 'brand',
-        input.operator !== undefined && 'operator',
-        input.operator_unit !== undefined && 'operator_unit',
-        input.currency !== undefined && 'currency',
-        input.timezone !== undefined && 'timezone',
-        input.billing !== undefined && 'billing',
-        input.sandbox !== undefined && 'sandbox',
-      ].filter(Boolean);
-      if (mixedProvisioningFields.length > 0) {
+      if (input.operator !== undefined) {
         results.push({
           account: input.account,
           action: 'failed',
           status: 'rejected',
           errors: [{
             code: 'INVALID_REQUEST',
-            message: `Settings-update mode must not include provisioning fields: ${mixedProvisioningFields.join(', ')}`,
-            field: String(mixedProvisioningFields[0]),
+            message: 'Settings-update mode must not include operator: a different operator opens its own account',
+            field: 'operator',
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
+      // Account attributes are settable in settings-update mode. This
+      // training agent keys its account store by them, so it declines the
+      // change with UNSUPPORTED_FEATURE and leaves the account unchanged.
+      const attributeChanges = [
+        input.brand !== undefined && 'brand',
+        input.operator_unit !== undefined && 'operator_unit',
+        input.currency !== undefined && 'currency',
+        input.timezone !== undefined && 'timezone',
+        input.billing !== undefined && 'billing',
+        input.sandbox !== undefined && 'sandbox',
+      ].filter(Boolean);
+      if (attributeChanges.length > 0) {
+        results.push({
+          account: input.account,
+          action: 'failed',
+          errors: [{
+            code: 'UNSUPPORTED_FEATURE',
+            message: `This seller does not change account attributes after opening: ${attributeChanges.join(', ')}`,
+            field: String(attributeChanges[0]),
             recovery: 'correctable',
           }],
         });
@@ -1792,6 +1900,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         existing: existing.notificationConfigs,
         dryRun: req.dry_run === true,
         proofDeadlineMs,
+        servedAdcpVersion: ctx.servedAdcpVersion,
       });
       if (notificationConfigs && 'error' in notificationConfigs) {
         results.push(notificationConfigs.error);
@@ -1859,11 +1968,14 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       }
       if (input.reporting_delivery_configs !== undefined) changedPaths.push('/reporting_delivery_configs');
 
+      // From 3.2 a settings-update row is identified by the echoed `account`
+      // alone and MUST NOT also carry brand/operator; 3.0 and 3.1 have no
+      // `account` echo and identify the row by its natural key.
+      const naturalKeyIdentity = !atLeastAdcpVersion(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, '3.2');
       const result: Record<string, unknown> = {
         account_id: existing.accountId,
         account: input.account,
-        brand: existing.brand,
-        operator: existing.operator,
+        ...(naturalKeyIdentity && { brand: existing.brand, operator: existing.operator }),
         ...(existing.operatorUnit && { operator_unit: existing.operatorUnit }),
         ...(existing.currency && { currency: existing.currency }),
         ...(existing.timezone && { timezone: existing.timezone }),
@@ -1880,6 +1992,11 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         continue;
       }
 
+      if (changedPaths.some(path => path !== '/notification_configs' && path !== '/reporting_delivery_configs')) {
+        // A persisted settings change advances the account revision; caller
+        // configuration (webhooks, reporting configs) does not.
+        nextAccountState.revision = (existing.revision ?? 1) + 1;
+      }
       Object.assign(existing, nextAccountState);
       if (changedPaths.length > 0) {
         const change = recordAccountChange(ctx.principal, {
@@ -1890,6 +2007,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
           },
           action: 'updated',
           origin: { kind: 'adcp' },
+          idempotency_key: req.idempotency_key,
           changed_paths: changedPaths,
           repair: { task: 'list_accounts' },
           summary: 'Account settings changed through sync_accounts.',
@@ -2056,6 +2174,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       existing: existing?.notificationConfigs ?? [],
       dryRun: req.dry_run === true,
       proofDeadlineMs,
+      servedAdcpVersion: ctx.servedAdcpVersion,
     });
     if (notificationConfigs && 'error' in notificationConfigs) {
       results.push(notificationConfigs.error);
@@ -2138,6 +2257,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         ? true
         : existing?.notificationConfigsTouched,
       syncedAt: now,
+      revision: existing?.revision ?? 1,
+      ...(existing?.attributeOverrides && { attributeOverrides: structuredClone(existing.attributeOverrides) }),
     };
     const provisioningChangedPaths = existing
       ? [
@@ -2172,6 +2293,9 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       );
     }
     accounts.set(key, state);
+    if (!existing && supportsAccountSurfaces33(ctx.servedAdcpVersion)) {
+      await recordCallerAccountGrant(ctx.principal, accountId);
+    }
     const reportingDeliveryConfigs = await reportingConfigurationStatesForAccountDurably(ctx.principal, accountId);
     const currentWire = JSON.stringify(accountStateToWire(state));
     if (!existing || previousWire !== currentWire) {
@@ -2183,7 +2307,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         },
         action: existing ? 'updated' : 'created',
         origin: { kind: 'adcp' },
-        changed_paths: provisioningChangedPaths,
+        idempotency_key: req.idempotency_key,
+        changed_paths: provisioningChangedPaths?.length ? provisioningChangedPaths : [''],
         repair: { task: 'list_accounts' },
         summary: existing
           ? 'Account configuration changed through sync_accounts.'
@@ -2342,6 +2467,25 @@ export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): 
     accounts = req.sandbox
       ? accounts.filter(a => a.sandbox === true)
       : accounts.filter(a => !a.sandbox);
+  }
+  // 3.3: each account carries the caller's authorization (with the chain
+  // start the reporting-subscription coverage rule reads) and its revision. A
+  // revoked account is unknown, so it is not listed.
+  const accountSurfaces33 = supportsAccountSurfaces33(ctx.servedAdcpVersion);
+  const sandbox = accountSurfaces33 ? await loadSandbox(ctx.principal) : undefined;
+  if (sandbox) {
+    accounts = accounts.filter(account => !isRevoked(sandbox.doc, account.account_id));
+    const revisions = new Map(scopedAccounts.map(account => [account.accountId, account.revision ?? 1]));
+    let recorded = false;
+    accounts = accounts.map(account => {
+      recorded = ensureGrant(sandbox.doc, account.account_id, sandboxNowIso(sandbox.doc)) || recorded;
+      return {
+        ...account,
+        revision: revisions.get(account.account_id) ?? 1,
+        authorization: authorizationFor(grantFor(sandbox.doc, account.account_id)!),
+      };
+    });
+    if (recorded) sandbox.save();
   }
 
   const totalMatching = accounts.length;
@@ -2588,7 +2732,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
 
   return {
     status: 'completed',
-    changes: page.map(entry => entry.change),
+    changes: page.map(entry => accountChangeForReader(entry, ctx.principal)),
     cursor,
     has_more: hasMore,
     available_since: accountChangeAvailableSince(accountScopeId, nowMs),
@@ -2795,4 +2939,206 @@ export async function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext)
   }
 
   return { accounts: results };
+}
+
+// ── Experimental 3.3 account requests: caller-scoped account access ──
+//
+// request_account (account-requests.ts) and the reporting_subscription_probe
+// controller scenario open and change accounts through these helpers, so an
+// account they touch is the same AccountState sync_accounts and list_accounts
+// use. Attribute changes that would move the store key (countries, timezone)
+// are kept in `attributeOverrides`: the account keeps its account_id, session
+// partition, media buys, and durable binding.
+
+export type CallerAccountState = AccountState;
+
+/** Record the caller's default grant on an account it just opened. */
+export async function recordCallerAccountGrant(principal: string | undefined, accountId: string): Promise<void> {
+  const sandbox = await loadSandbox(principal);
+  if (ensureGrant(sandbox.doc, accountId, sandboxNowIso(sandbox.doc))) sandbox.save();
+}
+
+/** Every account the caller holds, live or durably bound. */
+export async function callerAccountStates(ctx: TrainingContext): Promise<AccountState[]> {
+  const byId = new Map(accountsForPrincipal(ctx.principal).map(account => [account.accountId, account]));
+  for (const binding of await listReportingAccountsDurably(ctx.principal)) {
+    if (byId.has(binding.accountId)) continue;
+    const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
+    if (restored) byId.set(restored.accountId, restored);
+  }
+  return [...byId.values()];
+}
+
+/** The account the caller holds under `accountId`, loaded into its live map. */
+export async function findCallerAccount(ctx: TrainingContext, accountId: string): Promise<AccountState | undefined> {
+  const live = findAccountByIdAcrossSessions(accountId, ctx.principal);
+  if (live) return live;
+  const binding = await resolveReportingAccountDurably(ctx.principal, { account_id: accountId });
+  if (!binding || binding.accountId !== accountId) return undefined;
+  const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
+  if (!restored) return undefined;
+  const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
+  getAccountMap(sessionKey, ctx.principal).set(accountKey(
+    restored.brand,
+    restored.operator,
+    restored.operatorUnit,
+    restored.currency,
+    restored.sandbox,
+    restored.timezone,
+  ), restored);
+  return restored;
+}
+
+/** The natural reference an account's session partition and durable binding use. */
+export function callerAccountRef(state: AccountState): AccountRef {
+  return reportingAccountRef(state);
+}
+
+/** The account's wire shape, with its revision and current attributes. */
+export function callerAccountWire(state: AccountState): Record<string, unknown> {
+  return { ...accountStateToWire(state), revision: state.revision ?? 1 };
+}
+
+/** Effective (wire) attributes used to compare accounts. */
+export function callerAccountAttributes(state: AccountState): {
+  domain: string;
+  brand_id?: string;
+  countries: string[];
+  operator: string;
+  operator_unit_id?: string;
+  currency?: string;
+  timezone?: string;
+  sandbox: boolean;
+} {
+  return {
+    domain: state.brand.domain,
+    ...(state.brand.brand_id !== undefined && { brand_id: state.brand.brand_id }),
+    countries: [...(state.attributeOverrides?.countries ?? state.brand.countries ?? [])].sort(),
+    operator: state.operator,
+    ...(state.operatorUnit?.id !== undefined && { operator_unit_id: state.operatorUnit.id }),
+    ...(state.currency !== undefined && { currency: state.currency }),
+    ...((state.attributeOverrides?.timezone ?? state.timezone) !== undefined && {
+      timezone: state.attributeOverrides?.timezone ?? state.timezone,
+    }),
+    sandbox: state.sandbox,
+  };
+}
+
+export interface CallerAccountPatch {
+  countries?: string[];
+  timezone?: string;
+  billing?: string;
+  billingEntity?: Record<string, unknown>;
+  paymentTerms?: string;
+  status?: string;
+}
+
+/**
+ * Apply attribute changes to an account the caller holds, as one persisted
+ * settings change: the revision advances, the durable binding is refreshed,
+ * and the change is recorded in the account change feed. Returns the changed
+ * paths (empty when nothing changed, in which case the revision is kept).
+ */
+export async function updateCallerAccount(
+  ctx: TrainingContext,
+  accountId: string,
+  patch: CallerAccountPatch,
+  options: { summary: string; idempotencyKey?: string; bumpRevision?: boolean } = { summary: 'Account changed.' },
+): Promise<{ state: AccountState; changedPaths: string[] } | undefined> {
+  const state = await findCallerAccount(ctx, accountId);
+  if (!state) return undefined;
+  const changedPaths: string[] = [];
+  const effective = callerAccountAttributes(state);
+  if (patch.countries !== undefined
+    && JSON.stringify([...patch.countries].sort()) !== JSON.stringify(effective.countries)) {
+    state.attributeOverrides = { ...state.attributeOverrides, countries: [...patch.countries] };
+    changedPaths.push('/brand/countries');
+  }
+  if (patch.timezone !== undefined && patch.timezone !== effective.timezone) {
+    state.attributeOverrides = { ...state.attributeOverrides, timezone: patch.timezone };
+    changedPaths.push('/timezone');
+  }
+  if (patch.billing !== undefined && patch.billing !== state.billing) {
+    state.billing = patch.billing;
+    changedPaths.push('/billing');
+  }
+  if (patch.billingEntity !== undefined
+    && JSON.stringify(patch.billingEntity) !== JSON.stringify(state.billingEntity ?? null)) {
+    state.billingEntity = structuredClone(patch.billingEntity);
+    changedPaths.push('/billing_entity');
+  }
+  if (patch.paymentTerms !== undefined && patch.paymentTerms !== state.paymentTerms) {
+    state.paymentTerms = patch.paymentTerms;
+    changedPaths.push('/payment_terms');
+  }
+  if (patch.status !== undefined && patch.status !== state.status) {
+    state.status = patch.status;
+    changedPaths.push('/status');
+  }
+  if (changedPaths.length === 0) return { state, changedPaths };
+  if (options.bumpRevision !== false) state.revision = (state.revision ?? 1) + 1;
+  state.syncedAt = new Date().toISOString();
+  await bindReportingAccountDurably(
+    ctx.principal,
+    state.accountId,
+    reportingAccountRef(state),
+    state as unknown as Record<string, unknown>,
+  );
+  const change = recordAccountChange(ctx.principal, {
+    resource: { type: 'account', account_id: state.accountId, resource_id: state.accountId },
+    action: 'updated',
+    origin: { kind: 'adcp' },
+    ...(options.idempotencyKey && { idempotency_key: options.idempotencyKey }),
+    changed_paths: changedPaths,
+    repair: { task: 'list_accounts' },
+    summary: options.summary,
+  });
+  await emitAccountChangeRecordedWebhook(ctx.principal, change);
+  return { state, changedPaths };
+}
+
+export interface OpenCallerAccountInput {
+  brand: { domain: string; brand_id?: string; countries?: string[] };
+  operator: string;
+  operator_unit?: OperatorUnit;
+  currency?: string;
+  timezone?: string;
+  sandbox?: boolean;
+  billing: string;
+  billing_entity?: Record<string, unknown>;
+  payment_terms?: string;
+}
+
+/**
+ * Open an account for the caller through the sync_accounts provisioning path,
+ * then make it active: an account request resolves to a usable account. Returns
+ * the provisioned state, or the provisioning errors.
+ */
+export async function openCallerAccount(
+  ctx: TrainingContext,
+  input: OpenCallerAccountInput,
+  idempotencyKey: string,
+): Promise<{ state: AccountState } | { errors: Array<Record<string, unknown>> }> {
+  const result = await handleSyncAccounts({
+    idempotency_key: idempotencyKey,
+    accounts: [structuredClone(input)],
+  } as unknown as ToolArgs, ctx) as { accounts?: Array<Record<string, unknown>>; errors?: Array<Record<string, unknown>> };
+  const row = result.accounts?.[0];
+  const accountId = typeof row?.account_id === 'string' ? row.account_id : undefined;
+  if (!accountId) {
+    const errors = (row?.errors as Array<Record<string, unknown>> | undefined) ?? result.errors ?? [];
+    return { errors: errors.length > 0 ? errors : [{ code: 'INVALID_REQUEST', message: 'The account could not be opened.' }] };
+  }
+  const state = await findCallerAccount(ctx, accountId);
+  if (!state) return { errors: [{ code: 'SERVICE_UNAVAILABLE', message: 'The opened account could not be read back.', recovery: 'transient' }] };
+  if (state.status !== 'active') {
+    state.status = 'active';
+    await bindReportingAccountDurably(
+      ctx.principal,
+      state.accountId,
+      reportingAccountRef(state),
+      state as unknown as Record<string, unknown>,
+    );
+  }
+  return { state };
 }

@@ -11,6 +11,9 @@ const addFormats = require('ajv-formats');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMA_ROOT = path.join(ROOT, 'static/schemas/source');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 const FIXTURE_ROOT = path.join(
   ROOT,
   'static/compliance/source/test-vectors/reporting-reconciliation',
@@ -26,9 +29,9 @@ function readSchema(uri) {
 }
 
 async function compileSchema(uri) {
-  const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async ref => readSchema(ref) });
+  const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async ref => readBuiltSchema(ref) });
   addFormats(ajv);
-  return ajv.compileAsync(readSchema(uri));
+  return ajv.compileAsync(readBuiltSchema(uri));
 }
 
 function hash(bytes, algorithm) {
@@ -191,7 +194,7 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   const index = readJson('scenario-index.json');
   const indexSchema = readJson('scenario-index.schema.json');
 
-  const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async ref => readSchema(ref) });
+  const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async ref => readBuiltSchema(ref) });
   addFormats(ajv);
   const validateIndex = await ajv.compileAsync(indexSchema);
   assert.equal(validateIndex(index), true, JSON.stringify(validateIndex.errors));

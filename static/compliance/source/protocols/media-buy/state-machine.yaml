@@ -210,6 +210,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_state_machine-f9152bb7"
+            sandbox: true
           creatives:
             - creative_id: "state_machine_display_creative"
               name: "Acme Outdoor State Machine Creative"
@@ -262,6 +263,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_state_machine-f9152bb7"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           start_time: "asap"
@@ -329,6 +331,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_state_machine-f9152bb7"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           paused: true
 
@@ -367,6 +370,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_state_machine-f9152bb7"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           paused: false
 
@@ -406,6 +410,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_state_machine-f9152bb7"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           canceled: true
 
@@ -458,6 +463,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_state_machine-f9152bb7"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           paused: true
           idempotency_key: "$generate:uuid_v4#pause_canceled_buy"
@@ -499,6 +505,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_state_machine-f9152bb7"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           paused: false
           idempotency_key: "$generate:uuid_v4#resume_canceled_buy"
@@ -548,6 +555,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_state_machine-f9152bb7"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           canceled: true
 

@@ -4,6 +4,10 @@ title: "Seller projects proposal change rights through MediaBuy state"
 category: media_buy_seller
 summary: "Verifies that accepted change terms remain binding while available_actions narrows by status, routes seller-managed work, and links with change_term_id."
 track: media_buy
+# The initial action projection and every transition assume compact control.
+requires_capability:
+  path: media_buy.lifecycle_tools
+  contains: control_media_buy
 introduced_in: "3.2"
 default_agent: sales
 

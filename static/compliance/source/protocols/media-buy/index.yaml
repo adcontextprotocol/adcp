@@ -15,9 +15,11 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/advanced_delivery_reporting
+  - media_buy_seller/time_based_delivery_reporting
   - media_buy_seller/property_delivery_reporting
   - media_buy_seller/installment_property_delivery_reporting
   - media_buy_seller/audience_activation_discovery
+  - media_buy_seller/execution_readiness
   - media_buy_seller/external_audience_source_binding
   - media_buy_seller/measurement_terms_rejected
   - media_buy_seller/measurement_terms_accepted
@@ -26,10 +28,13 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/product_signal_targeting
   - media_buy_seller/demographic_targeting
+  - media_buy_seller/gender_targeting
   - media_buy_seller/product_filter_behavior
   - media_buy_seller/read_filter_behavior
   - media_buy_seller/list_creatives_filter_behavior
   - media_buy_seller/account_change_feed
+  - media_buy_seller/reporting_subscription_coverage
+  - media_buy_seller/reporting_subscription_capacity
   - media_buy_seller/targeting_aware_discovery
   - media_buy_seller/geo_place_targeting
   - media_buy_seller/geo_region_all_values_support
@@ -41,6 +46,7 @@ requires_scenarios:
   - media_buy_seller/governance_agent_binding_acceptance
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
+  - media_buy_seller/terminal_package_retention
   - media_buy_seller/inline_creatives_without_sync
   - media_buy_seller/create_media_buy_async
   - media_buy_seller/create_media_buy_async_lifecycle
@@ -67,6 +73,12 @@ requires_scenarios:
   - media_buy_seller/budget_cap_timezone_override_rejected
   - media_buy_seller/owner_sold_channel_carriage
   - media_buy_seller/collection_selection
+  - media_buy_seller/collection_default_materialization
+  - media_buy_seller/collection_selection_readback
+  - media_buy_seller/collection_default_materialization_readback
+  - media_buy_seller/fixed_bundle_enforcement
+  - media_buy_seller/fixed_bundle_restatement
+  - media_buy_seller/owner_sold_channel_subset
   - media_buy_seller/outcome_target_list_products_inert
 
 narrative: |
@@ -182,6 +194,14 @@ phases:
             path: "context.correlation_id"
             value: "media_buy_seller--get_capabilities"
             description: "Context correlation_id returned unchanged"
+          - id: request_signing_required_in_4_0
+            check: field_value
+            path: "request_signing.supported"
+            value: true
+            description: "[4.0 compatibility] Seller verifies RFC 9421 signed requests; 4.0 requires signing on spend-committing operations"
+            severity: advisory
+            permanent_advisory:
+              reason: "AdCP 4.0 compatibility check (universal/v4-compatibility.yaml). Request signing is optional in 3.x, so this stays advisory on every 3.x bundle."
 
   - id: account_setup
     title: "Account setup"
@@ -264,11 +284,10 @@ phases:
       path: account.timezone.account_selection
       equals: buyer_selected
     narrative: |
-      Buyer-selected account-fixed sellers require one advertised timezone in
-      the provisioning natural key. The buyer discovers that allowlist before
-      establishing the account, resolves the new account through its complete
-      natural key, and carries that complete natural key through the rest of
-      this lifecycle.
+      Buyer-selected account-fixed sellers require one advertised timezone,
+      set when the account opens. The buyer discovers that allowlist before
+      opening the account, and the timezone stays an attribute of that
+      account for the rest of this lifecycle.
     steps:
       - id: discover_buyer_selected_timezone
         title: "Choose an advertised account timezone"
@@ -317,7 +336,7 @@ phases:
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "account_timezone"
-            description: "Seller echoes the chosen immutable timezone"
+            description: "Seller echoes the chosen account timezone"
 
   - id: product_discovery
     title: "Product discovery"
@@ -384,11 +403,11 @@ phases:
 
         context_outputs:
           - name: product_format_kind
-            path: 'products[0].format_options[0].format_kind'
+            path: "products[0].format_options[0].format_kind"
           - name: product_id
-            path: 'products[0].product_id'
+            path: "products[0].product_id"
           - name: pricing_option_id
-            path: 'products[0].pricing_options[0].pricing_option_id'
+            path: "products[0].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -418,6 +437,13 @@ phases:
           - check: field_present
             path: "products[0].publisher_properties"
             description: "Products include publisher_properties"
+          - id: format_ids_removed_in_4_0
+            check: all_fields_present
+            path: "products[*].format_options"
+            description: "[4.0 compatibility] Every returned product declares canonical format_options; 4.0 removes format_ids"
+            severity: advisory
+            permanent_advisory:
+              reason: "AdCP 4.0 compatibility check (universal/v4-compatibility.yaml). 3.x still accepts format_ids-only legacy products, so this stays advisory on every 3.x bundle; 4.0 schemas enforce format_options directly."
   - id: create_buy
     title: "Create the media buy"
     depends_on: [product_discovery]
@@ -504,24 +530,24 @@ phases:
               budget: 25000
               pricing_option_id: "cpm_non_guaranteed"
               bid_price: 25
+              context:
+                buyer_ref: "media_buy_seller--sports_preroll_package"
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
               bid_price: 10
+              context:
+                buyer_ref: "media_buy_seller--lifestyle_display_package"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_media_buy_seller_create"
-            authentication:
-              schemes:
-                - "HMAC-SHA256"
-              credentials: "media-buy-seller-webhook-secret-token"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_create_buy_create_media_buy"
           context:
             correlation_id: "media_buy_seller--create_media_buy"
 
         context_outputs:
           - name: media_buy_id
-            path: 'media_buy_id'
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -594,6 +620,20 @@ phases:
             path: "media_buys[0].context.correlation_id"
             value: "media_buy_seller--create_media_buy"
             description: "get_media_buys includes persisted media-buy context from create_media_buy"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "sports_preroll_q2"
+              context:
+                buyer_ref: "media_buy_seller--sports_preroll_package"
+            description: "get_media_buys returns each package's persisted context from create_media_buy on that package, in any order"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "lifestyle_display_q2"
+              context:
+                buyer_ref: "media_buy_seller--lifestyle_display_package"
+            description: "get_media_buys returns each package's persisted context from create_media_buy on that package, in any order"
 
   - id: delivery_monitoring
     title: "Delivery and reporting"
@@ -692,11 +732,11 @@ phases:
             correlation_id: "media_buy_seller--get_products_brief"
         context_outputs:
           - name: product_format_kind
-            path: 'products[0].format_options[0].format_kind'
+            path: "products[0].format_options[0].format_kind"
           - name: product_id
-            path: 'products[0].product_id'
+            path: "products[0].product_id"
           - name: pricing_option_id
-            path: 'products[0].pricing_options[0].pricing_option_id'
+            path: "products[0].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -725,6 +765,13 @@ phases:
           - check: field_present
             path: "products[0].publisher_properties"
             description: "Products include publisher_properties"
+          - id: format_ids_removed_in_4_0
+            check: all_fields_present
+            path: "products[*].format_options"
+            description: "[4.0 compatibility] Every returned product declares canonical format_options; 4.0 removes format_ids"
+            severity: advisory
+            permanent_advisory:
+              reason: "AdCP 4.0 compatibility check (universal/v4-compatibility.yaml). 3.x still accepts format_ids-only legacy products, so this stays advisory on every 3.x bundle; 4.0 schemas enforce format_options directly."
 
   - id: buyer_selected_create_buy
     title: "Buyer-selected timezone media buy"
@@ -757,23 +804,23 @@ phases:
               budget: 25000
               pricing_option_id: "cpm_non_guaranteed"
               bid_price: 25
+              context:
+                buyer_ref: "media_buy_seller--sports_preroll_package"
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
               bid_price: 10
+              context:
+                buyer_ref: "media_buy_seller--lifestyle_display_package"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_media_buy_seller_timezone"
-            authentication:
-              schemes:
-                - "HMAC-SHA256"
-              credentials: "media-buy-seller-webhook-secret-token"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_timezone_create_media_buy"
           context:
             correlation_id: "media_buy_seller--create_media_buy"
         context_outputs:
           - name: media_buy_id
-            path: 'media_buy_id'
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -825,6 +872,20 @@ phases:
             path: "media_buys[0].context.correlation_id"
             value: "media_buy_seller--create_media_buy"
             description: "get_media_buys includes persisted media-buy context from create_media_buy"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "sports_preroll_q2"
+              context:
+                buyer_ref: "media_buy_seller--sports_preroll_package"
+            description: "get_media_buys returns each package's persisted context from create_media_buy on that package, in any order"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "lifestyle_display_q2"
+              context:
+                buyer_ref: "media_buy_seller--lifestyle_display_package"
+            description: "get_media_buys returns each package's persisted context from create_media_buy on that package, in any order"
 
   - id: buyer_selected_delivery_monitoring
     title: "Buyer-selected timezone delivery and reporting"

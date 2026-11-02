@@ -1,0 +1,189 @@
+---
+title: Protect your brand from impersonation
+sidebarTitle: Protect your brand
+description: "Claim your domain, connect your brand portfolio, and publish which agents you operate and which agents you've hired, so sellers can turn impostors away. A guide for brand teams."
+"og:title": "AdCP — Protect your brand from impersonation"
+---
+
+AI agents are starting to buy media, make creative and do business in companies' names. When one shows up at a seller saying it buys for your brand, the seller needs a way to check. Without one, a stranger's claim and your agency's claim look the same.
+
+You answer that question from your own domain with two public files:
+
+- **brand.json** says who your brand is, and which parent company it belongs to.
+- **trust.json** names the **agents you operate** and the **agents you've hired**: the agencies and platforms allowed to act for you, for which brands, in which countries, and until when.
+
+A seller that checks these files can accept your partners and turn everyone else away.
+
+<Note>
+**trust.json is experimental in AdCP 3.3.** It protects you only with sellers that check it, and SDK and seller support varies today. Publishing it is optional. Existing 3.x integrations keep their documented rules until they adopt it. The file name, path and schema may change before it graduates. See [trust.json (experimental)](/dist/docs/3.3.0-beta.3/reference/trust-json).
+</Note>
+
+## See where you stand
+
+Enter your domain at [trustjson.org](https://trustjson.org). The lookup follows your verified parent company and shows what a seller can find today:
+
+| Result | What it means |
+|---|---|
+| **trust.json not implemented** | The organization that holds authority for this brand hasn't published a trust.json. Sellers have no public list to check. |
+| **trust.json is published** | The list exists. You see the agents it lists, each grant's limits, and whether the list is exclusive. |
+| **Parent company not confirmed** | The brand names a parent, but the parent doesn't list the brand back. Sellers won't use the parent's list until both sides match. |
+| **Couldn't check right now** | An outage, a redirect to another site, or an invalid record. It doesn't mean the brand is unprotected. |
+
+Agents can run the same check through the AgenticAdvertising.org MCP server's `lookup_brand_authorization` tool, or `GET https://trustjson.org/api/trust/lookup?domain=yourbrand.com`.
+
+The lookup shows public declarations. It doesn't authenticate a request, test a seller's enforcement, or see the approvals a seller keeps privately.
+
+## Step 1: Prove you control your domain
+
+Everything rests on your domain. Only whoever controls `yourbrand.com` can publish files at `https://yourbrand.com/.well-known/`.
+
+- **Self-publish** `brand.json` at `/.well-known/brand.json` over HTTPS, or publish an `authoritative_location` pointer to a provider you control. No signup is required.
+- **Claim your brand** in the [AgenticAdvertising.org registry](https://agenticadvertising.org/brand/builder) with its DNS TXT check if you want a hosted, editable entry.
+
+Claiming controls your registry entry. On its own, it doesn't stop impersonation at a seller. That takes the files below and a seller that checks them.
+
+## Step 2: Connect every brand to its parent company
+
+If you own several brands, you publish the list of who can act for them once, from your parent company's domain. For that to work, each brand and the parent have to vouch for each other:
+
+- the brand's brand.json names the parent in `house_domain`;
+- the parent's brand.json lists the brand in `brand_refs`.
+
+At `https://nova-motors.example/.well-known/brand.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/brand.json",
+  "id": "nova_motors",
+  "names": [{ "en": "Nova Motors" }],
+  "house_domain": "nova-brands.example"
+}
+```
+
+At `https://nova-brands.example/.well-known/brand.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/brand.json",
+  "house": { "domain": "nova-brands.example", "name": "Nova Brands" },
+  "brand_refs": [
+    { "domain": "nova-motors.example", "brand_id": "nova_motors" }
+  ]
+}
+```
+
+When both sides match, sellers read the parent's trust.json for every brand in the family. **A brand without its own trust.json isn't a loophole:** its parent's list still applies, and a separate list on the brand's domain doesn't override it.
+
+A one-sided claim establishes nothing. Neither does a website redirect, or a corporate hierarchy a registry inferred. A standalone brand leaves out `house_domain` and publishes its own trust.json. The full rules are in the [mutual-assertion trust model](/dist/docs/3.3.0-beta.3/brand-protocol/brand-json#mutual-assertion-trust-model).
+
+## Step 3: Publish who can act for you
+
+Publish `trust.json` at `https://{your-registrable-domain}/.well-known/trust.json`. For a portfolio, that's the parent company's domain.
+
+**Agents you operate** go in `agents`, one per origin, each with its role. Your own agents can act for your brands without a grant.
+
+**Agents you've hired** go in `grants`. Each grant names an organization by its registrable domain and sets its limits:
+
+| Field | What it limits | If you leave it out |
+|---|---|---|
+| `scopes` | Activities: `adcp:media_buying`, `adcp:creative_generation`, `adcp:measurement`, and others | Required |
+| `profiles.adcp.brands` | Which of your brands | Every brand you own |
+| `countries` | Markets | Global |
+| `valid_from`, `valid_until` | The time window | No start or end date |
+| `agents` | Specific agent origins the grantee runs | Any of the grantee's agents |
+
+At `https://nova-brands.example/.well-known/trust.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/trust/v1/trust.json",
+  "last_updated": "2026-10-25T00:00:00Z",
+  "exclusive_grants": true,
+  "agents": [
+    { "url": "https://buyer.nova-brands.example", "roles": ["adcp:buying"] }
+  ],
+  "grants": [
+    {
+      "grantee": "pinnacle-agency.example",
+      "scopes": ["adcp:media_buying"],
+      "agents": [{ "url": "https://buyer.pinnacle-agency.example" }],
+      "profiles": { "adcp": { "brands": ["nova_motors"] } },
+      "countries": ["US", "GB"],
+      "valid_until": "2027-06-30T00:00:00Z"
+    },
+    {
+      "grantee": "lumen-studio.example",
+      "scopes": ["adcp:creative_generation"],
+      "valid_until": "2027-06-30T00:00:00Z"
+    }
+  ]
+}
+```
+
+Here Nova Brands runs its own in-house buyer. It lets one Pinnacle agent buy media for Nova Motors in the US and UK until mid-2027, and lets Lumen Studio generate creative for any Nova brand. Set each limit on purpose: a field you leave out is a limit you didn't set.
+
+**Make the list exclusive when it's complete.** With `exclusive_grants: true`, your grants are the whole list: a seller that checks turns away any agency or platform not on it, for every activity, whatever they claim. In this example, no one could measure for Nova Brands, because no grant covers measurement. Your own agents still act for you. Without exclusivity, a claim your grants don't cover is up to each seller, and a grant that almost matches doesn't change that.
+
+**Move everything over before you publish.** Once your trust.json exists, sellers stop reading the older `authorized_operators` list in your brand.json. Copy every entry into `grants` first.
+
+## Step 4: Make sure your partners list their agents
+
+A grant authorizes an organization. The seller still has to confirm that the agent making the call really belongs to it. Each agency or platform you hire lists the agents it runs in its own trust.json, and each agent serves its signing keys from its own origin.
+
+At `https://pinnacle-agency.example/.well-known/trust.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/trust/v1/trust.json",
+  "last_updated": "2026-10-25T00:00:00Z",
+  "agents": [
+    { "url": "https://buyer.pinnacle-agency.example", "roles": ["adcp:buying"] }
+  ]
+}
+```
+
+Ask each agency for its agent origins before you narrow a grant with `agents`. If an agency works through a hosted platform, leave your grant to the agency unnarrowed and have the agency grant the platform in its own trust.json. [Grants in trust records](/dist/docs/3.3.0-beta.3/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) has the full chain rules.
+
+## Step 5: Test it with each seller
+
+Ask every seller you work with one question: **"Do you check trust.json before you accept a buy for our brand?"** Then ask them to show you one request they approved and one they turned down, checking the agent, brand, account operator, activity, country and dates.
+
+Seller account approval, billing and credit checks still apply on top of your list.
+
+## What sellers do when something is missing
+
+| What the seller finds | What happens |
+|---|---|
+| Your parent company's list, and no file on the brand's own domain | The parent's list applies. The brand is covered. |
+| No trust.json has ever been published | Through AdCP 3.x, the seller may use the older brand.json list or its own verified onboarding. Absence never authorizes a stranger on its own. |
+| An exclusive list with no matching grant | The request is turned away, whatever the activity. |
+| A list with no matching grant, not exclusive | The seller may rely on its own verified onboarding records, not on your older brand.json list. |
+| A timeout, server error or invalid file | Authorization is unavailable and spend fails closed. An outage doesn't make you unprotected. |
+| A file that existed and was deleted | No fallback to older rules. Deleting the file doesn't undo it, so keep it published. |
+
+## Change partners, revoke access
+
+- **Add a partner:** add a grant.
+- **Pull access:** delete or narrow the grant. To retire one of your own agents, remove it from `agents`. Sellers that check pick the change up on their next refresh, within their cache lifetime rather than instantly. Revoking an agent doesn't by itself cancel live buys or suspend an account.
+- **Hand off hosting:** your agency or platform can host the file. Publish an `authoritative_location` pointer at your own well-known location, and you stay the authority.
+
+## Beyond advertising
+
+trust.json's core is protocol-neutral: agents you operate, partners you've hired, and the limits on each. Roles and scopes are namespaced, and AdCP's `adcp:` tokens are the first profile. Commerce, customer care, travel, data access and other protocols can define their own, and verifiers ignore namespaces they don't implement. Advertising is the only profile defined today.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="trustjson.org" icon="magnifying-glass" href="https://trustjson.org">
+    Check any brand's published authority, with a link to claim it.
+  </Card>
+  <Card title="trust.json reference" icon="code" href="/dist/docs/3.3.0-beta.3/reference/trust-json">
+    Schemas, fields and the experimental status contract.
+  </Card>
+  <Card title="Grants in trust records" icon="link" href="/dist/docs/3.3.0-beta.3/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental">
+    How a seller evaluates grants, chains and exclusivity.
+  </Card>
+  <Card title="Agent identity migration" icon="route" href="/dist/docs/3.3.0-beta.3/reference/migration/agent-identity-3-3">
+    Moving from brand.json operator lists to trust.json grants.
+  </Card>
+</CardGroup>

@@ -13,6 +13,7 @@ import {
   type ComplianceRefreshRequest,
 } from '../db/compliance-refresh-requests-db.js';
 import { canManageAgentForOrg, resolveOwnerOrgForUser } from './agent-ownership.js';
+import { agentIdentityContainment } from '../db/agent-identity-match.js';
 
 export class ComplianceRefreshAuthorizationError extends Error {
   constructor(readonly code: 'authorization_revoked' | 'authorization_unavailable') {
@@ -229,13 +230,19 @@ export function createComplianceRefreshAuthorizationGuard(
           client, request.requested_by_auth_workos_user_id!, request.authorization_fingerprint,
         );
         if (request.triggered_by === 'owner_test') {
+          // Folds spellings of the agent's registry identity exactly as the
+          // route-level `canManageAgentForOrg` above does (#8322) — the two
+          // must agree, or an owner registered under the other spelling
+          // passes the gate and then fails this locked re-check with
+          // `authorization_revoked` mid-write. Org and role scoping unchanged.
+          const ownerAgents = agentIdentityContainment('mp.agents', request.agent_url, 3);
           const owner = await client.query(
             `SELECT om.workos_user_id FROM organization_memberships om
              JOIN member_profiles mp ON mp.workos_organization_id = om.workos_organization_id
              WHERE om.workos_user_id = $1 AND mp.workos_organization_id = $2
                AND om.role IN ('owner', 'admin')
-               AND mp.agents @> $3::jsonb FOR SHARE OF om, mp`,
-            [principal.id, request.owner_org_id, JSON.stringify([{ url: request.agent_url }])],
+               AND ${ownerAgents.sql} FOR SHARE OF om, mp`,
+            [principal.id, request.owner_org_id, ...ownerAgents.params],
           );
           if (!owner.rowCount) throw new ComplianceRefreshAuthorizationError('authorization_revoked');
         } else if (!isBreakGlassAdminEmail(principal.email)) {

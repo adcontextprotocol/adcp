@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Project the HTML-markup legacy formats (`display_html` and every `display_WxH_html`) to `display_tag` with inline-markup delivery instead of `html5`. `core/canonical-projection-ref.json` gains an optional `supported_delivery_types` hint. It is valid only with `kind: "display_tag"` and is copied to the projected declaration's `params.supported_delivery_types`. The reference catalog now annotates these formats with an `html_creative` `display_tag` slot and `supported_delivery_types: ["inline_markup"]`. Their fixed width and height still project from the format's dimensions. `html5` stays reserved for seller-hosted zip bundles. New shared vectors (`static/test-vectors/html-markup-legacy-projection.json`) cover the projection, exact sized legacy-ref selection with markup carried in `html_creative`, and the negative cases: `html5` zips, unproven sizes, and non-inline delivery. The NYTimes canonical examples no longer pair their `html5` zip options with the `_html` markup refs. They mark those options `canonical_formats_only: true`, because no AAO legacy format describes a zip bundle. Refs #8339.

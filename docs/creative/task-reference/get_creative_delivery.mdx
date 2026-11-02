@@ -131,8 +131,11 @@ reused for another creative, revision, locale, or rendered manifest; this keeps
 whose native ad platform reuses an identifier maps each distinct execution to
 a distinct AdCP `variant_id` and may retain the native identifier in `ext`.
 `variant_count` counts distinct `variant_id` values before applying
-`max_variants`. Tier 1 therefore has one row per revision and locale represented
-in the requested period, not necessarily one row for the whole period. A seller
+`max_variants`. A fixed, single-size Tier 1 creative therefore has one row per
+revision and locale represented in the requested period. A multi-size source
+can produce distinct rendered-size executions within the same revision and
+locale; those executions have distinct rows, whose resolved `manifest` records
+the actual dimensions. Selecting a size does not change the source revision. A seller
 that cannot partition delivery this way cannot advertise
 `creative.supports_revisions: true`.
 
@@ -161,10 +164,12 @@ Derived metrics like `ctr`, `completion_rate`, `roas`, and `cost_per_click` are 
 
 ### Tier 1: Standard Creatives
 
-Within one source revision and locale, a standard creative maps 1:1 to one
-variant. A report spanning revision or locale boundaries contains distinct
-variant rows; a row's metrics match the creative totals only when it is the
-sole row in the reporting period.
+Within one source revision and locale, a fixed, single-size standard creative
+maps 1:1 to one variant. A multi-size source can produce more than one variant,
+one for each distinct rendered-size execution. A report spanning revision,
+locale, or rendered-output boundaries contains distinct variant rows; a row's
+metrics match the creative totals only when it is the sole row in the reporting
+period.
 
 ```json
 {

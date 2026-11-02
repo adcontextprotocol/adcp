@@ -2,13 +2,30 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/demographic-predicate.json",
   "title": "Demographic Predicate",
-  "description": "Portable demographic audience intent. AdCP 3.2 standardizes canonical age predicates first; other demographic dimensions require their own portable semantics and are not inferred from seller-defined labels. Exact comparison is set equality over the inclusive integer age interval plus the separately represented unknown-age member.",
+  "description": "Portable age and gender audience targeting. At least one named dimension is required; dimensions compose with AND. Age retains inclusive integer bounds and independent unknown-age membership. Gender uses an unordered set of selected values and independent unknown-gender membership.",
   "type": "object",
   "properties": {
     "age": {
       "$ref": "/schemas/core/demographic-age-range.json"
+    },
+    "gender": {
+      "$ref": "/schemas/core/demographic-gender.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
     }
   },
-  "required": ["age"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "anyOf": [
+    {
+      "required": [
+        "age"
+      ]
+    },
+    {
+      "required": [
+        "gender"
+      ]
+    }
+  ]
 }

@@ -99,20 +99,7 @@
       "format_kind": "html5",
       "format_option_id": "nytimes_homepage_html5",
       "display_name": "NYTimes Homepage \u2014 HTML5 (multi-size)",
-      "v1_format_ref": [
-        {
-          "agent_url": "https://creative.adcontextprotocol.org/",
-          "id": "display_300x250_html"
-        },
-        {
-          "agent_url": "https://creative.adcontextprotocol.org/",
-          "id": "display_728x90_html"
-        },
-        {
-          "agent_url": "https://creative.adcontextprotocol.org/",
-          "id": "display_970x250_html"
-        }
-      ],
+      "canonical_formats_only": true,
       "params": {
         "sizes": [
           {

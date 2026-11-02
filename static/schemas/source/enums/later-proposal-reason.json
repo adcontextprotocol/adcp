@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/later-proposal-reason.json",
+  "title": "Later Proposal Reason",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Why the seller created a proposal after the creating task completed. Lets a buyer agent or planner triage a later proposal without reading seller prose. Experimental (media_buy.open_opportunities).",
+  "type": "string",
+  "enum": ["delayed_response", "revised_terms", "new_inventory", "event_package", "other"],
+  "enumDescriptions": {
+    "delayed_response": "The seller's answer to the stored brief took longer than the creating task. Typical of sales desks with human review.",
+    "revised_terms": "The seller revised one of its own earlier proposals for this opportunity. The new snapshot SHOULD carry parent_proposal_id naming the proposal it revises.",
+    "new_inventory": "Inventory relevant to the stored brief became available after the creating task.",
+    "event_package": "A package tied to a dated event inside the planning horizon, such as a sports final or a holiday.",
+    "other": "None of the above. The snapshot's brief_alignment SHOULD explain the reason."
+  }
+}

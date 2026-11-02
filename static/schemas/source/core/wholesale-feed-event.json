@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/wholesale-feed-event.json",
   "title": "Wholesale Feed Event",
-  "description": "A single change event emitted by an AdCP agent's wholesale product feed or wholesale signals feed and delivered inside wholesale-feed-webhook payloads. Events are denormalized so consumers can update local state without polling list_products / get_signals. This is distinct from buyer-provided feeds managed by sync_catalogs. The discriminator is event_type; each branch defines the payload shape.",
+  "description": "A single change event emitted by an AdCP agent's wholesale product feed, wholesale signals feed, or (experimental, media_buy.collection_catalog) collection card catalog, and delivered inside wholesale-feed-webhook payloads. Events are denormalized so consumers can update local state without polling list_products / get_signals / list_collections. This is distinct from buyer-provided feeds managed by sync_catalogs. The discriminator is event_type; each branch defines the payload shape.",
   "type": "object",
   "discriminator": {
     "propertyName": "event_type"
@@ -19,7 +19,7 @@
     "event_id": {
       "type": "string",
       "format": "uuid",
-      "description": "Stable logical event identifier for this wholesale feed change. MUST equal the enclosing webhook notification_id. UUID v7 is RECOMMENDED so receivers can detect obvious out-of-order delivery; missed or distrusted pushes are repaired through list_products / get_signals."
+      "description": "Stable logical event identifier for this wholesale feed change. MUST equal the enclosing webhook notification_id. UUID v7 is RECOMMENDED so receivers can detect obvious out-of-order delivery; missed or distrusted pushes are repaired through list_products / get_signals / list_collections."
     },
     "event_type": {
       "type": "string",
@@ -32,7 +32,10 @@
         "signal.updated",
         "signal.priced",
         "signal.removed",
-        "wholesale_feed.bulk_change"
+        "wholesale_feed.bulk_change",
+        "collection_card.updated",
+        "collection_card.removed",
+        "collection_catalog.bulk_change"
       ],
       "description": "Discriminator. Determines the shape of `payload`."
     },
@@ -41,13 +44,14 @@
       "enum": [
         "product",
         "signal",
+        "collection",
         "feed"
       ],
-      "description": "Entity class. 'product' for product.* events, 'signal' for signal.* events, 'feed' for wholesale_feed.bulk_change."
+      "description": "Entity class. 'product' for product.* events, 'signal' for signal.* events, 'collection' for collection_card.* events, 'feed' for wholesale_feed.bulk_change and collection_catalog.bulk_change."
     },
     "entity_id": {
       "type": "string",
-      "description": "Entity identifier. For product.* events, the product_id. For signal.* events, the signal_agent_segment_id. For wholesale_feed.bulk_change, an agent-defined operation id."
+      "description": "Entity identifier. For product.* events, the product_id. For signal.* events, the signal_agent_segment_id. For collection_card.* events, an opaque seller-defined card id: receivers key the card mirror on the payload's (publisher_domain, collection_id), never on entity_id. For wholesale_feed.bulk_change and collection_catalog.bulk_change, an agent-defined operation id."
     },
     "created_at": {
       "type": "string",
@@ -474,6 +478,134 @@
       "required": [
         "event_type"
       ]
+    },
+    {
+      "description": "collection_card.updated — experimental (media_buy.collection_catalog). Upsert: a collection card entered the seller's catalog for the applies_to scope, or any field of its copy changed. There is no separate created event. The payload carries the full post-change card, which replaces the mirror entry keyed by (publisher_domain, collection_id). The card is a response copy under the core/response-collection.json authority rules: it wins over adagents.json only on the closed list of display fields and is never authorization evidence. A follower refresh that leaves a count's bounds and precision unchanged is not a change and fires nothing.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "properties": {
+        "event_type": {
+          "const": "collection_card.updated"
+        },
+        "entity_type": {
+          "const": "collection"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["collection", "applies_to"],
+          "properties": {
+            "collection": {
+              "$ref": "/schemas/core/response-collection.json",
+              "description": "Full post-change card, the same copy list_collections returns for this key. Consumers replace the mirror entry for its (publisher_domain, collection_id) with this object."
+            },
+            "changed_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Advisory list of changed top-level collection field names (e.g., ['sample_content']). Consumers MAY use it for fine-grained re-render, but the collection object is the source of truth for this webhook payload."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo",
+              "description": "REQUIRED. Copy content never varies by account, so a content change to a public card is a public event; an account-scoped event only moves a card into an account's visible set."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "collection_card.removed — experimental (media_buy.collection_catalog). The seller no longer offers this card in the applies_to scope. It says only that this seller stopped offering the card: it does not mean the collection was retired or that authorization changed, which arrive as registry collection.removed and authorization.revoked events. Carries the key, never a card.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "properties": {
+        "event_type": {
+          "const": "collection_card.removed"
+        },
+        "entity_type": {
+          "const": "collection"
+        },
+        "payload": {
+          "type": "object",
+          "required": ["publisher_domain", "collection_id", "applies_to"],
+          "properties": {
+            "publisher_domain": {
+              "$ref": "/schemas/core/collection-selector.json#/properties/publisher_domain"
+            },
+            "collection_id": {
+              "type": "string",
+              "x-entity": "collection"
+            },
+            "removal_reason": {
+              "$ref": "#/$defs/removalReason"
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "not": { "required": ["collection"] },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    {
+      "description": "collection_catalog.bulk_change — experimental (media_buy.collection_catalog). Fast-forward event when one operation touches more collection cards than per-card events can usefully carry (the wholesale feed threshold: more than 5% of the catalog or more than 100 cards, whichever is smaller), such as a scheduled follower-count sweep. Carries no cards. Consumers drop their stored collections_version and replace the mirror from a complete unfiltered list_collections read.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "properties": {
+        "event_type": {
+          "const": "collection_catalog.bulk_change"
+        },
+        "entity_type": {
+          "const": "feed"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "summary",
+            "affected_count",
+            "applies_to"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "Human-readable description of the bulk operation (e.g., 'Nightly follower count refresh')."
+            },
+            "affected_count": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Approximate count of affected cards."
+            },
+            "recommendation": {
+              "type": "string",
+              "enum": [
+                "wholesale_resync"
+              ],
+              "description": "Advisory recommendation, the same vocabulary as wholesale_feed.bulk_change: replace the card mirror from a complete unfiltered list_collections read. Consumers MUST be prepared to ignore unknown recommendation values."
+            },
+            "applies_to": {
+              "$ref": "#/$defs/appliesTo"
+            }
+          },
+          "not": {
+            "anyOf": [
+              { "required": ["affected_entity_type"] },
+              { "required": ["collection"] },
+              { "required": ["collections"] }
+            ]
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_type"
+      ]
     }
   ],
   "$defs": {
@@ -528,7 +660,7 @@
         "depublication",
         "policy_takedown"
       ],
-      "description": "Why the entity was removed. 'withdrawn': seller-initiated, no resubmit path. 'cancellation': resource cancelled, may return. 'expired': time-bounded availability ended (flight ended, seasonal product retired). 'depublication': underlying property depublished (see publisher.adagents_changed in the registry feed). 'policy_takedown': governance-driven removal (AdCP governance agent OR external regulator/legal takedown). In-flight buys honor existing cancellation policy regardless of reason; storefront UX differs."
+      "description": "Why the entity was removed. For collection_card.removed the reason describes why this seller stopped offering the card, not a change to the publisher's declaration. 'withdrawn': seller-initiated, no resubmit path. 'cancellation': resource cancelled, may return. 'expired': time-bounded availability ended (flight ended, seasonal product retired). 'depublication': underlying property depublished (see publisher.adagents_changed in the registry feed). 'policy_takedown': governance-driven removal (AdCP governance agent OR external regulator/legal takedown). In-flight buys honor existing cancellation policy regardless of reason; storefront UX differs."
     },
     "signal": {
       "type": "object",

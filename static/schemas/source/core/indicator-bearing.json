@@ -102,6 +102,14 @@
     {
       "if": { "properties": { "indicators": { "contains": { "properties": { "type": { "const": "budget_constrained" } }, "required": ["type"] } } }, "required": ["indicators"] },
       "then": { "properties": { "indicator_types_evaluated": { "contains": { "const": "budget_constrained" } } } }
+    },
+    {
+      "if": { "properties": { "indicators": { "contains": { "properties": { "type": { "const": "flight_extension_opportunity" } }, "required": ["type"] } } }, "required": ["indicators"] },
+      "then": { "properties": { "indicator_types_evaluated": { "contains": { "const": "flight_extension_opportunity" } } } }
+    },
+    {
+      "if": { "properties": { "indicators": { "contains": { "properties": { "type": { "const": "scale_budget_opportunity" } }, "required": ["type"] } } }, "required": ["indicators"] },
+      "then": { "properties": { "indicator_types_evaluated": { "contains": { "const": "scale_budget_opportunity" } } } }
     }
   ],
   "x-adcp-validation": {

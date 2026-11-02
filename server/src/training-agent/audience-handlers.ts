@@ -12,7 +12,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { atLeastAdcpVersion, type TrainingContext, type ToolArgs } from './types.js';
+import { atLeastAdcpVersion, TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext, type ToolArgs } from './types.js';
+import { omitFieldsAddedAfterRelease } from './served-release-fields.js';
 import { sessionKeyFromArgs } from './state.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from './product-factory.js';
 
@@ -85,7 +86,7 @@ export type TrainingAudienceStatus = 'processing' | 'ready' | 'too_small' | 'sus
 interface AudienceState {
   audienceId: string;
   name: string;
-  sellerId: string;
+  platformId: string;
   uploadedCount: number;
   matchedCount: number;
   status: TrainingAudienceStatus;
@@ -471,7 +472,17 @@ function sourceResponse(
 
 // ── Handler implementation ──────────────────────────────────────
 
+/** sync_audiences shaped to the served release: the 3.3 `platform_id` (and
+ * any other field added after it) stays off a response served below 3.3. */
 export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) {
+  return omitFieldsAddedAfterRelease(
+    await syncAudiences(args, ctx),
+    'media-buy/sync-audiences-response.json',
+    ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
+}
+
+async function syncAudiences(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncAudiencesInput;
 
   if (!req.account) {
@@ -507,7 +518,8 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
       return {
         audience_id: a.audienceId,
         name: a.name,
-        seller_id: a.sellerId,
+        platform_id: a.platformId,
+        seller_id: a.platformId,
         action: 'unchanged',
         status: a.status,
         ...(a.statusReason && { reason: a.statusReason }),
@@ -621,7 +633,7 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
     const state: AudienceState = {
       audienceId: input.audience_id,
       name: input.name ?? existing?.name ?? input.audience_id,
-      sellerId: existing?.sellerId ?? `aud_${randomUUID().slice(0, 8)}`,
+      platformId: existing?.platformId ?? `aud_${randomUUID().slice(0, 8)}`,
       uploadedCount: totalUploaded,
       matchedCount: totalMatched,
       status,
@@ -637,7 +649,8 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
     const result: Record<string, unknown> = {
       audience_id: state.audienceId,
       name: state.name,
-      seller_id: state.sellerId,
+      platform_id: state.platformId,
+      seller_id: state.platformId,
       action: existing ? 'updated' : 'created',
       status: state.status,
       uploaded_count: uploadedThisCall,

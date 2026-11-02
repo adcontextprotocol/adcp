@@ -1,0 +1,207 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/media-buy/sync-event-sources-response.json",
+  "title": "Sync Event Sources Response",
+  "description": "Response from event source sync operation. Returns either per-source results OR operation-level errors.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "title": "SyncEventSourcesSuccess",
+      "description": "Success response - sync operation processed event sources",
+      "type": "object",
+      "properties": {
+        "event_sources": {
+          "type": "array",
+          "description": "Results for each event source, including both synced and seller-managed sources on the account. Archived sources are included, flagged `archived: true`.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_source_id": {
+                "type": "string",
+                "description": "Event source ID from the request",
+                "x-entity": "event_source"
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the event source"
+              },
+              "platform_id": {
+                "x-added-in": "3.3.0",
+                "type": "string",
+                "description": "Platform-specific ID assigned to the event source by the seller's ad platform. Introduced in AdCP 3.3. When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both platform_id and the deprecated seller_id alias with identical values. Buyers MUST prefer platform_id and fall back to seller_id only when platform_id is absent. This identifies the object on the platform, not the seller.",
+                "$comment": "x-entity deliberately omitted: seller-opaque platform identifier; AdCP requests reference event_source_id instead."
+              },
+              "seller_id": {
+                "type": "string",
+                "description": "Deprecated in AdCP 3.3. Alias for platform_id, retained throughout 3.x; removal is no earlier than AdCP 4.0 and subject to the deprecation policy's six-month notice window. When both fields are present, their values MUST be identical. Buyers MUST prefer platform_id and fall back to this field only when platform_id is absent. This remains the object's platform identifier, never the seller's identity.",
+                "deprecated": true
+              },
+              "event_types": {
+                "type": "array",
+                "description": "Event types this source handles",
+                "items": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/event-type.json"
+                }
+              },
+              "value_currencies": {
+                "type": "array",
+                "description": "ISO 4217 currencies accepted for monetary event values from this source. Canonical ROAS buys require their media-buy currency in this list.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "action_source": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/action-source.json",
+                "description": "Type of event source (website pixel, app SDK, in-store, etc.)"
+              },
+              "surface": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/event-surface.json",
+                "description": "Optional structured surface this source represents, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store. Complements `action_source`; use it when optimization-relevant source meaning would otherwise live only in platform-specific `ext` metadata."
+              },
+              "managed_by": {
+                "type": "string",
+                "enum": [
+                  "buyer",
+                  "seller"
+                ],
+                "description": "Who manages this event source. 'buyer' = configured via this sync. 'seller' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
+              },
+              "setup": {
+                "type": "object",
+                "description": "Implementation details for activating this event source (e.g. JavaScript tag, pixel URL)",
+                "properties": {
+                  "snippet": {
+                    "type": "string",
+                    "description": "Code snippet to place on the site (JavaScript, HTML pixel, etc.)"
+                  },
+                  "snippet_type": {
+                    "type": "string",
+                    "enum": [
+                      "javascript",
+                      "html",
+                      "pixel_url",
+                      "server_only"
+                    ],
+                    "description": "Type of implementation. 'server_only' means no client-side tag is needed."
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "description": "Human/agent-readable setup instructions"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "created",
+                  "updated",
+                  "unchanged",
+                  "deleted",
+                  "archived",
+                  "failed"
+                ],
+                "description": "Action taken for this event source. `archived` reports a source newly archived by an `archived: true` request item. Undoing an archive reports `updated`. Archiving an already archived source, or undoing an archive on an active one, reports `unchanged`. Sellers return `archived` only to callers that sent `archived`. An archived source that this call did not change, such as in a discovery-only call, reports `unchanged`."
+              },
+              "archived": {
+                "type": "boolean",
+                "description": "Whether the source is archived. Archived sources keep their configuration but stop accepting events and stop resolving for new optimization goals. Sellers MAY omit it for sources that are not archived.",
+                "x-added-in": "3.3.0"
+              },
+              "health": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/event-source-health.json",
+                "description": "Health assessment for this event source. Reflects event volume, data quality, and parameter completeness. Sellers that support health scoring include this on every source (buyer-managed and seller-managed). Absent when the seller does not evaluate event source health."
+              },
+              "errors": {
+                "type": "array",
+                "description": "Errors for this event source (only present when action='failed')",
+                "items": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/error.json"
+                }
+              },
+              "ext": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+                "description": "Per-source extension metadata that travels with this event source result, such as platform-native conversion IDs, attribution-window handles, raw origin strings, or implementation details not yet standardized. Semantic fields such as `event_types`, `action_source`, and `surface` remain authoritative; `ext` complements them and is not a substitute."
+              }
+            },
+            "required": [
+              "event_source_id",
+              "action"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json"
+        }
+      },
+      "required": [
+        "event_sources"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "SyncEventSourcesError",
+      "description": "Error response - operation failed completely",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors that prevented processing",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "event_sources"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "properties": {}
+}

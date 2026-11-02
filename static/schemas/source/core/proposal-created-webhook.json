@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/proposal-created-webhook.json",
+  "title": "Proposal Created Webhook",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Compact account-anchored invalidation fired after the seller creates a later proposal and the snapshot is readable through list_proposals. Identifiers only: the payload carries no commercial terms or seller prose, so it cannot inject terms or instructions into a buyer agent. Receivers verify the webhook signature, dedupe by notification_id, and call list_proposals on the seller bound to the notification config, never on an endpoint taken from the body. Experimental (media_buy.open_opportunities): sellers emitting it MUST list the feature id in experimental_features.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated delivery key stable across retries of one fire. Deliberate re-emission uses a new key.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Logical notification identifier. Always equals proposal_id.",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "proposal.created"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "account"
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal"
+    },
+    "opportunity_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "opportunity"
+    },
+    "parent_proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "Present when the later proposal revises an earlier proposal for the same opportunity."
+    },
+    "later_reason": { "$ref": "/schemas/enums/later-proposal-reason.json" },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Copied from the snapshot so the receiver can prioritize the read."
+    },
+    "ext": {
+      "allOf": [{ "$ref": "/schemas/core/ext.json" }],
+      "maxProperties": 20,
+      "description": "Bounded vendor extensions subject to the same identifiers-only rule as the base payload."
+    }
+  },
+  "required": ["idempotency_key", "notification_id", "notification_type", "fired_at", "subscriber_id", "account_id", "proposal_id", "opportunity_id", "later_reason", "expires_at"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "New event inventory for an open opportunity",
+      "data": {
+        "idempotency_key": "whk_01K9P2M7RX4D8B6T3N0Q5V1C9Z",
+        "notification_id": "prop_nova_za_evt_07",
+        "notification_type": "proposal.created",
+        "fired_at": "2026-10-23T09:14:05Z",
+        "subscriber_id": "buyer-proposals",
+        "account_id": "acc_nova_za",
+        "proposal_id": "prop_nova_za_evt_07",
+        "opportunity_id": "opp_nova_za_q4",
+        "later_reason": "event_package",
+        "expires_at": "2026-10-30T23:59:59Z"
+      }
+    }
+  ]
+}

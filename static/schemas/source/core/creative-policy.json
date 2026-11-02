@@ -5,6 +5,11 @@
   "description": "Creative requirements and restrictions for a product",
   "type": "object",
   "properties": {
+    "review_sla": {
+      "$ref": "/schemas/core/creative-review-sla.json",
+      "x-added-in": "3.3.0",
+      "description": "Product-scoped time to an approved or rejected decision for accepted formats. Separate from the sync_creatives action SLA, which covers ingestion. Current buy actions resolve review_sla for applicable packages; absence means no review commitment."
+    },
     "co_branding": {
       "$ref": "/schemas/enums/co-branding-requirement.json",
       "description": "Co-branding requirement"

@@ -12,5 +12,6 @@
     "air_jordan",
     "nike",
     "pampers"
-  ]
+  ],
+  "x-max-length-4.0": 64
 }

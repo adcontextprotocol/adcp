@@ -1,0 +1,50 @@
+{
+  "reporting_revision_id": "revision-august-official",
+  "revision_content_sha256": "3680bc5ad32d37c375f55403975c69ff64f48e3677f392113ba8bb1b723de391",
+  "report_definition_id": "billing-v1",
+  "report_definition_uri": "https://schemas.fixture.example.net/report-definition.json",
+  "report_definition_sha256": "960239b140adfefcd9a4ac4117c4272f7e92cd7bdcf8531715af0455f0424c94",
+  "reporting_profile": "billing-v1",
+  "schema_version": "1.0",
+  "schema_uri": "https://schemas.fixture.example.net/row-schema.json",
+  "schema_sha256": "a76b10957579a086c3b8cb800b884a72fcec039b496947982f2f1068c0178103",
+  "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+  "schema_ref_policy": "local_fragment_only",
+  "account_id": "account-1",
+  "media_buy_ids": ["buy-1", "buy-2"],
+  "coverage": {
+    "status": "full",
+    "evaluated_at": "2026-08-27T00:00:00Z",
+    "media_buy_ids": ["buy-1", "buy-2"],
+    "fully_covered_media_buy_ids": ["buy-1", "buy-2"],
+    "partially_covered_media_buy_ids": [],
+    "unsupported_media_buy_ids": [],
+    "unknown_media_buy_ids": [],
+    "package_ids": [],
+    "covered_package_ids": [],
+    "unsupported_package_ids": [],
+    "unknown_package_ids": [],
+    "limitations": []
+  },
+  "period": { "start": "2026-08-26T00:00:00Z", "end": "2026-08-27T00:00:00Z", "source_timezone": "UTC" },
+  "finality": "official",
+  "finality_basis": "contractual_cutoff",
+  "finality_policy_id": "billing-close-v1",
+  "finalized_at": "2026-08-27T04:00:00Z",
+  "observed_at": "2026-08-27T04:00:00Z",
+  "data_through": "2026-08-27T00:00:00Z",
+  "data_through_precision": "exact",
+  "row_count": 2,
+  "control_totals": [
+    { "name": "impressions", "value": "5", "value_type": "integer", "unit": "impressions" },
+    { "name": "spend", "value": "8.00", "value_type": "decimal", "unit": "USD" }
+  ],
+  "canonical_content_digest": {
+    "algorithm": "sha256",
+    "value": "bcd079902f3c8edb4315dbbdaf9b4e37f6fd5af33c80d1fe6ac8c655581342d4",
+    "canonicalization_id": "billing-rows-v1",
+    "canonicalization_uri": "https://schemas.fixture.example.net/canonicalization.json",
+    "canonicalization_sha256": "f98d55f8b7ad49c058b17f04630576c6b27b3564090b838e49834dd7714cdefa"
+  },
+  "created_at": "2026-08-27T04:00:01Z"
+}

@@ -721,7 +721,8 @@
                 </div>
                 <div>
                   <label for="bodyImageAlt">Alt text</label>
-                  <input type="text" id="bodyImageAlt" required maxlength="300" placeholder="Describe the image">
+                  <!-- The image uploader validates alt text; requiring it here blocks article submission. -->
+                  <input type="text" id="bodyImageAlt" maxlength="300" placeholder="Describe the image">
                 </div>
                 <div>
                   <label for="bodyImageLink">Link URL (optional)</label>

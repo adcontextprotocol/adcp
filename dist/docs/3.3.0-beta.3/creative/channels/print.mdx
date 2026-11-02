@@ -1,0 +1,124 @@
+---
+title: Print Creative
+description: "Current AdCP limits and seller-defined contracts for production-ready print artwork."
+"og:title": "AdCP — Print Creative"
+---
+
+AdCP does not currently publish a shared print artwork contract. A PDF or other document file must not be labeled `asset_type: "image"`. A TIFF can use `asset_type: "image"` under a seller-defined custom contract, but TIFF is outside the shared web-oriented `image` canonical and the asset type alone does not express trim, bleed, color profile, or effective DPI.
+
+A seller can declare a print contract with `format_kind: "custom"` only after it publishes a real, fetchable JSON Schema and references that schema with its actual HTTPS URI and SHA-256 digest. The custom schema is load-bearing: placeholder URIs and illustrative digests do not produce a usable format declaration.
+
+For a full-page format, the seller-hosted schema needs to define at least:
+
+- the unit used by every dimension;
+- trim width and height;
+- bleed and safe-area insets for each edge;
+- accepted color profiles and minimum effective DPI; and
+- a typed delivery slot supported by the receiving workflow.
+
+The last requirement is currently seller-specific. A seller could define a `zip` slot and document the permitted archive contents, but the core `zip` asset describes a general creative archive and does not standardize PDF/TIFF print delivery. Until AdCP publishes a shared print schema or adds an appropriate typed asset, this page cannot provide a copyable portable or shared print manifest.
+
+See [Canonical formats](/dist/docs/3.3.0-beta.3/creative/canonical-formats), [Creative manifests](/dist/docs/3.3.0-beta.3/creative/creative-manifests), and [Media products](/dist/docs/3.3.0-beta.3/media-buy/product-discovery/media-products).
+
+## Double-page spreads and gatefolds
+
+A double-page spread (DPS) requires more than a wider full-page canvas. Its custom schema must specify whether artwork is supplied as one spread or separate pages, the gutter width, trim and bleed for each page, safe areas around the gutter, and the reading order.
+
+A gatefold needs a separate contract that specifies panel count, panel widths, fold or score lines, panel order, and safe areas around every fold. Those values cannot be inferred from `width` and `height`, and AdCP does not currently host a shared DPS or gatefold schema. A conformant wire example therefore depends on a seller-hosted schema plus a supported typed delivery model; this page intentionally does not invent either one.
+
+## Print and display discovery
+
+A product can advertise that it operates across both channels:
+
+```json
+{
+  "channels": ["print", "display"]
+}
+```
+
+This is a product excerpt, not a complete product. It declares channel scope only. It does not mean that the buyer receives one print placement and one display placement, or that the buyer must submit one creative for each channel. A fixed cross-channel bundle also needs explicit product placements and channel-specific format contracts. Because the current shared schemas do not provide a deployable print artwork contract, this page does not present that fixed bundle as a runnable example.
+
+## Cancellation window
+
+For recurring print inventory, a collection-level `deadline_policy` expresses the cancellation rule once. This fictional weekly publication uses business days for every lead time:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/collection.json",
+  "collection_id": "northstar_weekly",
+  "name": "Northstar Weekly",
+  "kind": "publication",
+  "cadence": "weekly",
+  "status": "active",
+  "deadline_policy": {
+    "booking_lead_days": 10,
+    "cancellation_lead_days": 5,
+    "material_stages": [
+      {
+        "stage": "final",
+        "lead_days": 3,
+        "label": "Production-ready PDF"
+      }
+    ],
+    "business_days_only": true
+  }
+}
+```
+
+For an installment scheduled at **09:00 UTC on Monday, October 12, 2026**, the booking deadline is September 28, the penalty-free cancellation deadline is October 5, and final artwork is due October 7, all at 09:00 UTC. An explicit `deadlines` object on that installment overrides this policy, which lets a special issue publish a different cancellation window without changing the collection default.
+
+`deadline_policy` does not derive `change_cutoff`, so sellers set it per installment. An installment's `deadlines.change_cutoff` can state the issue close, after which a creative swap or stop instruction no longer takes effect. It is separate from `cancellation_deadline`, which is the penalty-free cancel window.
+
+## Delivery evidence and circulation
+
+Print has no impression event. What a buyer reconciles against an insertion order is proof that the insertion ran, where it ran, and the circulation it ran against. A seller reports these on the existing `by_installment` breakdown of [`get_media_buy_delivery`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/get_media_buy_delivery), one row per issue, using the optional `print_metrics` object that every `by_installment` row inherits from `delivery-metrics.json`. `print_metrics` is [experimental](/dist/docs/3.3.0-beta.3/reference/experimental-status) in AdCP 3.3 under the feature id `media_buy.offline_delivery_metrics`, which also covers `ooh_metrics`. A seller that reports it declares that id in `experimental_features`.
+
+| Field | Meaning |
+|-------|---------|
+| `page_delivered` | Page number on which the insertion ran. |
+| `position_delivered` | Position in which it ran, as free-form text. AdCP does not yet publish a shared print position vocabulary, and the booked position is not recorded in a typed field today, so compare it against the position in the insertion order. |
+| `circulation_delivered` | Circulation of the issue, in copies. Seller-defined (print run, paid, or audited circulation); state which in the product's `delivery_measurement.notes`. |
+| `circulation_basis` | `audited` (third-party circulation audit; name the auditor in the row-level `measurement_source`, a lowercase slug such as `ivw`) or `seller_modeled`. |
+| `evidence` | A placement evidence artifact: the URL of the scanned tearsheet page, with `captured_at` and `notes` when available. |
+
+This fictional row reports one issue of the weekly publication above:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/installment-delivery-metrics.json",
+  "installment_ref": {
+    "collection_ref": {
+      "publisher_domain": "northstar.example.com",
+      "collection_id": "northstar_weekly"
+    },
+    "installment_id": "2026-10-12"
+  },
+  "installment_name": "Issue of October 12, 2026",
+  "measurement_source": "ivw",
+  "scheduled_at": "2026-10-12T09:00:00Z",
+  "impressions": 0,
+  "spend": 4200,
+  "print_metrics": {
+    "page_delivered": 7,
+    "position_delivered": "right_hand",
+    "circulation_delivered": 42000,
+    "circulation_basis": "audited",
+    "evidence": {
+      "url": "https://northstar.example.com/tearsheets/2026-10-12/p7.pdf",
+      "captured_at": "2026-10-13T08:30:00Z"
+    }
+  }
+}
+```
+
+`impressions` and `spend` are required on every `by_installment` row by the schema; this example reports `0` impressions because the seller does not model a print audience. Buyers MUST NOT derive CPM or reach from that placeholder.
+
+### Reporting expectations
+
+- Nothing in `print_metrics` is schema-required. Many print sellers still produce tearsheets manually, and requiring them would exclude those sellers.
+- A seller of a `guaranteed` print product SHOULD populate `print_metrics.evidence` for each delivered installment.
+- A seller that reports `print_metrics` SHOULD list it in the product's `reporting_capabilities.available_metrics` (or in `committed_metrics` when the buy commits to it). `missing_metrics` is computed against those lists.
+- When a seller cannot produce `print_metrics` for a delivered installment, it SHOULD report `{ "scope": "standard", "metric_id": "print_metrics" }` in `by_package[].missing_metrics` rather than silently omitting it. The entry is package-level and covers the whole object, so it cannot name which installment is short, or say that page and circulation are reported while only the tearsheet is outstanding; in that case report the fields you have and omit `evidence`. When the tearsheet arrives after the report, report it in a later `get_media_buy_delivery` response for the same installment.
+- Audited circulation, such as an IVW or AAM figure, is commonly published quarterly rather than per issue. Absent a per-issue figure, a seller omits `circulation_delivered` and the buyer relies on the circulation the seller declared on the product (`delivery_measurement`, typically in `notes`). That declaration is prose today, so a buyer agent cannot read it as structured data; a structured circulation declaration (and a way to say whether a figure is print run, paid, or verified distribution) is a possible additive follow-up. Position makegoods are likewise settled outside the protocol until [#5686](https://github.com/adcontextprotocol/adcp/issues/5686) defines position vocabulary. Populate it only when the seller has a figure specific to that issue (a special edition, or a print run that differs from the audited average), and set `circulation_basis` accordingly.
+
+> Magazine/newspaper/trade-publication comparisons, advertorial/native placements, and position-taxonomy examples remain deferred until [#5686](https://github.com/adcontextprotocol/adcp/issues/5686) defines the relevant placement terminology. Copyable DPS, gatefold, and fixed print-plus-display examples additionally require a fetchable print format schema and a supported typed delivery model; [#5688](https://github.com/adcontextprotocol/adcp/issues/5688) remains open for that follow-up.

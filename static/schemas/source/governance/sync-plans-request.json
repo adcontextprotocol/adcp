@@ -98,6 +98,7 @@
                 }
               },
               "periods": {
+                "x-added-in": "3.3.0",
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 366,

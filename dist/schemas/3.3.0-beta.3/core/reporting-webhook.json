@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/reporting-webhook.json",
+  "title": "Reporting Webhook",
+  "description": "Webhook configuration for automated reporting delivery. Configures where and how campaign performance reports are sent.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook endpoint URL for reporting notifications"
+    },
+    "operation_id": {
+      "x-added-in": "3.3.0",
+      "type": "string",
+      "description": "Buyer-supplied correlation identifier for the reporting registration. The seller MUST echo this value verbatim into every webhook payload's `operation_id` field on each `media_buy_delivery` report sent to this registration (see `mcp-webhook-payload.json`). Sellers MUST NOT derive `operation_id` by parsing the reporting webhook URL — the URL is opaque to the seller. This is the canonical registration channel for `operation_id` on reporting deliveries; buyers MAY additionally embed routing values in the URL path or query as an aid for their own HTTP server, but the wire-level source of truth is this field. Buyers SHOULD generate a unique value per reporting registration (UUID recommended); it is independent of any `push_notification_config.operation_id` on the same request. The member is optional in 3.x for schema compatibility, but a seller MUST NOT emit `media_buy_delivery` webhooks to a registration that omits it (fail closed) — otherwise the required webhook envelope cannot be populated. The field is expected to become required in 4.0.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "token": {
+      "type": "string",
+      "description": "Optional client-provided token. The seller echoes it verbatim in every delivery. A receiver MUST NOT treat a valid token echo as a substitute for verifying the delivery's signature.",
+      "minLength": 16
+    },
+    "authentication": {
+      "type": "object",
+      "deprecated": true,
+      "x-removed-in": "4.0.0",
+      "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). Required on a request served below 3.3. When this block is absent, the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config` (docs/building/by-layer/L1/security.mdx#webhook-callbacks).",
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/auth-scheme.json"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "credentials": {
+          "type": "string",
+          "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+          "minLength": 32
+        }
+      },
+      "required": [
+        "schemes",
+        "credentials"
+      ],
+      "additionalProperties": false
+    },
+    "signing_profile": {
+      "x-status": "experimental",
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/webhook-signing-profile.json",
+      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the registration with `INVALID_REQUEST`. MUST NOT be combined with `authentication`.",
+      "x-added-in": "3.3.0"
+    },
+    "reporting_frequency": {
+      "type": "string",
+      "enum": [
+        "hourly",
+        "daily",
+        "monthly"
+      ],
+      "description": "Frequency for automated reporting delivery. Must be supported by all products in the media buy."
+    },
+    "requested_metrics": {
+      "type": "array",
+      "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included; an empty array has the same meaning as omission (it does not narrow to impressions and spend only). impressions and spend are always included regardless of this list (impressions only on rows where the seller measured it). Must be a subset of the product's available_metrics. Subset evaluation and leaf resolution follow `enums/available-metric.json`: a numeric leaf may be covered by its container, while each structured distribution must be explicitly available. Requesting any nested identity selects its canonical carrier inside the payload's nested object. Same narrowing semantics as get_media_buy_delivery's requested_metrics (which additionally requires at least one entry when present).",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/available-metric.json"
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "url",
+    "reporting_frequency"
+  ],
+  "not": {
+    "required": [
+      "authentication",
+      "signing_profile"
+    ]
+  },
+  "additionalProperties": true
+}

@@ -11,6 +11,7 @@ requires:
 required_tools:
   - sync_creatives
   - list_products
+  - get_products
   - create_media_buy
   - get_media_buy_delivery
 requires_scenarios:
@@ -203,7 +204,12 @@ phases:
   - id: product_discovery
     title: "Discover venue and screen inventory"
     narrative: |
-      The buyer reads an exact seeded DOOH product from the 3.2 product list.
+      The buyer checks each advertised discovery surface. Wholesale listing is
+      optional; brief discovery through get_products is equally sufficient.
+      At least one discovery must succeed, and a broken advertised surface
+      remains a failure. Exact fixture assertions apply to the filtered list
+      read; brief curation may return another matching product or no product.
+      Later purchases use the fixture already established by controller seeding.
       The returned product must be independently actionable: placement attributes
       describe the physical screen and loop, while its canonical format declaration
       independently supplies accepted asset constraints without a legacy
@@ -215,11 +221,13 @@ phases:
       - id: get_dooh_products
         title: "Read non-guaranteed DOOH products"
         task: list_products
+        requires_tool: list_products
         schema_ref: "media-buy/list-products-request.json"
         response_schema_ref: "media-buy/list-products-response.json"
         doc_ref: "/media-buy/task-reference/list_products"
         comply_scenario: full_sales_flow
-        stateful: true
+        stateful: false
+        contributes_to: dooh_product_discovery
         expected: |
           Return the seeded DOOH product with:
           - channels containing dooh
@@ -241,12 +249,9 @@ phases:
             sandbox: true
           context:
             correlation_id: "sales_dooh--get_dooh_products"
-        context_outputs:
-          - path: "products[0].product_id"
-            key: "dooh_product_id"
         validations:
           - check: response_schema
-            description: "Response matches list-products-response.json schema"
+            description: "Response matches the discovery task's response schema"
           - check: field_value
             path: "products[0].product_id"
             value: "dooh_transit_concourse_loop"
@@ -340,11 +345,60 @@ phases:
             value: "sales_dooh--get_dooh_products"
             description: "Context correlation_id returned unchanged"
 
+      - id: get_dooh_products_brief
+        title: "Discover non-guaranteed DOOH products from a brief"
+        task: get_products
+        requires_tool: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        contributes_to: dooh_product_discovery
+        expected: |
+          Return a valid brief discovery response. Curation does not promise
+          the seeded product or a particular catalog order; the controller has
+          already established the fixture used by the purchase probes.
+        sample_request:
+          buying_mode: "brief"
+          brief: "The seeded Transit concourse portrait screens product, dooh_transit_concourse_loop."
+          filters:
+            channels: ["dooh"]
+            delivery_type: "non_guaranteed"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_dooh-ef2eba07"
+            sandbox: true
+          context:
+            correlation_id: "sales_dooh--get_dooh_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--get_dooh_products"
+            description: "Context correlation_id returned unchanged"
+
+      - id: require_dooh_discovery
+        title: "Require successful DOOH discovery"
+        task: assert_contribution
+        # Consumers use the handle established by controller seeding. This
+        # stateful assertion blocks them, including negative probes, if neither
+        # discovery surface works. A failing advertised path remains failed.
+        stateful: true
+        validations:
+          - check: any_of
+            allowed_values: ["dooh_product_discovery"]
+            description: "At least one advertised DOOH discovery surface succeeds"
+
   - id: identity_absence
     title: "Reject identity-dependent frequency capping"
     narrative: |
-      The product's identity declaration is a discovery fact, not a seller-wide
-      promise. Because this DOOH product has no persistent identifier and does
+      The seeded product's identity declaration is a product fact, not a
+      seller-wide promise. Because this DOOH product has no persistent identifier and does
       not advertise overlay_support.frequency_cap, the buyer's capped purchase
       must be rejected before it creates a buy. The following uncapped purchase
       remains valid and is reconciled normally.
@@ -376,7 +430,7 @@ phases:
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
-            - product_id: "$context.dooh_product_id"
+            - product_id: "dooh_transit_concourse_loop"
               budget: 10000
               pricing_option_id: "dooh_transit_flat_unequal_loop"
               targeting_overlay:
@@ -402,7 +456,7 @@ phases:
     title: "Sync a screen-compatible creative"
     narrative: |
       The buyer uploads a hosted portrait image that satisfies the exact
-      canonical dimensions returned by product discovery. DOOH creative is a
+      canonical dimensions of the seeded product. DOOH creative is a
       file delivered to a screen runtime; browser trackers and click assets are
       not required by this scenario.
     steps:
@@ -414,10 +468,10 @@ phases:
         response_schema_ref: "creative/validate-input-response.json"
         doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
         comply_scenario: canonical_format_validation
-        stateful: true
+        stateful: false
         expected: |
           When the seller offers validate_input, validate the complete portrait
-          image manifest against the exact DOOH product returned by discovery
+          image manifest against the exact seeded DOOH product
           and return validated_pass.
         sample_request:
           account:
@@ -441,7 +495,7 @@ phases:
                 mime_type: "image/jpeg"
           targets:
             - kind: "product"
-              id: "$context.dooh_product_id"
+              id: "dooh_transit_concourse_loop"
           context:
             correlation_id: "sales_dooh--validate_input"
         validations:
@@ -455,10 +509,10 @@ phases:
             path: "results[0].target.kind"
             value: "product"
             description: "Validation result is scoped to a product target"
-          - check: field_equals_context
+          - check: field_value
             path: "results[0].target.id"
-            context_key: "dooh_product_id"
-            description: "Validation result identifies the discovered DOOH product"
+            value: "dooh_transit_concourse_loop"
+            description: "Validation result identifies the seeded DOOH product"
           - check: field_value
             path: "context.correlation_id"
             value: "sales_dooh--validate_input"
@@ -546,7 +600,7 @@ phases:
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
-            - product_id: "$context.dooh_product_id"
+            - product_id: "dooh_transit_concourse_loop"
               budget: 10000
               pricing_option_id: "dooh_transit_flat_unequal_loop"
               creative_assignments:

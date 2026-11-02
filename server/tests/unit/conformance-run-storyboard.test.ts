@@ -209,6 +209,7 @@ describe('runStoryboardViaConformanceSocket', () => {
 
     expect(runStoryboardMock).toHaveBeenCalledTimes(1);
     const [agentUrlArg, storyboardArg, optionsArg] = runStoryboardMock.mock.calls[0];
+    expect(optionsArg.signal).toBeInstanceOf(AbortSignal);
     expect(agentUrlArg).toBe(`adcp-conformance-socket://${orgId}`);
     expect(storyboardArg).toBe(fakeStoryboard);
     expect(optionsArg.test_session_id).toBe('test-fixed-id');

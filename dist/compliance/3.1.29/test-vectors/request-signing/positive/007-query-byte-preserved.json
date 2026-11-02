@@ -1,0 +1,30 @@
+{
+  "name": "URL query string preserves byte order (not alphabetized)",
+  "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 7: preserve query byte-for-byte)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/get_media_buy?b=2&a=1&c=3",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:ovWpkGEukPhxTju9HTOj1LSrwbTbs95K2HHWUbA5aCBfHDvnGXcFfEM8X5p0VhOeCIAva0eCAaLuF6FCadHiBQ:"
+    },
+    "body": "{\"update\":\"rename\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/adcp/get_media_buy?b=2&a=1&c=3\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true
+  },
+  "$comment": "Query string is b=2&a=1&c=3 (intentionally non-alphabetized). Spec mandates preserving the query byte-for-byte in @target-uri. Verifiers that alphabetize (some 9421 libraries do this by default) will fail step 10 because their base differs by query ordering. The +/%20 handling edge case is also captured here — do not interpret + as space; do not re-encode."
+}

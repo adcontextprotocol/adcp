@@ -52,6 +52,35 @@ describe('GCS reporting dispatch boundary', () => {
     expect(await dispatchTrainingGcsReporting('get_reporting_status', input, actor)).toEqual({ status: 'completed' });
     expect(runtime.owns).toHaveBeenCalledWith(actor, 'resolved-account');
     expect(runtime.service.platform.getReportingStatus).toHaveBeenCalledWith({ ...input, account: { account_id: 'resolved-account' } }, expect.objectContaining({ authInfo: { clientId: actor }, account: expect.objectContaining({ id: 'resolved-account' }) }));
+    expect(runtime.service.stores.core.getRevision).not.toHaveBeenCalled();
+  });
+  it.each(['source-revision', 'unknown-revision', 'foreign-revision'])('defers an exact %s to caller-scoped source lookup when absent from GCS', async reporting_revision_id => {
+    shared.runtime = runtime;
+    const exact = { account: input.account, view: 'revision', reporting_revision_id };
+    expect(await dispatchTrainingGcsReporting('get_reporting_status', exact, actor)).toBeUndefined();
+    expect(runtime.service.stores.core.getRevision).toHaveBeenCalledWith(reporting_revision_id, 'resolved-account');
+    expect(runtime.service.platform.getReportingStatus).not.toHaveBeenCalled();
+  });
+  it('retains exact GCS revision status and authenticated account context', async () => {
+    shared.runtime = runtime;
+    runtime.service.stores.core.getRevision.mockResolvedValue({ reporting_revision_id: 'gcs-revision' });
+    const exact = { account: input.account, view: 'revision', reporting_revision_id: 'gcs-revision' };
+    expect(await dispatchTrainingGcsReporting('get_reporting_status', exact, actor)).toEqual({ status: 'completed' });
+    expect(runtime.service.stores.core.getRevision).toHaveBeenCalledWith('gcs-revision', 'resolved-account');
+    expect(runtime.service.platform.getReportingStatus).toHaveBeenCalledWith({ ...exact, account: { account_id: 'resolved-account' } }, expect.objectContaining({ authInfo: { clientId: actor }, account: expect.objectContaining({ id: 'resolved-account' }) }));
+  });
+  it('does not probe revisions before proving account ownership', async () => {
+    shared.runtime = runtime;
+    runtime.owns.mockResolvedValue(false);
+    expect(await dispatchTrainingGcsReporting('get_reporting_status', { account: input.account, view: 'revision', reporting_revision_id: 'foreign-revision' }, actor)).toBeUndefined();
+    expect(runtime.service.stores.core.getRevision).not.toHaveBeenCalled();
+    expect(runtime.service.platform.getReportingStatus).not.toHaveBeenCalled();
+  });
+  it('fails closed when exact GCS revision lookup is unavailable', async () => {
+    shared.runtime = runtime;
+    runtime.service.stores.core.getRevision.mockRejectedValue(new Error('private ledger unavailable'));
+    await expect(dispatchTrainingGcsReporting('get_reporting_status', { account: input.account, view: 'revision', reporting_revision_id: 'source-revision' }, actor)).rejects.toThrow('private ledger unavailable');
+    expect(runtime.service.platform.getReportingStatus).not.toHaveBeenCalled();
   });
   it('refuses an unowned GCS account without exposing source fixtures', async () => {
     shared.runtime = runtime;

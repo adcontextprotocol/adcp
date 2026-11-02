@@ -257,6 +257,12 @@ for (const observation of result.audit_observations ?? []) {
 }
 ```
 
+## Conformance verifier
+
+The AdCP sandbox publishes a public verifier for the provenance truth-of-claim storyboards at `https://test-agent.adcontextprotocol.org/governance/creative-features/mcp`. It serves only `get_creative_features`, needs no bearer, and is rate limited per IP. Results are deterministic and keyed on the fixture: an asset URL containing `ai-generated-true` returns `ai_generated: true` (confidence 0.95), `ai-generated-false` returns `false`, and any other manifest falls back to the claimed `digital_source_type`. The verifier never fetches the asset URL.
+
+Sellers allowlist this verifier once in sandbox configuration. A seller MUST NOT call a verifier URL that is not on its own allowlist, including one a test controller seeded into a product's `accepted_verifiers`.
+
 ## Relationship to property governance
 
 Creative governance follows the same pattern as property governance:

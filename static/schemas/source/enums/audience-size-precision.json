@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/audience-size-precision.json",
   "title": "Audience Size Precision",
   "description": "How precisely a seller reports an audience size range. Describes the lower_bound and upper_bound of an audience-size object, not the quality of the underlying match.",
+  "x-added-in": "3.3.0",
   "type": "string",
   "enum": [
     "exact",

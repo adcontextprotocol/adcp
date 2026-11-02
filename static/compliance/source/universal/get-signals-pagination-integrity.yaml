@@ -168,6 +168,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-get_signals_pagination_integrity-b7e1cb8a"
+            sandbox: true
           signal_spec: "audience"
           pagination:
             max_results: 1
@@ -221,6 +222,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-get_signals_pagination_integrity-b7e1cb8a"
+            sandbox: true
           signal_spec: "audience"
           pagination:
             cursor: "$context.signals_next_cursor"
