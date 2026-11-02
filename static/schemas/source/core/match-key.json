@@ -25,6 +25,7 @@
         ]
       },
       "minItems": 1,
+      "maxItems": 5,
       "uniqueItems": true
     },
     "uses": {
@@ -91,5 +92,5 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

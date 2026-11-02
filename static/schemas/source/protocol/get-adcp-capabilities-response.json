@@ -2570,7 +2570,8 @@
           "items": {
             "$ref": "/schemas/core/match-key.json"
           },
-          "minItems": 1
+          "minItems": 1,
+          "maxItems": 64
         },
         "event_source_archive": {
           "type": "boolean",

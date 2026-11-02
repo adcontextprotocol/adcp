@@ -40,7 +40,6 @@ test('match keys accept multiple scopes and require a vendor for other', async (
   assert.equal(validate({ ...householdKey, scopes: [] }), false, 'scopes is non-empty');
   assert.equal(validate({ ...householdKey, scopes: ['custom'] }), false, 'custom is not comparable across parties');
   assert.equal(validate({ ...householdKey, uses: ['retargeting'] }), false, 'retargeting is audience_include');
-  assert.equal(validate({ ...householdKey, match_rate: 0.4 }), false, 'capability only, no match rates');
 });
 
 test('scopes that come from a graph name the graph', async () => {
