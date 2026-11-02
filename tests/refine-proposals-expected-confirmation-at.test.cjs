@@ -16,7 +16,7 @@ async function compile(uri) {
 const ESTIMATE = "2026-10-20T17:00:00Z";
 
 test("refine_proposals submitted response accepts expected_confirmation_at", async () => {
-  const validate = await compile("/schemas/media-buy/refine-proposals-response.json");
+  const validate = await compile("/schemas/media-buy/refine-proposals-wire-response.json");
   const submitted = { status: "submitted", task_id: "task_finalize_1" };
   assert.equal(validate(submitted), true, JSON.stringify(validate.errors));
   const withEstimate = { ...submitted, expected_confirmation_at: ESTIMATE };
@@ -24,7 +24,7 @@ test("refine_proposals submitted response accepts expected_confirmation_at", asy
 });
 
 test("refine_proposals submitted response rejects a malformed expected_confirmation_at", async () => {
-  const validate = await compile("/schemas/media-buy/refine-proposals-response.json");
+  const validate = await compile("/schemas/media-buy/refine-proposals-wire-response.json");
   assert.equal(
     validate({ status: "submitted", task_id: "task_finalize_1", expected_confirmation_at: "next week" }),
     false
@@ -32,7 +32,7 @@ test("refine_proposals submitted response rejects a malformed expected_confirmat
 });
 
 test("refine_proposals completed response must not carry expected_confirmation_at", async () => {
-  const validate = await compile("/schemas/media-buy/refine-proposals-response.json");
+  const validate = await compile("/schemas/media-buy/refine-proposals-wire-response.json");
   const completed = {
     status: "completed",
     results: [{ source_proposal_id: "prop_1", outcome: "unable", reason_code: "hold_unavailable", reason: "No inventory." }],

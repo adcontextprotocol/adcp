@@ -19,9 +19,6 @@
       "description": "ID of the deleted list",
       "x-entity": "property_list"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

@@ -26,9 +26,6 @@
       "type": "boolean",
       "description": "When true, the account is a sandbox account and no billing occurred."
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

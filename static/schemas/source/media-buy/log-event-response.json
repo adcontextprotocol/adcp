@@ -69,9 +69,6 @@
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -87,50 +84,6 @@
         ]
       }
     },
-    {
-      "title": "LogEventError",
-      "description": "Error response - request failed entirely",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Operation-level errors",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "events_received"
-            ]
-          },
-          {
-            "required": [
-              "events_processed"
-            ]
-          },
-          {
-            "required": [
-              "sandbox"
-            ]
-          }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/media-buy/log-event-failed.json" }
+  ]
 }

@@ -4,6 +4,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { readSourceSchemaDocument, sourceSchemaExists } = require('./wire-responses.cjs');
 
 const MCP_PROTOCOL_VERSION = '2026-07-28';
 const JSON_SCHEMA_DRAFT_07 = 'http://json-schema.org/draft-07/schema#';
@@ -1283,7 +1284,8 @@ function generateMcpSchemaProjection({
 
   function projectSchema(relativePath, label = relativePath, discoveryInput = false, rewriteEmbeddedRefs = false) {
     const sourcePath = path.join(sourceDir, relativePath);
-    if (!fs.existsSync(sourcePath)) {
+    // A tool's outputSchema is its wire response, which the schema build generates.
+    if (!sourceSchemaExists(sourcePath, sourceDir)) {
       throw new Error(`Missing source schema for ${label}: ${relativePath}`);
     }
     if (generated.has(relativePath)) {
@@ -1295,7 +1297,7 @@ function generateMcpSchemaProjection({
       return;
     }
 
-    const sourceSchema = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+    const sourceSchema = readSourceSchemaDocument(sourcePath, sourceDir);
     let projectedSchema;
     try {
       projectedSchema = projectSourceSchema(

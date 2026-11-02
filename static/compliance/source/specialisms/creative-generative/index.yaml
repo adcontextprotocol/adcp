@@ -160,7 +160,7 @@ phases:
           reference lets your agent resolve brand.json for visual identity.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false
@@ -224,7 +224,7 @@ phases:
           to change. Your agent applies the refinements and returns an updated creative.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false
@@ -291,7 +291,7 @@ phases:
           imagery to fit each size while maintaining brand consistency.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false
@@ -367,7 +367,7 @@ phases:
           assets, and serving code ready for trafficking.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false
@@ -449,7 +449,7 @@ phases:
           hydration targets for subsequent generated creatives.
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         expected: |
@@ -509,7 +509,7 @@ phases:
           tracked in #2638.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: true
@@ -602,7 +602,7 @@ phases:
           subsequent build_creative output must percent-encode each value.
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         expected: |
@@ -682,7 +682,7 @@ phases:
           one tracker asset before the observer runs.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: true

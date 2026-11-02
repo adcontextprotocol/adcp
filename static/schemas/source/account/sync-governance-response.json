@@ -86,9 +86,6 @@
             "additionalProperties": true
           }
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -103,36 +100,7 @@
         ]
       }
     },
-    {
-      "title": "SyncGovernanceError",
-      "description": "Operation failed completely, no accounts were processed",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Operation-level errors (e.g., authentication failure, service unavailable)",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "required": [
-          "accounts"
-        ]
-      }
-    }
+    { "$ref": "/schemas/account/sync-governance-failed.json" }
   ],
   "examples": [
     {
@@ -226,6 +194,5 @@
         ]
       }
     }
-  ],
-  "properties": {}
+  ]
 }

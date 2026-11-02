@@ -128,7 +128,6 @@
       }
     },
     "next_cursor": { "type": "string", "minLength": 1 },
-    "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["outcome", "proposals", "opportunities"],

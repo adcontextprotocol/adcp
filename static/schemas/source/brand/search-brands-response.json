@@ -188,9 +188,6 @@
           "$ref": "/schemas/core/pagination-response.json",
           "description": "Pagination metadata. Present when has_more is true or total_count is known."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -205,33 +202,7 @@
         ]
       }
     },
-    {
-      "title": "SearchBrandsError",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "required": [
-          "brands"
-        ]
-      }
-    }
+    { "$ref": "/schemas/brand/search-brands-failed.json" }
   ],
   "allOf": [
     {

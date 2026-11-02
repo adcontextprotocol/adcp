@@ -311,7 +311,7 @@ test('collections are forbidden on rejected and unchanged outcomes', async () =>
   const rejected = { status: 'completed', outcome: 'rejected', reason: 'No available offer satisfies the campaign constraints.' };
   assert.equal(proposals(rejected), true, JSON.stringify(proposals.errors, null, 2));
   assert.equal(proposals({ ...rejected, collections: [responseCollection] }), false);
-  const products = await compile('/schemas/media-buy/get-products-response.json');
+  const products = await compile('/schemas/media-buy/get-products-wire-response.json');
   const declined = { status: 'rejected', reason: 'Budget is below the minimum for this inventory.' };
   assert.equal(products(declined), true, JSON.stringify(products.errors, null, 2));
   assert.equal(products({ ...declined, collections: [responseCollection] }), false);
@@ -319,7 +319,7 @@ test('collections are forbidden on rejected and unchanged outcomes', async () =>
   const unchanged = { status: 'completed', outcome: 'unchanged', feed_version: 'feed-v1', cache_scope: 'public' };
   assert.equal(listed(unchanged), true, JSON.stringify(listed.errors, null, 2));
   assert.equal(listed({ ...unchanged, collections: [responseCollection] }), false);
-  const refine = await compile('/schemas/media-buy/refine-proposals-response.json');
+  const refine = await compile('/schemas/media-buy/refine-proposals-wire-response.json');
   const submitted = { status: 'submitted', task_id: 'task-1' };
   assert.equal(refine(submitted), true, JSON.stringify(refine.errors, null, 2));
   assert.equal(refine({ ...submitted, collections: [responseCollection] }), false);

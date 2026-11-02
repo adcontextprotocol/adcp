@@ -141,7 +141,7 @@ phases:
           close this gap. TODO: add check primitive when runner contract supports it.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: stale_response_non_emission
         stateful: false
@@ -260,7 +260,7 @@ phases:
           underlying failure).
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: stale_response_advisory
         requires_tool: comply_test_controller

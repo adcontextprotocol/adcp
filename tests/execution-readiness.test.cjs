@@ -447,8 +447,14 @@ test("the readiness map rides on a public-scope response", async () => {
     !schema.required?.includes("execution_readiness"),
     "the map is optional",
   );
+  // The completed and rejected bodies declare the map by reference to the
+  // shared get_products declarations.
   assert.equal(
-    schema.properties.execution_readiness["x-status"],
+    schema.properties.execution_readiness.$ref,
+    "/schemas/media-buy/get-products-shared-properties.json#/definitions/execution_readiness",
+  );
+  assert.equal(
+    readJson("media-buy/get-products-shared-properties.json").definitions.execution_readiness["x-status"],
     "experimental",
   );
 });

@@ -38,9 +38,6 @@
           "maxLength": 500,
           "description": "Public — free-text context the brand chooses to surface. For disputed/transferring, typically carries the rationale or transition details."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "signed_response": {
           "$ref": "#/definitions/signed_response",
           "description": "Payload-envelope JWS attesting the canonical success response for verify_brand_claim. The signed payload response MUST match the unsigned task-body fields on this response, excluding signed_response and protocol/version envelope fields."
@@ -65,45 +62,8 @@
         ]
       }
     },
-    {
-      "title": "VerifyBrandClaimError",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "verification_status"
-            ]
-          },
-          {
-            "required": [
-              "claim_type"
-            ]
-          }
-        ]
-      }
-    }
+    { "$ref": "/schemas/brand/verify-brand-claim-failed.json" }
   ],
-  "properties": {},
   "definitions": {
     "signed_response": {
       "allOf": [

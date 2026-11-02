@@ -3,7 +3,7 @@
   "$id": "/schemas/protocol/get-principal-response.json",
   "title": "Get Principal Response",
   "x-status": "experimental",
-  "description": "Result of reading the authenticated principal's identity and standing configuration. Current responses return a durable principal record with complete credential-free configuration and its version. Recognized responses return an existing durable principal identity before standing configuration exists. Unconfigured responses indicate that the stable authenticated caller has no durable principal record. Failed responses deliberately cannot carry principal identifiers, versions, or configuration state.",
+  "description": "Result of reading the authenticated principal's identity and standing configuration. Current responses return a durable principal record with complete credential-free configuration and its version. Recognized responses return an existing durable principal identity before standing configuration exists. Unconfigured responses indicate that the stable authenticated caller has no durable principal record. A failed result, which only the failed and rejected bodies carry, deliberately cannot carry principal identifiers, versions, or configuration state.",
   "type": "object",
   "allOf": [
     {
@@ -120,31 +120,8 @@
           },
           "required": ["kind"],
           "additionalProperties": false
-        },
-        {
-          "title": "Failed principal read",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "failed"
-            },
-            "errors": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/core/error.json"
-              },
-              "minItems": 1,
-              "maxItems": 16
-            }
-          },
-          "required": ["kind", "errors"],
-          "additionalProperties": false
         }
       ]
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -152,24 +129,6 @@
   },
   "required": ["result"],
   "additionalProperties": true,
-  "if": {
-    "properties": {
-      "result": {
-        "properties": {
-          "kind": { "const": "failed" }
-        },
-        "required": ["kind"]
-      }
-    },
-    "required": ["result"]
-  },
-  "then": {
-    "properties": {
-      "status": {
-        "enum": ["failed", "rejected"]
-      }
-    }
-  },
   "x-adcp-validation": {
     "recognized_identity": "Return recognized only when the authenticated caller maps to a durable principal record that existed before the read and has no standing configuration. It MUST include principal_id and principal_kind and MUST NOT include configuration_version or configuration. The read MUST NOT create a record or mint principal_id to produce this result.",
     "identity_continuity": "When a renewed or rotated credential maps to an existing durable principal record, recognized MUST return that record's stable principal_id. Never derive principal_id from a raw credential, signing key identifier, key thumbprint, or transient session.",

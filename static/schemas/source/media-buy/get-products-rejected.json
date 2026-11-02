@@ -10,11 +10,6 @@
     }
   ],
   "properties": {
-    "status": {
-      "type": "string",
-      "const": "rejected",
-      "description": "Task-level business-outcome discriminator. The request was understood and processed, but the seller declined to offer products."
-    },
     "reason": {
       "type": "string",
       "minLength": 1,
@@ -32,17 +27,29 @@
         "maxLength": 1000
       }
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
+    "targeting_resolution": {
+      "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/targeting_resolution"
+    },
+    "extensions": {
+      "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/extensions"
+    },
+    "property_list_applied": {
+      "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/property_list_applied"
+    },
+    "catalog_applied": {
+      "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/catalog_applied"
+    },
+    "execution_readiness": {
+      "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/execution_readiness"
+    },
+    "sandbox": {
+      "$ref": "/schemas/media-buy/get-products-shared-properties.json#/definitions/sandbox"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "status",
-    "reason"
-  ],
+  "required": ["reason"],
   "additionalProperties": true,
   "not": {
     "anyOf": [

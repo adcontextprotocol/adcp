@@ -119,7 +119,7 @@ phases:
         title: "Read the official anchor and save its checkpoint"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
@@ -288,7 +288,7 @@ phases:
         title: "Confirm acceptance completes the current receipt obligation"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:
@@ -311,7 +311,7 @@ phases:
         title: "Read back append-only rejected and replacement receipt history"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:
@@ -377,7 +377,7 @@ phases:
         title: "Observe a new adjustment reopen reconciliation immediately"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:
@@ -448,7 +448,7 @@ phases:
         title: "Keep rejected current adjustment evidence actionable"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:
@@ -471,7 +471,7 @@ phases:
         title: "Re-read every correction outcome from the old checkpoint"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_reporting_status"
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
@@ -563,7 +563,7 @@ phases:
         title: "Confirm current-leaf completion while retaining append-only history"
         task: get_reporting_status
         schema_ref: "media-buy/get-reporting-status-request.json"
-        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        response_schema_ref: "media-buy/get-reporting-status-wire-response.json"
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:

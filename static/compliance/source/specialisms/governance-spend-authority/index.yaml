@@ -433,7 +433,7 @@ phases:
           the conditions (weekly reporting for CTV line items).
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: governance_spend_authority
         stateful: true

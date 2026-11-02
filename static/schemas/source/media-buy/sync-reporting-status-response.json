@@ -9,7 +9,6 @@
     { "$ref": "/schemas/core/protocol-envelope.json" }
   ],
   "properties": {
-    "status": { "type": "string", "const": "completed", "description": "Status batches complete synchronously with one result per submitted statement." },
     "results": {
       "type": "array",
       "items": {
@@ -66,10 +65,9 @@
       "minItems": 1,
       "maxItems": 100
     },
-    "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
-  "required": ["status", "results"],
+  "required": ["results"],
   "x-adcp-validation": {
     "result_mapping": "Return exactly one result per submitted statement in request order. An exact batch idempotency replay returns the original response; unchanged is used when the identical immutable reporting_status_id was already recorded through another batch. Reusing either identity with changed content is an idempotency conflict."
   },

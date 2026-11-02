@@ -139,7 +139,7 @@ phases:
         title: "build_creative — missing governance approval"
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         expect_error: true
         negative_path: payload_well_formed

@@ -168,9 +168,6 @@
       "format": "date-time",
       "description": "Timestamp of the property list resolution used for validation"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

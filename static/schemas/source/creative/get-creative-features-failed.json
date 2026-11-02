@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/get-creative-features-failed.json",
+  "title": "GetCreativeFeaturesError",
+  "description": "Body of a failed get_creative_features response: errors, with the evaluation_id when the evaluation was accepted. The completed body also admits this body.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
+  "properties": {
+    "evaluation_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional provider evaluation identity when failure occurred after the evaluation was accepted. When present, it is the same value returned on the submitted acknowledgement.",
+      "x-entity": "creative_evaluation"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "errors"
+  ],
+  "additionalProperties": true,
+  "not": { "required": ["results"] }
+}

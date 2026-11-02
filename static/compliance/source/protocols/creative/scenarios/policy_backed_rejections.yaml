@@ -87,7 +87,7 @@ phases:
         title: "Read enforced_policies from the selected product"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
@@ -143,7 +143,7 @@ phases:
         title: "Submit a creative with two deterministic policy violations"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/governance/creative/policy-backed-rejections"
         comply_scenario: creative_lifecycle
         stateful: false

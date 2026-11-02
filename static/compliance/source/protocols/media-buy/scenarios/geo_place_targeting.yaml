@@ -217,7 +217,7 @@ phases:
         title: "Discover known Amsterdam targeting and later exclusion permission"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         expected: |
@@ -294,7 +294,7 @@ phases:
         title: "Declare that place values will be supplied later"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         expected: |
@@ -360,7 +360,7 @@ phases:
         title: "Create buy targeting Amsterdam"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
@@ -451,7 +451,7 @@ phases:
         title: "Exclude The Hague"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         stateful: true
         expected: |
@@ -553,7 +553,7 @@ phases:
         title: "Create a buy with the later-selected Amsterdam target"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
@@ -638,7 +638,7 @@ phases:
         title: "Create a buy excluding The Hague"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
@@ -722,7 +722,7 @@ phases:
         title: "Submit an unknown GeoNames identifier"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -772,7 +772,7 @@ phases:
         title: "Submit a country outside Product overlay support"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -822,7 +822,7 @@ phases:
         title: "Submit an unsupported version within a supported place tuple"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -872,7 +872,7 @@ phases:
         title: "Submit a valid place with zero executable inventory"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -924,7 +924,7 @@ phases:
         title: "Submit a diagnostic label for a value not being targeted"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -972,7 +972,7 @@ phases:
         title: "Submit the same place in include and exclude"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -1036,7 +1036,7 @@ phases:
         title: "Submit the same place across two supported versions"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed

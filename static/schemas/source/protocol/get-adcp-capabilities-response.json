@@ -4197,9 +4197,6 @@
       },
       "x-max-items-4.0": 20
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     },

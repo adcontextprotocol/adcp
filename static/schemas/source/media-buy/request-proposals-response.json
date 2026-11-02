@@ -167,7 +167,6 @@
       "x-added-in": "3.3.0"
     },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
-    "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "dependencies": {
@@ -176,8 +175,7 @@
   "anyOf": [
     {
       "properties": {
-        "outcome": { "type": "string", "const": "proposed" },
-        "status": { "type": "string", "const": "completed" }
+        "outcome": { "type": "string", "const": "proposed" }
       },
       "required": ["outcome", "proposals", "products"],
       "not": {
@@ -191,8 +189,7 @@
     },
     {
       "properties": {
-        "outcome": { "type": "string", "const": "products_available" },
-        "status": { "type": "string", "const": "completed" }
+        "outcome": { "type": "string", "const": "products_available" }
       },
       "required": ["outcome", "products", "purchase_continuation"],
       "allOf": [
@@ -235,8 +232,7 @@
     },
     {
       "properties": {
-        "outcome": { "type": "string", "const": "rejected" },
-        "status": { "type": "string", "const": "completed" }
+        "outcome": { "type": "string", "const": "rejected" }
       },
       "required": ["outcome", "reason"],
       "not": {
@@ -249,9 +245,6 @@
           { "required": ["task_id"] }
         ]
       }
-    },
-    {
-      "$ref": "/schemas/core/compact-task-submitted.json"
     }
   ],
   "not": {

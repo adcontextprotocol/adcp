@@ -422,7 +422,7 @@ step_task:
 #     - id: sync_substitution_probe_catalog
 #       task: sync_catalogs
 #       schema_ref: "media-buy/sync-catalogs-request.json"
-#       response_schema_ref: "media-buy/sync-catalogs-response.json"
+#       response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
 #       doc_ref: "/media-buy/task-reference/sync_catalogs"
 #       stateful: true
 #       sample_request:

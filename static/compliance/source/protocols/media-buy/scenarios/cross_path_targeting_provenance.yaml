@@ -106,7 +106,7 @@ phases:
         title: "Discover a product that accepts signal targeting"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         expected: |
@@ -147,7 +147,7 @@ phases:
         title: "Discover a seller-native signal"
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         stateful: false
         expected: |
@@ -200,7 +200,7 @@ phases:
         title: "Create a buy with the discovered signal"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
@@ -307,7 +307,7 @@ phases:
         title: "Create a buyer-managed audience identity"
         task: sync_audiences
         schema_ref: "media-buy/sync-audiences-request.json"
-        response_schema_ref: "media-buy/sync-audiences-response.json"
+        response_schema_ref: "media-buy/sync-audiences-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_audiences"
         stateful: true
         expected: |
@@ -354,7 +354,7 @@ phases:
         title: "Reject a discovered signal handle in audience_include"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/advanced-topics/targeting#audience_include"
         expect_error: true
         negative_path: payload_well_formed
@@ -397,7 +397,7 @@ phases:
         title: "Reject a synced audience identity in signal_targeting_groups"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/advanced-topics/targeting#signal_targeting_groups"
         expect_error: true
         negative_path: payload_well_formed

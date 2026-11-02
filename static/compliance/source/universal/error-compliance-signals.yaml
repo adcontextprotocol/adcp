@@ -189,7 +189,7 @@ phases:
           indicate which versions are supported so the buyer can retry.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: error_handling
         expect_error: true
@@ -234,7 +234,7 @@ phases:
           mismatched versions, not explicit declarations of a supported one.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: signals_flow
         stateful: false

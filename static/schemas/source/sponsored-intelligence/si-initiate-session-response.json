@@ -58,9 +58,6 @@
       },
       "description": "Errors during session initiation"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

@@ -181,7 +181,7 @@ phases:
         title: "Discover a product configured for a supported region"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         sample_request:
@@ -250,7 +250,7 @@ phases:
         title: "Discover a product configured for FR-49"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         sample_request:
@@ -307,7 +307,7 @@ phases:
         title: "Declare candidate region values for later package selection"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         sample_request:
@@ -358,7 +358,7 @@ phases:
         title: "Reject a subdivision nested under the wrong country key"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         expect_error: true
         negative_path: payload_well_formed
@@ -404,7 +404,7 @@ phases:
         title: "Require French and Canadian values on one configured product"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         sample_request:
@@ -448,7 +448,7 @@ phases:
         title: "Create the configured FR-49 buy"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         sample_request:
@@ -517,7 +517,7 @@ phases:
         title: "Select inclusion and exclusion values at create time"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         sample_request:
@@ -594,7 +594,7 @@ phases:
         title: "Replace the region exclusion atomically"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         stateful: true
         sample_request:
@@ -666,7 +666,7 @@ phases:
         title: "Reject an executable region update outside accepted terms"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -740,7 +740,7 @@ phases:
         title: "Reject a mixed supported and unsupported region update"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -817,7 +817,7 @@ phases:
         title: "Submit a country outside Product support"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -862,7 +862,7 @@ phases:
         title: "Submit a syntactically valid but unknown subdivision"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -897,7 +897,7 @@ phases:
         title: "Submit an exclusion outside independent exclusion support"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -933,7 +933,7 @@ phases:
         title: "Submit the same subdivision for inclusion and exclusion"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -969,7 +969,7 @@ phases:
         title: "Submit a valid region with zero executable inventory"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed

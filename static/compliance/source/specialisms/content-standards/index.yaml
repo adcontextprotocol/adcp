@@ -659,7 +659,7 @@ phases:
         title: "Evaluate creative features"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_feature_extraction
         requires_tool: get_creative_features

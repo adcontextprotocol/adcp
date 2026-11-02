@@ -14,9 +14,6 @@
       "$ref": "/schemas/property/property-list.json",
       "description": "The updated property list"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

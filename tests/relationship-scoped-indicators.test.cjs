@@ -85,11 +85,13 @@ describe('relationship-scoped indicators', () => {
       compile('protocol/get-adcp-capabilities-response.json'),
       compile('creative/list-creatives-request.json'),
       compile('media-buy/get-media-buys-request.json'),
-      compile('media-buy/create-media-buy-response.json'),
-      compile('media-buy/update-media-buy-response.json'),
-      compile('media-buy/media-buy-commitment-response.json'),
-      compile('media-buy/control-media-buy-response.json'),
-      compile('creative/sync-creatives-response.json'),
+      // Tool responses validate against the generated wire responses, which
+      // carry every status body.
+      compile('media-buy/create-media-buy-wire-response.json'),
+      compile('media-buy/update-media-buy-wire-response.json'),
+      compile('media-buy/buy-products-wire-response.json'),
+      compile('media-buy/control-media-buy-wire-response.json'),
+      compile('creative/sync-creatives-wire-response.json'),
       compile('core/indicators-changed-webhook.json'),
       compile('creative/creative-assignment-changed-webhook.json'),
       compile('core/notification-config.json')

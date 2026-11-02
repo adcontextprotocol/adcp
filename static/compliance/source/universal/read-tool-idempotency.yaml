@@ -129,7 +129,7 @@ phases:
         task: get_products
         requires_tool: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: read_tool_idempotency
         stateful: false

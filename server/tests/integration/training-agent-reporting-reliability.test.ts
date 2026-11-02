@@ -14,7 +14,8 @@ import { validateSourceSchema } from '../../src/training-agent/source-schema.js'
  * projection once the SDK is regenerated from RC.3 schemas.
  */
 function expectReliableReportingWireShape(response: unknown): void {
-  const validation = validateSourceSchema('media-buy/get-reporting-status-response.json', response);
+  // The wire response covers completed reads and failed lookups.
+  const validation = validateSourceSchema('media-buy/get-reporting-status-wire-response.json', response);
   expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
   expect(validation.valid).toBe(true);
 }
@@ -163,10 +164,16 @@ describe('sales training-agent reporting Core exercise', () => {
         failure_kind: 'lookup_unavailable',
         errors: [{ code: 'NOT_FOUND' }],
       });
+      // A failed lookup validates against the wire response, which selects the
+      // failed body; get-reporting-status-response.json is the completed body.
+      expect(validateSourceSchema(
+        'media-buy/get-reporting-status-wire-response.json',
+        unknownStatus.result?.structuredContent,
+      ).valid).toBe(true);
       expect(validateSourceSchema(
         'media-buy/get-reporting-status-response.json',
         unknownStatus.result?.structuredContent,
-      ).valid).toBe(true);
+      ).valid).toBe(false);
       expect(unknownStatus.result?.structuredContent).not.toHaveProperty('adcp_error');
       const unknownController = await call(url, 22, 'comply_test_controller', {
         account: {

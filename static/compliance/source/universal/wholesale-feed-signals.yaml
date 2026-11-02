@@ -72,7 +72,7 @@ phases:
         title: "Bootstrap signals feed"
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         stateful: true
         context_outputs:
@@ -112,7 +112,7 @@ phases:
         title: "Probe unchanged signals feed"
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         stateful: true
         expected: |
@@ -155,7 +155,7 @@ phases:
         title: "Reject standalone signal pricing token"
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         expect_error: true
         negative_path: payload_well_formed

@@ -120,7 +120,7 @@ phases:
           all required fields present.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: schema_compliance
         stateful: false
@@ -179,7 +179,7 @@ phases:
           missing or malformed pricing options break the downstream reporting flow.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: schema_compliance
         stateful: false

@@ -153,9 +153,6 @@
           "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `RIGHTS_CHANNEL_VIOLATION` notice when a requested output targets a channel outside a rights entry's `channels` / `excluded_channels` restriction. Terminal failures use the BuildCreativeError shape, not this field. Dispatch on manifest presence, not on `errors`: when `creative_manifest` or `creative_manifests` is present the build succeeded and `errors` is advisory only.",
           "items": { "$ref": "/schemas/core/error.json" }
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -297,9 +294,6 @@
           "x-added-in": "3.3.0",
           "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `RIGHTS_CHANNEL_VIOLATION` notice when a requested output targets a channel outside a rights entry's `channels` / `excluded_channels` restriction. Terminal failures use the BuildCreativeError shape, not this field. Dispatch on manifest presence, not on `errors`: when `creative_manifest` or `creative_manifests` is present the build succeeded and `errors` is advisory only.",
           "items": { "$ref": "/schemas/core/error.json" }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -520,9 +514,6 @@
           "format": "date-time",
           "description": "ISO 8601 timestamp when the earliest generated asset URL expires across all variants. Re-build after this time to get fresh URLs."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -602,9 +593,6 @@
           "format": "date-time",
           "description": "ISO 8601 timestamp after which this estimate's inputs/prices may no longer hold."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -615,111 +603,6 @@
       ],
       "additionalProperties": true
     },
-    {
-      "title": "BuildCreativeError",
-      "description": "Error response — creative generation failed. Multi-capability requests (`target_capability_ids[]`) are atomic: a single output failing means the entire batch returns an error response. Deprecated target_format_ids requests retain equivalent compatibility behavior.",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Array of errors explaining why creative generation failed. For a canonical multi-output request, an output-scoped failure MUST set `error.field` to `target_capability_ids[N]` and SHOULD include the rejected value in `error.details.capability_id`. Whole-batch failures may omit output attribution. Deprecated target_format_ids requests retain legacy attribution during the 3.x compatibility window.",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "creative_manifest"
-            ]
-          },
-          {
-            "required": [
-              "creative_manifests"
-            ]
-          },
-          {
-            "required": [
-              "creatives"
-            ]
-          },
-          {
-            "required": [
-              "estimate"
-            ]
-          },
-          {
-            "properties": {
-              "status": {
-                "const": "submitted"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
-      "title": "BuildCreativeSubmitted",
-      "description": "Async task envelope returned when build_creative cannot be confirmed before the response — for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the creative_manifest(s) land in the terminal result, not this envelope.",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "creative_manifest"
-            ]
-          },
-          {
-            "required": [
-              "creative_manifests"
-            ]
-          },
-          {
-            "required": [
-              "creatives"
-            ]
-          },
-          {
-            "required": [
-              "estimate"
-            ]
-          }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/media-buy/build-creative-failed.json" }
+  ]
 }

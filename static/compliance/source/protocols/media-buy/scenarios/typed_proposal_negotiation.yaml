@@ -198,7 +198,7 @@ phases:
         title: "Request seed proposals for the fixture products"
         task: request_proposals
         schema_ref: "media-buy/request-proposals-request.json"
-        response_schema_ref: "media-buy/request-proposals-response.json"
+        response_schema_ref: "media-buy/request-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/request_proposals"
         stateful: true
         expected: |
@@ -249,7 +249,7 @@ phases:
         title: "Revise with satisfiable total_budget constraint"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -318,7 +318,7 @@ phases:
         title: "Revise with unsatisfiable total_budget constraint"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -368,7 +368,7 @@ phases:
         title: "Revise with product include/omit map"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -416,7 +416,7 @@ phases:
         title: "Request alternative drafts"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -473,7 +473,7 @@ phases:
         title: "Reject unsupported typed dimension at task level"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         expect_error: true
         negative_path: payload_well_formed
@@ -517,7 +517,7 @@ phases:
         title: "Finalize the revised draft"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -574,7 +574,7 @@ phases:
         title: "Replay finalize with same idempotency_key"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         sample_request:
@@ -617,7 +617,7 @@ phases:
         title: "Accept the committed proposal"
         task: accept_proposal
         schema_ref: "media-buy/accept-proposal-request.json"
-        response_schema_ref: "media-buy/accept-proposal-response.json"
+        response_schema_ref: "media-buy/accept-proposal-wire-response.json"
         doc_ref: "/media-buy/task-reference/accept_proposal"
         stateful: true
         expected: |
@@ -657,7 +657,7 @@ phases:
         title: "Create amendment draft from accepted proposal"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -700,7 +700,7 @@ phases:
         title: "Create cancellation draft from accepted proposal"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -739,7 +739,7 @@ phases:
         title: "Reject double-finalize of committed proposal"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         expect_error: true
         negative_path: payload_well_formed
@@ -771,7 +771,7 @@ phases:
         title: "Batch revise across two source proposals"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |

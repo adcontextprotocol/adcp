@@ -145,7 +145,7 @@ phases:
         title: Purchase the catalog-qualified concrete collection set
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         sample_request:
@@ -209,7 +209,7 @@ phases:
         title: Reject a collision-checked undeclared domain-qualified collection ID
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         expect_error: true
@@ -248,7 +248,7 @@ phases:
         title: Reject a collection namespace absent from the SAME complete product
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         expect_error: true

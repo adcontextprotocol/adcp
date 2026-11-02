@@ -346,7 +346,7 @@ phases:
           check verifies the canonical declaration and its v1 projection link.
         task: get_products
         schema_ref: media-buy/get-products-request.json
-        response_schema_ref: media-buy/get-products-response.json
+        response_schema_ref: media-buy/get-products-wire-response.json
         doc_ref: /media-buy/task-reference/get_products
         comply_scenario: schema_compliance
         stateful: true
@@ -410,7 +410,7 @@ phases:
           `format_options[]` for that product.
         task: get_products
         schema_ref: media-buy/get-products-request.json
-        response_schema_ref: media-buy/get-products-response.json
+        response_schema_ref: media-buy/get-products-wire-response.json
         doc_ref: /media-buy/task-reference/get_products
         comply_scenario: schema_compliance
         stateful: true
@@ -453,7 +453,7 @@ phases:
           declarations without also carrying v1 named-format fallbacks.
         task: get_products
         schema_ref: media-buy/get-products-request.json
-        response_schema_ref: media-buy/get-products-response.json
+        response_schema_ref: media-buy/get-products-wire-response.json
         doc_ref: /media-buy/task-reference/get_products
         comply_scenario: schema_compliance
         stateful: true
@@ -536,7 +536,7 @@ phases:
           `errors[]` so consumers do not silently lose inventory.
         task: get_products
         schema_ref: media-buy/get-products-request.json
-        response_schema_ref: media-buy/get-products-response.json
+        response_schema_ref: media-buy/get-products-wire-response.json
         doc_ref: /media-buy/task-reference/get_products
         comply_scenario: schema_compliance
         auth:
@@ -595,7 +595,7 @@ phases:
         title: Read the fixed-size canonical product before create
         task: get_products
         schema_ref: media-buy/get-products-request.json
-        response_schema_ref: media-buy/get-products-response.json
+        response_schema_ref: media-buy/get-products-wire-response.json
         doc_ref: /media-buy/task-reference/get_products
         comply_scenario: schema_compliance
         stateful: true
@@ -635,7 +635,7 @@ phases:
         title: Accept canonical-only format option selector
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         expected: |
@@ -678,7 +678,7 @@ phases:
         title: Accept direct canonical format selector
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         expected: |
@@ -726,7 +726,7 @@ phases:
         title: Accept legacy fixed MREC selector after canonical normalization
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         expected: |
@@ -770,7 +770,7 @@ phases:
         title: Accept equivalent legacy dual emission
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         expected: |
@@ -817,7 +817,7 @@ phases:
         title: Accept equivalent direct and legacy selectors
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         expected: |
@@ -865,7 +865,7 @@ phases:
         title: Reject conflicting canonical and legacy selectors
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         expect_error: true
         negative_path: payload_well_formed
@@ -913,7 +913,7 @@ phases:
         title: Reject conflicting canonical selector routes
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         expect_error: true
         negative_path: payload_well_formed
@@ -962,7 +962,7 @@ phases:
         title: Reject an unprojectable legacy route before equivalence
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         expect_error: true
         negative_path: payload_well_formed
@@ -1010,7 +1010,7 @@ phases:
         title: Reject bare canonical image selector for fixed-size product
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         expect_error: true
         negative_path: payload_well_formed
@@ -1053,7 +1053,7 @@ phases:
         title: Reject fixed-size image width without height
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         expect_error: true
         negative_path: schema_invalid

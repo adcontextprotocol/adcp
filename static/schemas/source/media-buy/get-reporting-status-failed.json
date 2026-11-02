@@ -1,0 +1,205 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/get-reporting-status-failed.json",
+  "title": "Get Reporting Status - Failed",
+  "x-status": "experimental",
+  "description": "Body of a failed get_reporting_status response. failure_kind discriminates the two failure kinds. lookup_unavailable is identical for unknown and unauthorized identifiers: one NOT_FOUND error, the fixed message, and an adcp_error that carries the same code and message. operational covers every other failure and MUST NOT be used for identifier resolution or authorization failures. Neither kind carries a ledger result.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "changes_checkpoint": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/changes_checkpoint"
+    },
+    "scope": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/scope"
+    },
+    "health": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/health"
+    },
+    "coverage": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/coverage"
+    },
+    "data_through": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/data_through"
+    },
+    "next_expected_at": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/next_expected_at"
+    },
+    "obligation_counts": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/obligation_counts"
+    },
+    "issues": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/issues"
+    },
+    "periods": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/periods"
+    },
+    "revisions": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/revisions"
+    },
+    "adjustments": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/adjustments"
+    },
+    "consumer_statuses": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/consumer_statuses"
+    },
+    "adjustment_receipts": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/adjustment_receipts"
+    },
+    "pagination": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/pagination"
+    },
+    "revision": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/revision"
+    },
+    "materializations": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/materializations"
+    },
+    "receipts": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/receipts"
+    },
+    "subscription_coverage": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/subscription_coverage"
+    },
+    "ext": {
+      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/ext"
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Unavailable lookup",
+      "type": "object",
+      "properties": {
+        "view": {
+          "enum": [
+            "summary",
+            "periods",
+            "revision"
+          ]
+        },
+        "failure_kind": {
+          "type": "string",
+          "const": "lookup_unavailable"
+        },
+        "message": {
+          "const": "Reporting status resource is unavailable."
+        },
+        "adcp_error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": "NOT_FOUND"
+            },
+            "message": {
+              "const": "Reporting status resource is unavailable."
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        "errors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "const": "NOT_FOUND"
+              },
+              "message": {
+                "const": "Reporting status resource is unavailable."
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "view",
+        "failure_kind",
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "ledger_snapshot_id"
+            ]
+          },
+          {
+            "required": [
+              "ledger_as_of"
+            ]
+          },
+          {
+            "required": [
+              "account_id"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Operational failure",
+      "type": "object",
+      "properties": {
+        "view": {
+          "enum": [
+            "summary",
+            "periods",
+            "revision"
+          ]
+        },
+        "failure_kind": {
+          "type": "string",
+          "const": "operational"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "view",
+        "failure_kind",
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "ledger_snapshot_id"
+            ]
+          },
+          {
+            "required": [
+              "ledger_as_of"
+            ]
+          },
+          {
+            "required": [
+              "account_id"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

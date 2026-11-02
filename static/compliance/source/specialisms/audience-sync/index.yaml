@@ -201,7 +201,7 @@ phases:
           discovery call.
         task: sync_audiences
         schema_ref: "media-buy/sync-audiences-request.json"
-        response_schema_ref: "media-buy/sync-audiences-response.json"
+        response_schema_ref: "media-buy/sync-audiences-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_audiences"
         comply_scenario: sync_audiences
         stateful: false
@@ -240,7 +240,7 @@ phases:
           action: created, match counts, and match rate.
         task: sync_audiences
         schema_ref: "media-buy/sync-audiences-request.json"
-        response_schema_ref: "media-buy/sync-audiences-response.json"
+        response_schema_ref: "media-buy/sync-audiences-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_audiences"
         comply_scenario: sync_audiences
         stateful: true
@@ -309,7 +309,7 @@ phases:
           deletion with action: deleted.
         task: sync_audiences
         schema_ref: "media-buy/sync-audiences-request.json"
-        response_schema_ref: "media-buy/sync-audiences-response.json"
+        response_schema_ref: "media-buy/sync-audiences-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_audiences"
         comply_scenario: sync_audiences
         stateful: true

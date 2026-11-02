@@ -82,7 +82,7 @@ phases:
         title: "Register the audience"
         task: sync_audiences
         schema_ref: "media-buy/sync-audiences-request.json"
-        response_schema_ref: "media-buy/sync-audiences-response.json"
+        response_schema_ref: "media-buy/sync-audiences-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_audiences"
         stateful: true
         sample_request:
@@ -142,7 +142,7 @@ phases:
         title: "Create a buy targeting the synced audience"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         sample_request:

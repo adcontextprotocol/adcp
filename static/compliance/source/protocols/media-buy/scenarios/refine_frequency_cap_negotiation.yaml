@@ -211,7 +211,7 @@ phases:
         title: "Request proposals with a root frequency cap"
         task: request_proposals
         schema_ref: "media-buy/request-proposals-request.json"
-        response_schema_ref: "media-buy/request-proposals-response.json"
+        response_schema_ref: "media-buy/request-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/request_proposals"
         stateful: true
         expected: |
@@ -264,7 +264,7 @@ phases:
         title: "Replace the root frequency cap"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -317,7 +317,7 @@ phases:
         title: "Clear the inherited root frequency cap"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -365,7 +365,7 @@ phases:
         title: "Include a non-participating product under an inherited cap"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |
@@ -414,7 +414,7 @@ phases:
         title: "Request a cap beyond product constraints"
         task: refine_proposals
         schema_ref: "media-buy/refine-proposals-request.json"
-        response_schema_ref: "media-buy/refine-proposals-response.json"
+        response_schema_ref: "media-buy/refine-proposals-wire-response.json"
         doc_ref: "/media-buy/task-reference/refine_proposals"
         stateful: true
         expected: |

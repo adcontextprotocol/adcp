@@ -375,7 +375,7 @@ phases:
         title: "Reject a buy inside the booked span"
         task: buy_products
         schema_ref: "media-buy/buy-products-request.json"
-        response_schema_ref: "media-buy/buy-products-response.json"
+        response_schema_ref: "media-buy/buy-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/buy_products"
         expect_error: true
         negative_path: payload_well_formed
@@ -419,7 +419,7 @@ phases:
         title: "Reject a flight shorter than the minimum bookable duration"
         task: buy_products
         schema_ref: "media-buy/buy-products-request.json"
-        response_schema_ref: "media-buy/buy-products-response.json"
+        response_schema_ref: "media-buy/buy-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/buy_products"
         expect_error: true
         negative_path: payload_well_formed

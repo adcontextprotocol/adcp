@@ -110,7 +110,7 @@ phases:
           its format specs and returns per-creative action and status.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_lifecycle
         stateful: true
@@ -322,7 +322,7 @@ phases:
           in the platform's environment before going live.
         task: preview_creative
         schema_ref: "creative/preview-creative-request.json"
-        response_schema_ref: "creative/preview-creative-response.json"
+        response_schema_ref: "creative/preview-creative-wire-response.json"
         doc_ref: "/creative/task-reference/preview_creative"
         comply_scenario: creative_flow
         requires_tool: preview_creative

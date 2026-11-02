@@ -137,7 +137,7 @@ phases:
         title: "Discover a product"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: full_sales_flow
         stateful: false
@@ -179,7 +179,7 @@ phases:
         title: "Create a media buy with two packages"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         stateful: true
@@ -233,7 +233,7 @@ phases:
         title: "Sync creatives A and B into the library"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_sync
         stateful: true
@@ -300,7 +300,7 @@ phases:
           of which path the buyer chose.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         stateful: true
         expected: |
@@ -712,7 +712,7 @@ phases:
         title: "Sync replacement creative C"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_sync
         stateful: true
@@ -781,7 +781,7 @@ phases:
         title: "update_media_buy — swap package_a's creative_assignments to C"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: media_buy_lifecycle
         stateful: true
@@ -877,7 +877,7 @@ phases:
         title: "Sync replacement creative D"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_sync
         stateful: true
@@ -946,7 +946,7 @@ phases:
         title: "update_media_buy — swap package_b's creative_assignments to D"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         comply_scenario: media_buy_lifecycle
         stateful: true

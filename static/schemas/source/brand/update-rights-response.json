@@ -49,9 +49,6 @@
           "format": "date-time",
           "description": "When changes take effect (null if pending approval from rights holder)"
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -69,42 +66,6 @@
         ]
       }
     },
-    {
-      "title": "UpdateRightsError",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "rights_id"
-            ]
-          },
-          {
-            "required": [
-              "terms"
-            ]
-          }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/brand/update-rights-failed.json" }
+  ]
 }

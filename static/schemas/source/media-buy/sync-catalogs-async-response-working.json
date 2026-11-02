@@ -49,9 +49,6 @@
       "minimum": 0,
       "description": "Total number of catalog items to process across all catalogs"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

@@ -166,7 +166,7 @@ phases:
         title: "Run one creative evaluation"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_features_idempotency
         stateful: true
@@ -224,7 +224,7 @@ phases:
         title: "Replay the identical evaluation request"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_features_idempotency
         stateful: true
@@ -288,7 +288,7 @@ phases:
         title: "Reject the same key with a changed creative manifest"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_features_idempotency
         expect_error: true
@@ -322,7 +322,7 @@ phases:
         title: "Reject the same key with a changed account"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_features_idempotency
         expect_error: true
@@ -356,7 +356,7 @@ phases:
         title: "Reject the same key with changed feature_ids"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_features_idempotency
         expect_error: true
@@ -394,7 +394,7 @@ phases:
         title: "Dispatch two identical evaluations at once"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_features_idempotency
         stateful: true
@@ -478,7 +478,7 @@ phases:
         title: "Receive a schema-valid submitted acknowledgement"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_features_idempotency
         stateful: true
@@ -527,7 +527,7 @@ phases:
         title: "Replay returns the original submitted acknowledgement"
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
-        response_schema_ref: "creative/get-creative-features-response.json"
+        response_schema_ref: "creative/get-creative-features-wire-response.json"
         doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_features_idempotency
         stateful: true

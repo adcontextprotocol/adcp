@@ -148,7 +148,7 @@ phases:
           retail purchase history from a third.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: signals_flow
         stateful: false
@@ -215,7 +215,7 @@ phases:
           step. They pass signal_ids directly instead of a natural language query.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: signals_flow
         stateful: true
@@ -274,7 +274,7 @@ phases:
           your agent must provide the domain to fetch from.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/data-providers"
         comply_scenario: signals_flow
         stateful: true

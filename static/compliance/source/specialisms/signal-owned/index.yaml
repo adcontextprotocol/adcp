@@ -143,7 +143,7 @@ phases:
           history, engagement scores, contextual categories.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: signals_flow
         stateful: false
@@ -199,7 +199,7 @@ phases:
           parameters correctly and returns only matching signals.
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: signals_flow
         stateful: false

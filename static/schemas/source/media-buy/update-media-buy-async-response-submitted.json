@@ -16,12 +16,15 @@
         "$ref": "/schemas/core/error.json"
       }
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      { "required": ["media_buy_id"] },
+      { "required": ["warnings"] }
+    ]
+  }
 }

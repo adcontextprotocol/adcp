@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/list-account-changes-failed.json",
+  "title": "List Account Changes - Failed",
+  "x-status": "experimental",
+  "description": "Body of a failed list_account_changes response. Both error layers are present: the envelope's adcp_error and at least one errors[] entry.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    },
+    "changes": {
+      "$ref": "/schemas/account/list-account-changes-response.json#/properties/changes"
+    },
+    "cursor": {
+      "$ref": "/schemas/account/list-account-changes-response.json#/properties/cursor"
+    },
+    "has_more": {
+      "$ref": "/schemas/account/list-account-changes-response.json#/properties/has_more"
+    },
+    "available_since": {
+      "$ref": "/schemas/account/list-account-changes-response.json#/properties/available_since"
+    },
+    "generated_at": {
+      "$ref": "/schemas/account/list-account-changes-response.json#/properties/generated_at"
+    },
+    "source_coverage": {
+      "$ref": "/schemas/account/list-account-changes-response.json#/properties/source_coverage"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "adcp_error",
+    "errors"
+  ],
+  "additionalProperties": true
+}

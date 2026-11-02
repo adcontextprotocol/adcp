@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/protocol/sync-principal-rejected.json",
+  "title": "Sync Principal - Rejected",
+  "description": "Body of a rejected sync_principal response: the same body as a failed one.",
+  "x-status": "experimental",
+  "allOf": [
+    {
+      "$ref": "/schemas/protocol/sync-principal-failed.json"
+    }
+  ]
+}

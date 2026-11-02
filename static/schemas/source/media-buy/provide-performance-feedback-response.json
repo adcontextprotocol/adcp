@@ -54,9 +54,6 @@
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -94,39 +91,6 @@
         "required": ["errors"]
       }
     },
-    {
-      "title": "ProvidePerformanceFeedbackError",
-      "description": "Error response - feedback rejected or could not be processed",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Array of errors explaining why feedback was rejected (e.g., invalid measurement period, missing campaign data)",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": ["errors"],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": ["success"]
-          },
-          {
-            "required": ["sandbox"]
-          }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/media-buy/provide-performance-feedback-failed.json" }
+  ]
 }

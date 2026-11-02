@@ -143,9 +143,6 @@
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -160,45 +157,6 @@
         ]
       }
     },
-    {
-      "title": "SyncEventSourcesError",
-      "description": "Error response - operation failed completely",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Operation-level errors that prevented processing",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "event_sources"
-            ]
-          },
-          {
-            "required": [
-              "sandbox"
-            ]
-          }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/media-buy/sync-event-sources-failed.json" }
+  ]
 }

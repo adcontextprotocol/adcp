@@ -109,7 +109,7 @@ phases:
         title: "Discover products for shared allocation"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: "Return the seeded products with compatible USD pricing and click optimization."
@@ -136,7 +136,7 @@ phases:
         title: "Reject min_spend_target greater than the package budget"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: false
         expect_error: true

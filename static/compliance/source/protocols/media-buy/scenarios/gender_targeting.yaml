@@ -148,7 +148,7 @@ phases:
         title: Read product gender subsets and unknown handling
         task: get_products
         schema_ref: media-buy/get-products-request.json
-        response_schema_ref: media-buy/get-products-response.json
+        response_schema_ref: media-buy/get-products-wire-response.json
         doc_ref: /media-buy/task-reference/get_products
         stateful: true
         sample_request:
@@ -206,7 +206,7 @@ phases:
         title: Create gender-only and mixed age/gender packages
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         sample_request:
@@ -594,7 +594,7 @@ phases:
         title: Reject a category outside a product supported subset
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: false
         sample_request:
@@ -638,7 +638,7 @@ phases:
         title: Reject gender targeting on an age-only product
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: false
         sample_request:
@@ -682,7 +682,7 @@ phases:
         title: Reject unknown-gender inclusion on an always-excluded product
         task: create_media_buy
         schema_ref: media-buy/create-media-buy-request.json
-        response_schema_ref: media-buy/create-media-buy-response.json
+        response_schema_ref: media-buy/create-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/create_media_buy
         stateful: false
         sample_request:
@@ -727,7 +727,7 @@ phases:
         title: Omit demographics during a budget update
         task: update_media_buy
         schema_ref: media-buy/update-media-buy-request.json
-        response_schema_ref: media-buy/update-media-buy-response.json
+        response_schema_ref: media-buy/update-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/update_media_buy
         stateful: true
         sample_request:
@@ -926,7 +926,7 @@ phases:
         title: Replace demographics with the complete age-only post-state
         task: update_media_buy
         schema_ref: media-buy/update-media-buy-request.json
-        response_schema_ref: media-buy/update-media-buy-response.json
+        response_schema_ref: media-buy/update-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/update_media_buy
         stateful: true
         sample_request:
@@ -1071,7 +1071,7 @@ phases:
         title: Replace demographics with a gender-only predicate
         task: update_media_buy
         schema_ref: media-buy/update-media-buy-request.json
-        response_schema_ref: media-buy/update-media-buy-response.json
+        response_schema_ref: media-buy/update-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/update_media_buy
         stateful: true
         sample_request:
@@ -1230,7 +1230,7 @@ phases:
         title: Clear the complete demographic dimension
         task: update_media_buy
         schema_ref: media-buy/update-media-buy-request.json
-        response_schema_ref: media-buy/update-media-buy-response.json
+        response_schema_ref: media-buy/update-media-buy-wire-response.json
         doc_ref: /media-buy/task-reference/update_media_buy
         stateful: true
         sample_request:

@@ -26,9 +26,6 @@
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -43,45 +40,6 @@
         ]
       }
     },
-    {
-      "title": "ActivateSignalError",
-      "description": "Error response - operation failed, signal not activated",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Array of errors explaining why activation failed (e.g., platform connectivity issues, signal definition problems, authentication failures)",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "deployments"
-            ]
-          },
-          {
-            "required": [
-              "sandbox"
-            ]
-          }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/signals/activate-signal-failed.json" }
+  ]
 }

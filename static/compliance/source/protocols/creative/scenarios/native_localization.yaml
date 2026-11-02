@@ -95,7 +95,7 @@ phases:
         title: "Sync source and Spanish target"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives#native-localization"
         comply_scenario: creative_flow
         stateful: true
@@ -172,7 +172,7 @@ phases:
         title: "Sync a monolingual French source"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives#native-localization"
         comply_scenario: creative_flow
         stateful: true
@@ -233,7 +233,7 @@ phases:
         title: "Reject a dangling default without mutation"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives#native-localization"
         comply_scenario: creative_flow
         stateful: true

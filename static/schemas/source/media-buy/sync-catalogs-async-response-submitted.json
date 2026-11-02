@@ -16,12 +16,16 @@
         "$ref": "/schemas/core/error.json"
       }
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      { "required": ["catalogs"] },
+      { "required": ["item_availability_updates"] },
+      { "required": ["item_availability_states"] }
+    ]
+  }
 }

@@ -5347,7 +5347,7 @@ async function runTests() {
     'list_products treats no matches as an empty successful product page'
   );
   await testSchemaValidation(
-    '/schemas/media-buy/refine-proposals-response.json',
+    '/schemas/media-buy/refine-proposals-wire-response.json',
     { status: 'submitted', task_id: 'task-refinement-approval-1' },
     'refine_proposals can enter an async approval workflow'
   );
@@ -6353,7 +6353,7 @@ async function runTests() {
     'get_signals working async progress validates'
   );
   await testSchemaValidation(
-    '/schemas/signals/get-signals-response.json',
+    '/schemas/signals/get-signals-wire-response.json',
     {
       status: 'failed',
       errors: [
@@ -6366,7 +6366,7 @@ async function runTests() {
     'get_signals failed completion does not require signals or cache_scope'
   );
   await testSchemaValidation(
-    '/schemas/media-buy/get-products-response.json',
+    '/schemas/media-buy/get-products-wire-response.json',
     {
       status: 'failed',
       errors: [
@@ -8105,10 +8105,12 @@ async function runTests() {
     { adcp_version: '3.2.1', status: 'submitted', task_id: 'task_123' },
     'Compact submitted arm rejects a malformed adcp_version'
   );
+  // The submitted body does not pin status; the tool's wire response
+  // dispatches on it, so a completed status selects the completed body.
   await testSchemaRejection(
-    '/schemas/core/compact-task-submitted.json',
+    '/schemas/media-buy/control-media-buy-wire-response.json',
     { status: 'completed', task_id: 'task_123' },
-    'Compact submitted arm rejects non-submitted status'
+    'Compact submitted branch rejects non-submitted status'
   );
   await testSchemaRejection(
     '/schemas/core/compact-task-submitted.json',

@@ -191,7 +191,7 @@ phases:
         title: "Create a MediaBuy through buy_products"
         task: buy_products
         schema_ref: "media-buy/buy-products-request.json"
-        response_schema_ref: "media-buy/buy-products-response.json"
+        response_schema_ref: "media-buy/buy-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/buy_products"
         stateful: true
         sample_request:
@@ -270,7 +270,7 @@ phases:
         title: "Apply a lower daily budget cap"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         stateful: true
         sample_request:

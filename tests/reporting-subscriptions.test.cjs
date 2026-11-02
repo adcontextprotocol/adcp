@@ -461,7 +461,8 @@ test('get_reporting_status carries subscription_coverage in summary but not revi
   };
   assert.ok(v(summary), JSON.stringify(v.errors));
   const schema = read('media-buy/get-reporting-status-response.json');
-  const revisionView = schema.oneOf[0].oneOf.find(s => s.title === 'Revision view');
+  // get-reporting-status-response.json is the completed body: its oneOf holds the views.
+  const revisionView = schema.oneOf.find(s => s.title === 'Revision view');
   assert.ok(JSON.stringify(revisionView.not).includes('subscription_coverage'), 'revision view excludes subscription_coverage');
   assert.equal(schema['x-adcp-validation'].revoked_account_reads, undefined, 'no read carve-out for former principals');
   assert.match(schema['x-adcp-validation'].caller_isolation, /identical lookup_unavailable shape/);

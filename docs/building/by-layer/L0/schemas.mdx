@@ -123,6 +123,32 @@ The `refs/(heads|tags)/.*` wildcard is intentional — releases sign during the 
 
 Older releases that predate signing, and versions republished out of band (bypassing the signing workflow), remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
 
+## Task response schemas
+
+A task response is the protocol envelope (`core/protocol-envelope.json`) plus
+one body. The envelope owns the envelope fields, `status` included, and a task
+declares one body per envelope status. The file name carries the status:
+
+| Body | Status |
+|------|--------|
+| `<task>-response.json` | `completed` |
+| `<task>-async-response-submitted.json`, `-working.json`, `-input-required.json` | `submitted`, `working`, `input-required` |
+| `<task>-rejected.json` | `rejected`, a structured business rejection |
+| `<task>-failed.json` | `failed` |
+
+Each body serves only the status its file name carries. A status the task has
+no body for is not a valid response of that task. Bodies declare no envelope
+field, never test `status`, and stay open. A submitted body composes
+`core/task-submitted.json`, which requires `task_id`.
+
+The schema build generates each task's wire response,
+`<protocol>/<task>-wire-response.json`: a `oneOf` with one branch per status
+that has a body, discriminated by `status`. Each branch requires `status`, pins
+it to its own value and composes that status's body, so the branches are
+disjoint. The release manifest's `response_schema` and the MCP projection's
+`outputSchema` name the wire response, so validate a task response against it.
+`<task>-response.json` alone validates only a completed response.
+
 ## Compliance storyboards
 
 Storyboards live alongside schemas at `/compliance/{version}/`. They define the test scenarios AAO runs to verify an agent's capability claims.
@@ -208,11 +234,12 @@ Schema 2020-12 projection for MCP `2026-07-28` tool discovery:
 ```
 https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/manifest.json
 https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-request.json
-https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-response.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-wire-response.json
 ```
 
 The projection manifest maps every AdCP tool to downloadable `inputSchema` and
-`outputSchema` files. Servers can select and embed these schemas when building
+`outputSchema` files. A tool's `outputSchema` is its wire response (see [Task
+response schemas](#task-response-schemas)). Servers can select and embed these schemas when building
 their `tools/list` response; publishing the artifacts does not automatically
 change a server's MCP registration. MCP disables automatic network
 dereferencing by default, so each projected schema is a compact, self-contained

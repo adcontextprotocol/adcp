@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-catalogs-failed.json",
+  "title": "SyncCatalogsError",
+  "description": "Body of a failed sync_catalogs response: operation-level errors with no catalog results. A REFERENCE_NOT_FOUND failure uses one normalized, non-enumerating error and carries nothing else. The completed body also admits this body.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    {
+      "if": {
+        "properties": {
+          "errors": {
+            "contains": {
+              "$ref": "/schemas/core/catalog-item-reference-not-found-error.json"
+            }
+          }
+        },
+        "required": ["errors"]
+      },
+      "then": {
+        "propertyNames": {
+          "enum": ["status", "errors", "adcp_error", "message", "context", "context_id", "timestamp", "replayed", "adcp_version", "adcp_major_version"]
+        },
+        "properties": {
+          "errors": {
+            "maxItems": 1,
+            "items": { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" }
+          },
+          "adcp_error": { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" },
+          "message": { "type": "string", "const": "Catalog item not found" }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "errors": {
+      "type": "array",
+      "description": "Operation-level errors that prevented processing any catalogs (e.g., authentication failure, service unavailable, invalid request format)",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/error.json" },
+          {
+            "if": {
+              "properties": { "code": { "const": "REFERENCE_NOT_FOUND" } },
+              "required": ["code"]
+            },
+            "then": {
+              "description": "Availability lookups use the closed error variant; the field-qualified branch preserves the established catalog_ids filter error.",
+              "anyOf": [
+                { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" },
+              {
+                "type": "object",
+                "properties": {
+                  "field": { "const": "catalog_ids" }
+                },
+                "required": ["field"]
+              }
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "errors"
+  ],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "catalogs"
+        ]
+      },
+      {
+        "required": [
+          "item_availability_updates"
+        ]
+      },
+      {
+        "required": [
+          "item_availability_states"
+        ]
+      },
+      {
+        "required": [
+          "dry_run"
+        ]
+      },
+      {
+        "required": [
+          "sandbox"
+        ]
+      }
+    ]
+  }
+}

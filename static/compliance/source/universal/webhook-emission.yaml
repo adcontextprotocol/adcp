@@ -202,7 +202,7 @@ phases:
         task: get_products
         requires_tool: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         sample_request:
@@ -257,7 +257,7 @@ phases:
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_trigger
         stateful: false
@@ -338,7 +338,7 @@ phases:
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_operation_id_echo_trigger
         stateful: false
@@ -422,7 +422,7 @@ phases:
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_idempotency_replay_trigger
         stateful: true
@@ -463,7 +463,7 @@ phases:
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_idempotency_replay_trigger
         stateful: true
@@ -560,7 +560,7 @@ phases:
         task: get_products
         requires_tool: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         sample_request:
@@ -639,7 +639,7 @@ phases:
         task: get_products
         requires_tool: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         expect_error: true
         negative_path: payload_well_formed
@@ -718,7 +718,7 @@ phases:
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_retry_trigger
         stateful: false
@@ -868,7 +868,7 @@ phases:
         task: "$test_kit.operations.primary_webhook_emitter"
         task_default: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/building/implementation/webhooks"
         comply_scenario: webhook_signed_trigger
         stateful: false

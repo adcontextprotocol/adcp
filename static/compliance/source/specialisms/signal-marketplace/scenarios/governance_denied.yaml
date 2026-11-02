@@ -114,7 +114,7 @@ phases:
         title: "Discover a signal to activate"
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: signal_discovery
         stateful: false

@@ -15,11 +15,6 @@
       "description": "Success response - sync operation processed catalogs (may include per-catalog failures)",
       "type": "object",
       "properties": {
-        "status": {
-          "type": "string",
-          "const": "completed",
-          "description": "Availability and synchronous catalog results are terminal and complete."
-        },
         "dry_run": {
           "type": "boolean",
           "description": "Whether this was a dry run (no actual changes made)"
@@ -182,9 +177,6 @@
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -199,147 +191,6 @@
         ]
       }
     },
-    {
-      "title": "SyncCatalogsError",
-      "description": "Error response - operation failed completely, no catalogs were processed",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Operation-level errors that prevented processing any catalogs (e.g., authentication failure, service unavailable, invalid request format)",
-          "items": {
-            "allOf": [
-              { "$ref": "/schemas/core/error.json" },
-              {
-                "if": {
-                  "properties": { "code": { "const": "REFERENCE_NOT_FOUND" } },
-                  "required": ["code"]
-                },
-                "then": {
-                  "description": "Availability lookups use the closed error variant; the field-qualified branch preserves the established catalog_ids filter error.",
-                  "anyOf": [
-                    { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "field": { "const": "catalog_ids" }
-                    },
-                    "required": ["field"]
-                  }
-                  ]
-                }
-              }
-            ]
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "errors": {
-                "contains": {
-                  "$ref": "/schemas/core/catalog-item-reference-not-found-error.json"
-                }
-              }
-            },
-            "required": ["errors"]
-          },
-          "then": {
-            "propertyNames": {
-              "enum": ["status", "errors", "adcp_error", "message", "context", "context_id", "timestamp", "replayed", "adcp_version", "adcp_major_version"]
-            },
-            "properties": {
-              "errors": {
-                "maxItems": 1,
-                "items": { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" }
-              },
-              "adcp_error": { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" },
-              "message": { "type": "string", "const": "Catalog item not found" }
-            }
-          }
-        }
-      ],
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "catalogs"
-            ]
-          },
-          {
-            "required": [
-              "item_availability_updates"
-            ]
-          },
-          {
-            "required": [
-              "item_availability_states"
-            ]
-          },
-          {
-            "required": [
-              "dry_run"
-            ]
-          },
-          {
-            "required": [
-              "sandbox"
-            ]
-          },
-          {
-            "properties": {
-              "status": {
-                "const": "submitted"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
-      "title": "SyncCatalogsSubmitted",
-      "description": "Async task envelope returned when a catalog-only sync cannot be confirmed before the response — for example, when catalog ingestion and deduplication are queued for batch processing. A request containing item_availability_updates or item_availability_queries MUST NOT return this branch because availability operations are synchronous; mixed requests whose catalog work cannot finish synchronously and atomically fail before mutation and are retried as separate calls. For catalog-only requests, the buyer invokes get_task_status with task_id or receives a webhook when the task completes; the per-catalog results land in the terminal result, not this envelope.",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          { "required": ["catalogs"] },
-          { "required": ["item_availability_updates"] },
-          { "required": ["item_availability_states"] }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/media-buy/sync-catalogs-failed.json" }
+  ]
 }
