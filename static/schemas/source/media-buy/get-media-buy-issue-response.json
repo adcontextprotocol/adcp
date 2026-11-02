@@ -19,9 +19,6 @@
         "issue": {
           "$ref": "/schemas/core/media-buy-issue.json"
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -33,34 +30,7 @@
       "additionalProperties": true,
       "not": { "required": ["errors"] }
     },
-    {
-      "type": "object",
-      "properties": {
-        "outcome": {
-          "type": "string",
-          "const": "failed"
-        },
-        "errors": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "outcome",
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": { "required": ["issue"] }
-    }
+    { "$ref": "/schemas/media-buy/get-media-buy-issue-failed.json" }
   ],
   "discriminator": {
     "propertyName": "outcome"

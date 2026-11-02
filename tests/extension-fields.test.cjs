@@ -10,6 +10,62 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
+const { discoverTools } = require('../scripts/build-schemas.cjs');
+const { readSourceSchemaDocument } = require('../scripts/wire-responses.cjs');
+
+/** A source document by its `/schemas/...` reference, or the generated one at that path. */
+function readSchemaRef(ref) {
+  const rel = ref.replace(/^\/schemas\/(latest\/)?/, '');
+  return readSourceSchemaDocument(path.join(SCHEMA_BASE_DIR, rel), SCHEMA_BASE_DIR);
+}
+
+function resolvePointer(root, pointer) {
+  return pointer.replace(/^\//, '').split('/').filter(Boolean)
+    .map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~'))
+    .reduce((node, part) => (node && typeof node === 'object' ? node[part] : undefined), root);
+}
+
+/**
+ * The declaration a response node reaches for a top-level field: its own
+ * `properties`, a member of its `allOf` (the protocol envelope among them), a
+ * whole-document or fragment `$ref`, or, for `oneOf`/`anyOf`, every member.
+ * Returns the declaration, or null when some path through the node lacks it.
+ */
+function reachedDeclaration(node, name, root, seen = new Set()) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.$ref) {
+    const [documentRef, fragment] = node.$ref.split('#');
+    const document = documentRef ? readSchemaRef(documentRef) : root;
+    const key = `${documentRef || root.$id}#${fragment || ''}`;
+    if (seen.has(key)) return null;
+    const target = fragment ? resolvePointer(document, fragment) : document;
+    return reachedDeclaration(target, name, document, new Set([...seen, key]));
+  }
+  if (node.properties && node.properties[name]) return node.properties[name];
+  for (const member of node.allOf || []) {
+    const found = reachedDeclaration(member, name, root, seen);
+    if (found) return found;
+  }
+  for (const keyword of ['oneOf', 'anyOf']) {
+    const members = node[keyword];
+    if (!Array.isArray(members) || members.length === 0) continue;
+    const found = members.map((member) => reachedDeclaration(member, name, root, seen));
+    if (found.every(Boolean)) return found[0];
+  }
+  return null;
+}
+
+/** Wire-response branches of every tool that do not reach `name`. */
+function branchesMissing(name) {
+  const missing = [];
+  for (const tool of discoverTools(SCHEMA_BASE_DIR)) {
+    const wire = readSchemaRef(`/schemas/${tool.response_schema}`);
+    for (const branch of wire.oneOf) {
+      if (!reachedDeclaration(branch, name, wire)) missing.push(`${tool.name} ${branch.properties.status.const}`);
+    }
+  }
+  return missing;
+}
 
 // Initialize AJV with formats and custom loader
 const ajv = new Ajv({
@@ -432,31 +488,34 @@ async function runTests() {
   });
 
   // Test 3C: Response extensions
-  // Note: Response schemas use oneOf for success/error discriminated unions.
-  // For better TypeScript/Zod codegen, ext is inside each oneOf variant (not at root level).
-  // This produces clean discriminated union types instead of intersection types.
-  await test('Response schema has ext field in oneOf variants', async () => {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json');
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-
-    // Check that ext is NOT at root level
-    if (schema.properties && schema.properties.ext) {
-      throw new Error('ext should not be at root level for discriminated union schemas');
+  // A tool response is its generated wire response: a oneOf discriminated by
+  // status, one branch per status body. Every branch, through its body and
+  // the protocol envelope the body composes, reaches the ext extension point.
+  // validate_input's completed body has never declared ext; adding one is a
+  // schema change outside this check. The entry must stay accurate: it fails
+  // once the body declares ext.
+  const BRANCHES_WITHOUT_EXT = ['validate_input completed'];
+  await test('Every wire-response branch reaches ext through its body', async () => {
+    const missing = branchesMissing('ext');
+    const unexpected = missing.filter((branch) => !BRANCHES_WITHOUT_EXT.includes(branch));
+    if (unexpected.length) throw new Error(`branches without ext: ${unexpected.join(', ')}`);
+    const stale = BRANCHES_WITHOUT_EXT.filter((branch) => !missing.includes(branch));
+    if (stale.length) throw new Error(`listed as lacking ext, but reach it: ${stale.join(', ')}`);
+    const wire = readSchemaRef('/schemas/media-buy/create-media-buy-wire-response.json');
+    for (const branch of wire.oneOf) {
+      validateExtField(reachedDeclaration(branch, 'ext', wire), '/schemas/core/ext.json');
     }
+    return true;
+  });
 
-    // Check that ext exists in each oneOf variant
-    if (!schema.oneOf || schema.oneOf.length === 0) {
-      throw new Error('Schema should have oneOf variants');
+  await test('A branch whose body lacks ext is reported', async () => {
+    const body = { allOf: [{ $ref: '/schemas/core/protocol-envelope.json' }], properties: { results: { type: 'array' } } };
+    const withExt = { ...body, properties: { ...body.properties, ext: { $ref: '/schemas/core/ext.json' } } };
+    if (reachedDeclaration(body, 'ext', body) !== null) throw new Error('a body without ext was accepted');
+    if (!reachedDeclaration(withExt, 'ext', withExt)) throw new Error('a body with ext was rejected');
+    if (reachedDeclaration({ oneOf: [withExt, body] }, 'ext', body) !== null) {
+      throw new Error('a oneOf with one member lacking ext was accepted');
     }
-
-    for (let i = 0; i < schema.oneOf.length; i++) {
-      const variant = schema.oneOf[i];
-      if (!variant.properties || !variant.properties.ext) {
-        throw new Error(`oneOf variant ${i} missing ext field`);
-      }
-      validateExtField(variant.properties.ext, '/schemas/core/ext.json');
-    }
-
     return true;
   });
 
@@ -472,16 +531,15 @@ async function runTests() {
     return true;
   });
 
-  await test('Response schema has context field', async () => {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json');
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-
-    // Context is in oneOf branches, not at top level
-    const successBranch = schema.oneOf[0];
-    const errorBranch = schema.oneOf[1];
-
-    validateExtField(successBranch.properties.context, '/schemas/core/context.json');
-    validateExtField(errorBranch.properties.context, '/schemas/core/context.json');
+  await test('Every wire-response branch reaches context through the envelope', async () => {
+    // context is an envelope field: bodies do not declare it, and every
+    // branch reaches the envelope's declaration through its body.
+    const missing = branchesMissing('context');
+    if (missing.length) throw new Error(`branches without context: ${missing.join(', ')}`);
+    const wire = readSchemaRef('/schemas/media-buy/create-media-buy-wire-response.json');
+    for (const branch of wire.oneOf) {
+      validateExtField(reachedDeclaration(branch, 'context', wire), '/schemas/core/context.json');
+    }
     return true;
   });
 

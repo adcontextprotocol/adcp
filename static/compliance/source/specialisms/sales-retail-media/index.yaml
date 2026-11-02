@@ -225,7 +225,7 @@ phases:
           and returns per-item approval status.
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         expected: |
@@ -311,7 +311,7 @@ phases:
           sponsored_placement_types and pricing options.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
@@ -368,7 +368,7 @@ phases:
           sponsored listings from the product feed.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
@@ -443,7 +443,7 @@ phases:
           for this item immediately.
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         expected: |
@@ -484,7 +484,7 @@ phases:
           in stock. The seller resumes serving sponsored listings for it.
         task: sync_catalogs
         schema_ref: "media-buy/sync-catalogs-request.json"
-        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        response_schema_ref: "media-buy/sync-catalogs-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_catalogs"
         stateful: true
         expected: |

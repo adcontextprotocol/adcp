@@ -9,25 +9,8 @@
   "allOf": [
     { "$ref": "/schemas/core/protocol-envelope.json" }
   ],
-  "discriminator": { "propertyName": "status" },
-  "oneOf": [
-    {
-      "description": "The request was recorded, or an existing request for the same key was returned.",
-      "required": ["status", "request"],
-      "properties": {
-        "status": { "type": "string", "const": "completed" }
-      },
-      "not": { "required": ["adcp_error"] }
-    },
-    {
-      "description": "The call could not be processed. Both envelope and payload error layers are present.",
-      "required": ["status", "adcp_error", "errors"],
-      "properties": {
-        "status": { "type": "string", "const": "failed" },
-        "errors": { "minItems": 1 }
-      }
-    }
-  ],
+  "required": ["request"],
+  "not": { "required": ["adcp_error"] },
   "properties": {
     "request": {
       "$ref": "/schemas/core/account-request-record.json"
@@ -36,7 +19,6 @@
       "type": "array",
       "items": { "$ref": "/schemas/core/error.json" }
     },
-    "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "additionalProperties": true,

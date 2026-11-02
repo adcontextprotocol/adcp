@@ -267,7 +267,7 @@ phases:
           manifest.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false
@@ -324,7 +324,7 @@ phases:
           with a build_variant_id per leaf and echoes keep_mode_applied.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false
@@ -391,7 +391,7 @@ phases:
           parent_build_variant_id set.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: true
@@ -449,7 +449,7 @@ phases:
           INVALID_REQUEST attributed to config.speaking_rate.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false

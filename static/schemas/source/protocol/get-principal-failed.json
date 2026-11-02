@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/protocol/get-principal-failed.json",
+  "title": "Get Principal - Failed",
+  "description": "Body of a failed get_principal response: a result of any kind the completed body allows, or a failed result that carries the errors.",
+  "x-status": "experimental",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "result": {
+      "oneOf": [
+        {
+          "$ref": "/schemas/protocol/get-principal-response.json#/properties/result/oneOf/0"
+        },
+        {
+          "$ref": "/schemas/protocol/get-principal-response.json#/properties/result/oneOf/1"
+        },
+        {
+          "$ref": "/schemas/protocol/get-principal-response.json#/properties/result/oneOf/2"
+        },
+        {
+          "title": "Failed principal read",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "failed"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "errors"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "result"
+  ],
+  "additionalProperties": true
+}

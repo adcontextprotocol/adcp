@@ -98,7 +98,7 @@ phases:
         title: "Discover a priced signal"
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         comply_scenario: signal_discovery
         sample_request:
@@ -234,7 +234,7 @@ phases:
         title: "Read back the persisted live deployment"
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         stateful: false
         sample_request:

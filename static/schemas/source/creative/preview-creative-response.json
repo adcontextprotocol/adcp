@@ -87,9 +87,6 @@
           "format": "date-time",
           "description": "ISO 8601 timestamp when preview links expire. **Optional.** Omit when preview URLs do not expire (some creative agents serve perpetually-valid preview URLs — e.g., signed asset URLs with no TTL, or session-scoped previews that the agent retires explicitly via revocation). When present, consumers MUST treat the URLs as invalid after this timestamp; when omitted, consumers MAY assume the preview URLs are valid until the creative agent revokes them out-of-band (no protocol-level revocation signal exists in 3.x — buyers requiring expiry guarantees SHOULD require sellers that publish `expires_at`)."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -98,17 +95,7 @@
         "response_type",
         "previews"
       ],
-      "additionalProperties": true,
-      "not": {
-        "properties": {
-          "status": {
-            "const": "submitted"
-          }
-        },
-        "required": [
-          "status"
-        ]
-      }
+      "additionalProperties": true
     },
     {
       "title": "PreviewCreativeBatchResponse",
@@ -246,9 +233,6 @@
           },
           "minItems": 1
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -257,17 +241,7 @@
         "response_type",
         "results"
       ],
-      "additionalProperties": true,
-      "not": {
-        "properties": {
-          "status": {
-            "const": "submitted"
-          }
-        },
-        "required": [
-          "status"
-        ]
-      }
+      "additionalProperties": true
     },
     {
       "title": "PreviewCreativeVariantResponse",
@@ -324,9 +298,6 @@
           "format": "date-time",
           "description": "ISO 8601 timestamp when preview links expire. **Optional** — omit for non-expiring preview URLs. See the top-level `PreviewCreativeResponse` branch for the full convention."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -336,39 +307,7 @@
         "variant_id",
         "previews"
       ],
-      "additionalProperties": true,
-      "not": {
-        "properties": {
-          "status": {
-            "const": "submitted"
-          }
-        },
-        "required": [
-          "status"
-        ]
-      }
-    },
-    {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
-      "title": "PreviewCreativeSubmitted",
-      "type": "object",
-      "description": "Async task envelope returned only when the preview_creative request set allow_async to true and rendering cannot complete inline. The buyer polls get_task_status with task_id; the completed preview response is the task result.",
-      "properties": {
-        "response_type": {
-          "type": "string",
-          "const": "submitted",
-          "description": "Preview-response discriminator for the asynchronous arm."
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": ["response_type"],
       "additionalProperties": true
     }
-  ],
-  "properties": {}
+  ]
 }

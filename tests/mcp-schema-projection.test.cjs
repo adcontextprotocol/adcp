@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const AjvDraft07 = require('ajv');
 const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
+const { readSourceSchemaDocument, sourceSchemaExists } = require('../scripts/wire-responses.cjs');
 const yaml = require('js-yaml');
 const semver = require('semver');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
@@ -245,7 +246,8 @@ function createValidator(AjvClass) {
 }
 
 test('complete reporting summary vectors agree across canonical, bundled, and MCP profiles', async t => {
-  const schemaPath = 'media-buy/get-reporting-status-response.json';
+  // The tool's wire response: completed reads and failed lookups.
+  const schemaPath = 'media-buy/get-reporting-status-wire-response.json';
   const variants = [
     [schemaPath, AjvDraft07],
     [`bundled/${schemaPath}`, AjvDraft07],
@@ -968,7 +970,7 @@ test('compact lifecycle routes every operational control and declares cross-item
     'disjoint_by_normalized_keyword_and_match_type'
   );
   const commitment = readJson(path.join(SOURCE_DIR, 'media-buy', 'media-buy-commitment-response.json'));
-  const bindingRule = commitment.oneOf[0].properties.purchase_bindings['x-adcp-validation']
+  const bindingRule = commitment.properties.purchase_bindings['x-adcp-validation']
     .verifier_constraints.complete_purchase_bijection;
   assert.equal(bindingRule.purchase_indexes, 'unique_contiguous_zero_based_range');
   assert.equal(bindingRule.product_id, 'equals_indexed_purchase.product_id');
@@ -1085,8 +1087,12 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   const projectedTaskStatus = readJson(
     path.join(PROJECTION_DIR, projectionManifest.tools.get_task_status.outputSchema)
   );
+  // The bound catches embedding the global task-result union (over 1 MB). The
+  // get_products rejected body types the six fields it shares with the
+  // completed body, which brings their targeting and execution-readiness
+  // schemas in: 191,085 bytes, against 62,625 on the base.
   assert.ok(
-    measureSchema(projectedTaskStatus).bytes < 100_000,
+    measureSchema(projectedTaskStatus).bytes < 200_000,
     'generic get_task_status output should not embed the global task-result union'
   );
 
@@ -1211,7 +1217,8 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
       const projectedPath = path.join(PROJECTION_DIR, relativePath);
       const sourcePath = path.join(SOURCE_DIR, relativePath);
       assert.ok(fs.existsSync(projectedPath), `${toolName}.${field} projection is missing`);
-      assert.ok(fs.existsSync(sourcePath), `${toolName}.${field} source schema is missing`);
+      // A tool's outputSchema is its wire response, which the schema build generates.
+      assert.ok(sourceSchemaExists(sourcePath, SOURCE_DIR), `${toolName}.${field} source schema is missing`);
       if (seen.has(relativePath)) continue;
       seen.add(relativePath);
 
@@ -1245,7 +1252,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
         paritySchemas.set(relativePath, {
           bytes: metrics.bytes,
           fixtures,
-          sourceSchema: readJson(sourcePath),
+          sourceSchema: readSourceSchemaDocument(sourcePath, SOURCE_DIR),
         });
       }
     }
@@ -1262,8 +1269,11 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // requests, reached from request_account and list_accounts (23,090,968 bytes
   // measured), so the cap moves to 23 MiB. Composing the protocol envelope
   // into every task response (every response bundles the envelope) also
-  // grows it; the 23 MiB cap holds both.
-  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // grows it; the 23 MiB cap holds both (23,815,187 bytes measured).
+  // Declaring task responses as status bodies, each output schema a
+  // generated status union, and typing the get_products rejected body's
+  // shared fields takes it to 24,229,447 bytes, so the cap moves to 24 MiB.
+  assert.ok(totalBytes < 24 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
@@ -1628,7 +1638,7 @@ test('rewriteEmbeddedResourceRefs unit: root-$id collision causes projection to 
 for (const [relativePath, expectedDefinition] of [
   ['compliance/comply-test-controller-request.json', 'external:core/product.json'],
   ['media-buy/get-products-request.json', 'external:media-buy/package-forecast-input.json'],
-  ['media-buy/get-products-response.json', 'external:core/product.json'],
+  ['media-buy/get-products-wire-response.json', 'external:core/product.json'],
 ]) {
   test(`${relativePath} uses embedded-resource refs without long root-anchored pointers`, () => {
     // Regression for #8041: cross-definition refs within bundled sub-schemas must

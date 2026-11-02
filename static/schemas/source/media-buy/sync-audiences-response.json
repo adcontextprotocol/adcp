@@ -204,9 +204,6 @@
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -226,101 +223,10 @@
             "required": [
               "task_id"
             ]
-          },
-          {
-            "properties": {
-              "status": {
-                "const": "submitted"
-              }
-            },
-            "required": [
-              "status"
-            ]
           }
         ]
       }
     },
-    {
-      "title": "SyncAudiencesError",
-      "description": "Error response - operation failed completely, no audiences were processed",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Operation-level errors that prevented processing any audiences (e.g., authentication failure, account not found, invalid request format)",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "audiences"
-            ]
-          },
-          {
-            "required": [
-              "sandbox"
-            ]
-          },
-          {
-            "required": [
-              "task_id"
-            ]
-          },
-          {
-            "properties": {
-              "status": {
-                "const": "submitted"
-              }
-            },
-            "required": [
-              "status"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
-      "title": "SyncAudiencesSubmitted",
-      "description": "Async task envelope returned when the whole sync operation cannot be confirmed before the response is emitted — for example, when the seller batches ingestion, when governance review gates the upload before matching can start, or when an upstream clean-room flow needs to settle before any per-audience result can be issued. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the audiences array with per-item action/status lands in the terminal result, not this envelope. Per-audience asynchronous matching (one audience in 'processing' while the rest of the sync resolves synchronously) belongs on the SyncAudiencesSuccess branch with status: processing on that item, not here. Matching latency on the per-audience status enum (processing → ready / too_small) is the common case; this envelope is the less-common operation-level case.",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "additionalProperties": true,
-      "not": {
-        "required": [
-          "audiences"
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/media-buy/sync-audiences-failed.json" }
+  ]
 }

@@ -37,6 +37,12 @@ const {
   MCP_PROTOCOL_VERSION,
   generateMcpSchemaProjection,
 } = require('./mcp-schema-projection.cjs');
+const {
+  taskStatusSchemas,
+  wireResponseRel,
+  generatedSchemaDocuments,
+  readSourceSchemaDocument,
+} = require('./wire-responses.cjs');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
@@ -1343,6 +1349,10 @@ function discoverTools(sourceDir) {
         .filter(g => g.isFile() && g.name.startsWith(`${toolBase}-async-response-`) && g.name.endsWith('.json'))
         .map(g => `${protocol}/${g.name}`)
         .sort();
+      // One body per envelope status; the build composes them into the
+      // tool's wire response (scripts/wire-responses.cjs), the schema a tool
+      // response validates against.
+      const statusSchemas = taskStatusSchemas(sourceDir, protocol, toolBase);
 
       tools.push({
         name: toolName,
@@ -1360,7 +1370,9 @@ function discoverTools(sourceDir) {
         ...(legacyFallback ? { legacy_fallback: legacyFallback } : {}),
         ...(supersededBy ? { superseded_by: supersededBy } : {}),
         request_schema: `${protocol}/${f.name}`,
-        response_schema: responseSchema,
+        response_schema: wireResponseRel(protocol, toolBase),
+        completed_response_schema: responseSchema,
+        status_schemas: statusSchemas,
         async_response_schemas: asyncVariants
       });
     }
@@ -1541,6 +1553,16 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       fs.writeFileSync(targetPath, content);
     }
   }
+
+  // At the tree root, publish the documents the build generates from the
+  // source: every tool's wire response (scripts/wire-responses.cjs).
+  if (fs.existsSync(path.join(sourceDir, 'enums', 'task-status.json'))) {
+    for (const [rel, schema] of generatedSchemaDocuments(sourceDir)) {
+      const targetPath = path.join(targetDir, ...rel.split('/'));
+      ensureDir(path.dirname(targetPath));
+      fs.writeFileSync(targetPath, transformPublishedSchemaText(JSON.stringify(schema), version));
+    }
+  }
 }
 
 function copyAsyncResponseRefsToCore(targetDir) {
@@ -1667,7 +1689,7 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
       }
 
       try {
-        let refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        let refContent = readSourceSchemaDocument(refPath, sourceDir);
         if (fragment) {
           if (!fragment.startsWith('/')) throw new Error(`Unsupported schema fragment: ${value}`);
           refContent = fragment
@@ -2333,7 +2355,12 @@ const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
 async function generateBundledSchemas(sourceDir, bundledDir, version) {
   ensureDir(bundledDir);
 
-  const schemaFiles = findSchemaFiles(sourceDir);
+  // Source documents plus the documents the build generates from them
+  // (every tool's wire response).
+  const schemaFiles = [
+    ...findSchemaFiles(sourceDir),
+    ...[...generatedSchemaDocuments(sourceDir).keys()].map(rel => path.join(sourceDir, ...rel.split('/'))),
+  ];
   let successCount = 0;
   let errorCount = 0;
 
@@ -2367,8 +2394,8 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
     if (!shouldBundle) continue;
 
     try {
-      // Read the schema
-      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+      // Read the schema (a wire response is generated, not on disk)
+      const schema = readSourceSchemaDocument(schemaPath, sourceDir);
 
       // Resolve all $refs. Schemas listed in IDENTITY_HOISTED_REFS are
       // written once to root $defs instead of being inlined at every

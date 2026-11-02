@@ -177,7 +177,7 @@ phases:
         title: "Discover product with vendor_metric_optimization capability"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: full_sales_flow
         stateful: false
@@ -238,7 +238,7 @@ phases:
         title: "Create media buy with valid vendor_metric optimization goal"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         auth:
@@ -301,7 +301,7 @@ phases:
         title: "Create media buy with target-less vendor_metric optimization goal"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         auth:
@@ -357,7 +357,7 @@ phases:
         title: "Submit goal with (vendor, metric_id) not in supported_metrics"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         expect_error: true
@@ -418,7 +418,7 @@ phases:
         title: "Submit goal with target.kind not in supported_targets"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         expect_error: true
@@ -480,7 +480,7 @@ phases:
         title: "Submit goal without matching vendor-scope committed_metrics entry"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         expect_error: true
@@ -539,7 +539,7 @@ phases:
         title: "Submit goal whose committed vendor metric is not reportable"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         expect_error: true

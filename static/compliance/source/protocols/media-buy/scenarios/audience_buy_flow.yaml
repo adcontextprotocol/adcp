@@ -145,7 +145,7 @@ phases:
         title: "Discover products that support audience targeting"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
@@ -181,7 +181,7 @@ phases:
         title: "Push a CRM audience with hashed email identifiers"
         task: sync_audiences
         schema_ref: "media-buy/sync-audiences-request.json"
-        response_schema_ref: "media-buy/sync-audiences-response.json"
+        response_schema_ref: "media-buy/sync-audiences-wire-response.json"
         doc_ref: "/media-buy/task-reference/sync_audiences"
         stateful: true
         expected: |
@@ -240,7 +240,7 @@ phases:
         title: "Create media buy with audience_include in targeting_overlay"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
@@ -288,7 +288,7 @@ phases:
         title: "Submit a buy whose targeting_overlay references a non-existent audience_id"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed

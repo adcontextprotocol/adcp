@@ -159,7 +159,7 @@ phases:
           and return action: created with a non-rejected status.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_lifecycle
         stateful: true
@@ -270,7 +270,7 @@ phases:
           VALIDATION_ERROR or INVALID_REQUEST is conformant.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_lifecycle
         stateful: false
@@ -324,7 +324,7 @@ phases:
           MUST reject. Either VALIDATION_ERROR or INVALID_REQUEST is conformant.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_lifecycle
         stateful: false
@@ -381,7 +381,7 @@ phases:
           mechanically by selecting a value from the published list.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_lifecycle
         stateful: false
@@ -438,7 +438,7 @@ phases:
           at sync_creatives time.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
+        response_schema_ref: "creative/sync-creatives-wire-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         comply_scenario: creative_lifecycle
         stateful: false
@@ -506,7 +506,7 @@ phases:
           a preview URL showing the assembled unit with the publisher's native chrome applied.
         task: preview_creative
         schema_ref: "creative/preview-creative-request.json"
-        response_schema_ref: "creative/preview-creative-response.json"
+        response_schema_ref: "creative/preview-creative-wire-response.json"
         doc_ref: "/creative/task-reference/preview_creative"
         comply_scenario: creative_flow
         requires_tool: preview_creative

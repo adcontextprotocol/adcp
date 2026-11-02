@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/verify-brand-claim-failed.json",
+  "title": "VerifyBrandClaimError",
+  "description": "Body of a failed verify_brand_claim response: operation-level errors, and none of the success fields. The completed body also admits this body.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
+  "properties": {
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "errors"
+  ],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "verification_status"
+        ]
+      },
+      {
+        "required": [
+          "claim_type"
+        ]
+      }
+    ]
+  }
+}

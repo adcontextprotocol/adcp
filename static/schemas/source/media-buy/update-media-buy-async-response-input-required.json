@@ -17,9 +17,6 @@
       ],
       "description": "Reason code indicating why input is needed"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

@@ -156,7 +156,7 @@ phases:
           snippet is returned.
         task: preview_creative
         schema_ref: "creative/preview-creative-request.json"
-        response_schema_ref: "creative/preview-creative-response.json"
+        response_schema_ref: "creative/preview-creative-wire-response.json"
         doc_ref: "/creative/task-reference/preview_creative"
         comply_scenario: creative_flow
         requires_tool: preview_creative
@@ -239,7 +239,7 @@ phases:
           rich media unit, and returning an ad tag the buyer can traffic.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false
@@ -306,7 +306,7 @@ phases:
           valuable — build once, get all sizes.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false
@@ -389,7 +389,7 @@ phases:
           creative_flow.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
-        response_schema_ref: "media-buy/build-creative-response.json"
+        response_schema_ref: "media-buy/build-creative-wire-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: false

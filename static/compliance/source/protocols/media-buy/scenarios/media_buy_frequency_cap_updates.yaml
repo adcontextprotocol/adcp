@@ -156,7 +156,7 @@ phases:
         title: "Require participation with a mutable root cap"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         sample_request:
@@ -198,7 +198,7 @@ phases:
         title: "Create two packages under one root cap"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         sample_request:
@@ -278,7 +278,7 @@ phases:
         title: "Replace the root cap through control_media_buy"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         stateful: true
         sample_request:
@@ -331,7 +331,7 @@ phases:
         title: "Reject adding a product that cannot join the root cap"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         expect_error: true
         negative_path: payload_well_formed
@@ -374,7 +374,7 @@ phases:
         title: "Clear the root cap and add the same product in one update"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
-        response_schema_ref: "media-buy/update-media-buy-response.json"
+        response_schema_ref: "media-buy/update-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/update_media_buy"
         stateful: true
         sample_request:
@@ -424,7 +424,7 @@ phases:
         title: "Reject a new root cap once the mix cannot share a counter"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         expect_error: true
         negative_path: payload_well_formed

@@ -173,9 +173,6 @@
             "additionalProperties": true
           }
         },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
@@ -190,37 +187,6 @@
         ]
       }
     },
-    {
-      "title": "GetRightsError",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "rights"
-            ]
-          }
-        ]
-      }
-    }
-  ],
-  "properties": {}
+    { "$ref": "/schemas/brand/get-rights-failed.json" }
+  ]
 }

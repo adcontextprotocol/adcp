@@ -138,7 +138,7 @@ phases:
           present.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
         stateful: false
@@ -202,7 +202,7 @@ phases:
           construct valid create_media_buy requests.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
         stateful: false
@@ -269,7 +269,7 @@ phases:
           missing, the buyer cannot complete the purchase.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
         stateful: false
@@ -343,7 +343,7 @@ phases:
         task: create_media_buy
         requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: temporal_validation
         expect_error: true
@@ -406,7 +406,7 @@ phases:
         task: create_media_buy
         requires_tool: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: temporal_validation
         expect_error: true

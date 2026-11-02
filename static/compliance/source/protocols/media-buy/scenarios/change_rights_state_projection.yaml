@@ -201,7 +201,7 @@ phases:
         title: "Reject a seller-managed right whose opaque condition is unevaluated"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         stateful: true
         expect_error: true
@@ -231,7 +231,7 @@ phases:
         title: "Exercise the active self-serve pause right"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         stateful: true
         sample_request:
@@ -317,7 +317,7 @@ phases:
         title: "Reject an active-only right in paused state"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         stateful: true
         expect_error: true
@@ -353,7 +353,7 @@ phases:
         title: "Reject a self-serve change outside its accepted bound"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
-        response_schema_ref: "media-buy/control-media-buy-response.json"
+        response_schema_ref: "media-buy/control-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/control_media_buy"
         stateful: true
         expect_error: true

@@ -116,7 +116,7 @@ phases:
         title: "Enumerate wholesale products"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
+        response_schema_ref: "media-buy/get-products-wire-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         expected: |
@@ -176,7 +176,7 @@ phases:
         title: "Enumerate wholesale signals"
         task: get_signals
         schema_ref: "signals/get-signals-request.json"
-        response_schema_ref: "signals/get-signals-response.json"
+        response_schema_ref: "signals/get-signals-wire-response.json"
         doc_ref: "/signals/tasks/get_signals"
         stateful: false
         expected: |
@@ -243,7 +243,7 @@ phases:
         title: "Create media buy with signal_targeting_groups"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
@@ -360,7 +360,7 @@ phases:
         title: "Submit a buy with an unadvertised product-local signal"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
+        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed

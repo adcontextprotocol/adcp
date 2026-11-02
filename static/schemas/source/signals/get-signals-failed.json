@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/signals/get-signals-failed.json",
+  "title": "Get Signals - Failed",
+  "description": "Body of a failed get_signals response: errors, with the completed body's fields declared by reference. A wholesale unchanged response carries the feed version and cache scope instead of errors.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "signals": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/signals"
+    },
+    "signal_pricing_group_rules": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/signal_pricing_group_rules"
+    },
+    "errors": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/errors"
+    },
+    "incomplete": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/incomplete"
+    },
+    "wholesale_feed_version": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/wholesale_feed_version"
+    },
+    "pricing_version": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/pricing_version"
+    },
+    "cache_scope": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/cache_scope"
+    },
+    "unchanged": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/unchanged"
+    },
+    "pagination": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/pagination"
+    },
+    "sandbox": {
+      "$ref": "/schemas/signals/get-signals-response.json#/properties/sandbox"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "if": {
+    "properties": {
+      "unchanged": {
+        "const": true
+      }
+    },
+    "required": [
+      "unchanged"
+    ]
+  },
+  "then": {
+    "description": "Wholesale-feed unchanged response: signals MUST be omitted; wholesale_feed_version and cache_scope MUST be present (echoed from the cached version).",
+    "required": [
+      "wholesale_feed_version",
+      "cache_scope"
+    ],
+    "not": {
+      "required": [
+        "signals"
+      ]
+    }
+  },
+  "else": {
+    "description": "Failed response: errors[] carries the terminal failure details; signals[] and cache_scope are not required because no signal result was produced.",
+    "required": [
+      "errors"
+    ]
+  },
+  "additionalProperties": true
+}

@@ -39,9 +39,6 @@
       "minimum": 0,
       "description": "Total number of creatives to process"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
