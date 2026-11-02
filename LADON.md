@@ -86,18 +86,22 @@ must state, for each new or changed field, enum value, task, union variant,
 requiredness or semantic rule, how it maps to the previous minor release of the
 same major:
 
-- droppable (and, for a mutating request, whether dropping changes what the
-  seller commits to);
-- moves (with the mapping);
-- refused (with the error); or
-- identity-bearing (Breaking, with the reduction and migration rule from
-  DR-0032).
+- **ignorable**: on an open schema, and a peer on the previous minor can
+  ignore it without committing to anything different;
+- **gated**: on an open schema, but a peer that ignores it would commit to
+  something different, with the refusal SDKs apply on a mutation and any
+  capability flag senders check;
+- **moves**: an exact equivalent in the previous minor, with the mapping; or
+- **correction**: a DR-0036 correction, with the spec text it restores.
 
 Look in the PR body, the changeset, or the docs migration page. A minor-release
 change with no stated pathway is `high`. A stated pathway with no cross-version
-conformance case and no tracked follow-up is `medium`. A mutation-side field
-declared "droppable" whose loss would change spend, targeting, caps or account
-identity is `high`, because it is a refusal mislabeled as droppable.
+conformance case and no tracked follow-up is `medium`. A field declared
+"ignorable" whose loss would change spend, targeting, caps, bidding, creative
+activation, measurement or account settings is `high`, because it is a gated
+change mislabeled as ignorable. An addition to a closed schema that DR-0036
+doesn't list as a correction, or a change to account or resource identity, is
+`high` in a minor: it waits for the next major.
 
 ### Mandatory: cite governance precedent
 
