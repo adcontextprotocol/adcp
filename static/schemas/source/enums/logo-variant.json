@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/logo-variant.json",
+  "title": "Logo Variant",
+  "description": "Variant of a logo: primary, secondary, icon, wordmark, or full-lockup.",
+  "type": "string",
+  "enum": [
+    "primary",
+    "secondary",
+    "icon",
+    "wordmark",
+    "full-lockup"
+  ]
+}

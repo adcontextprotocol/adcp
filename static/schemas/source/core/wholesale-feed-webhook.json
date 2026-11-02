@@ -61,8 +61,7 @@
       "description": "Opaque post-change version token for the affected wholesale feed. For collection_card.* and collection_catalog.bulk_change it carries the post-change list_collections collections_version of the unfiltered catalog (no selectors, no filters) for this cache_scope, so only a mirror bootstrapped from an unfiltered list_collections read can compare it. Store it only after applying the event. A stale mirror repairs with its last applied version; uncertain or bulk repair omits the conditional token."
     },
     "product_payload_view": {
-      "type": "string",
-      "enum": ["canonical", "legacy"],
+      "$ref": "/schemas/enums/product-payload-view.json",
       "description": "Product representation selected by the receiving notification config. Present on product.* fires; canonical uses canonical_product/canonical_pricing_options and legacy uses product/pricing_options."
     },
     "previous_wholesale_feed_version": {
@@ -70,11 +69,7 @@
       "description": "Opaque version token for the affected wholesale feed (for collection events, the unfiltered collections_version) before this change, when the seller can cheaply provide it. Receivers MAY use this to detect obvious gaps, but MUST NOT require it."
     },
     "cache_scope": {
-      "type": "string",
-      "enum": [
-        "public",
-        "account"
-      ],
+      "$ref": "/schemas/enums/cache-scope.json",
       "description": "Cache layer affected by this change. MUST equal event.payload.applies_to.scope. Mirrors the cache_scope returned by list_products / get_signals / list_collections for the affected feed."
     },
     "event": {

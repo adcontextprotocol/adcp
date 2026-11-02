@@ -21,8 +21,7 @@
       "description": "Renderer export or entry-point name used for this render."
     },
     "rendering_origin": {
-      "type": "string",
-      "enum": ["platform_native", "agent_approximation"],
+      "$ref": "/schemas/enums/rendering-origin.json",
       "description": "Informational implementation origin copied from the selected route. It does not grant authority."
     },
     "tracking_suppressed": {

@@ -46,7 +46,7 @@
         },
         "applies_to": {
           "type": "array",
-          "items": { "type": "string", "enum": ["account", "media_buy", "creative", "landing_page", "targeting", "delivery", "format"] },
+          "items": { "$ref": "/schemas/enums/acceptance-policy-subject.json" },
           "minItems": 1,
           "uniqueItems": true
         },

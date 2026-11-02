@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/governance-accounting-mode.json",
+  "title": "Governance Accounting Mode",
+  "description": "Controls which verified adjustments restore reusable plan headroom.",
+  "type": "string",
+  "enum": [
+    "gross_commitment",
+    "verified_net_cost"
+  ]
+}

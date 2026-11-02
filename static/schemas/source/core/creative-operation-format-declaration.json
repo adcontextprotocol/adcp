@@ -36,7 +36,7 @@
       "items": { "$ref": "/schemas/enums/channels.json" },
       "uniqueItems": true
     },
-    "seller_preference": { "type": "string", "enum": ["preferred", "accepted", "discouraged"] },
+    "seller_preference": { "$ref": "/schemas/enums/format-seller-preference.json" },
     "locale_policy": { "$ref": "/schemas/core/creative-locale-policy.json" },
     "canonical_formats_only": { "type": "boolean", "default": false },
     "experimental": { "type": "boolean", "default": false },

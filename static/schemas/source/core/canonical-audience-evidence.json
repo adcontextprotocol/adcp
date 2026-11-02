@@ -12,7 +12,7 @@
     "audience": { "$ref": "/schemas/core/audience-characteristic.json" },
     "relationship": { "type": "string", "enum": ["composition", "index", "reach_estimate"] },
     "value": { "type": "number", "minimum": 0 },
-    "unit": { "type": "string", "enum": ["fraction", "ratio", "count"] },
+    "unit": { "$ref": "/schemas/enums/audience-evidence-unit.json" },
     "baseline": {
       "type": "object",
       "properties": {
@@ -24,7 +24,7 @@
       "required": ["system", "population_id", "version"],
       "additionalProperties": false
     },
-    "evidence_type": { "type": "string", "enum": ["measured", "forecast", "seller_declared"] },
+    "evidence_type": { "$ref": "/schemas/enums/audience-evidence-type.json" },
     "methodology": { "$ref": "/schemas/enums/audience-evidence-methodology.json" },
     "subject_type": { "$ref": "/schemas/enums/audience-subject-type.json" },
     "resolution_method": { "$ref": "/schemas/enums/audience-resolution-method.json" },

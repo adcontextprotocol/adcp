@@ -169,13 +169,8 @@
           }
         },
         "parent_match_behavior": {
-          "type": "string",
-          "description": "Whether this signal definition supports treating a parent taxonomy node as matching descendant nodes for discovery/filtering or seller-side expansion. 'exact_only' means only explicitly listed node ids match. 'descendants_supported' means the seller can expand known, version-pinned parent nodes to descendants internally, typically by ORing the children in its execution system. 'unknown' means the provider has not declared parent-node behavior. This field is metadata about discovery/translation behavior, not a package targeting operator.",
-          "enum": [
-            "exact_only",
-            "descendants_supported",
-            "unknown"
-          ]
+          "$ref": "/schemas/enums/signal-parent-match-behavior.json",
+          "description": "Whether this signal definition supports treating a parent taxonomy node as matching descendant nodes for discovery/filtering or seller-side expansion. 'exact_only' means only explicitly listed node ids match. 'descendants_supported' means the seller can expand known, version-pinned parent nodes to descendants internally, typically by ORing the children in its execution system. 'unknown' means the provider has not declared parent-node behavior. This field is metadata about discovery/translation behavior, not a package targeting operator."
         }
       },
       "required": ["ref", "values"],
@@ -219,8 +214,7 @@
       "description": "Origin categories of the raw data used to compile the signal, aligned with IAB Data Transparency Standard source disclosure. Use 'panel' for respondent-panel or JIC-style audience sources. Offline and public-record sources require onboarder disclosure. Co-viewing projection and reconciliation of seller claims against a JIC or measurement vendor belong in measurement reporting/vendor metrics rather than package signal targeting."
     },
     "methodology": {
-      "type": "string",
-      "enum": ["observed", "declared", "derived", "inferred", "modeled"],
+      "$ref": "/schemas/enums/signal-methodology.json",
       "description": "How the signal's audience membership or attribute was determined. 'modeled' requires the modeling block."
     },
     "audience_expansion": {
@@ -232,13 +226,11 @@
       "description": "Whether the signal was expanded deterministically across devices of the same user, household, or business. Probabilistic cross-device expansion is modeling and should use methodology 'modeled' or the modeling block."
     },
     "refresh_cadence": {
-      "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"],
+      "$ref": "/schemas/enums/signal-refresh-cadence.json",
       "description": "Cadence at which the signal definition's underlying segment membership is refreshed."
     },
     "lookback_window": {
-      "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"],
+      "$ref": "/schemas/enums/signal-lookback-window.json",
       "description": "Time window in which a qualifying event can occur for inclusion."
     },
     "onboarder": {
@@ -260,8 +252,7 @@
           "type": "boolean"
         },
         "pre_onboarding_precision_level": {
-          "type": "string",
-          "enum": ["individual", "household", "business", "geography"]
+          "$ref": "/schemas/enums/signal-pre-onboarding-precision.json"
         }
       },
       "required": ["match_keys"],
@@ -311,8 +302,7 @@
       "description": "Declared GDPR Article 6 lawful basis or consent basis under which this signal's data is processed. For non-GDPR regimes, use countries, policy_categories, and disclosure fields to describe jurisdiction-specific obligations unless a future enum value applies."
     },
     "art9_basis": {
-      "type": "string",
-      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"],
+      "$ref": "/schemas/enums/gdpr-article-9-basis.json",
       "description": "GDPR Article 9 basis when restricted_attributes is non-empty and the signal is used in jurisdictions where Article 9 applies. Required by policy for applicable use cases rather than universally required at schema level because sensitivity and lawful basis are jurisdiction-relative."
     },
     "modeling": {
@@ -320,15 +310,13 @@
       "description": "Modeling disclosure for modeled data signals. Required when methodology is 'modeled' or audience_expansion is true. This describes data modeling and intentionally does not reuse creative provenance, which is content/render oriented.",
       "properties": {
         "method": {
-          "type": "string",
-          "enum": ["lookalike", "supervised", "embedding", "rules"]
+          "$ref": "/schemas/enums/signal-modeling-method.json"
         },
         "seed_source": {
           "type": "object",
           "properties": {
             "type": {
-              "type": "string",
-              "enum": ["first_party_crm", "panel", "declared_survey", "transactional", "behavioral"]
+              "$ref": "/schemas/enums/signal-training-data-type.json"
             },
             "provider_signed": {
               "type": "boolean",
@@ -347,8 +335,7 @@
           "description": "ISO 3166-1 alpha-2 country codes where the model's training data was collected."
         },
         "ai_act_risk_class": {
-          "type": "string",
-          "enum": ["minimal", "limited", "high_risk"],
+          "$ref": "/schemas/enums/ai-act-risk-class.json",
           "description": "EU AI Act risk classification self-declared by the provider. Prohibited-risk modeled signals must not be published as AdCP signal definitions."
         },
         "disclosure": {
@@ -392,8 +379,7 @@
                 "type": "array",
                 "description": "Rights supported by this channel.",
                 "items": {
-                  "type": "string",
-                  "enum": ["access", "rectification", "erasure", "portability", "objection"]
+                  "$ref": "/schemas/enums/data-subject-right.json"
                 },
                 "minItems": 1,
                 "uniqueItems": true

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-evidence-requirement-mode.json",
+  "title": "Audience Evidence Requirement Mode",
+  "description": "Whether an audience evidence constraint excludes products or only ranks them.",
+  "type": "string",
+  "enum": [
+    "required",
+    "preferred"
+  ]
+}

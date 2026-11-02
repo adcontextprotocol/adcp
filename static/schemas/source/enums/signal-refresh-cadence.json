@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-refresh-cadence.json",
+  "title": "Signal Refresh Cadence",
+  "description": "Cadence at which a signal's underlying segment membership is refreshed.",
+  "type": "string",
+  "enum": [
+    "intra_day",
+    "daily",
+    "weekly",
+    "monthly",
+    "bi_monthly",
+    "quarterly",
+    "bi_annually",
+    "annually"
+  ]
+}

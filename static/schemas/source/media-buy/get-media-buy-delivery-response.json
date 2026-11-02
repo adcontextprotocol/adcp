@@ -45,14 +45,7 @@
   ],
   "properties": {
     "notification_type": {
-      "type": "string",
-      "enum": [
-        "scheduled",
-        "final",
-        "delayed",
-        "adjusted",
-        "window_update"
-      ],
+      "$ref": "/schemas/enums/delivery-notification-type.json",
       "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = resending period with corrected data (same window), window_update = resending period with a wider measurement window (e.g., C3 superseding live, C7 superseding C3)"
     },
     "partial_data": {

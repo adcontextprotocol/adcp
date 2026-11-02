@@ -21,8 +21,7 @@
       "description": "The single mode that applies right now on this buy for this action. Singular because the buy has a concrete state, exactly one mode applies. Buyer SDKs branch on this to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback."
     },
     "task": {
-      "type": "string",
-      "enum": ["control_media_buy", "refine_proposals", "sync_creatives", "report_media_buy_issue"],
+      "$ref": "/schemas/enums/media-buy-action-task.json",
       "description": "Task for this resolved action: operational control, commercial refinement, creative lifecycle mutation, or seller-side issue reporting."
     },
     "sla": {

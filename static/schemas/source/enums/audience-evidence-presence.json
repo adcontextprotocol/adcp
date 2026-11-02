@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-evidence-presence.json",
+  "title": "Audience Evidence Presence",
+  "description": "Whether a requirement mode applies to the presence of evidence.",
+  "type": "string",
+  "enum": [
+    "required",
+    "when_available"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/acceptance-policy-subject.json",
+  "title": "Acceptance Policy Subject",
+  "description": "What an acceptance policy rule applies to.",
+  "type": "string",
+  "enum": [
+    "account",
+    "media_buy",
+    "creative",
+    "landing_page",
+    "targeting",
+    "delivery",
+    "format"
+  ]
+}

@@ -19,8 +19,7 @@
       "description": "found returns current state; failed means the reference could not be read."
     },
     "availability": {
-      "type": "string",
-      "enum": ["active", "suppressed"],
+      "$ref": "/schemas/enums/catalog-item-availability.json",
       "description": "Current buyer-authored overlay state. active does not imply seller approval or delivery eligibility."
     },
     "overlay_revision": {

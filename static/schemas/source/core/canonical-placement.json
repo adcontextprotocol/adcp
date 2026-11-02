@@ -89,13 +89,13 @@
     }
   },
   "properties": {
-    "kind": { "type": "string", "enum": ["publisher_ref", "seller_inline"] },
+    "kind": { "$ref": "/schemas/enums/placement-authority.json" },
     "placement_id": { "$ref": "/schemas/core/placement-id.json" },
     "publisher_domain": { "$ref": "/schemas/core/domain-name.json", "description": "For publisher_ref, the adagents.json publisher namespace. For seller_inline, optional inventory-publisher attribution only." },
     "seller_agent": { "$ref": "/schemas/core/seller-agent-ref.json", "description": "Defining sales agent for seller_inline identity. Recommended for new declarations; optional only to preserve legacy product-context placements." },
     "name": { "type": "string", "minLength": 1 },
     "description": { "type": "string" },
-    "mode": { "type": "string", "enum": ["targetable", "included"] },
+    "mode": { "$ref": "/schemas/enums/product-placement-mode.json" },
     "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "format_options": {
       "type": "array",

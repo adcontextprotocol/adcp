@@ -15,14 +15,7 @@
   "type": "object",
   "properties": {
     "notification_type": {
-      "type": "string",
-      "enum": [
-        "scheduled",
-        "final",
-        "delayed",
-        "adjusted",
-        "window_update"
-      ],
+      "$ref": "/schemas/enums/delivery-notification-type.json",
       "description": "Type of delivery-report notification: scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = corrected data for the same window, window_update = a wider measurement window supersedes a prior window."
     },
     "partial_data": {

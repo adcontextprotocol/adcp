@@ -136,11 +136,7 @@
             "description": "When this exchange occurred (ISO 8601)"
           },
           "type": {
-            "type": "string",
-            "enum": [
-              "request",
-              "response"
-            ],
+            "$ref": "/schemas/enums/history-entry-type.json",
             "description": "Whether this was a request from client or response from server"
           },
           "data": {

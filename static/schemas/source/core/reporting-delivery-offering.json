@@ -90,7 +90,7 @@
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
         "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
-        "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
+        "format": { "$ref": "/schemas/enums/reporting-file-format.json" },
         "access_mode": { "$ref": "/schemas/core/reporting-access-mode.json" },
         "producer_identity": {
           "type": "object",

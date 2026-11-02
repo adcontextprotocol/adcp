@@ -14,8 +14,7 @@
     "version": { "type": "string", "minLength": 1 },
     "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
     "decision_use": {
-      "type": "string",
-      "enum": ["recommendation", "eligibility", "package_construction"],
+      "$ref": "/schemas/enums/audience-evidence-decision-use.json",
       "description": "How this evidence affected the seller's decision. This is not targeting execution."
     },
     "evidence": {

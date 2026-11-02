@@ -61,13 +61,7 @@
           "description": "Brand industries."
         },
         "keller_type": {
-          "type": "string",
-          "enum": [
-            "master",
-            "sub_brand",
-            "endorsed",
-            "independent"
-          ],
+          "$ref": "/schemas/enums/brand-architecture-type.json",
           "description": "Brand architecture type: master (primary brand of house), sub_brand (carries parent name), endorsed (independent identity backed by parent), independent (operates separately)"
         },
         "logos": {
@@ -82,33 +76,15 @@
                 "description": "URL to the logo asset"
               },
               "orientation": {
-                "type": "string",
-                "enum": [
-                  "square",
-                  "horizontal",
-                  "vertical",
-                  "stacked"
-                ],
+                "$ref": "/schemas/enums/logo-orientation.json",
                 "description": "Logo aspect ratio orientation"
               },
               "background": {
-                "type": "string",
-                "enum": [
-                  "dark-bg",
-                  "light-bg",
-                  "transparent-bg"
-                ],
+                "$ref": "/schemas/enums/logo-background.json",
                 "description": "Background compatibility"
               },
               "variant": {
-                "type": "string",
-                "enum": [
-                  "primary",
-                  "secondary",
-                  "icon",
-                  "wordmark",
-                  "full-lockup"
-                ],
+                "$ref": "/schemas/enums/logo-variant.json",
                 "description": "Logo variant type"
               },
               "tags": {
@@ -258,12 +234,7 @@
                             "description": "Variable font weight axis range as [min, max]"
                           },
                           "style": {
-                            "type": "string",
-                            "enum": [
-                              "normal",
-                              "italic",
-                              "oblique"
-                            ],
+                            "$ref": "/schemas/enums/font-style.json",
                             "description": "CSS font-style"
                           }
                         },

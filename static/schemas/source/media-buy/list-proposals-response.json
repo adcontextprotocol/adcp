@@ -98,18 +98,9 @@
           "opportunity_id": {
             "$ref": "/schemas/core/opportunity-id.json"
           },
-          "status": { "type": "string", "enum": ["open", "closed"] },
+          "status": { "$ref": "/schemas/enums/opportunity-status.json" },
           "close_reason": {
-            "type": "string",
-            "enum": [
-              "accepted_with_seller",
-              "purchased_elsewhere",
-              "selected_alternative",
-              "not_pursued",
-              "budget_changed",
-              "timing_changed",
-              "other"
-            ]
+            "$ref": "/schemas/enums/opportunity-close-reason.json"
           },
           "later_proposals": { "$ref": "/schemas/core/later-proposals-state.json" }
         },

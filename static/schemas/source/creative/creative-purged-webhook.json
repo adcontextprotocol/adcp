@@ -38,11 +38,7 @@
       "x-entity": "creative"
     },
     "purge_kind": {
-      "type": "string",
-      "enum": [
-        "soft",
-        "hard"
-      ],
+      "$ref": "/schemas/enums/creative-purge-kind.json",
       "description": "`soft` — tombstone retained on `list_creatives` (with `include_purged: true`) for the seller's retention window (default 30 days, MUST match the `webhook_activity[]` retention rule). `hard` — no tombstone; the seller MUST NOT retain or echo the asset content elsewhere. `hard` is reserved for legal erasure or equivalent compelled destruction; sellers SHOULD default to `soft`."
     },
     "purged_at": {
@@ -60,11 +56,7 @@
       "description": "Human-readable supplement. Sellers MUST NOT include third-party PII or the asset content in this field — the field is meant for operational context, not asset preservation."
     },
     "initiator": {
-      "type": "string",
-      "enum": [
-        "seller",
-        "system"
-      ],
+      "$ref": "/schemas/enums/creative-change-initiator.json",
       "description": "Who initiated the purge. `seller` — explicit decision (legal team, content policy, takedown handler). `system` — automated retention sweep, storage policy enforcement. `buyer` never appears on this event — buyer-initiated destruction (if and when supported) is acknowledged on the `sync_creatives` response path."
     },
     "ext": {

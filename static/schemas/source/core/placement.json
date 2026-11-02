@@ -90,8 +90,7 @@
   },
   "properties": {
     "kind": {
-      "type": "string",
-      "enum": ["publisher_ref", "seller_inline"],
+      "$ref": "/schemas/enums/placement-authority.json",
       "description": "Placement authority discriminator. `publisher_ref` is publisher-catalog identity; `seller_inline` is sales-agent-authored identity."
     },
     "placement_id": {
@@ -116,8 +115,7 @@
       "description": "Detailed description of where and how the placement appears"
     },
     "mode": {
-      "type": "string",
-      "enum": ["targetable", "included"],
+      "$ref": "/schemas/enums/product-placement-mode.json",
       "description": "Required product-level relationship to this placement. targetable means the buyer may include the publisher-scoped ref in targeting_overlay.placement_selection; a creative may be routed there only after it is purchased. included means fixed product inventory: it cannot be independently selected, but across discovery, create, and update a selected request exactly equal to the product's complete included placement set is an inherent restatement and may be echoed on the package without overlay_support.placement_selection. A product containing any included placement MUST NOT declare overlay_support.placement_selection; partial selection requires a separately selectable product configuration. During the migration window ending 2026-11-25, buyers MAY tolerate legacy products that omit mode and treat them as targetable; after that date buyers SHOULD fail closed."
     },
     "tags": {

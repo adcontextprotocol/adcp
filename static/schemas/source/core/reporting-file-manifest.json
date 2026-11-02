@@ -21,7 +21,7 @@
       "required": ["start", "end", "source_timezone"],
       "additionalProperties": false
     },
-    "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
+    "format": { "$ref": "/schemas/enums/reporting-file-format.json" },
     "compression": { "$ref": "/schemas/core/reporting-file-compression.json" },
     "files": {
       "type": "array",

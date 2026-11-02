@@ -120,8 +120,7 @@
       "description": "Governance verdict: approved | denied | conditions. Renamed from `status` in 3.1 to free the top-level `status` key for the envelope task-status (TaskStatus) under MCP flat-on-the-wire serialization. The enum values are unchanged; only the property name moved."
     },
     "check_type": {
-      "type": "string",
-      "enum": ["intent", "execution"],
+      "$ref": "/schemas/enums/governance-check-type.json",
       "description": "Check shape that produced the verdict. Required for the cross-role governance_enforcement contract. Its presence selects the modern verdict-specific response rules; its absence selects the deprecated legacy 3.x compatibility shape. Intent checks may return conditions; execution checks are binary approved or denied."
     },
     "plan_id": {

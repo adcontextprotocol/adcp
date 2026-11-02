@@ -712,8 +712,7 @@
         },
         "countries": { "$ref": "#/$defs/countries" },
         "delegation_type": {
-          "type": "string",
-          "enum": ["direct", "delegated", "ad_network"]
+          "$ref": "/schemas/enums/delegation-type.json"
         },
         "exclusive": { "type": "boolean" },
         "signing_keys": {

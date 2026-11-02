@@ -39,8 +39,7 @@
             "description": "Product ID from a previous product-discovery response."
           },
           "action": {
-            "type": "string",
-            "enum": ["include", "omit", "more_like_this"],
+            "$ref": "/schemas/enums/product-refinement-action.json",
             "default": "include",
             "description": "Requested product-level action."
           },
@@ -66,8 +65,7 @@
             "description": "Proposal ID from a previous product-discovery response."
           },
           "action": {
-            "type": "string",
-            "enum": ["include", "omit", "finalize"],
+            "$ref": "/schemas/enums/proposal-refinement-action.json",
             "default": "include",
             "description": "Requested proposal-level action."
           },

@@ -110,8 +110,7 @@
                 "description": "Product ID from a previous get_products response."
               },
               "action": {
-                "type": "string",
-                "enum": ["include", "omit", "more_like_this"],
+                "$ref": "/schemas/enums/product-refinement-action.json",
                 "default": "include",
                 "description": "'include' (default): return this product with updated pricing and data. 'omit': exclude this product from the response. 'more_like_this': find additional products similar to this one (the original is also returned). Optional — when omitted, the seller treats the entry as action: 'include'."
               },
@@ -148,8 +147,7 @@
                 "description": "Proposal ID from a previous get_products response."
               },
               "action": {
-                "type": "string",
-                "enum": ["include", "omit", "finalize"],
+                "$ref": "/schemas/enums/proposal-refinement-action.json",
                 "default": "include",
                 "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold. New callers use refine_proposals with action revise for a draft successor or action finalize for a committed held successor; terminal feedback is available through decline_proposals.\n\nLegacy finalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
               },

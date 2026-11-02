@@ -63,8 +63,7 @@
       "description": "ISO 8601 timestamp when the seller observed the review decision. Distinct from `fired_at`, which may lag it."
     },
     "initiator": {
-      "type": "string",
-      "enum": ["seller", "system"],
+      "$ref": "/schemas/enums/creative-change-initiator.json",
       "description": "Who made the decision. `seller`: an explicit review decision. `system`: an automated seller-side review."
     },
     "ext": {

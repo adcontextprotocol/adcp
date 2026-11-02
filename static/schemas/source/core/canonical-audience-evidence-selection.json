@@ -9,7 +9,7 @@
     "snapshot_id": { "$ref": "/schemas/core/audience-evidence-snapshot-id.json" },
     "version": { "type": "string", "minLength": 1 },
     "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
-    "decision_use": { "type": "string", "enum": ["recommendation", "eligibility", "package_construction"] },
+    "decision_use": { "$ref": "/schemas/enums/audience-evidence-decision-use.json" },
     "evidence": { "$ref": "/schemas/core/canonical-audience-evidence.json" },
     "verified_attestation_digests": { "type": "array", "items": { "$ref": "/schemas/core/sha256-digest.json" }, "minItems": 1, "uniqueItems": true },
     "ext": { "$ref": "/schemas/core/ext.json" }

@@ -11,7 +11,7 @@
     "reporting_revision_id": { "$ref": "/schemas/core/reporting-revision-id.json" },
     "reporting_materialization_id": { "$ref": "/schemas/core/reporting-materialization-id.json" },
     "supersedes_reporting_receipt_id": { "$ref": "/schemas/core/reporting-receipt-id.json", "description": "Optional immutable rejected receipt replaced by this new receipt. It MUST name the caller's current rejected receipt for this obligation and revision; accepted current receipts are terminal." },
-    "status": { "type": "string", "enum": ["accepted", "rejected"] },
+    "status": { "$ref": "/schemas/enums/reporting-receipt-status.json" },
     "verification_profile": { "$ref": "/schemas/core/reporting-verification-profile.json" },
     "observed_row_count": { "type": "integer", "minimum": 0 },
     "observed_control_totals": {

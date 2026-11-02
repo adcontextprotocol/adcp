@@ -36,8 +36,7 @@
       "description": "Estimated relationship value, interpreted according to unit."
     },
     "unit": {
-      "type": "string",
-      "enum": ["fraction", "ratio", "count"],
+      "$ref": "/schemas/enums/audience-evidence-unit.json",
       "description": "composition uses fraction in [0,1], index uses ratio, and reach_estimate uses count."
     },
     "baseline": {
@@ -53,8 +52,7 @@
       "additionalProperties": false
     },
     "evidence_type": {
-      "type": "string",
-      "enum": ["measured", "forecast", "seller_declared"],
+      "$ref": "/schemas/enums/audience-evidence-type.json",
       "description": "Nature of the evidence. Independent verification is represented separately by attestation_refs and never inferred from this value."
     },
     "methodology": {

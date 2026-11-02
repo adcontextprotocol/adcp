@@ -283,12 +283,7 @@
                     "uniqueItems": true
                   },
                   "delegation_type": {
-                    "type": "string",
-                    "enum": [
-                      "direct",
-                      "delegated",
-                      "ad_network"
-                    ],
+                    "$ref": "/schemas/enums/delegation-type.json",
                     "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
                   },
                   "exclusive": {
@@ -368,12 +363,7 @@
                     "uniqueItems": true
                   },
                   "delegation_type": {
-                    "type": "string",
-                    "enum": [
-                      "direct",
-                      "delegated",
-                      "ad_network"
-                    ],
+                    "$ref": "/schemas/enums/delegation-type.json",
                     "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
                   },
                   "exclusive": {
@@ -453,12 +443,7 @@
                     "uniqueItems": true
                   },
                   "delegation_type": {
-                    "type": "string",
-                    "enum": [
-                      "direct",
-                      "delegated",
-                      "ad_network"
-                    ],
+                    "$ref": "/schemas/enums/delegation-type.json",
                     "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
                   },
                   "exclusive": {
@@ -538,12 +523,7 @@
                     "uniqueItems": true
                   },
                   "delegation_type": {
-                    "type": "string",
-                    "enum": [
-                      "direct",
-                      "delegated",
-                      "ad_network"
-                    ],
+                    "$ref": "/schemas/enums/delegation-type.json",
                     "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
                   },
                   "exclusive": {

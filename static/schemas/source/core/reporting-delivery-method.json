@@ -23,7 +23,7 @@
         "transport": { "$ref": "/schemas/core/reporting-transport.json", "description": "Storage transport such as s3, gcs, azure_blob, or sftp." },
         "orchestration": { "$ref": "#/definitions/ReportingOrchestration" },
         "destination": { "$ref": "/schemas/core/reporting-write-destination.json" },
-        "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"], "description": "Physical file format." }
+        "format": { "$ref": "/schemas/enums/reporting-file-format.json", "description": "Physical file format." }
       },
       "required": ["pattern", "transport", "orchestration", "destination", "format"],
       "additionalProperties": false

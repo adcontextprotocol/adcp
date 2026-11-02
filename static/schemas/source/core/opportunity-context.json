@@ -29,21 +29,11 @@
       "description": "Deadline by which the buyer needs a seller response."
     },
     "status": {
-      "type": "string",
-      "enum": ["open", "closed"],
+      "$ref": "/schemas/enums/opportunity-status.json",
       "description": "Whether the planning cycle remains open. On calls after initial creation, omission means no status update and MUST NOT reopen or close the opportunity implicitly, except that successful create_media_buy proposal execution explicitly infers accepted closure."
     },
     "close_reason": {
-      "type": "string",
-      "enum": [
-        "accepted_with_seller",
-        "purchased_elsewhere",
-        "selected_alternative",
-        "not_pursued",
-        "budget_changed",
-        "timing_changed",
-        "other"
-      ],
+      "$ref": "/schemas/enums/opportunity-close-reason.json",
       "description": "Why the opportunity closed. Required when status is closed."
     },
     "close_detail": {

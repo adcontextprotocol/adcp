@@ -2378,6 +2378,274 @@
         "exclusivity": {
           "$ref": "/schemas/enums/exclusivity.json",
           "description": "Whether a product offers exclusive access to its inventory (none, category, exclusive)"
+        },
+        "brand-architecture-type": {
+          "$ref": "/schemas/enums/brand-architecture-type.json",
+          "description": "Brand architecture type from Keller's theory: master, sub_brand, endorsed, or independent."
+        },
+        "logo-orientation": {
+          "$ref": "/schemas/enums/logo-orientation.json",
+          "description": "Aspect ratio orientation of a logo."
+        },
+        "logo-background": {
+          "$ref": "/schemas/enums/logo-background.json",
+          "description": "Background a logo is compatible with."
+        },
+        "logo-variant": {
+          "$ref": "/schemas/enums/logo-variant.json",
+          "description": "Variant of a logo: primary, secondary, icon, wordmark, or full-lockup."
+        },
+        "font-style": {
+          "$ref": "/schemas/enums/font-style.json",
+          "description": "CSS font-style value."
+        },
+        "brand-claim-type": {
+          "$ref": "/schemas/enums/brand-claim-type.json",
+          "description": "Kind of brand claim being verified."
+        },
+        "delegation-type": {
+          "$ref": "/schemas/enums/delegation-type.json",
+          "description": "Commercial relationship of an inventory path: direct, delegated, or ad_network."
+        },
+        "cache-scope": {
+          "$ref": "/schemas/enums/cache-scope.json",
+          "description": "Cache layer that a wholesale feed version or change applies to."
+        },
+        "product-payload-view": {
+          "$ref": "/schemas/enums/product-payload-view.json",
+          "description": "Product representation that a notification subscriber selects."
+        },
+        "feed-listing-outcome": {
+          "$ref": "/schemas/enums/feed-listing-outcome.json",
+          "description": "Whether a response carries a page or confirms that the selected feed is unchanged."
+        },
+        "buyer-asset-acceptance": {
+          "$ref": "/schemas/enums/buyer-asset-acceptance.json",
+          "description": "Whether a product accepts buyer-uploaded assets."
+        },
+        "format-seller-preference": {
+          "$ref": "/schemas/enums/format-seller-preference.json",
+          "description": "Soft routing hint within a product's accepted set of formats."
+        },
+        "video-orientation": {
+          "$ref": "/schemas/enums/video-orientation.json",
+          "description": "Orientation of a video: vertical, horizontal, or square."
+        },
+        "display-tag-delivery-type": {
+          "$ref": "/schemas/enums/display-tag-delivery-type.json",
+          "description": "How a display tag is delivered."
+        },
+        "creative-change-initiator": {
+          "$ref": "/schemas/enums/creative-change-initiator.json",
+          "description": "Who made a creative decision: seller or system."
+        },
+        "creative-purge-kind": {
+          "$ref": "/schemas/enums/creative-purge-kind.json",
+          "description": "Whether a creative purge retains a tombstone (soft) or not (hard)."
+        },
+        "transformer-variant-dimension": {
+          "$ref": "/schemas/enums/transformer-variant-dimension.json",
+          "description": "Dimension along which a transformer produces variants."
+        },
+        "rendering-origin": {
+          "$ref": "/schemas/enums/rendering-origin.json",
+          "description": "Informational implementation origin of a preview route."
+        },
+        "unmatched-locale-action": {
+          "$ref": "/schemas/enums/unmatched-locale-action.json",
+          "description": "Seller behavior when no locale variant matches."
+        },
+        "macro-unavailable-behavior": {
+          "$ref": "/schemas/enums/macro-unavailable-behavior.json",
+          "description": "Action when the responsible actor has no value for a macro."
+        },
+        "catalog-item-availability": {
+          "$ref": "/schemas/enums/catalog-item-availability.json",
+          "description": "Buyer-authored availability overlay state of a catalog item."
+        },
+        "catalog-item-availability-action": {
+          "$ref": "/schemas/enums/catalog-item-availability-action.json",
+          "description": "Action that changes a catalog item's availability overlay."
+        },
+        "placement-authority": {
+          "$ref": "/schemas/enums/placement-authority.json",
+          "description": "Who declares a placement's identity: a publisher catalog or the seller inline."
+        },
+        "product-placement-mode": {
+          "$ref": "/schemas/enums/product-placement-mode.json",
+          "description": "Product-level relationship to a placement: targetable or included."
+        },
+        "geojson-geometry-type": {
+          "$ref": "/schemas/enums/geojson-geometry-type.json",
+          "description": "GeoJSON geometry type of an area."
+        },
+        "date-range-support": {
+          "$ref": "/schemas/enums/date-range-support.json",
+          "description": "Whether delivery data can be filtered to arbitrary date ranges."
+        },
+        "audience-evidence-requirement-mode": {
+          "$ref": "/schemas/enums/audience-evidence-requirement-mode.json",
+          "description": "Whether an audience evidence constraint excludes products or only ranks them."
+        },
+        "audience-evidence-presence": {
+          "$ref": "/schemas/enums/audience-evidence-presence.json",
+          "description": "Whether a requirement mode applies to the presence of evidence."
+        },
+        "audience-evidence-type": {
+          "$ref": "/schemas/enums/audience-evidence-type.json",
+          "description": "Nature of audience evidence: measured, forecast, or seller_declared."
+        },
+        "audience-evidence-decision-use": {
+          "$ref": "/schemas/enums/audience-evidence-decision-use.json",
+          "description": "How audience evidence affected a seller's decision."
+        },
+        "audience-evidence-unit": {
+          "$ref": "/schemas/enums/audience-evidence-unit.json",
+          "description": "Unit of an audience evidence value."
+        },
+        "signal-targeting-mode": {
+          "$ref": "/schemas/enums/signal-targeting-mode.json",
+          "description": "Whether a signal is used to include or exclude."
+        },
+        "signal-selection-mode": {
+          "$ref": "/schemas/enums/signal-selection-mode.json",
+          "description": "Selection behavior of selectable signals on a product."
+        },
+        "signal-parent-match-behavior": {
+          "$ref": "/schemas/enums/signal-parent-match-behavior.json",
+          "description": "Whether a signal definition supports treating a parent taxonomy node as a match."
+        },
+        "signal-methodology": {
+          "$ref": "/schemas/enums/signal-methodology.json",
+          "description": "How a signal's audience membership or attribute was determined."
+        },
+        "signal-refresh-cadence": {
+          "$ref": "/schemas/enums/signal-refresh-cadence.json",
+          "description": "Cadence at which a signal's underlying segment membership is refreshed."
+        },
+        "signal-lookback-window": {
+          "$ref": "/schemas/enums/signal-lookback-window.json",
+          "description": "Time window in which a qualifying event can occur for inclusion in a signal."
+        },
+        "signal-pre-onboarding-precision": {
+          "$ref": "/schemas/enums/signal-pre-onboarding-precision.json",
+          "description": "Precision level of a signal's data before onboarding."
+        },
+        "signal-modeling-method": {
+          "$ref": "/schemas/enums/signal-modeling-method.json",
+          "description": "Method used to model a signal."
+        },
+        "signal-training-data-type": {
+          "$ref": "/schemas/enums/signal-training-data-type.json",
+          "description": "Type of data used to train a modeled signal."
+        },
+        "gdpr-article-9-basis": {
+          "$ref": "/schemas/enums/gdpr-article-9-basis.json",
+          "description": "Declared GDPR Article 9 basis for processing special category data."
+        },
+        "ai-act-risk-class": {
+          "$ref": "/schemas/enums/ai-act-risk-class.json",
+          "description": "EU AI Act risk classification that a provider declares."
+        },
+        "data-subject-right": {
+          "$ref": "/schemas/enums/data-subject-right.json",
+          "description": "Data subject right that a rights channel serves."
+        },
+        "task-sort-field": {
+          "$ref": "/schemas/enums/task-sort-field.json",
+          "description": "Field that a task list is sorted by."
+        },
+        "task-domain": {
+          "$ref": "/schemas/enums/task-domain.json",
+          "description": "AdCP domain that a task belongs to."
+        },
+        "media-buy-action-task": {
+          "$ref": "/schemas/enums/media-buy-action-task.json",
+          "description": "Task that performs a resolved media buy action."
+        },
+        "media-buy-issue-severity": {
+          "$ref": "/schemas/enums/media-buy-issue-severity.json",
+          "description": "Severity of a media buy issue."
+        },
+        "media-buy-issue-category": {
+          "$ref": "/schemas/enums/media-buy-issue-category.json",
+          "description": "Category of a media buy issue."
+        },
+        "delivery-notification-type": {
+          "$ref": "/schemas/enums/delivery-notification-type.json",
+          "description": "Type of a delivery report notification."
+        },
+        "delivery-report-window-kind": {
+          "$ref": "/schemas/enums/delivery-report-window-kind.json",
+          "description": "Semantics of a reach reporting window: cumulative, period, or rolling."
+        },
+        "opportunity-status": {
+          "$ref": "/schemas/enums/opportunity-status.json",
+          "description": "Whether a planning cycle remains open."
+        },
+        "opportunity-close-reason": {
+          "$ref": "/schemas/enums/opportunity-close-reason.json",
+          "description": "Why an opportunity closed."
+        },
+        "product-refinement-action": {
+          "$ref": "/schemas/enums/product-refinement-action.json",
+          "description": "Requested product-level refinement action."
+        },
+        "proposal-refinement-action": {
+          "$ref": "/schemas/enums/proposal-refinement-action.json",
+          "description": "Requested proposal-level refinement action."
+        },
+        "reporting-file-format": {
+          "$ref": "/schemas/enums/reporting-file-format.json",
+          "description": "Physical file format of delivered report files."
+        },
+        "reporting-receipt-status": {
+          "$ref": "/schemas/enums/reporting-receipt-status.json",
+          "description": "Whether a reporting consumer accepted or rejected a publication."
+        },
+        "governance-accounting-mode": {
+          "$ref": "/schemas/enums/governance-accounting-mode.json",
+          "description": "Controls which verified adjustments restore reusable plan headroom."
+        },
+        "plan-adjustment-type": {
+          "$ref": "/schemas/enums/plan-adjustment-type.json",
+          "description": "Commercial meaning of a plan adjustment."
+        },
+        "plan-adjustment-state": {
+          "$ref": "/schemas/enums/plan-adjustment-state.json",
+          "description": "Whether a buyer has verified or disputed a reported plan adjustment."
+        },
+        "plan-adjustment-evidence-type": {
+          "$ref": "/schemas/enums/plan-adjustment-evidence-type.json",
+          "description": "Type of evidence for a plan adjustment."
+        },
+        "delivery-reconciliation-status": {
+          "$ref": "/schemas/enums/delivery-reconciliation-status.json",
+          "description": "Comparison state between a buyer-attributed observation and a canonical seller statement."
+        },
+        "delivery-period-state": {
+          "$ref": "/schemas/enums/delivery-period-state.json",
+          "description": "Whether a governance reporting period remains actionable."
+        },
+        "governance-check-type": {
+          "$ref": "/schemas/enums/governance-check-type.json",
+          "description": "Whether a check was an intent check or an execution check."
+        },
+        "governance-delivery-source": {
+          "$ref": "/schemas/enums/governance-delivery-source.json",
+          "description": "Whether a buyer forwards the seller statement or reports its own measurement."
+        },
+        "acceptance-policy-subject": {
+          "$ref": "/schemas/enums/acceptance-policy-subject.json",
+          "description": "What an acceptance policy rule applies to."
+        },
+        "compliance-attestation-mode": {
+          "$ref": "/schemas/enums/compliance-attestation-mode.json",
+          "description": "Whether a recorded call attestation returns raw payloads or digests."
+        },
+        "property-feature-type": {
+          "$ref": "/schemas/enums/property-feature-type.json",
+          "description": "Type of values that a property feature produces."
         }
       }
     },

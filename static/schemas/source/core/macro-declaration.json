@@ -82,8 +82,7 @@
       "description": "Whether terminal delivery must fail if the declared operation cannot complete."
     },
     "unavailable_behavior": {
-      "type": "string",
-      "enum": ["preserve", "omit_parameter", "dialect_sentinel", "reject"],
+      "$ref": "/schemas/enums/macro-unavailable-behavior.json",
       "description": "Action when the responsible actor has no value. Omission is legal only for a complete URL query-value occurrence; dialect sentinels require a cited dialect rule."
     }
   },

@@ -29,8 +29,7 @@
     "requested_encoding": { "$ref": "/schemas/core/macro-encoding.json" },
     "required": { "type": "boolean" },
     "unavailable_behavior": {
-      "type": "string",
-      "enum": ["preserve", "omit_parameter", "dialect_sentinel", "reject"]
+      "$ref": "/schemas/enums/macro-unavailable-behavior.json"
     },
     "status": {
       "type": "string",

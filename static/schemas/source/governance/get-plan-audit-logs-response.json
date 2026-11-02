@@ -44,8 +44,7 @@
                 "description": "Total authorized budget from the plan."
               },
               "accounting_mode": {
-                "type": "string",
-                "enum": ["gross_commitment", "verified_net_cost"]
+                "$ref": "/schemas/enums/governance-accounting-mode.json"
               },
               "committed": {
                 "type": "number",
@@ -301,11 +300,7 @@
                   "description": "Governance verdict (present for check entries). Renamed from `status` in 3.1 alongside check-governance-response for vocabulary consistency."
                 },
                 "check_type": {
-                  "type": "string",
-                  "enum": [
-                    "intent",
-                    "execution"
-                  ],
+                  "$ref": "/schemas/enums/governance-check-type.json",
                   "description": "Whether the check was an intent check (orchestrator) or execution check (seller). Inferred from the fields present on the original check request. Present for check entries."
                 },
                 "mode": {
@@ -434,13 +429,7 @@
                   "x-entity": "seller_adjustment"
                 },
                 "adjustment_type": {
-                  "type": "string",
-                  "enum": [
-                    "decommitment",
-                    "refund",
-                    "credit",
-                    "makegood"
-                  ],
+                  "$ref": "/schemas/enums/plan-adjustment-type.json",
                   "description": "Commercial adjustment type (present for adjustment entries)."
                 },
                 "amount": {
@@ -497,11 +486,7 @@
                       "description": "Stable buyer-issued identifier for this observation."
                     },
                     "source": {
-                      "type": "string",
-                      "enum": [
-                        "seller_statement_copy",
-                        "buyer_measurement"
-                      ],
+                      "$ref": "/schemas/enums/governance-delivery-source.json",
                       "description": "Whether the buyer is forwarding the seller statement it received or reporting an independently measured observation. A forwarded seller statement is not independent evidence."
                     },
                     "observed_at": {
@@ -594,24 +579,21 @@
                   "description": "Outcome status (present for outcome entries)."
                 },
                 "delivery_reconciliation_status": {
-                  "type": "string",
-                  "enum": ["consistent", "measurement_variance", "disputed", "unmatched", "closed_unresolved"]
+                  "$ref": "/schemas/enums/delivery-reconciliation-status.json"
                 },
                 "delivery_period_state": {
-                  "type": "string",
-                  "enum": ["open", "closed"],
+                  "$ref": "/schemas/enums/delivery-period-state.json",
                   "description": "Operational governance-window state for this delivery observation."
                 },
                 "adjustment_state": {
-                  "type": "string",
-                  "enum": ["reported", "verified", "disputed"]
+                  "$ref": "/schemas/enums/plan-adjustment-state.json"
                 },
                 "verified_amount": { "type": "number", "minimum": 0 },
                 "evidence": {
                   "type": "object",
                   "properties": {
                     "evidence_id": { "type": "string", "x-entity": "governance_adjustment_evidence" },
-                    "evidence_type": { "type": "string", "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"] },
+                    "evidence_type": { "$ref": "/schemas/enums/plan-adjustment-evidence-type.json" },
                     "digest": { "$ref": "/schemas/core/sha256-digest.json" },
                     "issued_at": { "type": "string", "format": "date-time" }
                   },
@@ -705,12 +687,10 @@
                   "description": "Greater of seller-reported and buyer-observed spend while evidence is unresolved."
                 },
                 "delivery_reconciliation_status": {
-                  "type": "string",
-                  "enum": ["consistent", "measurement_variance", "disputed", "unmatched", "closed_unresolved"]
+                  "$ref": "/schemas/enums/delivery-reconciliation-status.json"
                 },
                 "delivery_period_state": {
-                  "type": "string",
-                  "enum": ["open", "closed"],
+                  "$ref": "/schemas/enums/delivery-period-state.json",
                   "description": "Whether the current governance reporting period remains actionable. Closure is not final billing."
                 },
                 "check_count": {

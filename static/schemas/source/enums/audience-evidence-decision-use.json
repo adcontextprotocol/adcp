@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-evidence-decision-use.json",
+  "title": "Audience Evidence Decision Use",
+  "description": "How audience evidence affected a seller's decision.",
+  "type": "string",
+  "enum": [
+    "recommendation",
+    "eligibility",
+    "package_construction"
+  ]
+}

@@ -119,8 +119,7 @@
       "description": "The source or target locale_variant_id used when neither strict RFC 4647 Lookup nor an explicit locale_fallbacks rule matches and unmatched_locale_action is serve_default."
     },
     "unmatched_locale_action": {
-      "type": "string",
-      "enum": ["serve_default", "do_not_serve"],
+      "$ref": "/schemas/enums/unmatched-locale-action.json",
       "description": "Required seller behavior when neither strict RFC 4647 Lookup nor an explicit locale_fallbacks rule matches. serve_default serves default_locale_variant_id; do_not_serve makes this creative ineligible for that opportunity."
     }
   },

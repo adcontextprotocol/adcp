@@ -107,11 +107,7 @@
           "description": "Stable buyer-issued identifier for this observation."
         },
         "source": {
-          "type": "string",
-          "enum": [
-            "seller_statement_copy",
-            "buyer_measurement"
-          ],
+          "$ref": "/schemas/enums/governance-delivery-source.json",
           "description": "Whether the buyer is forwarding the seller statement it received or reporting an independently measured observation. A forwarded seller statement is not independent evidence."
         },
         "observed_at": {

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/product-refinement-action.json",
+  "title": "Product Refinement Action",
+  "description": "Requested product-level refinement action.",
+  "type": "string",
+  "enum": [
+    "include",
+    "omit",
+    "more_like_this"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/gdpr-article-9-basis.json",
+  "title": "GDPR Article 9 Basis",
+  "description": "Declared GDPR Article 9 basis for processing special category data.",
+  "type": "string",
+  "enum": [
+    "explicit_consent",
+    "manifestly_made_public",
+    "substantial_public_interest",
+    "vital_interests"
+  ]
+}

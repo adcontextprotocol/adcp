@@ -15,7 +15,7 @@
     "reporting_adjustment_id": { "$ref": "/schemas/core/reporting-adjustment-id.json" },
     "adjusts_reporting_revision_id": { "$ref": "/schemas/core/reporting-revision-id.json" },
     "supersedes_reporting_receipt_id": { "$ref": "/schemas/core/reporting-receipt-id.json", "description": "Optional immutable rejected receipt replaced by this new receipt for the same adjustment. Accepted current receipts are terminal." },
-    "status": { "type": "string", "enum": ["accepted", "rejected"] },
+    "status": { "$ref": "/schemas/enums/reporting-receipt-status.json" },
     "observed_adjustment_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "Digest recomputed from the adjustment using its canonical evidence rule." },
     "rejection_codes": { "type": "array", "items": { "$ref": "#/definitions/ReportingAdjustmentRejectionCode" }, "minItems": 1, "uniqueItems": true },
     "observed_at": { "type": "string", "format": "date-time" },

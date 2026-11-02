@@ -148,11 +148,7 @@
       "description": "Human-readable supplement to `reason_code`. Free text from the seller. Sellers MUST NOT include third-party PII in this field."
     },
     "initiator": {
-      "type": "string",
-      "enum": [
-        "seller",
-        "system"
-      ],
+      "$ref": "/schemas/enums/creative-change-initiator.json",
       "description": "Who initiated the transition. `seller` — explicit decision by the seller (human reviewer, policy operator, takedown handler). `system` — automated seller-side process (processing pipeline, retention sweep, inactivity scan). `buyer` never appears on this event — buyer-initiated transitions are acknowledged on the `sync_creatives` response path and MUST NOT fire `creative.status_changed`."
     },
     "ext": {

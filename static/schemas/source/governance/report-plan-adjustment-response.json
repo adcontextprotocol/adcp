@@ -13,13 +13,11 @@
       "x-entity": "governance_adjustment"
     },
     "adjustment_state": {
-      "type": "string",
-      "enum": ["reported", "verified", "disputed"],
+      "$ref": "/schemas/enums/plan-adjustment-state.json",
       "description": "reported has seller evidence but no buyer decision; verified was accepted by the plan owner; disputed was rejected by the plan owner. Only verified records can affect net cost or headroom."
     },
     "adjustment_type": {
-      "type": "string",
-      "enum": ["decommitment", "refund", "credit", "makegood"]
+      "$ref": "/schemas/enums/plan-adjustment-type.json"
     },
     "amount": {
       "type": "object",
@@ -38,7 +36,7 @@
     "plan_summary": {
       "type": "object",
       "properties": {
-        "accounting_mode": { "type": "string", "enum": ["gross_commitment", "verified_net_cost"] },
+        "accounting_mode": { "$ref": "/schemas/enums/governance-accounting-mode.json" },
         "gross_committed": { "type": "number", "minimum": 0 },
         "adjustments_reported": { "type": "number", "minimum": 0 },
         "adjustments_verified": { "type": "number", "minimum": 0 },

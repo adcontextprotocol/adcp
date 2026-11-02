@@ -84,8 +84,7 @@
       "x-entity": "seller_adjustment"
     },
     "adjustment_type": {
-      "type": "string",
-      "enum": ["decommitment", "refund", "credit", "makegood"],
+      "$ref": "/schemas/enums/plan-adjustment-type.json",
       "description": "Commercial meaning. Verified decommitments restore headroom in every mode; verified refunds and credits restore it only in verified_net_cost mode; makegoods never restore cash headroom."
     },
     "amount": {
@@ -128,8 +127,7 @@
           "x-entity": "governance_adjustment_evidence"
         },
         "evidence_type": {
-          "type": "string",
-          "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"]
+          "$ref": "/schemas/enums/plan-adjustment-evidence-type.json"
         },
         "digest": { "$ref": "/schemas/core/sha256-digest.json" },
         "issued_at": { "type": "string", "format": "date-time" }

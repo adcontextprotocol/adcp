@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/creative-change-initiator.json",
+  "title": "Creative Change Initiator",
+  "description": "Who made a creative decision: seller or system.",
+  "type": "string",
+  "enum": [
+    "seller",
+    "system"
+  ]
+}

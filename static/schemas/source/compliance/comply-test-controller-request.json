@@ -746,11 +746,7 @@
                 "description": "Maximum number of calls to return. The response carries `total_count` and `truncated` so the runner can detect overflow."
               },
               "attestation_mode": {
-                "type": "string",
-                "enum": [
-                  "raw",
-                  "digest"
-                ],
+                "$ref": "/schemas/enums/compliance-attestation-mode.json",
                 "default": "raw",
                 "description": "Requested response shape per recorded call. `raw` (default) returns full payload — the load-bearing assertion target for arbitrary `payload_must_contain` paths, and the existing v2.0.0 contract. `digest` returns only `payload_digest_sha256` + `payload_length` + `content_type` + optional `identifier_match_proofs[]`, so privacy-conscious adopters can support `upstream_traffic` conformance without raw-payload disclosure. Whether digest mode satisfies a given adopter's data-handling obligations (GDPR processor responsibilities, internal data-classification policy, contractual restrictions) is for that adopter's counsel to determine — the spec doesn't promise digest mode clears any specific legal bar. Synthetic-vectors-only still applies (see UpstreamTrafficSuccess top-level description in comply-test-controller-response.json): digest mode reduces what the runner sees, but the controller must still operate on synthetic test data, not production traffic — running queries against production payloads would let a runner with a precomputed digest set learn membership of arbitrary identifiers in the adopter's user base. Adopters MAY unilaterally downgrade a `raw` request to `digest` when their policy requires it; the response's per-call `attestation_mode` field echoes what was actually returned. Storyboards that strictly require raw introspection set `attestation_mode_required: \"raw\"` on their `upstream_traffic` check — calls returned in digest mode then grade not_applicable rather than failing."
               },
@@ -1252,11 +1248,7 @@
           "description": "Reason for rejection. Used by force_creative_status and force_media_buy_status when status = rejected."
         },
         "purge_kind": {
-          "type": "string",
-          "enum": [
-            "soft",
-            "hard"
-          ],
+          "$ref": "/schemas/enums/creative-purge-kind.json",
           "description": "Purge mode for force_creative_purge. soft retains a list_creatives tombstone; hard removes the creative entirely."
         },
         "reason_code": {
@@ -1400,12 +1392,7 @@
           "description": "Measurement window semantics to attach to the simulated reach and frequency values. Used by simulate_delivery. When present, sellers MUST populate `reach_window` on the delivery row so buyers can determine the window semantics (cumulative vs. period vs. rolling). Omitting this param produces a row with no `reach_window` — valid per schema but sum-unsafe. Mirrors the `reach_window` shape in delivery-metrics.json.",
           "properties": {
             "kind": {
-              "type": "string",
-              "enum": [
-                "cumulative",
-                "period",
-                "rolling"
-              ],
+              "$ref": "/schemas/enums/delivery-report-window-kind.json",
               "description": "Window kind. `cumulative` — no period field required. `period` and `rolling` — period field REQUIRED."
             },
             "period": {

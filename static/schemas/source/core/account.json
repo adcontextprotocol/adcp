@@ -190,14 +190,7 @@
           ]
         },
         "format": {
-          "type": "string",
-          "enum": [
-            "jsonl",
-            "csv",
-            "parquet",
-            "avro",
-            "orc"
-          ],
+          "$ref": "/schemas/enums/reporting-file-format.json",
           "description": "File format for delivered files. Parquet, Avro, and ORC use internal compression (the top-level compression field is ignored for these formats).",
           "default": "jsonl"
         },

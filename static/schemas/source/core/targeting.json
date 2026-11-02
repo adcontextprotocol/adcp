@@ -392,8 +392,7 @@
             "description": "Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buyer has already calculated isochrones (via TravelTime, Mapbox, etc.) or has custom boundaries. When geometry is provided, lat/lng are not required.",
             "properties": {
               "type": {
-                "type": "string",
-                "enum": ["Polygon", "MultiPolygon"],
+                "$ref": "/schemas/enums/geojson-geometry-type.json",
                 "description": "GeoJSON geometry type."
               },
               "coordinates": {

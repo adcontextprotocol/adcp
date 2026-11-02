@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/delivery-reconciliation-status.json",
+  "title": "Delivery Reconciliation Status",
+  "description": "Comparison state between a buyer-attributed observation and a canonical seller statement.",
+  "type": "string",
+  "enum": [
+    "consistent",
+    "measurement_variance",
+    "disputed",
+    "unmatched",
+    "closed_unresolved"
+  ]
+}

@@ -328,12 +328,7 @@
                   "description": "AdCP profile for an acknowledgement.",
                   "properties": {
                     "delegation_type": {
-                      "type": "string",
-                      "enum": [
-                        "direct",
-                        "delegated",
-                        "ad_network"
-                      ],
+                      "$ref": "/schemas/enums/delegation-type.json",
                       "description": "Optional operator-side assertion of the commercial relationship, for sellers.json-style cross-checking. When present it MUST equal the publisher's delegation_type; a mismatch fails the acknowledgement (state 'mismatch'). Omit to defer entirely to the publisher."
                     }
                   },

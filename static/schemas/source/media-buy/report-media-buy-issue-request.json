@@ -40,22 +40,10 @@
       "$ref": "/schemas/core/creative-id.json"
     },
     "severity": {
-      "type": "string",
-      "enum": [
-        "critical",
-        "warning"
-      ]
+      "$ref": "/schemas/enums/media-buy-issue-severity.json"
     },
     "category": {
-      "type": "string",
-      "enum": [
-        "malicious_creative",
-        "wrong_creative",
-        "brand_safety",
-        "tracking",
-        "delivery",
-        "other"
-      ]
+      "$ref": "/schemas/enums/media-buy-issue-category.json"
     },
     "description": {
       "type": "string",

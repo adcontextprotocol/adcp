@@ -158,13 +158,7 @@
           "type": "object",
           "properties": {
             "claim_type": {
-              "type": "string",
-              "enum": [
-                "subsidiary",
-                "parent",
-                "property",
-                "trademark"
-              ],
+              "$ref": "/schemas/enums/brand-claim-type.json",
               "description": "Echoes the request item's claim_type for caller-side routing."
             },
             "status": {

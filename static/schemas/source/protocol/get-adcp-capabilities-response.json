@@ -2976,8 +2976,7 @@
                 "x-max-length-4.0": 128
               },
               "type": {
-                "type": "string",
-                "enum": ["binary", "quantitative", "categorical"],
+                "$ref": "/schemas/enums/property-feature-type.json",
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
@@ -3031,8 +3030,7 @@
                 "x-max-length-4.0": 128
               },
               "type": {
-                "type": "string",
-                "enum": ["binary", "quantitative", "categorical"],
+                "$ref": "/schemas/enums/property-feature-type.json",
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
@@ -3341,14 +3339,7 @@
               "type": "array",
               "description": "Which variant_axis.dimension values this agent supports.",
               "items": {
-                "type": "string",
-                "enum": [
-                  "voice",
-                  "theme",
-                  "best_of_n",
-                  "transformer_config",
-                  "custom"
-                ]
+                "$ref": "/schemas/enums/transformer-variant-dimension.json"
               },
               "uniqueItems": true
             },
@@ -3414,8 +3405,7 @@
                     "x-max-length-4.0": 128
                   },
                   "rendering_origin": {
-                    "type": "string",
-                    "enum": ["platform_native", "agent_approximation"],
+                    "$ref": "/schemas/enums/rendering-origin.json",
                     "description": "Informational implementation origin. platform_native means the route uses the serving platform's preview machinery; agent_approximation means the agent renders an approximation. Neither value grants authority without a publisher preview_provider delegation."
                   }
                 },

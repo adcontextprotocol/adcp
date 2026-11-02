@@ -25,8 +25,7 @@
       "x-entity": "catalog_item"
     },
     "action": {
-      "type": "string",
-      "enum": ["suppress", "restore"],
+      "$ref": "/schemas/enums/catalog-item-availability-action.json",
       "description": "Action from the request."
     },
     "status": {
@@ -35,8 +34,7 @@
       "description": "applied means the requested overlay transition completed, including replacement or removal of an existing expires_at; unchanged means the item was already in the requested buyer-availability state with the same expiry; failed means no transition was applied."
     },
     "availability": {
-      "type": "string",
-      "enum": ["active", "suppressed"],
+      "$ref": "/schemas/enums/catalog-item-availability.json",
       "description": "Persisted buyer-authored state after an applied or unchanged result."
     },
     "overlay_revision": {

@@ -23,8 +23,7 @@
       "description": "Required optimistic-concurrency token obtained from item_availability_states. Revision 0 is the initial active state. The seller MUST compare this value atomically with the write and return CONFLICT without mutation when it differs from current state."
     },
     "action": {
-      "type": "string",
-      "enum": ["suppress", "restore"],
+      "$ref": "/schemas/enums/catalog-item-availability-action.json",
       "description": "suppress makes the item and known derived creative variants ineligible immediately; restore removes the buyer-authored suppression but does not bypass seller controls."
     },
     "reason": {

@@ -30,8 +30,7 @@
       "description": "The source or target locale variant used after strict Lookup and explicit fallback rules both miss when unmatched_locale_action is serve_default."
     },
     "unmatched_locale_action": {
-      "type": "string",
-      "enum": ["serve_default", "do_not_serve"],
+      "$ref": "/schemas/enums/unmatched-locale-action.json",
       "description": "Final action after strict Lookup and explicit locale_fallbacks both miss."
     },
     "locale_matching": {

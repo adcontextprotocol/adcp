@@ -146,8 +146,7 @@
       "description": "BCP 47 language tag for legacy plain-string and plain-array content in this document. Readers assume en when omitted."
     },
     "keller_type": {
-      "type": "string",
-      "enum": ["master", "sub_brand", "endorsed", "independent"],
+      "$ref": "/schemas/enums/brand-architecture-type.json",
       "description": "Brand architecture type from Keller's theory. master: primary brand of house. sub_brand: carries parent name (Nike SB). endorsed: independent identity backed by parent (Air Jordan 'by Nike'). independent: operates separately (Converse under Nike, Inc.)"
     },
     "logo": {
@@ -164,18 +163,15 @@
           "description": "URL to the logo asset"
         },
         "orientation": {
-          "type": "string",
-          "enum": ["square", "horizontal", "vertical", "stacked"],
+          "$ref": "/schemas/enums/logo-orientation.json",
           "description": "Logo aspect ratio orientation. square: ~1:1, horizontal: wide, vertical: tall, stacked: vertically arranged elements"
         },
         "background": {
-          "type": "string",
-          "enum": ["dark-bg", "light-bg", "transparent-bg"],
+          "$ref": "/schemas/enums/logo-background.json",
           "description": "Background compatibility. dark-bg: use on dark backgrounds, light-bg: use on light backgrounds, transparent-bg: has transparent background"
         },
         "variant": {
-          "type": "string",
-          "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+          "$ref": "/schemas/enums/logo-variant.json",
           "description": "Logo variant type. primary: main logo, secondary: alternative, icon: symbol only, wordmark: text only, full-lockup: complete logo"
         },
         "tags": {
@@ -286,8 +282,7 @@
           "description": "Variable font weight axis range as [min, max] (e.g., [100, 900]). Use instead of weight for variable fonts."
         },
         "style": {
-          "type": "string",
-          "enum": ["normal", "italic", "oblique"],
+          "$ref": "/schemas/enums/font-style.json",
           "description": "CSS font-style"
         }
       },

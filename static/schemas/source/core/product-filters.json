@@ -462,9 +462,8 @@
         ],
         "properties": {
           "targeting_mode": {
-            "type": "string",
+            "$ref": "/schemas/enums/signal-targeting-mode.json",
             "description": "Desired use of this signal on the product. 'include' requires the product option to allow use in an any group. 'exclude' requires the product option to allow use in a none group.",
-            "enum": ["include", "exclude"],
             "default": "include"
           }
         }
@@ -541,8 +540,7 @@
             "description": "Pre-computed GeoJSON geometry defining the proximity boundary",
             "properties": {
               "type": {
-                "type": "string",
-                "enum": ["Polygon", "MultiPolygon"],
+                "$ref": "/schemas/enums/geojson-geometry-type.json",
                 "description": "GeoJSON geometry type"
               },
               "coordinates": {

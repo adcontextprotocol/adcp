@@ -12,8 +12,7 @@
       "description": "Default slots for video_vast canonical. Buyer ships a VAST tag (URL or inline XML, VAST 2.x-4.x) plus an optional clickthrough URL (which falls back to the VAST `ClickThrough` element when omitted). Tracking events are inherent to VAST and don't require explicit slots."
     },
     "orientation": {
-      "type": "string",
-      "enum": ["vertical", "horizontal", "square"]
+      "$ref": "/schemas/enums/video-orientation.json"
     },
     "aspect_ratio": {
       "$ref": "/schemas/core/aspect-ratio.json"

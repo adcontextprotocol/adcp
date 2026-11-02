@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-evidence-unit.json",
+  "title": "Audience Evidence Unit",
+  "description": "Unit of an audience evidence value.",
+  "type": "string",
+  "enum": [
+    "fraction",
+    "ratio",
+    "count"
+  ]
+}

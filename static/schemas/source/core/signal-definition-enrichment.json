@@ -102,8 +102,7 @@
           }
         },
         "parent_match_behavior": {
-          "type": "string",
-          "enum": ["exact_only", "descendants_supported", "unknown"]
+          "$ref": "/schemas/enums/signal-parent-match-behavior.json"
         }
       },
       "required": ["ref", "values"],
@@ -144,8 +143,7 @@
       }
     },
     "methodology": {
-      "type": "string",
-      "enum": ["observed", "declared", "derived", "inferred", "modeled"]
+      "$ref": "/schemas/enums/signal-methodology.json"
     },
     "audience_expansion": {
       "type": "boolean"
@@ -154,12 +152,10 @@
       "type": "boolean"
     },
     "refresh_cadence": {
-      "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"]
+      "$ref": "/schemas/enums/signal-refresh-cadence.json"
     },
     "lookback_window": {
-      "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"]
+      "$ref": "/schemas/enums/signal-lookback-window.json"
     },
     "onboarder": {
       "type": "object",
@@ -179,8 +175,7 @@
           "type": "boolean"
         },
         "pre_onboarding_precision_level": {
-          "type": "string",
-          "enum": ["individual", "household", "business", "geography"]
+          "$ref": "/schemas/enums/signal-pre-onboarding-precision.json"
         }
       },
       "required": ["match_keys"],
@@ -202,23 +197,20 @@
       "description": "Data provider's declared GDPR Article 6 lawful basis or consent basis for the underlying signal definition, projected into this get_signals response row when requested. Sellers and federating agents that pass through another provider's signal MUST NOT substitute their own processing basis for the provider-declared basis."
     },
     "art9_basis": {
-      "type": "string",
-      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"],
+      "$ref": "/schemas/enums/gdpr-article-9-basis.json",
       "description": "Data provider's declared GDPR Article 9 basis for the underlying signal definition when special-category data is involved and Article 9 applies, projected into this get_signals response row when requested. Sellers and federating agents that pass through another provider's signal MUST NOT substitute their own Article 9 basis for the provider-declared basis."
     },
     "modeling": {
       "type": "object",
       "properties": {
         "method": {
-          "type": "string",
-          "enum": ["lookalike", "supervised", "embedding", "rules"]
+          "$ref": "/schemas/enums/signal-modeling-method.json"
         },
         "seed_source": {
           "type": "object",
           "properties": {
             "type": {
-              "type": "string",
-              "enum": ["first_party_crm", "panel", "declared_survey", "transactional", "behavioral"]
+              "$ref": "/schemas/enums/signal-training-data-type.json"
             },
             "provider_signed": {
               "type": "boolean",
@@ -236,8 +228,7 @@
           }
         },
         "ai_act_risk_class": {
-          "type": "string",
-          "enum": ["minimal", "limited", "high_risk"]
+          "$ref": "/schemas/enums/ai-act-risk-class.json"
         },
         "disclosure": {
           "$ref": "/schemas/core/signal-modeling-disclosure.json"
@@ -276,8 +267,7 @@
               "rights": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "enum": ["access", "rectification", "erasure", "portability", "objection"]
+                  "$ref": "/schemas/enums/data-subject-right.json"
                 },
                 "minItems": 1,
                 "uniqueItems": true
