@@ -18,8 +18,7 @@
       "description": "Default slots for image_carousel. The `cards` slot's value in the manifest is an array of [card-asset](/schemas/core/assets/card-asset.json) objects; `min` / `max` constrain card count."
     },
     "card_aspect_ratio": {
-      "type": "string",
-      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "$ref": "/schemas/core/aspect-ratio.json",
       "description": "Aspect ratio shared across all cards (e.g., '1:1', '1.91:1', '4:5')."
     },
     "min_cards": {

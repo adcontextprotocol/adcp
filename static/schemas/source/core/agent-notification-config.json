@@ -6,11 +6,8 @@
   "type": "object",
   "properties": {
     "subscriber_id": {
-      "type": "string",
-      "description": "Buyer- or registry-supplied identifier for this agent-level subscription endpoint. This is the stable logical key within the authenticated caller's agent-level notification config set: re-sending the same subscriber_id replaces that caller's subscriber URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload so multi-subscriber consumers can route by endpoint. MUST be unique within the submitted `notification_configs[]` array.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Buyer- or registry-supplied identifier for this agent-level subscription endpoint. This is the stable logical key within the authenticated caller's agent-level notification config set: re-sending the same subscriber_id replaces that caller's subscriber URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload so multi-subscriber consumers can route by endpoint. MUST be unique within the submitted `notification_configs[]` array."
     },
     "url": {
       "type": "string",
@@ -66,9 +63,8 @@
           "maxItems": 1
         },
         "credentials": {
-          "type": "string",
-          "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only.",
-          "minLength": 32
+          "$ref": "/schemas/core/webhook-auth-credential.json",
+          "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only."
         }
       },
       "required": [

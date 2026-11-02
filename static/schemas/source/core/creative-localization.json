@@ -42,11 +42,8 @@
       "description": "Identity and locale of the source variant. Its asset payload is the parent creative's top-level `assets` object. Source identifies production provenance; it is not implicitly the serving default.",
       "properties": {
         "locale_variant_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Buyer-assigned stable identity for the source locale variant. This is a separate namespace from build_variant_id and the served execution variant_id.",
-          "x-entity": "creative_locale_variant"
+          "$ref": "/schemas/core/creative-locale-variant-id.json",
+          "description": "Buyer-assigned stable identity for the source locale variant. This is a separate namespace from build_variant_id and the served execution variant_id."
         },
         "locale": {
           "$ref": "/schemas/core/locale-tag.json"
@@ -62,11 +59,8 @@
         "type": "object",
         "properties": {
           "locale_variant_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives, list_creatives, and localized delivery reporting.",
-            "x-entity": "creative_locale_variant"
+            "$ref": "/schemas/core/creative-locale-variant-id.json",
+            "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives, list_creatives, and localized delivery reporting."
           },
           "locale": {
             "$ref": "/schemas/core/locale-tag.json"
@@ -109,11 +103,8 @@
             "description": "Canonical concrete BCP 47 range matched against progressively truncated requested ranges. Wildcards are not supported."
           },
           "locale_variant_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "description": "Source or target locale variant to serve when this explicit fallback rule matches.",
-            "x-entity": "creative_locale_variant"
+            "$ref": "/schemas/core/creative-locale-variant-id.json",
+            "description": "Source or target locale variant to serve when this explicit fallback rule matches."
           }
         },
         "required": ["language_range", "locale_variant_id"],
@@ -124,11 +115,8 @@
       "uniqueItems": true
     },
     "default_locale_variant_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "The source or target locale_variant_id used when neither strict RFC 4647 Lookup nor an explicit locale_fallbacks rule matches and unmatched_locale_action is serve_default.",
-      "x-entity": "creative_locale_variant"
+      "$ref": "/schemas/core/creative-locale-variant-id.json",
+      "description": "The source or target locale_variant_id used when neither strict RFC 4647 Lookup nor an explicit locale_fallbacks rule matches and unmatched_locale_action is serve_default."
     },
     "unmatched_locale_action": {
       "type": "string",

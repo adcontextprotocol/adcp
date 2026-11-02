@@ -203,12 +203,10 @@
                       "format": "date-time"
                     },
                     "measurement_window": {
-                      "type": "string",
-                      "maxLength": 50
+                      "$ref": "/schemas/core/measurement-window-id.json"
                     },
                     "supersedes_window": {
-                      "type": "string",
-                      "maxLength": 50
+                      "$ref": "/schemas/core/measurement-window-id.json"
                     },
                     "metric_values": {
                       "type": "array",

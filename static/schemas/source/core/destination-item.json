@@ -34,15 +34,11 @@
       "description": "Geographic coordinates of the destination.",
       "properties": {
         "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
+          "$ref": "/schemas/core/latitude.json",
           "description": "Latitude in decimal degrees (WGS 84)."
         },
         "lng": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
+          "$ref": "/schemas/core/longitude.json",
           "description": "Longitude in decimal degrees (WGS 84)."
         }
       },

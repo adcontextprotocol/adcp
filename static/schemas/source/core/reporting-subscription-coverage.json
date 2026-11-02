@@ -17,11 +17,7 @@
   },
   "properties": {
     "subscription_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "x-entity": "reporting_subscription"
+      "$ref": "/schemas/core/reporting-subscription-id.json"
     },
     "subscription_version": { "type": "integer", "minimum": 1 },
     "status": {

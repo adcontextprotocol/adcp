@@ -695,8 +695,7 @@
                   "type": "object",
                   "properties": {
                     "identifier_value_sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$",
+                      "$ref": "/schemas/core/identifier-value-digest.json",
                       "description": "Echo of one digest from `params.identifier_value_digests` so the runner can pair this proof with the identifier it queried."
                     },
                     "found": {

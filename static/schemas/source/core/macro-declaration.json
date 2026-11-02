@@ -24,8 +24,7 @@
       "description": "Identifier unique within the enclosing asset, used to correlate validation results."
     },
     "token": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/macro-token.json",
       "description": "Exact byte-preserved token expression at this occurrence, including delimiters."
     },
     "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
@@ -35,13 +34,11 @@
       "description": "Authority-controlled registry or mapping URI. Required for IAB VAST, IAB DAAST, and vendor dialects."
     },
     "dialect_revision": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/macro-dialect-revision.json",
       "description": "Immutable registry/mapping revision, release, commit, or digest. Required for IAB VAST, IAB DAAST, and vendor dialects."
     },
     "dialect_semantic": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/macro-dialect-semantic.json",
       "description": "Exact semantic identifier in the cited dialect, such as `CACHEBUSTING`, `PLAYERSTATE`, or a documented vendor name. This is not inferred from token spelling."
     },
     "mapping_status": { "$ref": "/schemas/enums/macro-mapping-status.json" },

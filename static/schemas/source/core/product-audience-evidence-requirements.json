@@ -76,9 +76,7 @@
             "properties": {
               "type": { "type": "string", "const": "agent" },
               "agent_url": {
-                "type": "string",
-                "format": "uri",
-                "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+                "$ref": "/schemas/core/canonical-https-url.json"
               },
               "ext": { "$ref": "/schemas/core/ext.json" }
             },
@@ -90,9 +88,7 @@
             "properties": {
               "type": { "type": "string", "const": "origin" },
               "origin": {
-                "type": "string",
-                "format": "uri",
-                "pattern": "^https://[^/?#@]+$"
+                "$ref": "/schemas/core/https-origin.json"
               },
               "ext": { "$ref": "/schemas/core/ext.json" }
             },

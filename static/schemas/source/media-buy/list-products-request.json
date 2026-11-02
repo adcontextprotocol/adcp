@@ -16,8 +16,7 @@
       "description": "Optional replay key accepted uniformly on read calls."
     },
     "context_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/mcp-compatibility-context-id.json",
       "description": "MCP compatibility field: servers ignore this value; A2A uses transport-native Message/Task contextId."
     },
     "context": {
@@ -44,7 +43,7 @@
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },
-    "cursor": { "type": "string", "minLength": 1 },
+    "cursor": { "$ref": "/schemas/core/page-cursor.json" },
     "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
     "if_feed_version": {
       "type": "string",

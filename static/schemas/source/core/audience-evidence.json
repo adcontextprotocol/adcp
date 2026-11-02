@@ -6,16 +6,12 @@
   "type": "object",
   "properties": {
     "evidence_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Stable provider-scoped identifier for the logical evidence series across versions.",
-      "x-entity": "audience_evidence"
+      "$ref": "/schemas/core/audience-evidence-id.json",
+      "description": "Stable provider-scoped identifier for the logical evidence series across versions."
     },
     "snapshot_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Seller-scoped immutable snapshot identifier. It MUST never be reused for different content.",
-      "x-entity": "audience_evidence_snapshot"
+      "$ref": "/schemas/core/audience-evidence-snapshot-id.json",
+      "description": "Seller-scoped immutable snapshot identifier. It MUST never be reused for different content."
     },
     "version": {
       "type": "string",
@@ -23,8 +19,7 @@
       "description": "Provider version of this evidence snapshot."
     },
     "content_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 of the RFC 8785 (JCS) canonical evidence core with content_digest and attestation_refs omitted. Attestation references are excluded so independently issued credentials can be attached without changing the immutable evidence snapshot and without creating a recursive digest. This digest is required even when snapshot_id is present so buyers can detect identifier reuse or catalog drift."
     },
     "audience": {
@@ -114,7 +109,7 @@
                     "properties": {
                       "type": { "const": "resource" },
                       "resource_type": { "const": "https://adcontextprotocol.org/claims/subjects/audience-evidence" },
-                      "content_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+                      "content_digest": { "$ref": "/schemas/core/sha256-digest.json" }
                     },
                     "required": ["type", "resource_type", "content_digest"]
                   }

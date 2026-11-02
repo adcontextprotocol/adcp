@@ -172,8 +172,7 @@
                     "description": "Optional only for an AgenticAdvertising.org community-registry format entry fetched from the configured registry origin. Points to a pinned browser-ESM OSS renderer package export that provides a non-authoritative reference presentation. Registry review and contract fixtures bind the named export to the enclosing format's input contract (its canonical format kind, manifest shape, constraints, and declared macros); renderer package versions and format revisions have independent lifecycles. Display metadata and property scope do not affect that compatibility binding. Non-JavaScript clients use hosted preview_creative or display the manifest. Publisher-origin catalogs and seller product declarations do not use this field: publishers describe placement-specific chrome with placements[].presentation_ref and grant route-specific preview authority with placements[].preview_provider."
                   },
                   "format_revision": {
-                    "type": "string",
-                    "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)$",
+                    "$ref": "/schemas/core/format-revision.json",
                     "description": "Registry-managed revision of this community format entry's input contract. Required when reference_renderer is present, but independent of any reference-renderer package version or legacy reference_renderer.format_revision annotation. A contract update may retain an existing renderer pin when that export still passes the updated declaration's contract fixtures."
                   }
                 },
@@ -595,8 +594,7 @@
                     "type": "array",
                     "description": "Signal IDs this agent is authorized to resell. Resolved against the top-level signals array in this file",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[a-zA-Z0-9_-]+$"
+                      "$ref": "/schemas/core/signal-local-id.json"
                     },
                     "minItems": 1
                   }
@@ -625,8 +623,7 @@
                     "type": "array",
                     "description": "Signal tags this agent is authorized for. Agent can resell all signals with these tags",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[a-z0-9_-]+$"
+                      "$ref": "/schemas/core/signal-tag.json"
                     },
                     "minItems": 1
                   }

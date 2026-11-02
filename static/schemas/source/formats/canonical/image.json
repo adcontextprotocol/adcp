@@ -149,8 +149,7 @@
       "description": "Inclusive maximum accepted logical height for responsive image slots. May be one-sided; when min_height is also declared, max_height MUST be >= min_height. Omitted bounds follow the enclosing declaration's technical_requirements_complete assertion."
     },
     "aspect_ratio": {
-      "type": "string",
-      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "$ref": "/schemas/core/aspect-ratio.json",
       "description": "Optional aspect ratio constraint (e.g., '1.91:1', '1:1'). When provided alongside `width`/`height`, must agree. When used with `sizes[]` or responsive ranges, narrows accepted entries to those matching the aspect ratio."
     },
     "max_file_size_kb": {

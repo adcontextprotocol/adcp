@@ -14,8 +14,8 @@
   "properties": {
     "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
     "dialect_namespace": { "type": "string", "format": "uri" },
-    "dialect_revision": { "type": "string", "minLength": 1, "x-max-length-4.0": 128 },
-    "dialect_semantic": { "type": "string", "minLength": 1, "x-max-length-4.0": 128 },
+    "dialect_revision": { "$ref": "/schemas/core/macro-dialect-revision.json", "x-max-length-4.0": 128 },
+    "dialect_semantic": { "$ref": "/schemas/core/macro-dialect-semantic.json", "x-max-length-4.0": 128 },
     "mapping_status": {
       "type": "string",
       "enum": ["verified_universal", "dialect_defined"]

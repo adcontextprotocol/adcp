@@ -17,9 +17,9 @@
   "properties": {
     "contract_version": { "type": "string", "enum": ["1.0", "1.1"], "description": "1.1 adds immutable official closes with adjustments_only correction semantics for Reliable Reporting 1.0. Version 1.0 remains accepted for compatibility with the preceding experimental managed-reporting contract." },
     "media_type": { "type": "string", "const": "application/vnd.adcp.reporting-definition+json" },
-    "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
+    "report_definition_id": { "$ref": "/schemas/core/report-definition-id.json" },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "grain": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "grain": { "$ref": "/schemas/core/reporting-grain.json" },
     "source": {
       "type": "object",
       "properties": {
@@ -63,7 +63,7 @@
     "restatement_policy": {
       "type": "object",
       "properties": {
-        "source_requery_duration": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" },
+        "source_requery_duration": { "$ref": "/schemas/core/iso8601-duration.json" },
         "emit_only_on_content_change": { "type": "boolean", "const": true },
         "official_correction_mode": { "type": "string", "const": "adjustments_only", "description": "Once an official revision is published it is immutable and cannot be superseded. Later source corrections are separate reporting-adjustment records applied to a later accounting period." }
       },
@@ -77,7 +77,7 @@
           {
             "type": "object",
             "properties": {
-              "finality_policy_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
+              "finality_policy_id": { "$ref": "/schemas/core/finality-policy-id.json" },
               "basis": { "type": "string", "const": "source_final" },
               "source_signal": { "type": "string", "minLength": 1, "maxLength": 512 }
             },
@@ -87,9 +87,9 @@
           {
             "type": "object",
             "properties": {
-              "finality_policy_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
+              "finality_policy_id": { "$ref": "/schemas/core/finality-policy-id.json" },
               "basis": { "type": "string", "const": "contractual_cutoff" },
-              "duration_after_period_end": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
+              "duration_after_period_end": { "$ref": "/schemas/core/iso8601-duration.json" }
             },
             "required": ["finality_policy_id", "basis", "duration_after_period_end"],
             "additionalProperties": false
@@ -97,10 +97,10 @@
           {
             "type": "object",
             "properties": {
-              "finality_policy_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
+              "finality_policy_id": { "$ref": "/schemas/core/finality-policy-id.json" },
               "basis": { "type": "string", "const": "stabilized" },
-              "minimum_age": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" },
-              "unchanged_for": { "type": "string", "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$" }
+              "minimum_age": { "$ref": "/schemas/core/iso8601-duration.json" },
+              "unchanged_for": { "$ref": "/schemas/core/iso8601-duration.json" }
             },
             "required": ["finality_policy_id", "basis", "minimum_age", "unchanged_for"],
             "additionalProperties": false

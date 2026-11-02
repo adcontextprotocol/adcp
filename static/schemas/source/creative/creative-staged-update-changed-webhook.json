@@ -12,11 +12,8 @@
       "description": "Sender-generated key stable across retries of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity. Distinct from `notification_id`."
     },
     "notification_id": {
-      "type": "string",
-      "description": "Stable identifier for this logical outcome, used to correlate fires to current snapshot state. Stable across re-emissions of the same outcome; a later outcome on the same creative receives a new id.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/notification-id.json",
+      "description": "Stable identifier for this logical outcome, used to correlate fires to current snapshot state. Stable across re-emissions of the same outcome; a later outcome on the same creative receives a new id."
     },
     "notification_type": {
       "type": "string",
@@ -29,11 +26,8 @@
       "description": "ISO 8601 timestamp when the seller initiated this fire. Distinct from `observed_at`."
     },
     "subscriber_id": {
-      "type": "string",
-      "description": "Identifies which `notification_configs[]` entry on the recipient account is receiving this fire. Echoed verbatim from the entry's `subscriber_id`.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Identifies which `notification_configs[]` entry on the recipient account is receiving this fire. Echoed verbatim from the entry's `subscriber_id`."
     },
     "account_id": {
       "type": "string",

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/iso8601-duration.json",
+  "title": "ISO 8601 Duration",
+  "description": "ISO 8601 duration with at least one component, such as PT15M or P1D. PT0S is allowed.",
+  "type": "string",
+  "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+}

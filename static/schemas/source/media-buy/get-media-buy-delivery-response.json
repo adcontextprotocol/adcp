@@ -111,7 +111,7 @@
         "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_revision" },
         "row_count": { "type": "integer", "minimum": 0 },
         "control_totals": { "type": "array", "items": { "$ref": "/schemas/core/reporting-control-total.json" } },
-        "content_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "SHA-256 of RFC 8785 JCS of {reporting_revision_id,row_count,control_totals,reporting_rows}, where reporting_rows is the complete ordered sequence concatenated across every cursor page; identical to reporting_revision.revision_content_sha256." }
+        "content_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "SHA-256 of RFC 8785 JCS of {reporting_revision_id,row_count,control_totals,reporting_rows}, where reporting_rows is the complete ordered sequence concatenated across every cursor page; identical to reporting_revision.revision_content_sha256." }
       },
       "required": ["reporting_revision_id", "row_count", "control_totals", "content_sha256"],
       "additionalProperties": false
@@ -433,8 +433,7 @@
                       "description": "ISO 8601 timestamp at which this package's data became final. Present only when `is_final: true`. Anchors reconciliation and (when later defined) dispute-window clocks against the buy's `measurement_terms.billing_measurement.measurement_window`."
                     },
                     "measurement_window": {
-                      "type": "string",
-                      "maxLength": 50,
+                      "$ref": "/schemas/core/measurement-window-id.json",
                       "description": "Which measurement window this data represents, referencing a window_id from the product's reporting_capabilities.measurement_windows. For broadcast: 'live', 'c3', 'c7'. When absent, the data is not windowed (standard digital reporting). When present with is_final: false, a later report for the same period will provide a wider window or more complete data.",
                       "examples": [
                         "live",
@@ -443,8 +442,7 @@
                       ]
                     },
                     "supersedes_window": {
-                      "type": "string",
-                      "maxLength": 50,
+                      "$ref": "/schemas/core/measurement-window-id.json",
                       "description": "Which measurement window this data replaces. Present on window_update notifications to indicate progression (e.g., 'live' when reporting C3 data that supersedes live-only numbers). Absent on the first report for a period. Buyers should replace stored data for the superseded window with this report's data.",
                       "examples": [
                         "live",
@@ -939,10 +937,8 @@
                                 "x-entity": "spot_airing"
                               },
                               "creative_id": {
-                                "type": "string",
-                                "minLength": 1,
-                                "description": "Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment. For library-backed sellers this is the sync_creatives identifier; inline-only sellers use the packages[].creatives creative_id.",
-                                "x-entity": "creative"
+                                "$ref": "/schemas/core/creative-id.json",
+                                "description": "Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment. For library-backed sellers this is the sync_creatives identifier; inline-only sellers use the packages[].creatives creative_id."
                               },
                               "spot_status": {
                                 "x-added-in": "3.3.0",
@@ -1080,8 +1076,7 @@
                         "type": "object",
                         "properties": {
                           "date": {
-                            "type": "string",
-                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                            "$ref": "/schemas/core/calendar-date.json",
                             "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this package's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
                           },
                           "impressions": {
@@ -1197,8 +1192,7 @@
                   "description": "Whether the slice data is final for this window. Same semantics as the per-package is_final flag — when false, a later read may return revised numbers for the same window as measurement matures (broadcast C3 → C7, post-IVT filtering, etc.)."
                 },
                 "measurement_window": {
-                  "type": "string",
-                  "maxLength": 50,
+                  "$ref": "/schemas/core/measurement-window-id.json",
                   "description": "Which measurement-window stage this slice represents (e.g., 'live', 'c3', 'c7'), referencing a window_id from the product's reporting_capabilities.measurement_windows. Absent when the data is not phased."
                 }
               },
@@ -1216,8 +1210,7 @@
               "type": "object",
               "properties": {
                 "date": {
-                  "type": "string",
-                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "$ref": "/schemas/core/calendar-date.json",
                   "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this media buy's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
                 },
                 "impressions": {

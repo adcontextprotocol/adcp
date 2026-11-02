@@ -29,9 +29,7 @@
       "$ref": "/schemas/core/canonical-account-ref.json"
     },
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "revision": {
       "type": "integer",
@@ -39,10 +37,7 @@
       "description": "Required optimistic-concurrency revision from the latest MediaBuy snapshot."
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Replace the human-readable MediaBuy name as revision-checked operational metadata. This display label is not an identifier, financial reference, or change to the accepted commercial terms."
     },
     "paused": {

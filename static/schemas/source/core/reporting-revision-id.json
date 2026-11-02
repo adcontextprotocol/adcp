@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-revision-id.json",
+  "title": "Reporting Revision ID",
+  "description": "Identifier of one immutable report publication. Distinct from a package delivery revision and from provider-native versions.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+  "x-entity": "reporting_revision"
+}

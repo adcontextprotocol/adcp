@@ -21,10 +21,7 @@
           "x-entity": "media_buy"
         },
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "pattern": "\\S",
+          "$ref": "/schemas/core/media-buy-name.json",
           "description": "Persisted human-readable name after the update. When update_media_buy supplied name, the seller MUST return the stored value here; a seller that could not apply the replacement SHOULD return the prior unchanged value rather than silently dropping the field. This display label is not an identifier or financial reference."
         },
         "media_buy_status": {

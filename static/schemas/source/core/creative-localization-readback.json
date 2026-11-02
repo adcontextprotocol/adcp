@@ -26,11 +26,8 @@
   "type": "object",
   "properties": {
     "default_locale_variant_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "The source or target locale variant used after strict Lookup and explicit fallback rules both miss when unmatched_locale_action is serve_default.",
-      "x-entity": "creative_locale_variant"
+      "$ref": "/schemas/core/creative-locale-variant-id.json",
+      "description": "The source or target locale variant used after strict Lookup and explicit fallback rules both miss when unmatched_locale_action is serve_default."
     },
     "unmatched_locale_action": {
       "type": "string",
@@ -52,10 +49,7 @@
             "$ref": "/schemas/core/locale-tag.json"
           },
           "locale_variant_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "x-entity": "creative_locale_variant"
+            "$ref": "/schemas/core/creative-locale-variant-id.json"
           }
         },
         "required": ["language_range", "locale_variant_id"],
@@ -78,11 +72,8 @@
             "type": "object",
             "properties": {
               "locale_variant_id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 255,
-                "description": "Buyer-assigned stable locale-variant identity from the request.",
-                "x-entity": "creative_locale_variant"
+                "$ref": "/schemas/core/creative-locale-variant-id.json",
+                "description": "Buyer-assigned stable locale-variant identity from the request."
               },
               "locale": {
                 "$ref": "/schemas/core/locale-tag.json"
@@ -115,11 +106,8 @@
             "type": "object",
             "properties": {
               "locale_variant_id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 255,
-                "description": "Buyer-assigned stable locale-variant identity from the request.",
-                "x-entity": "creative_locale_variant"
+                "$ref": "/schemas/core/creative-locale-variant-id.json",
+                "description": "Buyer-assigned stable locale-variant identity from the request."
               },
               "locale": {
                 "$ref": "/schemas/core/locale-tag.json"

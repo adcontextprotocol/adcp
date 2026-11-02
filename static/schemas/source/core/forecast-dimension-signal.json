@@ -15,9 +15,8 @@
       "description": "Canonical signal reference for this forecast row. Required when the row needs to disambiguate product-local, data-provider, or signal-source identity. Product-relative forecasts SHOULD use signal_ref."
     },
     "signal_id": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-local-id.json",
       "description": "Signal identifier shorthand for this forecast row. Use only when the enclosing context already identifies the signal unambiguously, such as a coverage_forecast nested directly under one get_signals signal item. Otherwise use signal_ref.",
-      "pattern": "^[a-zA-Z0-9_-]+$",
       "x-entity": "signal"
     },
     "signal_value": {

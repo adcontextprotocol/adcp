@@ -15,8 +15,7 @@
       "description": "The intersection of the declared set with the seller's objective support. Sellers select asynchronous payload versions, signing algorithms, and experimental behavior only from this set. A change to this set caused by seller-side evolution fires principal.changed with reason declarations_intersection_changed."
     },
     "selected_async_adcp_version": {
-      "type": "string",
-      "pattern": "^\\d+\\.\\d+$",
+      "$ref": "/schemas/core/adcp-minor-version.json",
       "description": "The single AdCP minor version the seller will use for asynchronous payload shapes toward this principal. MUST be a member of accepted.async_adcp_versions and MUST be present whenever that set is non-empty, so the buyer knows the exact payload contract rather than inferring it from the intersection."
     },
     "exclusions": {

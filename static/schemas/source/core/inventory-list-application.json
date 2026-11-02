@@ -38,10 +38,8 @@
           "description": "Agent URL from the effective property-list targeting reference."
         },
         "list_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Identifier from the effective property-list targeting reference.",
-          "x-entity": "property_list"
+          "$ref": "/schemas/core/property-list-id.json",
+          "description": "Identifier from the effective property-list targeting reference."
         },
         "resolved_at": {
           "type": "string",
@@ -103,10 +101,8 @@
           "description": "Agent URL from the effective collection-list targeting reference."
         },
         "list_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Identifier from the effective collection-list targeting reference.",
-          "x-entity": "collection_list"
+          "$ref": "/schemas/core/collection-list-id.json",
+          "description": "Identifier from the effective collection-list targeting reference."
         },
         "resolved_at": {
           "type": "string",

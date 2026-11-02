@@ -29,8 +29,7 @@
       "description": "Video orientation. Vertical = 9:16 (Reels, Stories, Shorts). Horizontal = 16:9 (instream, CTV). Square = 1:1 (in-feed)."
     },
     "aspect_ratio": {
-      "type": "string",
-      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "$ref": "/schemas/core/aspect-ratio.json",
       "description": "Aspect ratio. Inferred from orientation if omitted."
     },
     "min_width": { "type": "integer", "minimum": 1 },

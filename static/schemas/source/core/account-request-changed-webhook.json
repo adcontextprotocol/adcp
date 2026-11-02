@@ -12,11 +12,8 @@
       "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity."
     },
     "notification_id": {
-      "type": "string",
-      "description": "Stable identifier for this logical request transition. Re-emissions of the same transition reuse this value under a new idempotency_key; a later transition receives a new id.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/notification-id.json",
+      "description": "Stable identifier for this logical request transition. Re-emissions of the same transition reuse this value under a new idempotency_key; a later transition receives a new id."
     },
     "notification_type": {
       "type": "string",
@@ -29,11 +26,8 @@
       "description": "When the seller initiated this fire. Distinct from changed_at."
     },
     "subscriber_id": {
-      "type": "string",
-      "description": "Identifies which caller-scoped notification_configs[] entry is receiving this fire. Echoed verbatim from the entry's subscriber_id.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Identifies which caller-scoped notification_configs[] entry is receiving this fire. Echoed verbatim from the entry's subscriber_id."
     },
     "agent_url": {
       "type": "string",
@@ -41,9 +35,7 @@
       "description": "Canonical seller agent URL that holds the request. Receivers connected to several sellers use this to pick where to re-read."
     },
     "request_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
+      "$ref": "/schemas/core/account-request-id.json",
       "description": "The request that changed."
     },
     "previous_state": {

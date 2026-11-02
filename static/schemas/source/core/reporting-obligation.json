@@ -7,36 +7,22 @@
   "type": "object",
   "properties": {
     "reporting_obligation_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/reporting-obligation-id.json",
       "x-entity": "reporting_obligation"
     },
     "delivery_config_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "x-entity": "reporting_delivery_config"
+      "$ref": "/schemas/core/reporting-delivery-config-id.json"
     },
     "delivery_config_version": {
       "type": "integer",
       "minimum": 1
     },
     "report_definition_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/report-definition-id.json",
       "x-entity": "reporting_definition"
     },
     "offering_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
-      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
-      "x-entity": "reporting_offering",
+      "$ref": "/schemas/core/reporting-delivery-offering-id.json",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "description": "Offering this obligation was resolved to. Present on obligations derived from a reporting subscription (media_buy.reporting_subscriptions), where the seller resolves the selector per account and buy; a resolution change is a cutover, so no period is owed under two offerings. Authoritative for this obligation's timing: its schedule alignment, anchor, and delivery_sla, and so expected_at. Buyers compute which periods are owed themselves but read timing from here."
@@ -57,9 +43,7 @@
       "maxLength": 128
     },
     "account_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "account"
+      "$ref": "/schemas/core/account-id.json"
     },
     "media_buy_ids": {
       "type": "array",
@@ -110,9 +94,7 @@
       "description": "Resolved immutable schedule generation that created this obligation."
     },
     "destination_ref": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
+      "$ref": "/schemas/core/reporting-destination-ref.json",
       "x-entity": "reporting_destination",
       "description": "Immutable caller-owned destination generation selected by this account-authorized obligation. The account/configuration join—not possession of this reusable reference—authorizes disclosure. Present when and only when the obligation’s configuration selects a managed-delivery offering; Core (API-delivered) obligations omit every destination and materialization field."
     },
@@ -156,11 +138,7 @@
       "description": "Complete number of immutable authenticated consumer status statements associated with this obligation in the ledger snapshot, whether originally joined by reporting_obligation_id or by the exact configuration-generation, report-definition, and period key before the obligation existed. Core status-sync history is counted independently from Reconciled Billing receipts."
     },
     "current_consumer_status_id": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
-      "x-entity": "reporting_consumer_status",
+      "$ref": "/schemas/core/reporting-consumer-status-id.json",
       "description": "Current unsuperseded consumer status statement associated with this obligation by seller ID or its exact logical period key. Omitted when consumer_status_count is zero."
     },
     "adjustment_count": {

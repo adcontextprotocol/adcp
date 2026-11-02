@@ -278,8 +278,7 @@
                       "type": "array",
                       "description": "Brand IDs from this organization's brand.json that the grant covers. ['*'] or omitted means every brand the grantor owns. On a grantee's own grant to an intermediary, the IDs are those of the brands in the grant it received.",
                       "items": {
-                        "type": "string",
-                        "pattern": "^([a-z0-9_]+|\\*)$"
+                        "$ref": "/schemas/core/brand-id-or-wildcard.json"
                       },
                       "minItems": 1
                     }

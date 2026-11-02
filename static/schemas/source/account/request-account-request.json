@@ -21,9 +21,7 @@
       "x-entity": "account"
     },
     "request_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
+      "$ref": "/schemas/core/account-request-id.json",
       "description": "Continue one of the caller's own open requests. With account_id and no change fields: pick a candidate from an ambiguous request, or name the account a human created after a sign_up action; the open request resolves as matched. Change requests are never edited in place: send a new change request instead, which supersedes the open one. Unknown request_ids, or another caller's, are treated as not found."
     },
     "revision": {

@@ -11,10 +11,7 @@
       "description": "Stable across transport retries of this fire; new for a later re-emission."
     },
     "notification_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/notification-id.json",
       "description": "Stable for this logical materialization-ready event across re-emissions."
     },
     "notification_type": {
@@ -26,40 +23,23 @@
       "format": "date-time"
     },
     "subscriber_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json"
     },
     "account_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "account"
+      "$ref": "/schemas/core/account-id.json"
     },
     "delivery_config_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "x-entity": "reporting_delivery_config"
+      "$ref": "/schemas/core/reporting-delivery-config-id.json"
     },
     "delivery_config_version": {
       "type": "integer",
       "minimum": 1
     },
     "reporting_revision_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-      "x-entity": "reporting_revision"
+      "$ref": "/schemas/core/reporting-revision-id.json"
     },
     "reporting_materialization_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-      "x-entity": "reporting_materialization"
+      "$ref": "/schemas/core/reporting-materialization-id.json"
     },
     "readiness": {
       "type": "string",

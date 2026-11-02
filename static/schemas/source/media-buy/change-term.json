@@ -19,7 +19,7 @@
   },
   "type": "object",
   "properties": {
-    "term_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "media_buy_change_term" },
+    "term_id": { "$ref": "/schemas/core/media-buy-change-term-id.json" },
     "action": { "allOf": [{ "$ref": "/schemas/enums/canonical-media-buy-action.json" }], "not": { "const": "report_media_buy_issue" }, "description": "A buyer change right. Operational issue reporting is not a commercial amendment and cannot be negotiated here." },
     "service_mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
     "allowed_statuses": {

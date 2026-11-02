@@ -16,11 +16,8 @@
       "x-entity": "catalog"
     },
     "catalog_generation": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Catalog generation from the request.",
-      "x-entity": "catalog_generation"
+      "$ref": "/schemas/core/catalog-generation.json",
+      "description": "Catalog generation from the request."
     },
     "item_id": {
       "type": "string",

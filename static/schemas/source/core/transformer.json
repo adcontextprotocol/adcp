@@ -96,8 +96,7 @@
       "type": "array",
       "description": "Canonical output capabilities this transformer can produce. Every value MUST match this agent's get_adcp_capabilities `creative.supported_formats[].capability_id`. A build_creative request's target_capability_id(s) MUST be a subset of this array.",
       "items": {
-        "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]+$"
+        "$ref": "/schemas/core/creative-capability-id.json"
       },
       "minItems": 1,
       "uniqueItems": true

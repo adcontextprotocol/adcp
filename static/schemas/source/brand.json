@@ -200,14 +200,13 @@
       "additionalProperties": true
     },
     "hex_color": {
-      "type": "string",
-      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "$ref": "/schemas/core/hex-color.json",
       "description": "A single hex color value"
     },
     "color_value": {
       "oneOf": [
-        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+        { "$ref": "/schemas/core/hex-color.json" },
+        { "type": "array", "items": { "$ref": "/schemas/core/hex-color.json" }, "minItems": 1 }
       ]
     },
     "color_ref": {
@@ -312,7 +311,7 @@
             },
             "opentype_features": {
               "type": "array",
-              "items": { "type": "string", "pattern": "^[a-z0-9]{4}$" },
+              "items": { "$ref": "/schemas/core/opentype-feature-tag.json" },
               "maxItems": 20,
               "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum', 'cv01']). These are four-character tags per the OpenType spec."
             },
@@ -869,8 +868,7 @@
           "type": "array",
           "description": "Brand IDs this operator is authorized for. Use ['*'] for all brands in the portfolio.",
           "items": {
-            "type": "string",
-            "pattern": "^([a-z0-9_]+|\\*)$"
+            "$ref": "/schemas/core/brand-id-or-wildcard.json"
           },
           "minItems": 1
         },

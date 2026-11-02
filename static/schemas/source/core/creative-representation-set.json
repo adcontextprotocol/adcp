@@ -22,9 +22,7 @@
   "type": "object",
   "properties": {
     "creative_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "creative",
+      "$ref": "/schemas/core/creative-id.json",
       "description": "Stable logical creative identifier across all representations and later seller-bound manifests."
     },
     "revision_id": {
@@ -32,8 +30,7 @@
       "description": "Buyer-assigned immutable revision identity for this complete representation set. Changing any revision-bearing part of the set requires a new revision_id; selection does not."
     },
     "revision_content_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 of the RFC 8785 JCS canonical revision content defined by this schema. The producer computes it over the complete representation set after removing exactly the top-level $schema, creative_id, revision_id, revision_content_digest, and name properties. `$schema` is transport/schema-location metadata and never mints creative content identity. Resolvers MUST recompute and reject a mismatch; selection readback carries the verified digest so downstream sellers bind the revision to the complete source set rather than only the selected manifest."
     },
     "name": { "type": "string", "minLength": 1 },

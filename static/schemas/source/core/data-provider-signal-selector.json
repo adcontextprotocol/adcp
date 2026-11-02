@@ -45,8 +45,7 @@
           "type": "array",
           "description": "Specific signal IDs from the data provider's published signal definitions",
           "items": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9_-]+$"
+            "$ref": "/schemas/core/signal-local-id.json"
           },
           "minItems": 1
         }
@@ -75,8 +74,7 @@
           "type": "array",
           "description": "Signal tags from the data provider's published signal definitions. Selector covers all signals with these tags",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9_-]+$"
+            "$ref": "/schemas/core/signal-tag.json"
           },
           "minItems": 1
         }

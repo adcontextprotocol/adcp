@@ -14,11 +14,8 @@
   "x-governed-commitment": { "scope": "always" },
   "properties": {
     "governance_context": {
-      "type": "string",
-      "description": "Opaque intent authorization for this rights commitment. Required when governance applies to the resolved account.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque intent authorization for this rights commitment. Required when governance applies to the resolved account."
     },
     "rights_id": {
       "type": "string",

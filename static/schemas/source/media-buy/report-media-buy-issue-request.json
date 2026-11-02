@@ -22,9 +22,7 @@
       "$ref": "/schemas/core/canonical-account-ref.json"
     },
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -36,14 +34,10 @@
       "$ref": "/schemas/core/idempotency-key.json"
     },
     "package_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "package"
+      "$ref": "/schemas/core/package-id.json"
     },
     "creative_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "creative"
+      "$ref": "/schemas/core/creative-id.json"
     },
     "severity": {
       "type": "string",

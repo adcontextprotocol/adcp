@@ -7,10 +7,10 @@
   "type": "object",
   "properties": {
     "algorithm": { "type": "string", "const": "sha256" },
-    "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
-    "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "canonicalization_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Location of the exact immutable canonicalization contract. Consumers verify canonicalization_sha256 before applying it." },
-    "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+    "value": { "$ref": "/schemas/core/sha256-hex-digest.json" },
+    "canonicalization_id": { "$ref": "/schemas/core/reporting-canonicalization-id.json" },
+    "canonicalization_uri": { "$ref": "/schemas/core/public-https-url.json", "description": "Location of the exact immutable canonicalization contract. Consumers verify canonicalization_sha256 before applying it." },
+    "canonicalization_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" }
   },
   "required": ["algorithm", "value", "canonicalization_id", "canonicalization_uri", "canonicalization_sha256"],
   "additionalProperties": false

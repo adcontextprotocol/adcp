@@ -6,13 +6,11 @@
   "type": "object",
   "properties": {
     "reference_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 of the RFC 8785 JSON Canonicalization Scheme encoding of the complete AttestationReference, including embedded_credential when present. This prevents a result for one presentation from being replayed for another."
     },
     "credential_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 of the exact resolved or embedded credential bytes according to proof_format. REQUIRED by the normative contract when outcome is verified, expired, revoked, invalid, subject_mismatch, or digest_mismatch; omitted when no credential bytes were obtained. For dual delivery, this is the resolved credential digest; reference_digest independently binds the embedded bytes."
     },
     "proof_format": {
@@ -43,15 +41,11 @@
       "format": "date-time"
     },
     "evaluated_by": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+      "$ref": "/schemas/core/canonical-https-url.json",
       "description": "Canonical agent URL of the evaluator-of-record that produced this result, even when it delegated proof checking to an accepted verifier."
     },
     "verifier_agent_url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+      "$ref": "/schemas/core/canonical-https-url.json",
       "description": "Accepted verifier agent actually used, when verification was delegated. Omit for local verification or when no verifier was called."
     },
     "reason_codes": {
@@ -97,8 +91,7 @@
           "$comment": "x-entity deliberately omitted because action_type determines which domain entity this identifier names."
         },
         "action_digest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$",
+          "$ref": "/schemas/core/sha256-digest.json",
           "description": "SHA-256 digest of the domain-defined canonical action preimage."
         }
       },

@@ -10,10 +10,10 @@
       "items": {
         "type": "object",
         "properties": {
-          "subject_category": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-entity": "governance_policy_category" },
+          "subject_category": { "$ref": "/schemas/core/policy-category-id.json" },
           "subject_facets": {
             "type": "array",
-            "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-entity": "governance_policy_category_facet" },
+            "items": { "$ref": "/schemas/core/policy-category-facet-id.json" },
             "minItems": 1,
             "uniqueItems": true
           }
@@ -25,7 +25,7 @@
     },
     "advertiser_roles": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "items": { "$ref": "/schemas/core/advertiser-role.json" },
       "minItems": 1,
       "uniqueItems": true
     },

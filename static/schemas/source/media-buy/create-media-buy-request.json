@@ -50,11 +50,8 @@
   "x-governed-commitment": { "scope": "always" },
   "properties": {
     "governance_context": {
-      "type": "string",
-      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account."
     },
     "idempotency_key": {
       "$ref": "/schemas/core/idempotency-key.json",
@@ -195,15 +192,11 @@
       "description": "Purchase order number for tracking"
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the create success response and subsequent get_media_buys reads. This display label is not an identifier or financial reference."
     },
     "agency_estimate_number": {
-      "type": "string",
-      "maxLength": 100,
+      "$ref": "/schemas/core/agency-estimate-number.json",
       "description": "Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency's media plan and billing system. Travels with the order and creative traffic identifiers through the transaction lifecycle."
     },
     "start_time": {
@@ -268,9 +261,8 @@
               "maxItems": 1
             },
             "credentials": {
-              "type": "string",
-              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
-              "minLength": 32
+              "$ref": "/schemas/core/webhook-auth-credential.json",
+              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding."
             }
           },
           "required": [

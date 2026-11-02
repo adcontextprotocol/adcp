@@ -10,7 +10,7 @@
       "x-added-in": "3.3.0",
       "description": "Product creative requirements, including optional review_sla."
     },
-    "product_id": { "type": "string", "minLength": 1, "x-entity": "product" },
+    "product_id": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" },
     "name": { "type": "string", "minLength": 1 },
     "description": { "type": "string" },
     "publisher_properties": {
@@ -117,7 +117,7 @@
     "catalog_match": {
       "type": "object",
       "properties": {
-        "matched_gtins": { "type": "array", "items": { "type": "string", "pattern": "^[0-9]{8,14}$" } },
+        "matched_gtins": { "type": "array", "items": { "$ref": "/schemas/core/gtin.json" } },
         "matched_ids": { "type": "array", "items": { "type": "string" } },
         "matched_count": { "type": "integer", "minimum": 0 },
         "submitted_count": { "type": "integer", "minimum": 0 }

@@ -10,9 +10,7 @@
       "const": "completed"
     },
     "evaluation_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "creative_evaluation"
+      "$ref": "/schemas/core/creative-evaluation-id.json"
     },
     "results": {
       "type": "array",

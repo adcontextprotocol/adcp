@@ -15,7 +15,7 @@
     "currency": { "$ref": "/schemas/core/currency-code.json" },
     "demographic_system": { "$ref": "/schemas/enums/demographic-system.json" },
     "demographic": { "type": "string" },
-    "measurement_source": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9_]+$" },
+    "measurement_source": { "$ref": "/schemas/core/measurement-source.json" },
     "reach_unit": { "$ref": "/schemas/enums/reach-unit.json" },
     "generated_at": { "type": "string", "format": "date-time" },
     "valid_until": { "type": "string", "format": "date-time" },

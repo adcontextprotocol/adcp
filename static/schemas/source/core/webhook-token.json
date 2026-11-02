@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/webhook-token.json",
+  "title": "Webhook Token",
+  "description": "Client-provided token that the seller echoes verbatim so the receiver can validate a webhook.",
+  "type": "string",
+  "minLength": 16,
+  "maxLength": 4096
+}

@@ -144,14 +144,12 @@
             "primary": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -160,14 +158,12 @@
             "secondary": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -176,14 +172,12 @@
             "accent": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -192,14 +186,12 @@
             "background": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -208,14 +200,12 @@
             "text": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -287,8 +277,7 @@
                     "opentype_features": {
                       "type": "array",
                       "items": {
-                        "type": "string",
-                        "pattern": "^[a-z0-9]{4}$"
+                        "$ref": "/schemas/core/opentype-feature-tag.json"
                       },
                       "maxItems": 20,
                       "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum'])"

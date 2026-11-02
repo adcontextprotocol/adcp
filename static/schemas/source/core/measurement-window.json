@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "window_id": {
-      "type": "string",
-      "maxLength": 50,
+      "$ref": "/schemas/core/measurement-window-id.json",
       "description": "Identifier for this maturation stage. Standard broadcast values: 'live' (real-time viewers only), 'c3' (live + 3 days time-shifted), 'c7' (live + 7 days time-shifted). Standard values for other channels include 'tentative' (provisional data available quickly), 'final' (post-processing certified data), 'post_ivt' (digital after invalid-traffic filtering), 'post_sivt' (digital after sophisticated-IVT filtering), 'downloads_7d' / 'downloads_30d' (podcast download maturation). Sellers may define custom IDs.",
       "examples": [
         "live",

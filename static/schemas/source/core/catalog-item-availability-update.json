@@ -6,25 +6,16 @@
   "type": "object",
   "properties": {
     "catalog_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Buyer-assigned ID of the buyer-managed catalog containing the item.",
-      "x-entity": "catalog"
+      "$ref": "/schemas/core/catalog-id.json",
+      "description": "Buyer-assigned ID of the buyer-managed catalog containing the item."
     },
     "catalog_generation": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Opaque seller-issued token for the catalog incarnation. Obtain it from sync_catalogs discovery or mutation results. A generation mismatch is treated as REFERENCE_NOT_FOUND, preventing a delayed update from affecting a deleted-and-recreated catalog.",
-      "x-entity": "catalog_generation"
+      "$ref": "/schemas/core/catalog-generation.json",
+      "description": "Opaque seller-issued token for the catalog incarnation. Obtain it from sync_catalogs discovery or mutation results. A generation mismatch is treated as REFERENCE_NOT_FOUND, preventing a delayed update from affecting a deleted-and-recreated catalog."
     },
     "item_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Exact canonical item key used by Catalog.ids. For typed catalogs this is the type-specific identifier field; for product, inventory, and promotion catalogs it is the stable normalized source identifier retained during ingestion.",
-      "x-entity": "catalog_item"
+      "$ref": "/schemas/core/catalog-item-id.json",
+      "description": "Exact canonical item key used by Catalog.ids. For typed catalogs this is the type-specific identifier field; for product, inventory, and promotion catalogs it is the stable normalized source identifier retained during ingestion."
     },
     "expected_overlay_revision": {
       "type": "integer",

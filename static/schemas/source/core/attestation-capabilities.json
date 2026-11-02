@@ -72,9 +72,7 @@
             "type": "array",
             "description": "Canonical HTTPS origins from which credential_uri locators may be fetched for this issuer. Exact origin matching happens after URL canonicalization and before DNS resolution. Paths in the credential URI may vary; userinfo is forbidden.",
             "items": {
-              "type": "string",
-              "format": "uri",
-              "pattern": "^https://[^/?#@]+$"
+              "$ref": "/schemas/core/https-origin.json"
             },
             "minItems": 1,
             "uniqueItems": true,
@@ -87,15 +85,10 @@
               "type": "object",
               "properties": {
                 "resolver_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 255,
-                  "pattern": "^[A-Za-z0-9._:-]+$"
+                  "$ref": "/schemas/core/attestation-resolver-id.json"
                 },
                 "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+                  "$ref": "/schemas/core/canonical-https-url.json",
                   "description": "Evaluator-configured HTTPS resolver endpoint. Calls use POST with Content-Type application/json and a body containing only credential_id; query-string and path interpolation are forbidden. The evaluator still applies the attestation fetch contract before every call."
                 },
                 "authentication": {
@@ -127,9 +120,7 @@
         "type": "object",
         "properties": {
           "agent_url": {
-            "type": "string",
-            "format": "uri",
-            "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+            "$ref": "/schemas/core/canonical-https-url.json"
           },
           "claim_types": {
             "type": "array",

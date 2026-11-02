@@ -5,7 +5,7 @@
   "description": "A keyword and match-mode identity used by canonical package targeting controls.",
   "type": "object",
   "properties": {
-    "keyword": { "type": "string", "minLength": 1 },
+    "keyword": { "$ref": "/schemas/core/keyword.json" },
     "match_type": { "$ref": "/schemas/enums/match-type.json" },
     "bid_price": { "type": "number", "minimum": 0 }
   },

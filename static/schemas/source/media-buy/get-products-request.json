@@ -106,8 +106,7 @@
                 "description": "Change scoped to a specific product."
               },
               "product_id": {
-                "type": "string",
-                "minLength": 1,
+                "$ref": "/schemas/core/product-id.json",
                 "description": "Product ID from a previous get_products response."
               },
               "action": {

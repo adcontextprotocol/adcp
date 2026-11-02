@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/policy-category-facet-id.json",
+  "title": "Policy Category Facet ID",
+  "description": "Identifier of a facet of a registry policy category.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*$",
+  "x-entity": "governance_policy_category_facet"
+}

@@ -20,9 +20,9 @@
     }
   },
   "properties": {
-    "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
+    "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json" },
     "feed_purpose": { "$ref": "#/definitions/ReportingFeedPurpose" },
-    "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value." },
+    "report_definition_id": { "$ref": "/schemas/core/report-definition-id.json", "x-entity": "reporting_definition", "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value." },
     "standard_dimensions": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/reporting-dimension.json" },
@@ -55,25 +55,25 @@
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.reporting_subscriptions). When the seller withdrew, or will withdraw, this offering. From it the offering is not a candidate, and subscriptions that resolved it move to their next candidate as a resolution change, a cutover at withdrawn_at, so periods that started before it stay owed under it in full. A withdrawn offering stays in offerings, with withdrawn_at, while any obligation that resolved it is retained, so buyers can still read its schedule. Sellers advertising media_buy.reporting_subscriptions MUST NOT remove an offering from offerings any other way while such an obligation is retained."
     },
-    "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
-    "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
+    "report_definition_uri": { "$ref": "/schemas/core/public-https-url.json", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
+    "report_definition_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
     "reporting_profile": {
       "type": "object",
       "description": "Machine-readable semantic and validation contract for delivered rows. The canonicalization_* fields describe the external-materialization canonical-digest contract and are required only for offerings under the reconciled_billing tier; Core and managed-delivery offerings omit those fields but every Core revision still carries the fixed RFC 8785/JCS revision-binding digest.",
       "properties": {
-        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+        "id": { "$ref": "/schemas/core/reporting-profile-id.json" },
         "version": { "type": "string", "minLength": 1, "maxLength": 64 },
-        "schema_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Authenticated seller/provider or AdCP-registry HTTPS origin only; never an IP literal, userinfo URL, redirect target, or mutable validation authority." },
-        "schema_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact schema bytes. SDKs verify this before parsing and cache by digest." },
+        "schema_uri": { "$ref": "/schemas/core/public-https-url.json", "description": "Authenticated seller/provider or AdCP-registry HTTPS origin only; never an IP literal, userinfo URL, redirect target, or mutable validation authority." },
+        "schema_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "Digest of the exact schema bytes. SDKs verify this before parsing and cache by digest." },
         "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value." },
         "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden." },
-        "grain": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Stable description of what one logical row represents." },
+        "grain": { "$ref": "/schemas/core/reporting-grain.json", "description": "Stable description of what one logical row represents." },
         "primary_keys": { "type": "array", "items": { "$ref": "/schemas/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey" }, "minItems": 1, "uniqueItems": true, "maxItems": 32 },
-        "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest." },
+        "canonicalization_id": { "$ref": "/schemas/core/reporting-canonicalization-id.json", "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest." },
         "canonicalization_contract_version": { "type": "string", "const": "1.0" },
         "canonicalization_media_type": { "type": "string", "const": "application/vnd.adcp.reporting-canonicalization+json" },
-        "canonicalization_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable exact canonicalization contract on the authenticated seller/provider or AdCP-registry origin. SDKs apply the same bounded, redirect-free SSRF controls as schema_uri and verify canonicalization_sha256 before use." },
-        "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact canonicalization contract identified by canonicalization_id." }
+        "canonicalization_uri": { "$ref": "/schemas/core/public-https-url.json", "description": "Retrievable exact canonicalization contract on the authenticated seller/provider or AdCP-registry origin. SDKs apply the same bounded, redirect-free SSRF controls as schema_uri and verify canonicalization_sha256 before use." },
+        "canonicalization_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "Digest of the exact canonicalization contract identified by canonicalization_id." }
       },
       "required": ["id", "version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "grain", "primary_keys"],
       "additionalProperties": false
@@ -86,12 +86,12 @@
       "description": "Managed delivery method for this offering. Omit for a Core (API-delivered) offering: rows flow through existing get_media_buy_delivery and reporting_webhook transports and no destination is involved. Present only when the seller advertises managed_delivery.",
       "properties": {
         "pattern": { "$ref": "#/definitions/ReportingDeliveryPattern" },
-        "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
+        "transport": { "$ref": "/schemas/core/reporting-transport.json" },
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
         "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
         "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
-        "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
+        "access_mode": { "$ref": "/schemas/core/reporting-access-mode.json" },
         "producer_identity": {
           "type": "object",
           "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",

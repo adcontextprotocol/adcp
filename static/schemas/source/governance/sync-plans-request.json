@@ -104,12 +104,8 @@
                   "type": "object",
                   "properties": {
                     "budget_period_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64,
-                      "pattern": "^[A-Za-z0-9_.:-]+$",
-                      "description": "Identifier for this period, unique within the plan and stable across syncs. Buyers MAY echo it as `budget_period_id` on `check_governance` to assert which period a buy belongs to.",
-                      "x-entity": "governance_budget_period"
+                      "$ref": "/schemas/core/governance-budget-period-id.json",
+                      "description": "Identifier for this period, unique within the plan and stable across syncs. Buyers MAY echo it as `budget_period_id` on `check_governance` to assert which period a buy belongs to."
                     },
                     "start": {
                       "type": "string",

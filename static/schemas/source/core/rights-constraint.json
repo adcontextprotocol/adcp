@@ -130,8 +130,7 @@
       "description": "DEPRECATED legacy informational locator. It is not proof of grant status, a revocation source, a credential locator, or permission to make a network request. Receivers MUST NOT fetch it during rights evaluation, and HTTP status codes have no AdCP authorization meaning. Rights authorization uses attestation_refs and a verifier-of-record evaluation under evaluator-owned policy."
     },
     "content_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 of UTF8(JCS(rights_constraint minus content_digest, attestation_refs, and verification_url)), formatted as sha256:<lowercase hex>. This binds all serving-relevant grant fields, including future extension fields, while deliberately excluding the legacy non-authoritative URL."
     },
     "attestation_refs": {

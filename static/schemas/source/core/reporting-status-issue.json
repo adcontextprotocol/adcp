@@ -18,10 +18,7 @@
   },
   "properties": {
     "issue_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/reporting-issue-id.json",
       "description": "Seller-issued stable identifier for this logical issue: re-emissions and later polls of the same unresolved condition reuse it, and resolution retires it, so consumers can project AdCP reporting issues into durable work items. A recurrence after resolution receives a new id."
     },
     "code": {
@@ -91,35 +88,20 @@
       "description": "Untrusted display text only. SDKs and agents dispatch exclusively on closed code/recommended_action values and never execute embedded links or instructions."
     },
     "reporting_obligation_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/reporting-obligation-id.json",
       "x-entity": "reporting_obligation"
     },
     "reporting_revision_id": {
       "x-added-in": "3.3.0",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-      "x-entity": "reporting_revision",
+      "$ref": "/schemas/core/reporting-revision-id.json",
       "description": "Published revision this issue concerns. Required when code is REVISION_UNREADABLE."
     },
     "reporting_status_id": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
-      "x-entity": "reporting_consumer_status",
+      "$ref": "/schemas/core/reporting-consumer-status-id.json",
       "description": "Current authenticated consumer status statement that caused this mismatch."
     },
     "delivery_config_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "x-entity": "reporting_delivery_config"
+      "$ref": "/schemas/core/reporting-delivery-config-id.json"
     },
     "delivery_config_version": {
       "type": "integer",

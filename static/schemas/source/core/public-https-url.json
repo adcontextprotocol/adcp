@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/public-https-url.json",
+  "title": "Public HTTPS URL",
+  "description": "HTTPS URL on a public, dotted host name: no userinfo, localhost, or IP literal.",
+  "type": "string",
+  "format": "uri",
+  "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+}

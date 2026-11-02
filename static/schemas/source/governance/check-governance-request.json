@@ -245,12 +245,8 @@
     },
     "budget_period_id": {
       "x-added-in": "3.3.0",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]+$",
-      "description": "Optional assertion of the plan budget period (`plans[].budget.periods[].budget_period_id`) this action belongs to. The buyer never has to name a period: the governance agent derives it from the action's flight. When present and different from the derived period, the check is denied. When the plan has no periods, or the action carries no flight, there is no derived period and the assertion cannot match, so the check is denied. The response carries the matched `budget_period_id` either way.",
-      "x-entity": "governance_budget_period"
+      "$ref": "/schemas/core/governance-budget-period-id.json",
+      "description": "Optional assertion of the plan budget period (`plans[].budget.periods[].budget_period_id`) this action belongs to. The buyer never has to name a period: the governance agent derives it from the action's flight. When present and different from the derived period, the check is denied. When the plan has no periods, or the action carries no flight, there is no derived period and the assertion cannot match, so the check is denied. The response carries the matched `budget_period_id` either way."
     },
     "target_agent": {
       "type": "string",
@@ -292,18 +288,12 @@
       "description": "Exact committed proposal being authorized for accept_proposal. The governance agent verifies proposal.terms_digest against commercial_terms and binds that digest into its decision state; the downstream payload carries the same digest without repeating the terms."
     },
     "governance_context": {
-      "type": "string",
-      "description": "Opaque authorization context from a prior approved check_governance response. Services pass it verbatim on execution and lifecycle checks; the issuing governance agent derives the plan and prior decision from the token. Intermediaries MUST NOT parse it for business logic. Governance agents MUST emit a compact JWS per the AdCP JWS profile.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque authorization context from a prior approved check_governance response. Services pass it verbatim on execution and lifecycle checks; the issuing governance agent derives the plan and prior decision from the token. Intermediaries MUST NOT parse it for business logic. Governance agents MUST emit a compact JWS per the AdCP JWS profile."
     },
     "consultation_context": {
-      "type": "string",
-      "description": "Opaque, non-authorizing handle returned with an intent conditions verdict. Pass it only when re-checking the adjusted intent so the governance agent can correlate negotiation attempts. The governance agent MUST resolve it under the authenticated principal and reject the re-check unless principal, caller, plan_id, tool, purchase_type, and target audience match the original conditions check. Services MUST NOT receive or accept this value as authorization.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]+$"
+      "$ref": "/schemas/core/consultation-context.json",
+      "description": "Opaque, non-authorizing handle returned with an intent conditions verdict. Pass it only when re-checking the adjusted intent so the governance agent can correlate negotiation attempts. The governance agent MUST resolve it under the authenticated principal and reject the re-check unless principal, caller, plan_id, tool, purchase_type, and target audience match the original conditions check. Services MUST NOT receive or accept this value as authorization."
     },
     "phase": {
       "$ref": "/schemas/enums/governance-phase.json",
@@ -326,8 +316,7 @@
           "x-entity": "governance_delivery_statement"
         },
         "statement_digest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$",
+          "$ref": "/schemas/core/sha256-digest.json",
           "description": "SHA-256 digest of RFC 8785 JCS over {seller_reference, delivery_metrics}, excluding statement_digest itself. The authenticated submission binds the seller to this digest."
         },
         "sequence": {

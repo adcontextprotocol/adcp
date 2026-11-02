@@ -6,9 +6,7 @@
   "type": "object",
   "properties": {
     "category_id": {
-      "type": "string",
-      "x-entity": "governance_policy_category",
-      "pattern": "^[a-z][a-z0-9_]*$",
+      "$ref": "/schemas/core/policy-category-id.json",
       "description": "Unique identifier for this category. Used in plan.policy_categories, signal-definition.policy_categories, and policy-entry.policy_categories."
     },
     "name": {
@@ -26,9 +24,7 @@
         "type": "object",
         "properties": {
           "facet_id": {
-            "type": "string",
-            "x-entity": "governance_policy_category_facet",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "$ref": "/schemas/core/policy-category-facet-id.json"
           },
           "name": { "type": "string", "minLength": 1 },
           "description": { "type": "string", "minLength": 1 }

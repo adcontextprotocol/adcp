@@ -28,9 +28,7 @@
               "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
             },
             "principal_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
+              "$ref": "/schemas/core/principal-id.json",
               "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
             },
             "principal_kind": {
@@ -54,7 +52,7 @@
               "x-added-in": "3.3.0",
               "description": "Present when and only when the request carried reporting_subscription_page: one page of the requested list, with the same entries and order as the inline list (account_id byte order for the account lists, newest first for prior_versions). Exactly the property named by list is present.",
               "properties": {
-                "subscription_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_subscription" },
+                "subscription_id": { "$ref": "/schemas/core/reporting-subscription-id.json" },
                 "list": { "type": "string", "enum": ["accounts_with_exceptions", "accounts_unauthorized", "prior_versions"] },
                 "accounts_with_exceptions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionAccountExceptions" }, "maxItems": 100 },
                 "accounts_unauthorized": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionUnauthorizedAccount" }, "maxItems": 100 },
@@ -88,9 +86,7 @@
               "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
             },
             "principal_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
+              "$ref": "/schemas/core/principal-id.json",
               "description": "Seller-issued opaque identifier for the existing durable principal record. The read returns the same identifier after credential renewal or rotation when the new credential maps to this principal. It is not a credential and does not grant authority over an advertiser account."
             },
             "principal_kind": {

@@ -130,10 +130,13 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // top of main). Bound at 476 KiB once for the window; resume per-PR bounding
 // after the beta.1 cut. Naming five repeated scalar subschemas (#8525) makes
 // each a shared definition, which brings the media-buy context to 496,720
-// bytes / 485.08 KiB; bound it at 486 KiB.
+// bytes / 485.08 KiB. Naming the further repeated scalar concepts brings it to
+// 529,573 bytes / 517.16 KiB; bound it at 518 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 486,
-  creative: 410,
+  'media-buy': 518,
+  // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
+  // 424.09 KiB.
+  creative: 425,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
@@ -201,8 +204,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // (#8717) reach the controller on top of the beta.4 coverage fixes (#8718,
 // trimmed to 1_374_852); the controller measures 1_375_833 bytes, bound at
 // 1_376_000. Naming five repeated scalar subschemas (#8525) brings the
-// controller to 1_378_383 bytes; bound it at 1_380_000.
-const PARITY_COMPILE_LIMIT = 1_380_000;
+// controller to 1_378_383 bytes, and the further repeated scalar concepts to
+// 1_401_918; bound it at 1_405_000.
+const PARITY_COMPILE_LIMIT = 1_405_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

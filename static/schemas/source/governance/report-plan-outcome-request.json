@@ -103,11 +103,8 @@
       "description": "Buyer-attributed observation compared with the canonical seller delivery statement identified by check_id. This evidence never overwrites seller evidence or creates a second commitment. A conflict produces an explicit disputed reconciliation state while the operational period is open; the plan owner may close it without asserting final billing truth.",
       "properties": {
         "observation_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Stable buyer-issued identifier for this observation.",
-          "x-entity": "governance_delivery_observation"
+          "$ref": "/schemas/core/delivery-observation-id.json",
+          "description": "Stable buyer-issued identifier for this observation."
         },
         "source": {
           "type": "string",
@@ -127,8 +124,7 @@
           "x-entity": "governance_delivery_statement"
         },
         "seller_statement_digest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$",
+          "$ref": "/schemas/core/sha256-digest.json",
           "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
         },
         "reporting_period": {
@@ -189,11 +185,8 @@
       "description": "Buyer-attributed error associated with a failed seller interaction. Required when outcome is failed; classification_source=seller_response_copy preserves what the buyer received without claiming seller-attested provenance."
     },
     "governance_context": {
-      "type": "string",
-      "description": "Opaque governance context from the check_governance response. Required with check_id for completed and failed outcomes and buyer delivery observations.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque governance context from the check_governance response. Required with check_id for completed and failed outcomes and buyer delivery observations."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

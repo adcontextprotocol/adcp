@@ -5,10 +5,10 @@
   "description": "Compact immutable audience-evidence snapshot for product discovery. Provider identity is a BrandKey; credential and brand-asset graphs are resolved separately.",
   "type": "object",
   "properties": {
-    "evidence_id": { "type": "string", "minLength": 1, "x-entity": "audience_evidence" },
-    "snapshot_id": { "type": "string", "minLength": 1, "x-entity": "audience_evidence_snapshot" },
+    "evidence_id": { "$ref": "/schemas/core/audience-evidence-id.json" },
+    "snapshot_id": { "$ref": "/schemas/core/audience-evidence-snapshot-id.json" },
     "version": { "type": "string", "minLength": 1 },
-    "content_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
     "audience": { "$ref": "/schemas/core/audience-characteristic.json" },
     "relationship": { "type": "string", "enum": ["composition", "index", "reach_estimate"] },
     "value": { "type": "number", "minimum": 0 },
@@ -36,7 +36,7 @@
     "methodology_url": { "$ref": "/schemas/core/https-url.json" },
     "attestation_digests": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+      "items": { "$ref": "/schemas/core/sha256-digest.json" },
       "minItems": 1,
       "uniqueItems": true,
       "description": "Portable-attestation reference digests available through the evidence provider; credential bodies are not inlined into product discovery."

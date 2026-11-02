@@ -5,7 +5,7 @@
   "description": "Compact canonical creative-format declaration. Legacy named-format links are intentionally absent; params are validated against the canonical schema selected by format_kind without inlining every format union into product discovery. Format-option processing metadata such as macro_resolution_capabilities stays at this object's top level and is not part of canonical params.",
   "type": "object",
   "properties": {
-    "format_option_id": { "type": "string", "minLength": 1 },
+    "format_option_id": { "$ref": "/schemas/core/format-option-id.json" },
     "publisher_domain": { "$ref": "/schemas/core/domain-name.json" },
     "tracker_execution_contract": {
       "$ref": "/schemas/core/tracker-execution-contract.json",

@@ -46,8 +46,7 @@
         "type": "object",
         "properties": {
           "state_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/canvas-state-id.json",
             "description": "Stable identifier used by `state_canvases[].state_id` and `state_click_urls[].state_id`."
           },
           "anchoring": {
@@ -79,8 +78,7 @@
               "type": "object",
               "properties": {
                 "breakpoint_id": {
-                  "type": "string",
-                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "$ref": "/schemas/core/canvas-breakpoint-id.json",
                   "description": "Stable identifier used by `state_canvases[].breakpoint_id`."
                 },
                 "width": { "type": "integer", "minimum": 1 },
@@ -111,8 +109,7 @@
                   "description": "Height as a percentage of the viewport (topscroll 80%, mobile skin panel 15%). Fluid; cannot be targeted by `rendered_canvases` supply."
                 },
                 "canvas_aspect_ratio": {
-                  "type": "string",
-                  "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+                  "$ref": "/schemas/core/aspect-ratio.json",
                   "description": "Aspect ratio the rendered canvas maintains across the size range (IAB flexible units, ratio-bucket responsive). When both fixed `width` and `height` are declared, the ratio MUST be consistent with them."
                 }
               },
@@ -146,8 +143,7 @@
       }
     },
     "initial_state_id": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
+      "$ref": "/schemas/core/canvas-state-id.json",
       "description": "State rendered when the unit first becomes visible. MUST resolve to `states[].state_id`; for a single-state unit it MUST equal the sole state."
     },
     "reveal": {
@@ -169,12 +165,10 @@
             "description": "Stable transition identifier for preview and reporting."
           },
           "from_state_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "$ref": "/schemas/core/canvas-state-id.json"
           },
           "to_state_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "$ref": "/schemas/core/canvas-state-id.json"
           },
           "trigger": {
             "type": "string",
@@ -329,8 +323,7 @@
     },
     "duration_ms_exact": { "type": "integer", "minimum": 1 },
     "aspect_ratio": {
-      "type": "string",
-      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "$ref": "/schemas/core/aspect-ratio.json",
       "description": "Embedded-video aspect ratio."
     },
     "containers": {

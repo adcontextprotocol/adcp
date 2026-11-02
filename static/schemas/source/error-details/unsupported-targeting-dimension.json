@@ -27,8 +27,7 @@
       "description": "Targeting dimension that replaces the rejected one. Typically set with `deprecated: true`."
     },
     "product_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/product-id.json",
       "description": "Product the dimension was rejected for, when support is product-scoped.",
       "x-entity": "product"
     },

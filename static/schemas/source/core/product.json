@@ -406,8 +406,7 @@
           "type": "array",
           "description": "GTINs from the buyer's catalog that are eligible on this product's inventory. Standard GTIN formats (GTIN-8 through GTIN-14). Only present for product-type catalogs with GTIN matching.",
           "items": {
-            "type": "string",
-            "pattern": "^[0-9]{8,14}$"
+            "$ref": "/schemas/core/gtin.json"
           }
         },
         "matched_ids": {

@@ -160,11 +160,8 @@
   },
   "properties": {
     "governance_context": {
-      "type": "string",
-      "description": "Opaque intent authorization when this creative execution incurs vendor cost.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque intent authorization when this creative execution incurs vendor cost."
     },
     "message": {
       "type": "string",
@@ -221,15 +218,13 @@
       "description": "**DEPRECATED in 3.2.** Legacy named-format selectors. Use `target_capability_ids` with values advertised in `get_adcp_capabilities.creative.supported_formats[].capability_id`."
     },
     "target_capability_id": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_-]+$",
+      "$ref": "/schemas/core/creative-capability-id.json",
       "description": "Canonical 3.2 single-output selector. Matches exactly one `get_adcp_capabilities.creative.supported_formats[].capability_id` advertised by this creative agent. The matched entry supplies the canonical `format` declaration used to validate inputs and the returned manifest. Mutually exclusive with `target_capability_ids` and the deprecated target_format_id fields."
     },
     "target_capability_ids": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]+$"
+        "$ref": "/schemas/core/creative-capability-id.json"
       },
       "minItems": 1,
       "maxItems": 50,

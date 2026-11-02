@@ -131,7 +131,7 @@
           "type": "string",
           "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"]
         },
-        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "digest": { "$ref": "/schemas/core/sha256-digest.json" },
         "issued_at": { "type": "string", "format": "date-time" }
       },
       "required": ["evidence_id", "evidence_type", "digest", "issued_at"],

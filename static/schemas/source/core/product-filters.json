@@ -488,15 +488,11 @@
         "type": "object",
         "properties": {
           "lat": {
-            "type": "number",
-            "minimum": -90,
-            "maximum": 90,
+            "$ref": "/schemas/core/latitude.json",
             "description": "Latitude in decimal degrees (WGS 84)"
           },
           "lng": {
-            "type": "number",
-            "minimum": -180,
-            "maximum": 180,
+            "$ref": "/schemas/core/longitude.json",
             "description": "Longitude in decimal degrees (WGS 84)"
           },
           "label": {
@@ -654,8 +650,7 @@
         "type": "object",
         "properties": {
           "keyword": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/keyword.json",
             "description": "The keyword to target"
           },
           "match_type": {

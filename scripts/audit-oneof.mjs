@@ -117,6 +117,11 @@ function variantInfo(variant, sourceFile) {
     const resolved = resolveRef(variant.$ref, sourceFile);
     if (!resolved) return { properties: {}, required: [], refOnly: true, scalar: false, ref: variant.$ref };
     const target = resolved.schema;
+    // A named scalar document can discriminate by JSON type, as an inline scalar
+    // does. classify() requires the JSON types to differ across the branches.
+    if (target && typeof target.type === 'string' && target.type !== 'object' && !target.properties && !target.$ref && !target.oneOf && !target.anyOf && !target.allOf) {
+      return { properties: {}, required: [], refOnly: false, scalar: true, scalarType: target.type, ref: variant.$ref };
+    }
     if (target && (target.oneOf || target.anyOf)) {
       return {
         properties: target.properties || {},
@@ -167,7 +172,9 @@ function fuseAllOf(info, variant, sourceFile) {
 
 function classify(oneOfArr, parentSchema, sourceFile) {
   const variants = oneOfArr.map((v) => ({ raw: v, info: variantInfo(v, sourceFile) }));
-  if (variants.every((v) => v.info.scalar)) {
+  const scalarTypes = variants.map((v) => v.info.scalarType);
+  const refsAreDistinct = variants.every((v) => !v.info.ref) || new Set(scalarTypes).size === scalarTypes.length;
+  if (variants.every((v) => v.info.scalar) && refsAreDistinct) {
     return { kind: 'scalar', variants, note: variants.map((v) => v.info.scalarType).join('|') };
   }
 

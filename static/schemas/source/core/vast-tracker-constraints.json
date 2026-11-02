@@ -43,8 +43,7 @@
       "default": "linear"
     },
     "vast_offset": {
-      "type": "string",
-      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
+      "$ref": "/schemas/core/tracker-offset.json"
     },
     "vast_versions": {
       "type": "array",

@@ -7,21 +7,19 @@
   "properties": {
     "rule_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "acceptance_policy_rule" },
     "subject_category": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
-      "x-entity": "governance_policy_category",
+      "$ref": "/schemas/core/policy-category-id.json",
       "description": "Registry policy-category-definition category_id. Named subject_category to avoid collision with PolicyEntry.category, whose values are regulation and standard."
     },
     "subject_facets": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-entity": "governance_policy_category_facet" },
+      "items": { "$ref": "/schemas/core/policy-category-facet-id.json" },
       "minItems": 1,
       "uniqueItems": true,
       "description": "Facet IDs defined by the selected policy category. Omission means the rule applies to every facet in the category."
     },
     "advertiser_roles": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "items": { "$ref": "/schemas/core/advertiser-role.json" },
       "minItems": 1,
       "uniqueItems": true,
       "description": "Registry-extensible roles such as political_actor, election_authority, government_entity, news_publisher, or commercial_advertiser."
@@ -35,7 +33,7 @@
     },
     "jurisdiction_groups": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+      "items": { "$ref": "/schemas/core/jurisdiction-group.json" },
       "minItems": 1,
       "uniqueItems": true,
       "description": "Named country groups declared by the containing profile's region_aliases. Unknown group IDs invalidate the profile; they never match permissively."
@@ -60,7 +58,7 @@
     },
     "policy_ids": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "x-entity": "governance_registry_policy" },
+      "items": { "$ref": "/schemas/core/governance-policy-id.json", "x-entity": "governance_registry_policy" },
       "minItems": 1,
       "uniqueItems": true,
       "description": "Registry policies that define the exact obligations behind this coarse rule."

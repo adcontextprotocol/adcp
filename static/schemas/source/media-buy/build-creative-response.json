@@ -206,8 +206,7 @@
                     "description": "Deprecated named-format correlation for a legacy target_format_ids request."
                   },
                   "capability_id": {
-                    "type": "string",
-                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "$ref": "/schemas/core/creative-capability-id.json",
                     "description": "Canonical creative capability this preview was generated through. Matches one requested target_capability_ids entry."
                   },
                   "renders": {

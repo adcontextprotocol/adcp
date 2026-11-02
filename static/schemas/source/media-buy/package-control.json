@@ -6,9 +6,7 @@
   "type": "object",
   "properties": {
     "package_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "package"
+      "$ref": "/schemas/core/package-id.json"
     },
     "budget": {
       "type": ["number", "null"],

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/event-source-id.json",
+  "title": "Event Source ID",
+  "description": "Identifier of an event source configured on an account.",
+  "type": "string",
+  "minLength": 1
+}

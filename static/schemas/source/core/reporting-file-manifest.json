@@ -8,9 +8,9 @@
   "properties": {
     "manifest_version": { "type": "string", "const": "1.0" },
     "complete": { "type": "boolean", "const": true },
-    "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision" },
-    "reporting_obligation_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
-    "reporting_materialization_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_materialization" },
+    "reporting_revision_id": { "$ref": "/schemas/core/reporting-revision-id.json" },
+    "reporting_obligation_id": { "$ref": "/schemas/core/reporting-obligation-id.json", "x-entity": "reporting_obligation" },
+    "reporting_materialization_id": { "$ref": "/schemas/core/reporting-materialization-id.json" },
     "period": {
       "type": "object",
       "properties": {

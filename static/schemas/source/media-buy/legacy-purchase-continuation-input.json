@@ -11,8 +11,7 @@
       "description": "Replay identity for this logical coordinator operation. Exact retries resume the durable operation record instead of redeeming the continuation again."
     },
     "continuation_token": {
-      "type": "string",
-      "minLength": 16,
+      "$ref": "/schemas/core/purchase-continuation-token.json",
       "description": "Opaque token returned by products_available.purchase_continuation."
     },
     "account": {
@@ -23,7 +22,7 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1, "x-entity": "product" },
+      "items": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" },
       "description": "Non-empty subset of the product IDs bound into the continuation."
     },
     "accepted_losses": {

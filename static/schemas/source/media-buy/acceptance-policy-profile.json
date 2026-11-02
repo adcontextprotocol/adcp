@@ -5,11 +5,10 @@
   "description": "Versioned acceptance-policy profile published by a registry or seller. Omitted rules are unknown unless coverage is complete and scope is explicit; discovery never guarantees acceptance of an exact request.",
   "type": "object",
   "properties": {
-    "profile_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "acceptance_policy_profile" },
+    "profile_id": { "$ref": "/schemas/core/acceptance-policy-profile-id.json" },
     "version": { "type": "string", "minLength": 1 },
     "content_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 digest of the RFC 8785 JCS serialization of this profile with content_digest omitted. A profile_id/version pair is immutable; consumers reject a resolved profile whose digest differs."
     },
     "policy_refs": {
@@ -17,11 +16,10 @@
       "items": {
         "type": "object",
         "properties": {
-          "policy_id": { "type": "string", "minLength": 1, "x-entity": "governance_registry_policy" },
+          "policy_id": { "$ref": "/schemas/core/governance-policy-id.json", "x-entity": "governance_registry_policy" },
           "version": { "type": "string", "minLength": 1 },
           "content_digest": {
-            "type": "string",
-            "pattern": "^sha256:[a-f0-9]{64}$",
+            "$ref": "/schemas/core/sha256-digest.json",
             "description": "SHA-256 digest of the referenced policy entry's RFC 8785 JCS serialization with acceptance_profile omitted."
           }
         },
@@ -42,7 +40,7 @@
       "properties": {
         "subject_categories": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-entity": "governance_policy_category" },
+          "items": { "$ref": "/schemas/core/policy-category-id.json" },
           "minItems": 1,
           "uniqueItems": true
         },
@@ -60,7 +58,7 @@
         },
         "jurisdiction_groups": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+          "items": { "$ref": "/schemas/core/jurisdiction-group.json" },
           "minItems": 1,
           "uniqueItems": true,
           "description": "Named groups declared in this profile's region_aliases."

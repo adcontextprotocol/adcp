@@ -31,9 +31,7 @@
               "const": false
             },
             "principal_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
+              "$ref": "/schemas/core/principal-id.json",
               "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
             },
             "principal_kind": {

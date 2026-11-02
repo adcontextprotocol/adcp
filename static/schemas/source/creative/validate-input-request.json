@@ -68,8 +68,7 @@
             "properties": {
               "kind": { "type": "string", "const": "capability" },
               "id": {
-                "type": "string",
-                "pattern": "^[a-zA-Z0-9_-]+$",
+                "$ref": "/schemas/core/creative-capability-id.json",
                 "description": "Agent-local capability_id from get_adcp_capabilities creative.supported_formats. The selected entry MUST include validate in operations; unknown IDs or entries without validate are rejected with FORMAT_NOT_SUPPORTED."
               }
             },

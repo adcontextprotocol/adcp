@@ -9,8 +9,7 @@
     "async_adcp_versions": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^\\d+\\.\\d+$"
+        "$ref": "/schemas/core/adcp-minor-version.json"
       },
       "minItems": 1,
       "maxItems": 8,

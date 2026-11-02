@@ -12,8 +12,7 @@
       "description": "Stable implementation identifier."
     },
     "version": {
-      "type": "string",
-      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "$ref": "/schemas/core/renderer-version.json",
       "description": "Exact semantic version of the renderer implementation."
     },
     "export": {

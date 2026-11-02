@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "id": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_-]+$",
+      "$ref": "/schemas/core/signal-local-id.json",
       "description": "Signal identifier within the publishing domain's adagents.json signals[]"
     },
     "name": {
@@ -29,8 +28,7 @@
       "type": "array",
       "description": "Tags for grouping and filtering this domain's published signal definitions",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9_-]+$"
+        "$ref": "/schemas/core/signal-tag.json"
       }
     },
     "allowed_values": {

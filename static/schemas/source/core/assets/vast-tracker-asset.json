@@ -47,8 +47,7 @@
       "description": "Exact tokens in `url` and their resolver/encoding contracts."
     },
     "offset": {
-      "type": "string",
-      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$",
+      "$ref": "/schemas/core/tracker-offset.json",
       "description": "VAST `offset` attribute. Required when `vast_event` is `progress`; ignored otherwise for compatibility with existing 3.x manifests. Format matches the VAST 4.2 XSD `Tracking@offset` pattern: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus."
     },
     "target": {

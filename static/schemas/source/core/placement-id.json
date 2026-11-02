@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/placement-id.json",
+  "title": "Placement ID",
+  "description": "Identifier of a placement.",
+  "type": "string",
+  "minLength": 1,
+  "x-entity": "placement"
+}

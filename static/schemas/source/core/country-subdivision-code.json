@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/country-subdivision-code.json",
+  "title": "Country Subdivision Code",
+  "description": "ISO 3166-2 country subdivision code, such as US-CA or GB-SCT.",
+  "type": "string",
+  "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+}

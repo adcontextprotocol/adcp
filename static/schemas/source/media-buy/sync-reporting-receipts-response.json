@@ -79,7 +79,7 @@
             "type": "object",
             "properties": {
               "result": { "type": "string", "const": "failed" },
-              "reporting_receipt_id": { "type": "string", "minLength": 16, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{16,255}$", "x-entity": "reporting_receipt" },
+              "reporting_receipt_id": { "$ref": "/schemas/core/reporting-receipt-id.json" },
               "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1, "maxItems": 16 }
             },
             "required": ["result", "reporting_receipt_id", "errors"],

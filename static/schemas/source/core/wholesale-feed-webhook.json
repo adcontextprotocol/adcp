@@ -48,11 +48,8 @@
       "description": "ISO 8601 timestamp when the seller initiated this webhook fire. Distinct from event.created_at, which is when the seller observed or recorded the feed change."
     },
     "subscriber_id": {
-      "type": "string",
-      "description": "Identifies which notification_configs[] entry is receiving this fire. Echoed from the registered subscriber_id.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Identifies which notification_configs[] entry is receiving this fire. Echoed from the registered subscriber_id."
     },
     "account_id": {
       "type": "string",

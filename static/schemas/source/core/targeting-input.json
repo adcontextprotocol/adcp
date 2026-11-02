@@ -260,8 +260,7 @@
         "type": "object",
         "properties": {
           "keyword": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/keyword.json",
             "description": "The keyword to target"
           },
           "match_type": { "$ref": "/schemas/enums/match-type.json" },

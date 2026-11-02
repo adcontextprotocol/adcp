@@ -96,11 +96,7 @@
         "type": "object",
         "properties": {
           "opportunity_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-            "x-entity": "opportunity"
+            "$ref": "/schemas/core/opportunity-id.json"
           },
           "status": { "type": "string", "enum": ["open", "closed"] },
           "close_reason": {
@@ -127,7 +123,7 @@
         "additionalProperties": false
       }
     },
-    "next_cursor": { "type": "string", "minLength": 1 },
+    "next_cursor": { "$ref": "/schemas/core/page-cursor.json" },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

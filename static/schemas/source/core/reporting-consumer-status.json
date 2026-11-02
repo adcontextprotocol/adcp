@@ -7,46 +7,27 @@
   "type": "object",
   "properties": {
     "reporting_status_id": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
-      "x-entity": "reporting_consumer_status",
+      "$ref": "/schemas/core/reporting-consumer-status-id.json",
       "description": "Consumer-issued immutable identity for this status statement. Exact retries reuse the ID and content; changed status uses a new ID and supersedes_reporting_status_id."
     },
     "supersedes_reporting_status_id": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
-      "x-entity": "reporting_consumer_status",
+      "$ref": "/schemas/core/reporting-consumer-status-id.json",
       "description": "The authenticated consumer's current status leaf replaced by this statement. It must identify the same account, configuration generation, report definition, offering_id when present, and period."
     },
     "delivery_config_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "x-entity": "reporting_delivery_config"
+      "$ref": "/schemas/core/reporting-delivery-config-id.json"
     },
     "delivery_config_version": {
       "type": "integer",
       "minimum": 1
     },
     "report_definition_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/report-definition-id.json",
       "x-entity": "reporting_definition",
       "description": "Exact immutable report definition accepted with the configuration generation, preventing unlike reporting promises from sharing a status chain."
     },
     "offering_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
-      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
-      "x-entity": "reporting_offering",
+      "$ref": "/schemas/core/reporting-delivery-offering-id.json",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "description": "The resolved offering, for a generation derived from a reporting subscription (media_buy.reporting_subscriptions). Part of the chain identity there, because one subscription version can resolve several offerings that share a report definition and period. Required when the period's obligation carries offering_id, or would carry one when the consumer reports obligation_missing; absent otherwise."
@@ -63,24 +44,16 @@
       "additionalProperties": false
     },
     "reporting_obligation_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/reporting-obligation-id.json",
       "x-entity": "reporting_obligation",
       "description": "Seller-issued obligation identity when one was visible. Omitted when the consumer is reporting a missing obligation."
     },
     "reporting_revision_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-      "x-entity": "reporting_revision",
+      "$ref": "/schemas/core/reporting-revision-id.json",
       "description": "Exact revision successfully consumed or found unreadable. Omitted when no required revision was available."
     },
     "observed_revision_content_sha256": {
-      "type": "string",
-      "pattern": "^[A-Fa-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-hex-digest.json",
       "description": "revision_content_sha256 independently recomputed from the exact consumed Core revision binding. Required for received and content_mismatch, where it proves which exact revision content the consumer read; unlike a Reconciled Billing receipt it carries no materialization evidence, row totals, canonical digest, or billing acceptance."
     },
     "consumer_status": {

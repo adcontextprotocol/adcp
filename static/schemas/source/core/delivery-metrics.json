@@ -109,9 +109,7 @@
       "minimum": 0
     },
     "measurement_source": {
-      "type": "string",
-      "maxLength": 64,
-      "pattern": "^[a-z0-9_]+$",
+      "$ref": "/schemas/core/measurement-source.json",
       "description": "Third-party measurement provider whose data produced this row's audience numbers. Mirrors delivery-forecast.json's measurement_source so forecast and delivery reconcile on the same declaration — distinct from demographic_system, which specifies demographic notation. Makes measured-channel rows (radio, broadcast, OOH) self-describing: a reconciliation join can tie delivered numbers to the system that measured them without consulting out-of-band context. Lowercase slug format.",
       "examples": ["nielsen", "nielsen_audio", "videoamp", "comscore", "geopath", "barb", "agf", "oztam", "kantar", "barc", "route", "rajar", "triton"]
     },

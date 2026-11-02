@@ -6,11 +6,7 @@
   "type": "object",
   "properties": {
     "opportunity_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-      "x-entity": "opportunity",
+      "$ref": "/schemas/core/opportunity-id.json",
       "description": "Opaque buyer-assigned identifier for this planning cycle, scoped to the seller and account."
     },
     "phase": {

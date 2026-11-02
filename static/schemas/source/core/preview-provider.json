@@ -23,13 +23,11 @@
         "required": ["format_option_id", "capability_id"],
         "properties": {
           "format_option_id": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/format-option-id.json",
             "description": "Format option in this adagents.json placement for which the delegation applies. It MUST resolve through the same-file top-level formats[] catalog or an inline placement format declaration."
           },
           "capability_id": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9_-]+$",
+            "$ref": "/schemas/core/creative-capability-id.json",
             "description": "Agent-local preview capability advertised by the delegated provider. The provider's canonical format declaration MUST satisfy the resolved placement format option."
           },
           "covers_placement_presentation": {

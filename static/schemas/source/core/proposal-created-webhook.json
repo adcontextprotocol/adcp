@@ -26,10 +26,7 @@
       "format": "date-time"
     },
     "subscriber_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json"
     },
     "account_id": {
       "type": "string",
@@ -38,23 +35,13 @@
       "x-entity": "account"
     },
     "proposal_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "proposal"
+      "$ref": "/schemas/core/proposal-id.json"
     },
     "opportunity_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-      "x-entity": "opportunity"
+      "$ref": "/schemas/core/opportunity-id.json"
     },
     "parent_proposal_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "proposal",
+      "$ref": "/schemas/core/proposal-id.json",
       "description": "Present when the later proposal revises an earlier proposal for the same opportunity."
     },
     "later_reason": { "$ref": "/schemas/enums/later-proposal-reason.json" },

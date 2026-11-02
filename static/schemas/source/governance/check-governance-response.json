@@ -131,12 +131,8 @@
     },
     "budget_period_id": {
       "x-added-in": "3.3.0",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]+$",
-      "description": "The plan budget period (`plans[].budget.periods[].budget_period_id`) that contains the action's whole flight. Present when the plan has periods and the action is dated and a containing period exists, whatever the verdict, so the buyer can record which period each buy belongs to without re-deriving it. Omitted when the plan has no periods, when the action carries no dates, or when no single period contains the flight (a straddling or unallocated flight is denied).",
-      "x-entity": "governance_budget_period"
+      "$ref": "/schemas/core/governance-budget-period-id.json",
+      "description": "The plan budget period (`plans[].budget.periods[].budget_period_id`) that contains the action's whole flight. Present when the plan has periods and the action is dated and a containing period exists, whatever the verdict, so the buyer can record which period each buy belongs to without re-deriving it. Omitted when the plan has no periods, when the action carries no dates, or when no single period contains the flight (a straddling or unallocated flight is denied)."
     },
     "explanation": {
       "type": "string",
@@ -185,8 +181,7 @@
             "description": "Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions that partially overlap jurisdiction boundaries'). Present when confidence is below a governance-agent-defined threshold."
           },
           "attestation_reference_digest": {
-            "type": "string",
-            "pattern": "^sha256:[a-f0-9]{64}$",
+            "$ref": "/schemas/core/sha256-digest.json",
             "description": "When this finding relies on or reports a runtime attestation evaluation, the reference_digest of the exact AttestationReference in runtime_attestation_evaluations[]. Findings MUST NOT copy credential bodies or treat a presenter assertion as verified evidence."
           }
         },
@@ -224,11 +219,8 @@
       }
     },
     "consultation_context": {
-      "type": "string",
-      "description": "Opaque negotiation handle present only with modern conditions responses. It carries no authorization and MUST NOT be sent to a downstream service. The governance agent MUST bind it server-side to the authenticated principal, caller, plan, tool, purchase type, and target audience, and reject a re-check if any binding changes. The buyer returns it only on the adjusted intent re-check.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]+$"
+      "$ref": "/schemas/core/consultation-context.json",
+      "description": "Opaque negotiation handle present only with modern conditions responses. It carries no authorization and MUST NOT be sent to a downstream service. The governance agent MUST bind it server-side to the authenticated principal, caller, plan, tool, purchase type, and target audience, and reject a re-check if any binding changes. The buyer returns it only on the adjusted intent re-check."
     },
     "expires_at": {
       "type": "string",
@@ -245,7 +237,7 @@
       "description": "Canonical seller-attributed delivery statement retained by governance. Present on delivery execution checks. The buyer binds any later observation to this exact statement through report_plan_outcome.",
       "properties": {
         "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
-        "statement_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "statement_digest": { "$ref": "/schemas/core/sha256-digest.json" },
         "sequence": { "type": "integer", "minimum": 1 },
         "issued_at": { "type": "string", "format": "date-time" },
         "seller_reference": { "type": "string" },
@@ -322,8 +314,7 @@
       "maxItems": 10
     },
     "runtime_attestation_binding_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 of RFC 8785 JCS({ evaluations: runtime_attestation_evaluations, findings: attestation_bound_findings }), where attestation_bound_findings is the response findings[] subset carrying attestation_reference_digest, preserved in response order. Required whenever runtime_attestation_evaluations is present. The governance_context JWS carries this exact value as runtime_attestation_binding_digest; get_plan_audit_logs retains ordered {reference, evaluation} pairs so auditors can first recompute every reference_digest and then prove which evaluations and findings the signed decision relied on."
     },
     "context": {

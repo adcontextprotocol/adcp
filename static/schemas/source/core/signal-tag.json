@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-tag.json",
+  "title": "Signal Tag",
+  "description": "Tag that groups signals in a data provider's or publisher's signal set.",
+  "type": "string",
+  "pattern": "^[a-z0-9_-]+$"
+}

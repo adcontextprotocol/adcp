@@ -838,8 +838,7 @@
           "type": "array",
           "description": "Release-precision (VERSION.RELEASE) AdCP versions this seller speaks. Authoritative for buyer-side release pinning — buyers SHOULD declare `adcp_version` (release-precision string) on each request. Sellers downshift to the highest supported release ≤ the buyer's pin within the same major; cross-major mismatch returns VERSION_UNSUPPORTED. Pre-release tags (e.g. `\"3.1-beta\"`) hang off release.",
           "items": {
-            "type": "string",
-            "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+            "$ref": "/schemas/core/adcp-release-version.json",
             "x-max-length-4.0": 32
           },
           "minItems": 1,
@@ -847,9 +846,8 @@
           "x-max-items-4.0": 32
         },
         "build_version": {
-          "type": "string",
+          "$ref": "/schemas/core/adcp-build-version.json",
           "description": "Optional advisory metadata: full semver build identifier of the seller's deployment — MAJOR.MINOR.PATCH plus optional pre-release and build-metadata segments per semver §9–§10. Patches are not part of the wire contract — semver patch by definition introduces no contract change — but surfacing the build helps buyers triage incidents and bug reports against a specific seller deployment lineage. Buyers MUST NOT use this field for negotiation; use `supported_versions` (release-precision) instead.",
-          "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$",
           "examples": [
             "3.0.1",
             "3.1.2",
@@ -1019,10 +1017,7 @@
                   "transports": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64,
-                      "pattern": "^[a-z][a-z0-9_.-]*$"
+                      "$ref": "/schemas/core/reporting-transport.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true,
@@ -1042,10 +1037,7 @@
                   "access_modes": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64,
-                      "pattern": "^[a-z][a-z0-9_.-]*$"
+                      "$ref": "/schemas/core/reporting-access-mode.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true,
@@ -1126,10 +1118,8 @@
           "description": "Freshness metadata and optional invalidation webhooks for this `get_adcp_capabilities` document. Buyers and registries MAY cache capabilities for up to `cache_ttl_seconds` when present, SHOULD compare `capabilities_version` across refreshes when present, and SHOULD re-run `get_adcp_capabilities` after receiving a `capabilities.changed` webhook. This block describes the agent-wide capability document, not per-caller authorization or account-scoped settings. A material capability change is any externally advertised contract change that can affect routing, validation, conformance coverage, task availability, auth/account handling, sandbox support, billing support, reporting delivery methods, creative-library support, targeting support, protocol versions, or other buyer-visible feature gates. Non-contract operational changes that do not alter the response body do not require a revision or webhook fire.",
           "properties": {
             "capabilities_version": {
-              "type": "string",
-              "description": "Opaque revision token for the full capability document. Required when `notifications.supported: true` because `capabilities.changed` webhooks use this as the read-after-notify fence. Sellers SHOULD change this value whenever any material field in `get_adcp_capabilities` changes. Buyers MUST treat it as opaque and compare it only for equality.",
-              "minLength": 1,
-              "maxLength": 255
+              "$ref": "/schemas/core/capabilities-version.json",
+              "description": "Opaque revision token for the full capability document. Required when `notifications.supported: true` because `capabilities.changed` webhooks use this as the read-after-notify fence. Sellers SHOULD change this value whenever any material field in `get_adcp_capabilities` changes. Buyers MUST treat it as opaque and compare it only for equality."
             },
             "last_modified": {
               "type": "string",
@@ -1604,10 +1594,7 @@
                   "type": "array",
                   "description": "Resource families for which this seller can produce change records. Account-specific connected-source status and freshness are returned by list_account_changes.",
                   "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100,
-                    "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+                    "$ref": "/schemas/core/account-change-resource-type.json"
                   },
                   "minItems": 1,
                   "uniqueItems": true,
@@ -1730,8 +1717,7 @@
               "description": "HTTPS document that validates against acceptance-policy-catalog.json."
             },
             "catalog_digest": {
-              "type": "string",
-              "pattern": "^sha256:[a-f0-9]{64}$",
+              "$ref": "/schemas/core/sha256-digest.json",
               "description": "SHA-256 digest of the exact catalog representation fetched from catalog_url."
             },
             "default_profile_ids": {
@@ -3385,8 +3371,7 @@
             "type": "object",
             "properties": {
               "capability_id": {
-                "type": "string",
-                "pattern": "^[a-zA-Z0-9_-]+$",
+                "$ref": "/schemas/core/creative-capability-id.json",
                 "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products.",
                 "x-max-length-4.0": 128
               },
@@ -3424,8 +3409,7 @@
                 "required": ["capability_id", "rendering_origin"],
                 "properties": {
                   "capability_id": {
-                    "type": "string",
-                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "$ref": "/schemas/core/creative-capability-id.json",
                     "description": "Agent-local creative.supported_formats[].capability_id accepted by preview_creative.",
                     "x-max-length-4.0": 128
                   },
@@ -3648,8 +3632,7 @@
           "type": "array",
           "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. A transport-specific rename of an operation is not a valid entry (MCP tools and the AdCP A2A profile use the operation name verbatim, so those names coincide with it) — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Over MCP the verifier matches the tools/call params.name; over A2A it matches the skill of the sole DataPart of the message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents). The A2A profile uses the AdCP operation name verbatim as skill, so that is the same name space. A request that does not resolve to exactly one operation is rejected with request_body_malformed; see docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/adcp-task-name.json",
             "x-max-length-4.0": 64
           },
           "default": [],
@@ -3663,8 +3646,7 @@
           "type": "array",
           "description": "AdCP protocol operation names for shadow-mode verification. The verifier records missing signatures and well-formed signatures that fail verification or body binding, but MUST NOT establish verified-signer identity from a failed signature; processing continues only when an independent bearer, API-key, or mTLS authenticator succeeds. A partial or malformed Signature / Signature-Input pair always hard-rejects. Used as a bridge between supported_for and required_for. Precedence: required_for > warn_for > supported_for. An operation MUST NOT appear in both warn_for and required_for; see x-adcp-validation.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/adcp-task-name.json",
             "x-max-length-4.0": 64
           },
           "default": [],
@@ -3679,8 +3661,7 @@
           "type": "array",
           "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Under the 3.2 profile, a presented signature on a body-bearing request without content-digest coverage rejects even though an unsigned request may use configured fallback authentication. Typically a superset of required_for and warn_for.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/adcp-task-name.json",
             "x-max-length-4.0": 64
           },
           "x-max-items-4.0": 32

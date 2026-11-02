@@ -45,11 +45,8 @@
       "x-entity": "vendor_pricing_option"
     },
     "governance_context": {
-      "type": "string",
-      "description": "Opaque authorization context returned by an approved check_governance decision for this signal activation. Required when the account has a registered governance agent; signal agents MUST reject governed activations that omit a valid context. Conditions and denied decisions never produce this value.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque authorization context returned by an approved check_governance decision for this signal activation. Required when the account has a registered governance agent; signal agents MUST reject governed activations that omit a valid context. Conditions and denied decisions never produce this value."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",

@@ -369,8 +369,7 @@
                         "description": "Reason the finding carries less than full confidence, retained exactly as emitted by check_governance."
                       },
                       "attestation_reference_digest": {
-                        "type": "string",
-                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "$ref": "/schemas/core/sha256-digest.json",
                         "description": "reference_digest of the runtime attestation evaluation this finding relied on."
                       }
                     },
@@ -387,7 +386,7 @@
                   "description": "Canonical seller statement retained on a delivery check entry.",
                   "properties": {
                     "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
-                    "statement_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+                    "statement_digest": { "$ref": "/schemas/core/sha256-digest.json" },
                     "sequence": { "type": "integer", "minimum": 1 },
                     "issued_at": { "type": "string", "format": "date-time" },
                     "seller_reference": { "type": "string" },
@@ -494,11 +493,8 @@
                   "description": "Buyer-attributed observation retained as audit evidence on a delivery outcome. It never overwrites the seller statement.",
                   "properties": {
                     "observation_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 255,
-                      "description": "Stable buyer-issued identifier for this observation.",
-                      "x-entity": "governance_delivery_observation"
+                      "$ref": "/schemas/core/delivery-observation-id.json",
+                      "description": "Stable buyer-issued identifier for this observation."
                     },
                     "source": {
                       "type": "string",
@@ -518,8 +514,7 @@
                       "x-entity": "governance_delivery_statement"
                     },
                     "seller_statement_digest": {
-                      "type": "string",
-                      "pattern": "^sha256:[a-f0-9]{64}$",
+                      "$ref": "/schemas/core/sha256-digest.json",
                       "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
                     },
                     "reporting_period": {
@@ -587,8 +582,7 @@
                   "maxItems": 10
                 },
                 "runtime_attestation_binding_digest": {
-                  "type": "string",
-                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "$ref": "/schemas/core/sha256-digest.json",
                   "description": "Binding digest copied from the check response and signed governance_context. Auditors recompute it from this entry's ordered runtime_attestations[].evaluation values plus findings carrying attestation_reference_digest after verifying each paired reference digest."
                 },
                 "purchase_type": {
@@ -618,7 +612,7 @@
                   "properties": {
                     "evidence_id": { "type": "string", "x-entity": "governance_adjustment_evidence" },
                     "evidence_type": { "type": "string", "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"] },
-                    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+                    "digest": { "$ref": "/schemas/core/sha256-digest.json" },
                     "issued_at": { "type": "string", "format": "date-time" }
                   },
                   "required": ["evidence_id", "evidence_type", "digest", "issued_at"],

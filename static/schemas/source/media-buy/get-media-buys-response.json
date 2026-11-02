@@ -22,22 +22,15 @@
             "x-entity": "media_buy"
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "pattern": "\\S",
+            "$ref": "/schemas/core/media-buy-name.json",
             "description": "Persisted human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. Sellers MUST include name when the media buy was created through AdCP with name. Sellers MAY omit it for media buys created outside AdCP or created without name. This display label is not an identifier or financial reference."
           },
           "accepted_proposal_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "x-entity": "proposal",
+            "$ref": "/schemas/core/proposal-id.json",
             "description": "Current accepted commercial snapshot for compact-lifecycle refinement. Updated atomically when an amendment or negotiated cancellation is accepted."
           },
           "accepted_proposal_terms_digest": {
-            "type": "string",
-            "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+            "$ref": "/schemas/core/proposal-terms-digest.json",
             "description": "Digest of the current accepted proposal commercial_terms."
           },
           "accepted_proposal": {
@@ -46,7 +39,7 @@
               {
                 "properties": {
                   "proposal_status": { "type": "string", "const": "accepted" },
-                  "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" }
+                  "media_buy_id": { "$ref": "/schemas/core/media-buy-id.json" }
                 },
                 "required": ["proposal_status", "media_buy_id", "accepted_at", "commercial_terms", "terms_digest"]
               }

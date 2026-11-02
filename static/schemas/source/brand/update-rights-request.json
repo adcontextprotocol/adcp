@@ -19,11 +19,8 @@
   },
   "properties": {
     "governance_context": {
-      "type": "string",
-      "description": "Opaque intent authorization for a commitment-increasing rights update.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque intent authorization for a commitment-increasing rights update."
     },
     "rights_id": {
       "type": "string",

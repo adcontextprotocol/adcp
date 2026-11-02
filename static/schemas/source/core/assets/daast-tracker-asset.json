@@ -47,8 +47,7 @@
       "description": "Exact tokens in `url` and their resolver/encoding contracts."
     },
     "offset": {
-      "type": "string",
-      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$",
+      "$ref": "/schemas/core/tracker-offset.json",
       "description": "DAAST `offset` attribute. Required when `daast_event` is `progress` (DAAST 1.1 §3.2.4.3); ignored otherwise for compatibility with existing 3.x manifests. Same format as VAST 4.2 `Tracking@offset`: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted."
     },
     "target": {

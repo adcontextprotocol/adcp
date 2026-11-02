@@ -15,10 +15,7 @@
           "description": "Discriminator. Producer publishes immutable files plus a manifest to caller-controlled object storage."
         },
         "destination_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "$ref": "/schemas/core/reporting-destination-id.json",
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
@@ -36,10 +33,7 @@
           "$ref": "/schemas/core/delivery-provider.json"
         },
         "transport": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "$ref": "/schemas/core/reporting-transport.json",
           "description": "Open provider transport name, such as s3, gcs, or azure_blob."
         },
         "location": {
@@ -91,10 +85,7 @@
           "description": "Discriminator. Producer or its connector commits reporting revisions into a caller-owned warehouse relation."
         },
         "destination_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "$ref": "/schemas/core/reporting-destination-id.json",
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
@@ -112,10 +103,7 @@
           "$ref": "/schemas/core/delivery-provider.json"
         },
         "transport": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "$ref": "/schemas/core/reporting-transport.json",
           "description": "Open provider transport name, such as bigquery, snowflake, or databricks_sql."
         },
         "location": {
@@ -150,10 +138,7 @@
           "description": "Discriminator. Producer retains and versions the dataset; the named recipient reads provider-hosted share objects."
         },
         "destination_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "$ref": "/schemas/core/reporting-destination-id.json",
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
@@ -171,17 +156,11 @@
           "$ref": "/schemas/core/delivery-provider.json"
         },
         "transport": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "$ref": "/schemas/core/reporting-transport.json",
           "description": "Open provider transport name, such as delta_sharing or snowflake_secure_sharing."
         },
         "access_mode": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "$ref": "/schemas/core/reporting-access-mode.json",
           "description": "Dataset-share access family, such as databricks_to_databricks, open_sharing, or secure_data_sharing."
         },
         "recipient": {

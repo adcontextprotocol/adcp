@@ -17,8 +17,7 @@
       "$ref": "/schemas/core/geo-place-system.json"
     },
     "system_version": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/geo-place-system-version.json",
       "description": "Optional exact catalog version from the seller's declared supported_versions. When omitted, the seller applies catalog.current_version and MUST echo that version on persisted package state."
     },
     "place_type": {

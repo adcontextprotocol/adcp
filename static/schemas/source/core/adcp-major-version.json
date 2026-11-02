@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-major-version.json",
+  "title": "AdCP Major Version",
+  "description": "AdCP major version number.",
+  "type": "integer",
+  "minimum": 1,
+  "maximum": 99
+}

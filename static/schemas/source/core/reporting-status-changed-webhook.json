@@ -11,10 +11,7 @@
       "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry. Receivers MUST dedupe by this key, scoped to the authenticated sender identity."
     },
     "notification_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/notification-id.json",
       "description": "Stable per logical health transition; re-emissions reuse it, and a later distinct transition receives a new id."
     },
     "notification_type": {
@@ -26,23 +23,14 @@
       "format": "date-time"
     },
     "subscriber_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "$ref": "/schemas/core/subscriber-id.json",
       "description": "Identifies which account-level notification_configs[] entry is receiving this fire."
     },
     "account_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "account"
+      "$ref": "/schemas/core/account-id.json"
     },
     "delivery_config_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "x-entity": "reporting_delivery_config"
+      "$ref": "/schemas/core/reporting-delivery-config-id.json"
     },
     "delivery_config_version": {
       "type": "integer",
@@ -52,10 +40,7 @@
       "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
     },
     "reporting_obligation_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/reporting-obligation-id.json",
       "description": "Present when the transition is obligation-scoped; absent for configuration-level transitions."
     },
     "health": {
@@ -68,10 +53,7 @@
     "issue_ids": {
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 255,
-        "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        "$ref": "/schemas/core/reporting-issue-id.json"
       },
       "maxItems": 16,
       "uniqueItems": true,

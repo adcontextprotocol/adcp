@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-capability-id.json",
+  "title": "Creative Capability ID",
+  "description": "Identifier of a format capability within a creative agent, from get_adcp_capabilities creative.supported_formats[].capability_id.",
+  "type": "string",
+  "pattern": "^[a-zA-Z0-9_-]+$"
+}

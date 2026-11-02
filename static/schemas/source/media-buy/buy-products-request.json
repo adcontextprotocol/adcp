@@ -21,10 +21,7 @@
       "$ref": "/schemas/core/idempotency-key.json"
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the commitment success response and subsequent get_media_buys reads. The name is operational metadata outside accepted_proposal and is not covered by terms_digest. This display label is not an identifier or financial reference."
     },
     "account": {
@@ -40,13 +37,11 @@
       "description": "Industry classification for this campaign. Sellers may infer it from the resolved brand manifest when omitted."
     },
     "feed_version": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/products-feed-version.json",
       "description": "list_products feed_version containing the published offers being accepted. Sellers reject stale or mismatched versions rather than silently applying changed terms."
     },
     "pricing_version": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/products-pricing-version.json",
       "description": "list_products pricing_version containing the accepted rate. Buyers MUST include this whenever list_products returned one; omission means the seller does not version pricing separately."
     },
     "purchases": {
@@ -99,13 +94,10 @@
       "default": false
     },
     "purchase_order_ref": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255
+      "$ref": "/schemas/core/purchase-order-ref.json"
     },
     "agency_estimate_number": {
-      "type": "string",
-      "maxLength": 100
+      "$ref": "/schemas/core/agency-estimate-number.json"
     },
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",

@@ -8,9 +8,7 @@
     {
       "properties": {
         "account_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "account"
+          "$ref": "/schemas/core/account-id.json"
         }
       },
       "required": ["account_id"],

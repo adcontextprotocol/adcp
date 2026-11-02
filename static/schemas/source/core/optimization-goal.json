@@ -123,8 +123,7 @@
             "type": "object",
             "properties": {
               "event_source_id": {
-                "type": "string",
-                "minLength": 1,
+                "$ref": "/schemas/core/event-source-id.json",
                 "description": "Event source to include (must be configured on this account via sync_event_sources)"
               },
               "event_type": {

@@ -32,7 +32,7 @@
         "all_authorized_accounts": { "type": "boolean", "const": true },
         "account_ids": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1, "x-entity": "account" },
+          "items": { "$ref": "/schemas/core/account-id.json" },
           "minItems": 1,
           "maxItems": 1000,
           "uniqueItems": true
@@ -44,7 +44,7 @@
     },
     "exclude_account_ids": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "x-entity": "account" },
+      "items": { "$ref": "/schemas/core/account-id.json" },
       "minItems": 1,
       "maxItems": 1000,
       "uniqueItems": true,
@@ -64,9 +64,7 @@
       "properties": {
         "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"], "description": "Same values as the offering feed_purpose." },
         "period_duration": {
-          "type": "string",
-          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
-          "maxLength": 64,
+          "$ref": "/schemas/core/reporting-period-duration.json",
           "description": "ISO 8601 duration matched exactly against the offering's schedule.period_duration."
         },
         "required_finality": { "$ref": "/schemas/enums/reporting-finality.json" },
@@ -112,10 +110,7 @@
       "description": "Managed delivery target. Omit to select only API-delivered (Core) offerings. When present, only offerings whose method matches the destination's pattern and transport match.",
       "properties": {
         "destination_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "$ref": "/schemas/core/reporting-destination-id.json",
           "description": "A destination_id in the caller's principal reporting_destinations. The seller binds the current generation and echoes its destination_ref in state."
         },
         "path_template": {
@@ -140,7 +135,7 @@
         "properties": {
           "account_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "account" }, "minItems": 1, "maxItems": 1000, "uniqueItems": true },
           "operator_domains": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253, "x-entity": "operator" }, "minItems": 1, "maxItems": 64, "uniqueItems": true },
-          "destination_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "description": "A destination_id in the caller's principal reporting_destinations." },
+          "destination_id": { "$ref": "/schemas/core/reporting-destination-id.json", "description": "A destination_id in the caller's principal reporting_destinations." },
           "path_template": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_.=/{}-]+$", "description": "As destination.path_template, for the accounts this entry routes. MUST contain {account_id} when the entry can select more than one account. Omitted: destination.path_template applies." }
         },
         "required": ["destination_id"],

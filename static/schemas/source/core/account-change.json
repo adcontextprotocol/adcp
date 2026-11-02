@@ -6,11 +6,8 @@
   "type": "object",
   "properties": {
     "change_id": {
-      "type": "string",
-      "description": "Stable seller-generated identifier for this logical change. Retries and notification re-emissions reuse this identifier.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/account-change-id.json",
+      "description": "Stable seller-generated identifier for this logical change. Retries and notification re-emissions reuse this identifier."
     },
     "recorded_at": {
       "type": "string",
@@ -34,11 +31,8 @@
       "description": "Stable identity of the changed resource. Resource types are open for forward compatibility. account_id is always present; resource_id identifies the changed entity and parent_ids supplies any IDs needed to disambiguate nested resources.",
       "properties": {
         "type": {
-          "type": "string",
-          "description": "Open resource-type name such as account, media_buy, package, creative, creative_assignment, delivery_report, audience, event_source, catalog, account_financials, or invoice.",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+          "$ref": "/schemas/core/account-change-resource-type.json",
+          "description": "Open resource-type name such as account, media_buy, package, creative, creative_assignment, delivery_report, audience, event_source, catalog, account_financials, or invoice."
         },
         "account_id": {
           "type": "string",

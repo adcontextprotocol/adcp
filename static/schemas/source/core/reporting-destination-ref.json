@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-destination-ref.json",
+  "title": "Reporting Destination Reference",
+  "description": "Seller-issued opaque reference to one immutable generation of a reporting destination.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255
+}

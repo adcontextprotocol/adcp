@@ -194,8 +194,7 @@
                 "description": "Echoes product_id from the corresponding refine entry."
               },
               "result_product_id": {
-                "type": "string",
-                "minLength": 1,
+                "$ref": "/schemas/core/product-id.json",
                 "x-entity": "product",
                 "x-added-in": "3.3.0",
                 "description": "Required for an applied structured package forecast. Identifies exactly one returned Product carrying this entry's exact forecast, even when its configured ID differs from the request product_id. The requested pricing_option_id and pricing terms MUST remain unchanged. Buyers use this ID at create."

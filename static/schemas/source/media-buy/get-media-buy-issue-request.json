@@ -21,9 +21,7 @@
       "$ref": "/schemas/core/canonical-account-ref.json"
     },
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -32,9 +30,7 @@
       "$ref": "/schemas/core/ext.json"
     },
     "issue_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy_issue"
+      "$ref": "/schemas/core/media-buy-issue-id.json"
     },
     "governance_context": {
       "type": "string",
