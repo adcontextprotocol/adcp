@@ -59,15 +59,14 @@ test('a creative library alone does not run provenance mutations on the maintain
   }
 });
 
-test('SDK 9.6.2 grades fixture-backed auction discovery, buyer bids, and budget-only updates without guidance', async () => {
+function auctionSteps() {
   const storyboard = load('specialisms/sales-non-guaranteed/index.yaml');
   const phases = storyboard.phases.filter(phase => ['get_products_brief', 'create_media_buy', 'update_media_buy']
     .some(id => phase.steps.some(step => step.id === id)));
   storyboard.phases = phases.map(phase => ({ ...phase, steps: phase.steps.filter(step =>
     ['get_products_brief', 'create_media_buy', 'update_media_buy'].includes(step.id)) }));
-  // Preload the controller-backed catalog and isolate these three real runner
-  // steps. This is construction/grading coverage, not a substitute for the
-  // independent response-schema and upstream-traffic integration suites.
+  // Isolate request construction from fixture/preflight and transport checks.
+  // The modern SDK's actual MCP lifecycle regression retains those checks.
   delete storyboard.prerequisites;
   delete storyboard.fixtures;
   delete storyboard.invariants;
@@ -75,6 +74,41 @@ test('SDK 9.6.2 grades fixture-backed auction discovery, buyer bids, and budget-
     step.validations = step.validations.filter(validation =>
       !['response_schema', 'upstream_traffic'].includes(validation.check));
   }
+  return storyboard;
+}
+
+test('SDK 9.6.2 cannot construct the maintained wholesale discovery and stops subsequent auction mutations', async () => {
+  const storyboard = auctionSteps();
+  let discovery;
+  let mutations = 0;
+  const runOptions = options({
+    resetContext() {},
+    async getProducts(request) {
+      discovery = structuredClone(request);
+      // SDK 9 injects this brief even though the authored wholesale request
+      // omits it. A strict 3.1 seller must refuse the malformed combination.
+      assert.equal(request.buying_mode, 'wholesale');
+      assert.equal(typeof request.brief, 'string');
+      return { success: false, error: 'INVALID_REQUEST: brief is forbidden for wholesale discovery' };
+    },
+    async createMediaBuy() { mutations++; throw new Error('discovery failure must stop creation'); },
+    async updateMediaBuy() { mutations++; throw new Error('discovery failure must stop updates'); },
+  });
+  runOptions.brand = { domain: 'acmeoutdoor.example' };
+  const result = await runStoryboard('https://seller.example/mcp', storyboard, runOptions);
+  assert.equal(result.overall_passed, false);
+  assert.equal(result.failed_count, 1, JSON.stringify(result));
+  assert.equal(result.skipped_count, 2, JSON.stringify(result));
+  assert.equal(discovery.account.sandbox, true);
+  assert.equal(mutations, 0);
+});
+
+test('SDK 9.6.2 constructs fixture-backed buyer bids and budget-only updates after validated discovery', async () => {
+  const storyboard = auctionSteps();
+  // This positive case starts after validated discovery. It does not qualify
+  // SDK 9's wholesale builder, whose malformed request is covered above.
+  storyboard.phases = storyboard.phases.filter(phase =>
+    !phase.steps.some(step => step.id === 'get_products_brief'));
   const display = {
     product_id: 'sports_display_auction', delivery_type: 'non_guaranteed',
     format_ids: [{ id: 'display_300x250', agent_url: 'https://seller.example/mcp' }],
@@ -89,14 +123,6 @@ test('SDK 9.6.2 grades fixture-backed auction discovery, buyer bids, and budget-
   let updated;
   const runOptions = options({
     resetContext() {},
-    async getProducts(request) {
-      assert.equal(request.account.sandbox, true);
-      return { success: true, data: {
-        // Unrelated inventory can precede both fixtures and have a higher floor.
-        products: [{ product_id: 'unrelated-first', pricing_options: [{ pricing_model: 'cpm', floor_price: 1000 }] }, video, display],
-        context: request.context,
-      } };
-    },
     async createMediaBuy(request) {
       assert.equal(request.account.sandbox, true);
       created = structuredClone(request);
@@ -124,9 +150,13 @@ test('SDK 9.6.2 grades fixture-backed auction discovery, buyer bids, and budget-
     },
   });
   runOptions.brand = { domain: 'acmeoutdoor.example' };
+  storyboard.context = { ...storyboard.context, products: [
+    // Unrelated inventory can precede both fixtures and have a higher floor.
+    { product_id: 'unrelated-first', pricing_options: [{ pricing_model: 'cpm', floor_price: 1000 }] }, video, display,
+  ] };
   const result = await runStoryboard('https://seller.example/mcp', storyboard, runOptions);
   assert.equal(result.overall_passed, true, JSON.stringify(result));
-  assert.equal(result.passed_count, 3, JSON.stringify(result));
+  assert.equal(result.passed_count, 2, JSON.stringify(result));
   assert.equal(result.failed_count, 0);
   assert.equal(result.skipped_count, 0);
   assert.deepEqual(updated.packages.map(pkg => pkg.budget), [12000, 13000]);

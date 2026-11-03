@@ -159,25 +159,27 @@ phases:
   - id: product_discovery
     title: "Discover auction-based products"
     narrative: |
-      The buyer sends a brief to discover your non-guaranteed inventory. Products
-      come back with delivery_type: non_guaranteed, bid guidance, and any declared floors
-      that helps the buyer set competitive bids.
+      The buyer reads the wholesale auction catalog to locate the exact seeded
+      products used in this fixture-backed flow. Curated brief discovery may
+      legitimately rank other products ahead of these fixtures. Price guidance
+      and declared floors may help buyers set competitive bids when available.
 
     steps:
       - id: get_products_brief
-        title: "Send a brief for non-guaranteed inventory"
+        title: "Read the non-guaranteed auction catalog"
         narrative: |
-          The buyer describes what they want. Your platform returns non-guaranteed
-          products with auction mechanics and available audience segments. Floor
+          The buyer locates the seeded non-guaranteed products and pricing
+          options in the wholesale feed, independently of catalog order. Floor
           prices, recommended bid ranges, and win-rate forecasts are optional.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: full_sales_flow
-        stateful: false
+        stateful: true
         expected: |
-          Return non-guaranteed products matching the brief. Each product should include:
+          Return the non-guaranteed auction feed, including the seeded fixtures.
+          Each product should include:
           - product_id: unique identifier
           - name and description
           - delivery_type: non_guaranteed
@@ -187,10 +189,9 @@ phases:
           - targeting: available audiences and contexts
 
         sample_request:
-          buying_mode: "brief"
+          buying_mode: "wholesale"
           brand:
             domain: "acmeoutdoor.example"
-          brief: "Display and video inventory across sports and outdoor lifestyle sites. Q2 flight, $25K budget. Adults 25-54, US. Auction-based, looking for competitive CPMs."
           filters:
             delivery_type: "non_guaranteed"
             is_fixed_price: false
