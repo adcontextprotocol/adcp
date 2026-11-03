@@ -441,7 +441,14 @@
                   "items": { "$ref": "/schemas/core/reporting-delivery-offering-id.json" },
                   "maxItems": 64,
                   "uniqueItems": true,
-                  "description": "The reporting delivery offerings this package can satisfy (media_buy.reporting_subscriptions): its product's reporting_capabilities.reporting_delivery_offering_ids after account-level narrowing, fixed when the package is confirmed. A later product or catalog change does not alter it, so a buyer resolves a subscription selector per package from this list and each offering's available_from and withdrawn_at. An offering in it stops being a candidate at its withdrawn_at. Sellers advertising media_buy.reporting_subscriptions MUST include it on every package, [] when none applies."
+                  "description": "The reporting delivery offerings this package can satisfy (media_buy.reporting_subscriptions): its product's reporting_capabilities.reporting_delivery_offering_ids after account-level narrowing, fixed when the package is confirmed (for a package added to a confirmed buy, at its added_at). A later product or catalog change does not alter it, so a buyer resolves a subscription selector per package from this list and each offering's available_from and withdrawn_at. An offering in it stops being a candidate at its withdrawn_at. Sellers advertising media_buy.reporting_subscriptions MUST include it on every package, [] when none applies."
+                },
+                "added_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0",
+                  "description": "When this package was added to the buy, for a package added after the buy's confirmed_at (media_buy.reporting_subscriptions). It is the package's own confirmed_at for reporting-subscription coverage: the package is owed the periods that end after the later of the buy's confirmed_at and added_at, so the period containing added_at is owed in full, and it resolves subscription selectors at the later of the subscription version's accepted_at and that instant. Absent means the package was part of the buy when it was confirmed. A value at or before confirmed_at, such as for a package added while the buy awaited confirmation, has the same effect as absence. Sellers advertising media_buy.reporting_subscriptions MUST include it on every package added after the buy's confirmed_at. Immutable once set, and retained with the package record."
                 },
                 "start_requires_all_creatives_approved": {
                   "type": "boolean",

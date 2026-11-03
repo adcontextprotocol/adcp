@@ -17,6 +17,11 @@
   "required": ["period_duration", "alignment", "delivery_sla"],
   "allOf": [
     {
+      "$comment": "period_generation: under a local alignment a period_duration cannot mix date and time components. The first pattern holds when every date component (Y, M, D) is zero, the second when every time component (H, M, S) is zero or absent, so neither holds exactly when a non-zero date component and a non-zero time component are both present (P1DT12H, P1MT1H), and the schema rejects exactly the durations the rule refuses. utc alignment accepts mixed durations.",
+      "if": { "properties": { "alignment": { "enum": ["account_timezone", "source_timezone", "billing_cycle"] } }, "required": ["alignment"] },
+      "then": { "properties": { "period_duration": { "anyOf": [{ "pattern": "^P(?:0+[YMD])*T" }, { "pattern": "^P[^T]*(?:T(?:0+[HMS])*)?$" }] } } }
+    },
+    {
       "if": { "properties": { "alignment": { "const": "billing_cycle" } }, "required": ["alignment"] },
       "then": {
         "required": ["period_anchor_policy"],

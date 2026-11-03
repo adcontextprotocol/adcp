@@ -168,6 +168,23 @@
       "spec_refs": ["static/schemas/source/core/reporting-delivery-offering.json#/properties/standard_dimensions"]
     },
     {
+      "code": "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY",
+      "raised_by": "seller",
+      "dispatched": "not_applicable",
+      "recovery": "correctable",
+      "raised_when": "A seller enabling reporting subscriptions advertises a managed-delivery offering (one with method) whose reporting_profile.primary_keys does not include account_id, or whose row schema (schema_uri), when the SDK has it, does not declare account_id as a required string property. Core offerings (no method) are exempt.",
+      "message_fix": "Add account_id to the offering's reporting_profile.primary_keys and as a required string property of its row schema; the message names the offering and what is missing.",
+      "context": {
+        "offering_id": "The offering that breaks the rule.",
+        "missing": "primary_key when reporting_profile.primary_keys lacks account_id; row_schema when the row schema does not declare account_id as a required string property."
+      },
+      "sdk_classes": { "typescript": "PlatformConfigError", "python": "ReliableReportingConfigurationError" },
+      "spec_refs": [
+        "static/schemas/source/core/reporting-delivery-offering.json#/x-adcp-validation/subscription_rows",
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/destination"
+      ]
+    },
+    {
       "code": "SUBSCRIPTION_ROSTER_UNAVAILABLE",
       "raised_by": "seller",
       "dispatched": "not_applicable",

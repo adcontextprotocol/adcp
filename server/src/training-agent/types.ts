@@ -1069,6 +1069,10 @@ export interface PackageState {
   canceledAt?: string;
   canceledBy?: string;
   cancellationReason?: string;
+  /** When the package was added to an already-confirmed buy (get_media_buys
+   * `added_at`, experimental 3.3 reporting subscriptions). Absent for packages
+   * that were part of the buy when it was confirmed. */
+  addedAt?: string;
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];

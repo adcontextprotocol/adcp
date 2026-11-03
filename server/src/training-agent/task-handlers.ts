@@ -17308,6 +17308,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
                 session.configuredProducts as unknown as Map<string, { reporting_capabilities?: unknown }>,
               ),
             }),
+            ...(subscriptionFields && pkg.addedAt && { added_at: pkg.addedAt }),
             ...(pkg.legacyOmitProductId ? {} : { product_id: pkg.productId }),
             ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
             ...(pkg.dailyBudgetCap !== undefined && { daily_budget_cap: pkg.dailyBudgetCap }),
@@ -20446,6 +20447,9 @@ async function handleUpdateMediaBuyUnlocked(
         ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
         frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
+        // A package added to a confirmed buy is owed reporting-subscription
+        // periods from here, as the buy is from confirmed_at.
+        ...(mb.confirmedAt && { addedAt: now }),
       };
       stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
       mb.packages.push(newPkg);
