@@ -144,7 +144,6 @@
           "path_template": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!(?:.*/)?\\.{1,2}(?:/|$))[A-Za-z0-9_.=/{}-]+$", "description": "As destination.path_template, for the accounts this entry routes. MUST contain {account_id} when the entry can select more than one account. Omitted: destination.path_template applies." }
         },
         "required": ["destination_id"],
-        "$comment": "Exactly one of account_ids and operator_domains; path_template must contain {account_id} when the entry can select more than one account. The fields are declared above and these rules are a single if/then/else with no anyOf, oneOf, allOf, or not at this level, so code generators emit one object type with every field.",
         "if": { "required": ["account_ids"] },
         "then": {
           "not": { "required": ["operator_domains"] },

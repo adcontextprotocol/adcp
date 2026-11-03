@@ -1039,7 +1039,7 @@ test('the schema refuses exactly the mixed durations the period rule refuses und
   }
   // utc keeps mixed durations: "With those alignments" names only the local ones.
   assert.ok(schedule({ period_duration: 'P1DT12H', alignment: 'utc', delivery_sla: 'PT6H' }));
-  assert.match(read('core/reporting-schedule.json')['x-adcp-validation'].period_generation, /cannot mix date and time components: P1DT12H is invalid, while P1DT0H \(a zero time component\) is a date duration and P0DT12H a time duration\. The schema enforces this\./);
+  assert.match(read('core/reporting-schedule.json')['x-adcp-validation'].period_generation, /cannot mix non-zero date and time components \(P1DT12H; P1DT0H is a date duration\)/);
 });
 
 test('a package added after confirmation carries added_at, its own confirmed_at for coverage', () => {
