@@ -7379,7 +7379,7 @@ describe('create_media_buy handler', () => {
       package_id?: string;
       format_ids?: Array<Record<string, unknown>>;
       format_option_refs?: Array<Record<string, unknown>>;
-    }>).find(pkg => pkg.package_id === 'pkg-1')!;
+    }>).find(pkg => String(pkg.package_id).endsWith('-pkg-1'))!;
     expect(addedPackage.format_ids).toEqual([legacyRef]);
     expect(addedPackage.format_option_refs).toEqual([{
       scope: 'publisher',
@@ -7563,7 +7563,7 @@ describe('create_media_buy handler', () => {
     });
     expect(update.isError).not.toBe(true);
     const addedPackage = (update.result.packages as Array<Record<string, unknown>>)
-      .find(pkg => pkg.package_id === 'pkg-1')!;
+      .find(pkg => String(pkg.package_id).endsWith('-pkg-1'))!;
     expect(addedPackage.format_ids).toEqual([legacyRef]);
     expect(addedPackage).not.toHaveProperty('format_option_refs');
     const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
@@ -8023,7 +8023,7 @@ describe('create_media_buy handler', () => {
     expect(result.message).toContain('bid_price is required');
   });
 
-  it('uses deterministic package IDs (pkg-0, pkg-1)', async () => {
+  it('mints deterministic package IDs scoped to the buy', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
@@ -8038,8 +8038,10 @@ describe('create_media_buy handler', () => {
     });
     expect(isError).toBeFalsy();
     const pkgs = result.packages as Array<Record<string, unknown>>;
-    expect(pkgs[0].package_id).toBe('pkg-0');
-    expect(pkgs[1].package_id).toBe('pkg-1');
+    // package_id is the seller's unique identifier (core/package.json), so
+    // the per-buy index is scoped to the buy rather than repeated as pkg-0.
+    expect(pkgs[0].package_id).toBe(`${result.media_buy_id}-pkg-0`);
+    expect(pkgs[1].package_id).toBe(`${result.media_buy_id}-pkg-1`);
   });
 
   it('includes status field in create response', async () => {
@@ -9459,7 +9461,7 @@ describe('create_media_buy handler', () => {
         impressions: 10_000,
         measurement_window: 'live',
         vendor_metric_values_by_package: {
-          'pkg-0': [{
+          [`${mediaBuyId}-pkg-0`]: [{
             ...metrics[0],
             value: 4.2,
             unit: 'score',
@@ -9467,7 +9469,7 @@ describe('create_media_buy handler', () => {
           }],
         },
         not_yet_measurable_vendor_metrics_by_package: {
-          'pkg-0': [metrics[1]],
+          [`${mediaBuyId}-pkg-0`]: [metrics[1]],
         },
       },
     });

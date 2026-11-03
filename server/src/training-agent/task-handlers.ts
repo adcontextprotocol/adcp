@@ -59,7 +59,7 @@ import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
 import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
 import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
-import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow } from './assignment-operations.js';
+import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem } from './assignment-operations.js';
 import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
@@ -1873,6 +1873,7 @@ function validateCreateAssignmentSemantics(
   session: SessionState,
   fieldPrefix: string,
   packageRequirements: CanonicalPackageFormat[] = [],
+  options: { declaresAssignmentSettings?: boolean } = {},
 ): TaskError[] {
   const errors: TaskError[] = [];
   const effectiveModes = new Set(assignments.map(assignment => assignment.rotation_mode ?? 'weighted'));
@@ -1926,6 +1927,28 @@ function validateCreateAssignmentSemantics(
     const creative = typeof assignment.creative_id === 'string'
       ? session.creatives.get(assignment.creative_id)
       : undefined;
+    const settings = assignment as unknown as { trackers?: unknown; landing_page_url?: unknown };
+    if (options.declaresAssignmentSettings === false) {
+      for (const field of ['trackers', 'landing_page_url'] as const) {
+        if (settings[field] !== undefined) {
+          errors.push({
+            code: 'UNSUPPORTED_FEATURE',
+            message: `${fieldPrefix}[${index}].${field} requires creative.supports_assignment_${field === 'trackers' ? 'trackers' : 'landing_page'}`,
+            field: `${fieldPrefix}[${index}].${field}`,
+          });
+        }
+      }
+    } else if (Array.isArray(settings.trackers) && settings.trackers.length > 0) {
+      const slotProblem = assignmentTrackerSlotProblem(
+        { formatsToProvide: packageRequirements },
+        creative?.manifest,
+        creative,
+        settings.trackers as Array<Record<string, unknown>>,
+      );
+      if (slotProblem) {
+        errors.push({ code: 'VALIDATION_ERROR', message: `${fieldPrefix}[${index}]: ${slotProblem}`, field: `${fieldPrefix}[${index}].trackers` });
+      }
+    }
     const routedPlacements: Record<string, unknown>[] = [];
     const hasExplicitRoute = (Array.isArray(assignment.placement_refs) && assignment.placement_refs.length > 0)
       || (Array.isArray(assignment.placement_ids) && assignment.placement_ids.length > 0);
@@ -16713,6 +16736,7 @@ async function handleCreateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${i}].creative_assignments`,
         formatSnapshot.formats ?? [],
+        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
       ));
     }
 
@@ -16868,6 +16892,10 @@ async function handleCreateMediaBuyUnlocked(
   const mediaBuyId = typeof requestedMediaBuyId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(requestedMediaBuyId)
     ? requestedMediaBuyId
     : `mb_${randomUUID().slice(0, 8)}`;
+  // package_id is the seller's unique identifier for the package
+  // (core/package.json), and sync_creatives addresses a package by package_id
+  // alone, so scope the deterministic per-buy index to this buy.
+  for (const pkg of createdPackages) pkg.packageId = `${mediaBuyId}-${pkg.packageId}`;
   const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
   if (govCtx && governanceAgents[0] && governanceIntentClaims) {
@@ -18750,6 +18778,11 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
           ? `Creative ${creativeId} does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`
           : undefined;
       },
+      validateTrackers: (creativeId, pkg, trackers) => {
+        const stored = session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId);
+        const manifest = stagedCreativeManifests.get(creativeId) ?? stored?.manifest;
+        return assignmentTrackerSlotProblem(pkg, manifest, stored, trackers);
+      },
     });
     if ('errors' in plan) return { errors: plan.errors as TaskError[] };
     if (!isDryRun) commitAssignmentPlan(session, plan, new Date().toISOString());
@@ -18850,6 +18883,40 @@ function liveCreativeUpdatesEnabled(ctx: TrainingContext): boolean {
 /** Only sellers with media buys can have live creatives to declare for. */
 function declaresLiveCreativeUpdates(ctx: TrainingContext): boolean {
   return liveCreativeUpdatesEnabled(ctx) && (ctx.tenantId === 'sales' || ctx.tenantId == null);
+}
+
+/**
+ * Assignment trackers and the creative's own trackers share each format's
+ * declared tracker slots. Check every format option the package accepts for
+ * the creative's format kind (or all of them when none matches).
+ */
+function assignmentTrackerSlotProblem(
+  pkg: Pick<PackageState, 'formatsToProvide' | 'formatKind' | 'params'>,
+  manifest: CreativeManifest | undefined,
+  stored: CreativeState | undefined,
+  trackers: ReadonlyArray<Record<string, unknown>>,
+): string | undefined {
+  const assets = (manifest?.assets ?? stored?.assets ?? {}) as Record<string, unknown>;
+  const formatKind = manifest?.format_kind ?? stored?.formatKind;
+  const formats = (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[];
+  const matching = formats.filter(format => !formatKind || format.format_kind === formatKind);
+  const candidates = matching.length > 0 ? matching : formats;
+  const declarations = candidates.length > 0
+    ? candidates.map(format => ({
+      label: format.format_option_id ?? format.format_kind ?? 'format',
+      slots: normalizeCanonicalSlots(format.params?.slots) ?? CANONICAL_FORMAT_SLOTS[format.format_kind ?? ''] ?? [],
+    }))
+    : [{
+      label: pkg.formatKind ?? 'format',
+      slots: normalizeCanonicalSlots(pkg.params?.slots) ?? CANONICAL_FORMAT_SLOTS[pkg.formatKind ?? ''] ?? [],
+    }];
+  for (const { label, slots } of declarations) {
+    const trackerSlots = slots.filter(isTrackerSlot);
+    const occupancy = Object.fromEntries(trackerSlots.map(slot => [slot.asset_group_id, slotCount(assets, slot.asset_group_id)]));
+    const problem = trackerAllocationProblem(trackerSlots, occupancy, trackers);
+    if (problem) return `${problem} (format option ${label})`;
+  }
+  return undefined;
 }
 
 /** Assignment trackers and landing-page overrides (3.3) ride the same gate:
@@ -19903,6 +19970,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `packages[${pkgId}].creative_assignments`,
           (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20244,7 +20312,7 @@ async function handleUpdateMediaBuyUnlocked(
         formatSnapshot.selectedLegacyFormatIds,
       );
 
-      const pkgId = `pkg-${mb.packages.length + i}`;
+      const pkgId = `${mb.mediaBuyId}-pkg-${mb.packages.length + i}`;
       const newTargeting = genderTargetingMutation(undefined, npkg.targeting_overlay ?? npkg.targeting);
       const targetingResult = validateTargeting(newTargeting, `new_packages[${i}].targeting_overlay`);
       if (targetingResult.errors.length) {
@@ -20315,6 +20383,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `new_packages[${i}].creative_assignments`,
           formatSnapshot.formats ?? [],
+          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20508,6 +20577,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${pkg.packageId}].creative_assignments`,
         (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
       );
       if (assignmentErrors.length) return { errors: assignmentErrors };
     }

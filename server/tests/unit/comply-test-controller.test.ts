@@ -1687,7 +1687,7 @@ describe('comply_test_controller', () => {
       expect(result.media_buy_id).toBeDefined();
       const pkgs = result.packages as Array<Record<string, unknown>>;
       expect(pkgs).toHaveLength(1);
-      expect(pkgs[0].package_id).toBe('pkg-0');
+      expect(pkgs[0].package_id).toBe(`${result.media_buy_id}-pkg-0`);
     });
 
     it('seed_measurement_catalog lets vendor_metric create reject a catalog miss after product preconditions pass', async () => {
