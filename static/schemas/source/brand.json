@@ -427,8 +427,7 @@
           "description": "When the product catalog was last updated"
         },
         "update_frequency": {
-          "type": "string",
-          "enum": ["realtime", "hourly", "daily", "weekly"],
+          "$ref": "/schemas/enums/update-frequency.json",
           "description": "How frequently the product catalog is updated"
         },
         "agentic_checkout": {
@@ -1309,8 +1308,7 @@
           "description": "Stable `logos[].id` this rule applies to. Prefer this over logo_url when the rule targets a specific logo entry."
         },
         "logo_variant": {
-          "type": "string",
-          "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+          "$ref": "/schemas/enums/logo-variant.json",
           "description": "Logo variant this rule applies to."
         },
         "logo_tags": {

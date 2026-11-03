@@ -299,8 +299,7 @@
       "description": "Declares the dimension along which variants differ. When `values` is provided, the agent produces exactly one variant per value (e.g. an A/B of two voices). When only `dimension` is provided, the agent chooses up to max_variants variants along that dimension (e.g. best-of-N, themes).",
       "properties": {
         "dimension": {
-          "type": "string",
-          "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"],
+          "$ref": "/schemas/enums/transformer-variant-dimension.json",
           "description": "What varies across variants. `transformer_config` varies a named config param (name it in `field`); `best_of_n` lets the agent explore and rank; `custom` is agent-defined (describe in `label`)."
         },
         "field": {

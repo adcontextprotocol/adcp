@@ -46,14 +46,7 @@
         "accepted_formats": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "jsonl",
-              "csv",
-              "parquet",
-              "avro",
-              "orc"
-            ]
+            "$ref": "/schemas/enums/reporting-file-format.json"
           },
           "minItems": 1,
           "uniqueItems": true,

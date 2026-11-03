@@ -22,10 +22,8 @@
           "description": "The caller's sandbox clock after the call."
         },
         "account_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The account whose timezone the call set, as params.account_id named it.",
-          "x-entity": "account"
+          "$ref": "/schemas/core/account-id.json",
+          "description": "The account whose timezone the call set, as params.account_id named it."
         },
         "previous_timezone": {
           "type": "string",

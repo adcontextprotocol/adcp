@@ -1027,8 +1027,7 @@
                   "formats": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "enum": ["jsonl", "csv", "parquet", "avro", "orc"]
+                      "$ref": "/schemas/enums/reporting-file-format.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true,
@@ -2381,8 +2380,7 @@
               "type": "array",
               "description": "Buyer policy modes the seller evaluates. A seller MUST NOT silently ignore a mode it does not list.",
               "items": {
-                "type": "string",
-                "enum": ["required", "preferred"]
+                "$ref": "/schemas/enums/audience-evidence-requirement-mode.json"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -2391,8 +2389,7 @@
               "type": "array",
               "description": "Evidence-presence semantics the seller supports.",
               "items": {
-                "type": "string",
-                "enum": ["required", "when_available"]
+                "$ref": "/schemas/enums/audience-evidence-presence.json"
               },
               "minItems": 1,
               "uniqueItems": true
