@@ -134,6 +134,7 @@ const PROPERTIES_3_3 = [
   ['core/media-buy.json', ['properties', 'flight_history']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'flight_history']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'packages', 'items', 'properties', 'reporting_delivery_offering_ids']],
+  ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'packages', 'items', 'properties', 'added_at']],
   ['core/reporting-delivery-offering.json', ['properties', 'available_from']],
   ['core/reporting-delivery-offering.json', ['properties', 'withdrawn_at']],
   ['core/reporting-consumer-status.json', ['properties', 'offering_id']],

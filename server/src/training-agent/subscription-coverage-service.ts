@@ -81,6 +81,7 @@ async function accountBuys(ctx: TrainingContext, state: CallerAccountState): Pro
     packages: mediaBuy.packages.filter(pkg => !pkg.canceled).map(pkg => ({
       package_id: pkg.packageId,
       reporting_delivery_offering_ids: packageReportingOfferingIds(mediaBuy, pkg, products),
+      ...(pkg.addedAt && { added_at: pkg.addedAt }),
     })),
   }));
 }
@@ -100,11 +101,10 @@ export async function callerCoverage(ctx: TrainingContext): Promise<CallerCovera
   const accounts = new Map<string, { state: CallerAccountState; account: CoverageAccount }>();
   for (const state of states) {
     recorded = ensureGrant(sandbox.doc, state.accountId, sandboxNowIso(sandbox.doc)) || recorded;
-    const grant = grantFor(sandbox.doc, state.accountId);
-    // Coverage depends on get_reporting_status in the grant alone.
-    const coverageGrant = grant && grant.allowed_tasks && !grant.allowed_tasks.includes('get_reporting_status')
-      ? undefined
-      : grant;
+    // Coverage depends on get_reporting_status in the grant alone: the grant
+    // history records reporting authority, so a reduction that drops it reads
+    // as a loss of authority (accounts_unauthorized), exactly like a revocation.
+    const coverageGrant = grantFor(sandbox.doc, state.accountId);
     const attributes = callerAccountAttributes(state);
     accounts.set(state.accountId, {
       state,

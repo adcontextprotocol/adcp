@@ -34,7 +34,10 @@ node tests/interop/differential/run.cjs --seeds 25,102     # replay specific see
 
 - `differential/generate.cjs` generates seeded scenarios in the vector input shape
   (`case.schema.json`). They are weighted toward hard cases:
-  - DST changes in Santiago, Havana, Cairo and Lord Howe;
+  - DST changes in Santiago, Havana, Cairo and Lord Howe, and account zones
+    beyond them (Sydney, Auckland, Chatham, Kolkata, Mexico City), which the
+    reference model's full tzdata 2026f evaluates;
+  - packages added before or after the buy's `confirmed_at` (`added_at`);
   - month-end billing cycles and sub-daily local periods;
   - version cutovers, including onto billing feeds (stubs);
   - re-grant chains around `status_retention_days`;

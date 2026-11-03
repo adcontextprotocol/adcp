@@ -220,19 +220,28 @@ test('reason-codes.json is well formed: unique codes, known rules, one owed defa
   assert.deepEqual(sorted(reasonCodes.reasons.filter(r => r.code.startsWith('gap:')).map(r => r.code.slice('gap:'.length))), sorted(gapReasons));
 });
 
-test('the time zone evaluator matches zic for the pinned release', () => {
-  const [from, to] = tzdata.zic_transitions.range;
+test('the time zone evaluator matches zic for every zone of the pinned release', () => {
+  const { digest } = require(path.join(REFERENCE, 'extract-tzdata.cjs'));
+  const [from, to] = tzdata.zic_check.range;
   const start = Date.UTC(from, 0, 1);
   const end = Date.UTC(to, 0, 1);
-  for (const [zone, { initial, changes }] of Object.entries(tzdata.zic_transitions.zones)) {
-    assert.equal(tz.offsetAt(zone, start) / 1000, initial, `${zone} at ${from}-01-01`);
-    const zic = changes.map(([at, offset]) => [Date.parse(at), offset]);
-    for (const [at, offset] of zic) {
-      assert.equal(tz.offsetAt(zone, at) / 1000, offset, `${zone} at ${new Date(at).toISOString()}`);
-    }
-    const own = tz.transitions(zone).filter(entry => entry.at > start && entry.at < end).map(entry => [entry.at, entry.offset / 1000]);
-    assert.deepEqual(own, zic, `${zone}: transitions differ from zic`);
+  // The whole default zic build is carried, and zic checked every zone of it.
+  assert.deepEqual(Object.keys(tzdata.zic_check.zones).sort(), Object.keys(tzdata.zones).sort());
+  const mismatches = [];
+  for (const [zone, [count, hash]] of Object.entries(tzdata.zic_check.zones)) {
+    const own = tz.transitions(zone).filter(entry => entry.at > start && entry.at < end).map(entry => [entry.at / 1000, entry.offset / 1000]);
+    if (digest(tz.offsetAt(zone, start) / 1000, own) !== hash) mismatches.push(`${zone}: ${own.length} changes, zic has ${count}`);
   }
+  assert.deepEqual(mismatches, [], 'transitions differ from zic; rerun extract-tzdata.cjs with zdump to see where');
+});
+
+test('every IANA name in the pinned release resolves, links included', () => {
+  for (const name of [...Object.keys(tzdata.zones), ...Object.keys(tzdata.links)]) {
+    assert.ok(tz.isIanaName(name) && tz.hasZone(name), name);
+    assert.ok(Number.isFinite(tz.offsetAt(name, Date.UTC(2026, 0, 1))), name);
+  }
+  assert.equal(tz.isIanaName('+05:30'), false);
+  assert.equal(tz.isIanaName('Mars/Olympus_Mons'), false);
 });
 
 test('the host time zone database agrees with the pinned release around every case', t => {
@@ -268,4 +277,33 @@ test('the host time zone database agrees with the pinned release around every ca
     return;
   }
   assert.deepEqual(mismatches, []);
+});
+
+// ---------------------------------------------------------------------------
+// Seller-side offering checks (offering-checks.json)
+// ---------------------------------------------------------------------------
+
+test('offering-checks.json: the reference reproduces every case, with frozen codes, on wire-valid offerings', () => {
+  const checks = JSON.parse(fs.readFileSync(path.join(SET, 'offering-checks.json'), 'utf8'));
+  const { checkOfferings } = require(path.join(REFERENCE, 'offering-checks.cjs'));
+  const codes = new Map(errorCodes.codes.map(entry => [entry.code, entry]));
+  const ids = new Set();
+  const seen = new Set();
+  for (const vector of checks.cases) {
+    assert.ok(!ids.has(vector.id), `duplicate ${vector.id}`);
+    ids.add(vector.id);
+    for (const ref of vector.spec_refs) assert.ok(specFileExists(ref), `${vector.id}: ${ref} does not exist`);
+    vector.input.offerings.forEach((offering, index) => {
+      assert.deepEqual(wireErrors(wire.offering, offering), [], `${vector.id}: offerings[${index}]`);
+    });
+    assert.deepEqual(checkOfferings(vector.input.offerings, vector.input.row_schemas), vector.expected, vector.id);
+    for (const failure of vector.expected) {
+      const entry = codes.get(failure.code);
+      assert.ok(entry && entry.raised_by === 'seller', `${vector.id}: ${failure.code} is a frozen seller code`);
+      seen.add(failure.code);
+      if (failure.missing !== undefined) assert.ok(['primary_key', 'row_schema'].includes(failure.missing), vector.id);
+    }
+  }
+  assert.deepEqual([...seen].sort(), ['SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY', 'SUBSCRIPTIONS_REQUIRE_STANDARD_DIMENSIONS']);
+  assert.ok(checks.cases.some(vector => vector.expected.length === 0), 'a passing case');
 });
