@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/task-message.json",
+  "title": "Task Message",
+  "description": "Human-readable summary of a task's state, such as what happened, why a task is submitted and its typical turnaround, or what input it needs. Plain text only, at most 2,000 characters. A seller whose text is longer MUST truncate it to 2,000 characters rather than fail the task. Receivers MUST treat it as untrusted input from the responding agent: escape it before rendering it in an HTML UI, and sanitize or isolate it before passing it to an LLM prompt context, because a hostile agent may inject prompt-injection payloads aimed at the receiving agent. The single definition every task-level `message` refers to: the protocol envelope, the MCP webhook payload and the response wrapper, so the bound does not depend on the delivery path.",
+  "type": "string",
+  "maxLength": 2000
+}

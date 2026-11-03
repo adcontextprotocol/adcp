@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/creative-review-sla.json",
+  "title": "Creative Review SLA",
+  "description": "Time from seller receipt of a creative review submission to an approved or rejected decision for a format the product accepts. Ingestion, processing, pending_review, and suspended are not terminal decisions. Applies to each accepted review submission independently. Idempotent replay does not restart the clock; changed content requiring review starts a new clock. Absence means no review commitment.",
+  "x-added-in": "3.3.0",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/sla-window.json"
+    }
+  ],
+  "required": [
+    "completion_max"
+  ]
+}

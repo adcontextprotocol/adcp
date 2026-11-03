@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/assets/video-brief-asset.json",
+  "title": "Video Brief Asset",
+  "description": "Typed per-segment generation brief supplied in a creative manifest's video_brief slot. Carries the existing VideoBrief structure as an asset, independently of the generated video output.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "video_brief"
+    },
+    "provenance": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/provenance.json",
+      "description": "Provenance metadata for this asset, overriding manifest-level provenance."
+    }
+  },
+  "required": [
+    "asset_type"
+  ],
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/creative/video-brief.json"
+    }
+  ],
+  "additionalProperties": true
+}

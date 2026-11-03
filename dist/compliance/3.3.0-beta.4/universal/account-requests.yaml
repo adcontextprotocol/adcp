@@ -1,0 +1,1067 @@
+id: account_requests
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Account requests: open, change, and read back"
+category: account_requests
+summary: "Opens a fresh sandbox account with request_account, reads the request back through list_accounts, checks the change rules (revision guards, fields that never change, unreachable accounts), and drives the change outcomes: updated, a separate account only with allow_separate_account and its distinct refusal code, matched to an account the caller holds, a buyer sign-up action, reduced and revoked grants, and a seller review that resolves on the sandbox clock."
+track: core
+
+requires_capability:
+  path: "account.requests.supported"
+  equals: true
+
+required_tools:
+  - request_account
+  - list_accounts
+
+narrative: |
+  Experimental (`account.requests`). `request_account` is the one account
+  write: send a brand and operator to open an account, or an `account_id` and
+  the attributes to change. Every write is a request with one lifecycle
+  (`in_review`, `resolved`, `ambiguous`, `rejected`), read back through
+  `list_accounts` with `include_requests` or `request_ids`.
+
+  The buyer opens a fresh sandbox account, keyed by a per-run operator unit so
+  no earlier run can have created it, and reads the request and the account
+  back. The account carries its `revision` and the caller's `authorization`,
+  including `authorized_at`.
+
+  The change rules hold for every seller: an `account_id` with an `operator`
+  is malformed, a money change needs `revision`, a stale `revision` fails with
+  CONFLICT, `sandbox` never changes, and an account the caller can't reach
+  reads exactly as an unknown one.
+
+  How a seller answers a change is its own policy, so the outcome phases are
+  branch sets. A seller that makes a change only on a separate account says so
+  with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT, and opens the separate account
+  (`resolution: created`, with `not_carried_over`) only when the buyer sets
+  `allow_separate_account: true`. A change that would duplicate another account
+  the caller holds may resolve `matched` to it, leaving the named account
+  untouched. A seller may hand an open request to a buyer-side human
+  (`sign_up`); the buyer completes it by naming the account with the
+  `request_id`.
+
+  With the `reporting_subscription_probe` controller scenario, the storyboard
+  also reduces and revokes the caller's grant: a grant without
+  `request_account` refuses a change with SCOPE_INSUFFICIENT, a revoked
+  account is unknown, and a re-grant within the retention window keeps
+  `authorized_at` and records `regranted_at`. Finally it advances the sandbox
+  clock past a seller review, so an `in_review` request resolves.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - account_requests
+  examples:
+    - "Storefronts and sales agents that open buyer-declared advertiser accounts"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller advertises account.requests with supported: true. A sandbox
+    open request is expected to resolve without review. The grant and clock
+    phases run when the seller advertises the reporting_subscription_probe
+    controller scenario. No test kit is declared: request_account carries its
+    own brand, and a runner that rewrote it from a test kit would drop the
+    brand countries a change names.
+
+phases:
+  - id: capability_declaration
+    title: "Advertise account requests"
+    steps:
+      - id: get_capabilities_declares_requests
+        title: "Read the account.requests capability"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "account_requests--capabilities"
+        context_outputs:
+          - name: request_unit_id
+            generate: uuid_v4
+          - name: second_unit_id
+            generate: uuid_v4
+          - name: unknown_account_id
+            generate: uuid_v4
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_value
+            path: "account.requests.request_task"
+            value: "request_account"
+            description: "request_account is the request task"
+          - check: field_value
+            path: "account.requests.read_task"
+            value: "list_accounts"
+            description: "list_accounts reads requests back"
+          - check: field_contains
+            path: "experimental_features[*]"
+            value: "account.requests"
+            description: "The experimental feature id is declared"
+
+  - id: open_account
+    title: "Open a fresh sandbox account and read it back"
+    depends_on: [capability_declaration]
+    steps:
+      - id: open_fresh_account
+        title: "Request an account for a per-run operator unit"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_open_fresh"
+          brand:
+            domain: "acmeoutdoor.example"
+            countries: ["DE"]
+          operator: "pinnacle-agency.example"
+          operator_unit:
+            id: "$context.request_unit_id"
+            name: "Account requests run"
+          sandbox: true
+          billing: "operator"
+          payment_terms: "net_30"
+        context_outputs:
+          - name: open_request_id
+            path: "request.request_id"
+          - name: primary_account_id
+            path: "request.account_id"
+        validations:
+          - check: response_schema
+            description: "The response carries the request"
+          - check: field_value
+            path: "request.state"
+            value: "resolved"
+            description: "A sandbox open request resolves without review"
+          - check: field_value
+            path: "request.resolution"
+            value: "created"
+            description: "No account existed for this per-run key, so the seller created one"
+          - check: field_present
+            path: "request.account.payment_terms"
+            description: "A resolved request carries the account's money terms"
+          - check: field_value
+            path: "request.requested.operator"
+            value: "pinnacle-agency.example"
+            description: "The request echoes what was requested"
+
+      - id: read_request_by_id
+        title: "Read the request back by request_id"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          request_ids: ["$context.open_request_id"]
+        validations:
+          - check: response_schema
+            description: "Request readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "account_requests[0].request_id"
+            context_key: "open_request_id"
+            description: "request_ids returns the caller's request"
+          - check: field_value
+            path: "account_requests[0].state"
+            value: "resolved"
+            description: "The readback shows the resolved state"
+          - check: field_equals_context
+            path: "account_requests[0].account_id"
+            context_key: "primary_account_id"
+            description: "The readback names the same account"
+          - check: field_present
+            path: "account_requests_pagination.has_more"
+            description: "Requests page separately from accounts"
+
+      - id: read_account_authorization
+        title: "Read the account with its revision and authorization"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+        context_outputs:
+          - name: primary_revision
+            path: "accounts[0].revision"
+          - name: primary_authorized_at
+            path: "accounts[0].authorization.authorized_at"
+        validations:
+          - check: response_schema
+            description: "Account readback matches list-accounts-response.json"
+          - check: array_length
+            path: "accounts"
+            value: 1
+            description: "The account_id filter returns the opened account"
+          - check: field_present
+            path: "accounts[0].revision"
+            description: "The account carries its revision"
+          - check: field_present
+            path: "accounts[0].authorization.authorized_at"
+            description: "The caller's authorization says when its grant began"
+
+  - id: change_rules
+    title: "Change rules every seller enforces"
+    depends_on: [open_account]
+    steps:
+      - id: change_with_operator
+        title: "account_id with operator is malformed"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_change_with_operator"
+          account_id: "$context.primary_account_id"
+          operator: "pinnacle-agency.example"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Send either account_id, or brand and operator"
+
+      - id: money_change_without_revision
+        title: "A money change needs revision"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_money_without_revision"
+          account_id: "$context.primary_account_id"
+          payment_terms: "net_45"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "A change to payment_terms without revision is refused"
+
+      - id: stale_revision
+        title: "A stale revision changes nothing"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_stale_revision"
+          account_id: "$context.primary_account_id"
+          revision: 9999
+          billing: "agent"
+        validations:
+          - check: error_code
+            value: "CONFLICT"
+            description: "A revision that is not the account's current one fails with CONFLICT"
+
+      - id: sandbox_never_changes
+        title: "sandbox never changes"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_sandbox_change"
+          account_id: "$context.primary_account_id"
+          sandbox: false
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "A change naming sandbox is refused"
+
+      - id: unknown_account
+        title: "An account the caller can't reach reads as unknown"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_unknown_account"
+          account_id: "$context.unknown_account_id"
+          brand:
+            domain: "acmeoutdoor.example"
+            countries: ["DE", "AT"]
+        validations:
+          - check: response_schema
+            description: "An unreachable account is a request outcome, not a failed call"
+          - check: field_value
+            path: "request.state"
+            allowed_values: ["rejected", "in_review"]
+            description: "Always rejected with ACCOUNT_NOT_FOUND, or always a grant action"
+          - check: field_value_or_absent
+            path: "request.errors[0].code"
+            allowed_values: ["ACCOUNT_NOT_FOUND"]
+            description: "A rejection says only that the account was not found"
+          - check: field_value_or_absent
+            path: "request.pending_action.kind"
+            allowed_values: ["grant"]
+            description: "A seller that supports access requests asks for a grant"
+
+  - id: change_applied
+    title: "Change the account in place"
+    depends_on: [open_account]
+    steps:
+      - id: change_countries
+        title: "Add a country to the account"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_change_countries"
+          account_id: "$context.primary_account_id"
+          revision: "$context.primary_revision"
+          brand:
+            domain: "acmeoutdoor.example"
+            countries: ["DE", "AT"]
+        validations:
+          - check: response_schema
+            description: "The change response carries the request"
+          - check: field_value
+            path: "request.state"
+            allowed_values: ["resolved", "in_review", "rejected"]
+            description: "The seller applies, reviews, or refuses the change"
+          - check: field_value_or_absent
+            path: "request.resolution"
+            allowed_values: ["updated", "matched"]
+            description: "Without allow_separate_account the seller never opens a separate account"
+
+      - id: read_changed_account
+        title: "Read the account's current revision"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+        context_outputs:
+          - name: changed_revision
+            path: "accounts[0].revision"
+        validations:
+          - check: response_schema
+            description: "Account readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].authorization.authorized_at"
+            context_key: "primary_authorized_at"
+            description: "A change never moves the start of the caller's grant"
+
+      - id: change_billing
+        title: "Change who is invoiced, with revision"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_change_billing"
+          account_id: "$context.primary_account_id"
+          revision: "$context.changed_revision"
+          billing: "agent"
+        validations:
+          - check: response_schema
+            description: "A money change carries effective_at when it resolves as updated"
+          - check: field_value
+            path: "request.state"
+            allowed_values: ["resolved", "in_review", "rejected"]
+            description: "The seller applies, reviews, or refuses the change"
+          - check: field_value_or_absent
+            path: "request.resolution"
+            allowed_values: ["updated", "matched"]
+            description: "Without allow_separate_account the seller never opens a separate account"
+
+  - id: separate_account_refused
+    title: "A change the seller makes only on a separate account"
+    depends_on: [open_account]
+    optional: true
+    branch_set:
+      id: separate_account_outcome
+      semantics: any_of
+    narrative: |
+      The seller makes an operator-unit change only on a separate account.
+      Without allow_separate_account it refuses with the distinct
+      ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT, leaving the account unchanged. With
+      the opt-in it opens the separate account, says what didn't carry over,
+      and leaves the named account untouched.
+    steps:
+      - id: change_unit_without_opt_in
+        title: "Move the account to another operator unit"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_unit_without_opt_in"
+          account_id: "$context.primary_account_id"
+          operator_unit:
+            id: "$context.second_unit_id"
+            name: "Second buying unit"
+        validations:
+          - check: response_schema
+            description: "The refusal is a request outcome"
+          - check: field_value
+            path: "request.state"
+            value: "rejected"
+            description: "The seller refuses the change on this account"
+          - check: field_value
+            path: "request.errors[0].code"
+            value: "ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT"
+            description: "The refusal is distinguishable from a plain refusal"
+
+      - id: change_unit_with_opt_in
+        title: "Allow a separate account"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        contributes_to: separate_account_outcome
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_unit_with_opt_in"
+          account_id: "$context.primary_account_id"
+          allow_separate_account: true
+          operator_unit:
+            id: "$context.second_unit_id"
+            name: "Second buying unit"
+        context_outputs:
+          - name: separate_account_id
+            path: "request.account_id"
+        validations:
+          - check: response_schema
+            description: "A created resolution carries not_carried_over and the new account"
+          - check: field_value
+            path: "request.resolution"
+            value: "created"
+            description: "The seller opens the separate account"
+          - check: field_present
+            path: "request.not_carried_over"
+            description: "The buyer learns what to set up again on the new account"
+          - check: field_present
+            path: "request.account.payment_terms"
+            description: "The new account's money terms are on the wire"
+
+  - id: separate_account_in_place
+    title: "A seller that makes the operator-unit change in place"
+    depends_on: [open_account]
+    optional: true
+    branch_set:
+      id: separate_account_outcome
+      semantics: any_of
+    steps:
+      - id: change_unit_in_place
+        title: "Move the account to another operator unit"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        contributes_to: separate_account_outcome
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_unit_in_place"
+          account_id: "$context.primary_account_id"
+          operator_unit:
+            id: "$context.second_unit_id"
+            name: "Second buying unit"
+        validations:
+          - check: response_schema
+            description: "The change response carries the request"
+          - check: field_value
+            path: "request.state"
+            allowed_values: ["resolved", "in_review"]
+            description: "The seller applies or reviews the change"
+          - check: field_value_or_absent
+            path: "request.resolution"
+            allowed_values: ["updated", "matched"]
+            description: "Without allow_separate_account the seller never opens a separate account"
+
+  - id: separate_account_assert
+    title: "The operator-unit change had a conformant outcome"
+    depends_on: [open_account]
+    steps:
+      - id: assert_separate_account_outcome
+        title: "One operator-unit outcome contributed"
+        task: assert_contribution
+        validations:
+          - check: any_of
+            allowed_values: ["separate_account_outcome"]
+            description: "The seller refused and then opened a separate account on opt-in, or changed the account in place"
+
+  - id: duplicate_setup
+    title: "Open a second account the change will duplicate"
+    depends_on: [change_applied]
+    steps:
+      - id: open_duplicate_target
+        title: "Open the same brand for one more country"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_open_duplicate_target"
+          brand:
+            domain: "acmeoutdoor.example"
+            countries: ["DE", "AT", "CH"]
+          operator: "pinnacle-agency.example"
+          operator_unit:
+            id: "$context.request_unit_id"
+            name: "Account requests run"
+          sandbox: true
+          billing: "agent"
+        context_outputs:
+          - name: duplicate_account_id
+            path: "request.account_id"
+        validations:
+          - check: response_schema
+            description: "The open response carries the request"
+          - check: field_value
+            path: "request.state"
+            value: "resolved"
+            description: "A sandbox open request resolves without review"
+
+      - id: read_primary_before_duplicate
+        title: "Read the primary account's current revision"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+        context_outputs:
+          - name: pre_duplicate_revision
+            path: "accounts[0].revision"
+        validations:
+          - check: response_schema
+            description: "Account readback matches list-accounts-response.json"
+
+  - id: duplicate_matched
+    title: "A change that would duplicate an account resolves to it"
+    depends_on: [duplicate_setup]
+    optional: true
+    branch_set:
+      id: duplicate_change_outcome
+      semantics: any_of
+    steps:
+      - id: change_into_duplicate
+        title: "Add the country the other account already has"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        contributes_to: duplicate_change_outcome
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_change_into_duplicate"
+          account_id: "$context.primary_account_id"
+          revision: "$context.pre_duplicate_revision"
+          brand:
+            domain: "acmeoutdoor.example"
+            countries: ["DE", "AT", "CH"]
+        validations:
+          - check: response_schema
+            description: "A matched resolution carries the account it points to"
+          - check: field_value
+            path: "request.resolution"
+            value: "matched"
+            description: "The seller points to the account the caller already holds"
+          - check: field_equals_context
+            path: "request.account_id"
+            context_key: "duplicate_account_id"
+            description: "The resolved account is the duplicate, not the named account"
+
+  - id: duplicate_otherwise
+    title: "A seller that handles the duplicating change otherwise"
+    depends_on: [duplicate_setup]
+    optional: true
+    branch_set:
+      id: duplicate_change_outcome
+      semantics: any_of
+    steps:
+      - id: change_into_duplicate_otherwise
+        title: "Add the country the other account already has"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        contributes_to: duplicate_change_outcome
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_change_into_duplicate_otherwise"
+          account_id: "$context.primary_account_id"
+          revision: "$context.pre_duplicate_revision"
+          brand:
+            domain: "acmeoutdoor.example"
+            countries: ["DE", "AT", "CH"]
+        validations:
+          - check: response_schema
+            description: "The change response carries the request"
+          - check: field_value_or_absent
+            path: "request.resolution"
+            allowed_values: ["updated"]
+            description: "The seller changes the account in place, reviews, or refuses"
+
+  - id: duplicate_assert
+    title: "The duplicating change had a conformant outcome"
+    depends_on: [duplicate_setup]
+    steps:
+      - id: assert_duplicate_outcome
+        title: "One duplicate-change outcome contributed"
+        task: assert_contribution
+        validations:
+          - check: any_of
+            allowed_values: ["duplicate_change_outcome"]
+            description: "The seller matched the duplicate or handled the change otherwise"
+
+      - id: primary_untouched_by_match
+        title: "Read the primary account after the change"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+        validations:
+          - check: response_schema
+            description: "Account readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "primary_account_id"
+            description: "The named account stays usable under its account_id"
+
+  - id: buyer_sign_up
+    title: "A buyer-side human completes an open request"
+    depends_on: [open_account]
+    optional: true
+    branch_set:
+      id: sign_up_outcome
+      semantics: any_of
+    narrative: |
+      The seller finds no relationship and hands the next step to a buyer-side
+      human (sign_up). After the human registers, the buyer names the account
+      with the request_id and the request resolves as matched.
+    steps:
+      - id: open_needing_sign_up
+        title: "Request an account the seller can't open on its own"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_open_sign_up"
+          brand:
+            domain: "acmeoutdoor.example"
+          operator: "pinnacle-signup.example"
+          sandbox: true
+        context_outputs:
+          - name: sign_up_request_id
+            path: "request.request_id"
+        validations:
+          - check: response_schema
+            description: "An in-review request carries its pending action"
+          - check: field_value
+            path: "request.state"
+            value: "in_review"
+            description: "The request waits on a human"
+          - check: field_value
+            path: "request.pending_action.waiting_on"
+            value: "buyer"
+            description: "It is the buyer's turn"
+          - check: field_present
+            path: "request.pending_action.url"
+            description: "The buyer-side human acts at the seller's URL"
+          - check: field_absent
+            path: "request.account_id"
+            description: "No account_id is issued while the request is open"
+
+      - id: complete_sign_up
+        title: "Name the account the human registered"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        contributes_to: sign_up_outcome
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_complete_sign_up"
+          request_id: "$context.sign_up_request_id"
+          account_id: "$context.primary_account_id"
+        validations:
+          - check: response_schema
+            description: "The continued request resolves"
+          - check: field_equals_context
+            path: "request.request_id"
+            context_key: "sign_up_request_id"
+            description: "The open request continues; no new request is created"
+          - check: field_value
+            path: "request.resolution"
+            value: "matched"
+            description: "The request resolves to the named account"
+          - check: field_equals_context
+            path: "request.account_id"
+            context_key: "primary_account_id"
+            description: "The request resolves to the account the human registered"
+
+  - id: open_resolves_directly
+    title: "A seller that opens the account without a buyer action"
+    depends_on: [open_account]
+    optional: true
+    branch_set:
+      id: sign_up_outcome
+      semantics: any_of
+    steps:
+      - id: open_without_sign_up
+        title: "Request the same account"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        contributes_to: sign_up_outcome
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_open_without_sign_up"
+          brand:
+            domain: "acmeoutdoor.example"
+          operator: "pinnacle-signup.example"
+          sandbox: true
+        validations:
+          - check: response_schema
+            description: "The open response carries the request"
+          - check: field_value
+            path: "request.state"
+            allowed_values: ["resolved", "rejected"]
+            description: "The seller resolves or declines the request on its own"
+
+  - id: sign_up_assert
+    title: "The open request had a conformant outcome"
+    depends_on: [open_account]
+    steps:
+      - id: assert_sign_up_outcome
+        title: "One open-request outcome contributed"
+        task: assert_contribution
+        validations:
+          - check: any_of
+            allowed_values: ["sign_up_outcome"]
+            description: "The buyer completed a sign-up action, or the seller resolved the request itself"
+
+  - id: reduced_and_revoked_grants
+    title: "Reduced and revoked grants"
+    depends_on: [change_applied]
+    requires_capability:
+      path: "compliance_testing.scenarios"
+      contains: "reporting_subscription_probe"
+    narrative: |
+      The controller reduces the caller's grant to the reconciliation tasks: a
+      change needs request_account in allowed_tasks, so it is refused with
+      SCOPE_INSUFFICIENT. A revoked account is unknown to request_account and
+      list_accounts. A re-grant within the retention window continues the
+      authorization chain: authorized_at stays and regranted_at records it.
+    steps:
+      - id: reduce_grant
+        title: "Reduce the grant to reconciliation tasks"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "reduce_grant"
+            account_id: "$context.primary_account_id"
+            allowed_tasks: ["get_reporting_status", "sync_reporting_receipts", "sync_reporting_status", "list_accounts"]
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller reduces the caller's grant"
+          - check: field_present
+            path: "simulated.simulated_now"
+            description: "The probe reports the sandbox clock"
+
+      - id: change_with_reduced_grant
+        title: "A change outside the reduced grant is refused"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_reduced_grant_change"
+          account_id: "$context.primary_account_id"
+          timezone: "Europe/Berlin"
+        validations:
+          - check: error_code
+            value: "SCOPE_INSUFFICIENT"
+            description: "request_account is not in the reduced allowed_tasks"
+
+      - id: read_buys_with_reduced_grant
+        title: "Another task the reduced grant drops is refused"
+        task: get_media_buys
+        requires_tool: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+        validations:
+          - check: error_code
+            value: "SCOPE_INSUFFICIENT"
+            description: "A task outside allowed_tasks is out of scope, not unknown"
+
+      - id: restore_full_grant
+        title: "Restore the full grant"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "regrant"
+            account_id: "$context.primary_account_id"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "A re-grant restores the full grant before the revocation"
+
+      - id: revoke_grant_for_real
+        title: "Revoke the grant"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "revoke_grant"
+            account_id: "$context.primary_account_id"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller revokes the caller's grant"
+          - check: field_present
+            path: "simulated.unauthorized_at"
+            description: "The revocation instant is reported"
+
+      - id: revoked_account_is_unknown
+        title: "A revoked account is unknown to request_account"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_revoked_change"
+          account_id: "$context.primary_account_id"
+          timezone: "Europe/Berlin"
+        validations:
+          - check: response_schema
+            description: "An unreachable account is a request outcome"
+          - check: field_value
+            path: "request.state"
+            allowed_values: ["rejected", "in_review"]
+            description: "The account reads exactly as an unknown one"
+          - check: field_value_or_absent
+            path: "request.errors[0].code"
+            allowed_values: ["ACCOUNT_NOT_FOUND"]
+            description: "A rejection says only that the account was not found"
+
+      - id: revoked_account_buys_unknown
+        title: "A revoked account is unknown to other tasks"
+        task: get_media_buys
+        requires_tool: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+        validations:
+          - check: error_code
+            value: "ACCOUNT_NOT_FOUND"
+            description: "Access means access: the account reads as unknown"
+
+      - id: revoked_account_not_listed
+        title: "A revoked account is not listed"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+        validations:
+          - check: response_schema
+            description: "Account readback matches list-accounts-response.json"
+          - check: array_length
+            path: "accounts"
+            value: 0
+            description: "The caller no longer reaches the account"
+
+      - id: regrant_within_retention
+        title: "Re-grant within the retention window"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "regrant"
+            account_id: "$context.primary_account_id"
+        validations:
+          - check: field_value
+            path: "simulated.chain"
+            value: "continued"
+            description: "A re-grant inside status_retention_days continues the chain"
+          - check: field_present
+            path: "simulated.regranted_at"
+            description: "The re-grant instant is reported"
+
+      - id: regranted_authorization
+        title: "Read the re-granted authorization"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+        validations:
+          - check: response_schema
+            description: "Account readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].authorization.authorized_at"
+            context_key: "primary_authorized_at"
+            description: "authorized_at stays at the start of the chain"
+          - check: field_present
+            path: "accounts[0].authorization.regranted_at"
+            description: "regranted_at records the re-grant"
+
+  - id: seller_review
+    title: "A seller review resolves on the sandbox clock"
+    depends_on: [capability_declaration]
+    requires_capability:
+      path: "compliance_testing.scenarios"
+      contains: "reporting_subscription_probe"
+    narrative: |
+      A seller that reviews an open request starts it in_review, waiting on the
+      seller, and issues no account_id. The controller moves the sandbox clock
+      past the review, and the request reads back resolved with an account.
+    steps:
+      - id: open_for_review
+        title: "Request an account the seller reviews"
+        task: request_account
+        schema_ref: "account/request-account-request.json"
+        response_schema_ref: "account/request-account-response.json"
+        doc_ref: "/accounts/tasks/request_account"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#account_requests_open_for_review"
+          brand:
+            domain: "acmeoutdoor.example"
+          operator: "pinnacle-review.example"
+          operator_unit:
+            id: "$context.request_unit_id"
+            name: "Account requests run"
+          sandbox: true
+        context_outputs:
+          - name: review_request_id
+            path: "request.request_id"
+        validations:
+          - check: response_schema
+            description: "The open response carries the request"
+          - check: field_value
+            path: "request.state"
+            allowed_values: ["in_review", "resolved"]
+            description: "The seller reviews the request or resolves it at once"
+
+      - id: advance_past_review
+        title: "Advance the sandbox clock past the review"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-01-01T00:00:00Z"
+        validations:
+          - check: field_value
+            path: "simulated.simulated_now"
+            value: "2030-01-01T00:00:00.000Z"
+            description: "The sandbox clock moves to the target"
+
+      - id: read_reviewed_request
+        title: "Read the reviewed request back"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          request_ids: ["$context.review_request_id"]
+        validations:
+          - check: response_schema
+            description: "Request readback matches list-accounts-response.json"
+          - check: field_value
+            path: "account_requests[0].state"
+            value: "resolved"
+            description: "The review completed"
+          - check: field_present
+            path: "account_requests[0].account_id"
+            description: "The resolved request names its account"

@@ -1,0 +1,590 @@
+id: media_buy_seller/hold_policy_terms_only
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Terms-only entries, mixed drafts, and the hold_semantics default"
+category: media_buy_seller
+summary: "Checks that a draft mixing holdable and non-holdable products is terms-only and finalizes without a hold, that a product without hold_policy follows the agent's hold_semantics, and that in a forced hold failure a terms-only sibling returns batch_aborted, never hold_unavailable."
+track: media_buy
+
+requires_all_capabilities:
+  - path: "experimental_features"
+    contains: "media_buy.hold_policy"
+  - path: "compliance_testing.scenarios"
+    contains: "compact_product_lifecycle_probe"
+
+requires:
+  - controller
+
+required_tools:
+  - request_proposals
+  - refine_proposals
+  - comply_test_controller
+
+narrative: |
+  Experimental (`media_buy.hold_policy`). There are no partial holds within a
+  proposal: a draft is non-holdable (`available: false`) if any allocated
+  product is, and an entry whose effective policy is terms-only commits its
+  terms in the same atomic batch with no hold, no `hold_placed_at`, and no
+  `hold_rank`. The seller never returns `hold_unavailable` for such an entry;
+  when a holdable sibling fails, it returns `batch_aborted`.
+
+  A product or draft without `hold_policy` takes the agent's `hold_semantics`
+  (`inventory_hold` when that is absent too). One of the three default
+  phases runs, chosen by the seller's declared `hold_semantics`.
+
+  The storyboard seeds a non-holdable product, a holdable product with a
+  declared window, and a product with no policy.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - generates_proposals
+  examples:
+    - "Publisher whose auction inventory cannot be reserved"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller lists media_buy.hold_policy, advertises
+    compact_product_lifecycle_probe, and honors the hold_policy of seeded
+    products. The forced-batch phase also needs force_hold_unavailable.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_8f90b1e46532"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: "hold_terms_search"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "hold_terms_search_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+      hold_policy:
+        available: false
+    - product_id: "hold_terms_display"
+      delivery_type: "guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "hold_terms_display_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+      hold_policy:
+        available: true
+        min_duration: "P1D"
+        max_duration: "P3D"
+    - product_id: "hold_terms_default"
+      delivery_type: "guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "hold_terms_default_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "hold_terms_search"
+      pricing_option_id: "hold_terms_search_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 18
+    - product_id: "hold_terms_display"
+      pricing_option_id: "hold_terms_display_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 18
+    - product_id: "hold_terms_default"
+      pricing_option_id: "hold_terms_default_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 18
+
+phases:
+  - id: prepare_products
+    title: "Prepare the seeded products"
+    steps:
+      - id: prepare_search_product
+        title: "Prepare the non-holdable product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "hold_terms_search"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares the seeded product"
+      - id: prepare_display_product
+        title: "Prepare the holdable product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "hold_terms_display"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares the seeded product"
+      - id: prepare_default_product
+        title: "Prepare the product without a policy"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "hold_terms_default"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares the seeded product"
+
+  - id: mixed_draft
+    title: "A draft mixing holdable and non-holdable products commits terms only"
+    depends_on: [prepare_products]
+    steps:
+      - id: request_mixed_draft
+        title: "Request one draft allocating both products"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_request_mixed"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          brief: "One plan combining auction video with a reserved video placement."
+          criteria:
+            product_ids: ["hold_terms_search", "hold_terms_display"]
+        context_outputs:
+          - name: mixed_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json"
+          - check: field_contains
+            path: "proposals[0].commercial_terms.purchases[*].product_id"
+            value: "hold_terms_search"
+            description: "The draft allocates the non-holdable product"
+          - check: field_contains
+            path: "proposals[0].commercial_terms.purchases[*].product_id"
+            value: "hold_terms_display"
+            description: "The draft allocates the holdable product"
+          - check: field_value
+            path: "proposals[0].hold_policy.available"
+            value: false
+            description: "A draft allocating any non-holdable product is non-holdable"
+          - check: field_absent
+            path: "proposals[0].hold_policy.min_duration"
+            description: "A non-holdable policy declares no durations"
+
+      - id: finalize_mixed_draft
+        title: "Finalize the mixed draft"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_finalize_mixed"
+          refinements:
+            - proposal_id: "$context.mixed_draft_id"
+              action: "finalize"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "The terms are committed"
+          - check: field_value
+            path: "results[0].proposal.hold_policy.available"
+            value: false
+            description: "The committed proposal carries the terms-only policy forward"
+          - check: field_absent
+            path: "results[0].proposal.hold_placed_at"
+            description: "No hold is placed, so there is no hold_placed_at"
+          - check: field_absent
+            path: "results[0].proposal.hold_rank"
+            description: "A terms-only commitment carries no hold_rank"
+          - check: field_absent
+            path: "results[0].proposal.holds"
+            description: "A terms-only commitment lists no installment holds"
+          - check: field_present
+            path: "results[0].proposal.expires_at"
+            description: "expires_at is the acceptance window"
+
+  - id: default_inventory_hold_implicit
+    title: "No hold_semantics declared: a product without a policy is held"
+    depends_on: [prepare_products]
+    requires_capability:
+      path: "media_buy.proposal_refinement.hold_semantics"
+      present: false
+    steps:
+      - id: request_default_draft_implicit
+        title: "Request a draft for the product without a policy"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_request_default_implicit"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          brief: "Reserve online video for a seasonal promotion."
+          criteria:
+            product_ids: ["hold_terms_default"]
+        context_outputs:
+          - name: default_implicit_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: field_value
+            path: "proposals[0].hold_policy.available"
+            value: true
+            description: "The inventory_hold default makes the draft holdable"
+      - id: finalize_default_draft_implicit
+        title: "Finalize it"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_finalize_default_implicit"
+          refinements:
+            - proposal_id: "$context.default_implicit_draft_id"
+              action: "finalize"
+        validations:
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "The draft is finalized"
+          - check: field_value
+            path: "results[0].proposal.hold_policy.available"
+            value: true
+            description: "The committed proposal holds inventory"
+          - check: field_present
+            path: "results[0].proposal.hold_placed_at"
+            description: "The hold placement is reported"
+
+  - id: default_inventory_hold_declared
+    title: "hold_semantics inventory_hold: a product without a policy is held"
+    depends_on: [prepare_products]
+    requires_capability:
+      path: "media_buy.proposal_refinement.hold_semantics"
+      equals: "inventory_hold"
+    steps:
+      - id: request_default_draft_declared
+        title: "Request a draft for the product without a policy"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_request_default_declared"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          brief: "Reserve online video for a seasonal promotion."
+          criteria:
+            product_ids: ["hold_terms_default"]
+        context_outputs:
+          - name: default_declared_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: field_value
+            path: "proposals[0].hold_policy.available"
+            value: true
+            description: "The inventory_hold default makes the draft holdable"
+      - id: finalize_default_draft_declared
+        title: "Finalize it"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_finalize_default_declared"
+          refinements:
+            - proposal_id: "$context.default_declared_draft_id"
+              action: "finalize"
+        validations:
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "The draft is finalized"
+          - check: field_value
+            path: "results[0].proposal.hold_policy.available"
+            value: true
+            description: "The committed proposal holds inventory"
+          - check: field_present
+            path: "results[0].proposal.hold_placed_at"
+            description: "The hold placement is reported"
+
+  - id: default_terms_only
+    title: "hold_semantics terms_only: a product without a policy commits terms only"
+    depends_on: [prepare_products]
+    requires_capability:
+      path: "media_buy.proposal_refinement.hold_semantics"
+      equals: "terms_only"
+    steps:
+      - id: request_default_draft_terms_only
+        title: "Request a draft for the product without a policy"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_request_default_terms"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          brief: "Reserve online video for a seasonal promotion."
+          criteria:
+            product_ids: ["hold_terms_default"]
+        context_outputs:
+          - name: default_terms_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: field_value
+            path: "proposals[0].hold_policy.available"
+            value: false
+            description: "The terms_only default makes the draft non-holdable"
+      - id: finalize_default_draft_terms_only
+        title: "Finalize it"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_finalize_default_terms"
+          refinements:
+            - proposal_id: "$context.default_terms_draft_id"
+              action: "finalize"
+        validations:
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "The terms are committed"
+          - check: field_absent
+            path: "results[0].proposal.hold_placed_at"
+            description: "No hold is placed"
+
+  - id: forced_batch_with_terms_only_sibling
+    title: "A terms-only sibling of a failed hold is aborted, not unavailable"
+    depends_on: [prepare_products]
+    requires_capability:
+      path: "compliance_testing.scenarios"
+      contains: "force_hold_unavailable"
+    steps:
+      - id: request_forced_display_draft
+        title: "Request a draft for the holdable product"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_request_forced_display"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          brief: "Reserve premium online video for the launch week."
+          criteria:
+            product_ids: ["hold_terms_display"]
+        context_outputs:
+          - name: forced_display_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: field_value
+            path: "proposals[0].hold_policy.available"
+            value: true
+            description: "The draft is holdable"
+      - id: request_forced_search_draft
+        title: "Request a draft for the non-holdable product"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_request_forced_search"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          brief: "Auction video for the launch week."
+          criteria:
+            product_ids: ["hold_terms_search"]
+        context_outputs:
+          - name: forced_search_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: field_value
+            path: "proposals[0].hold_policy.available"
+            value: false
+            description: "The draft is terms-only"
+      - id: force_display_hold_unavailable
+        title: "Register force_hold_unavailable for the holdable draft"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_hold_policy_terms_o-813528b0"
+            sandbox: true
+          scenario: "force_hold_unavailable"
+          params:
+            proposal_id: "$context.forced_display_draft_id"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The directive is registered"
+      - id: finalize_forced_batch
+        title: "Finalize the terms-only and holdable drafts together"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_finalize_forced"
+          refinements:
+            - proposal_id: "$context.forced_search_draft_id"
+              action: "finalize"
+            - proposal_id: "$context.forced_display_draft_id"
+              action: "finalize"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "unable"
+            description: "Nothing is committed when a hold in the batch fails"
+          - check: field_value
+            path: "results[0].reason_code"
+            value: "batch_aborted"
+            description: "The terms-only entry is aborted, never hold_unavailable"
+          - check: field_value
+            path: "results[1].reason_code"
+            value: "hold_unavailable"
+            description: "The holdable entry fails with hold_unavailable"
+      - id: finalize_batch_after_directive
+        title: "Finalize the same drafts again"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#hold_policy_terms_only_finalize_after"
+          refinements:
+            - proposal_id: "$context.forced_search_draft_id"
+              action: "finalize"
+            - proposal_id: "$context.forced_display_draft_id"
+              action: "finalize"
+        validations:
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "The directive was consumed and the drafts are still drafts, so the batch finalizes"
+          - check: field_absent
+            path: "results[0].proposal.hold_placed_at"
+            description: "The terms-only entry commits without a hold"
+          - check: field_value
+            path: "results[1].outcome"
+            value: "finalized"
+            description: "The holdable entry finalizes"
+          - check: field_present
+            path: "results[1].proposal.hold_placed_at"
+            description: "The holdable entry's hold is placed"
