@@ -135,6 +135,12 @@ async function probeAccountPrerequisite(name, accounts, { omitFixture = false, r
       validations: [{ check: 'field_value', path: 'account_ready', value: true }],
     }] }],
   };
+  // This clone isolates account provisioning, including failed prerequisites.
+  // Real 3.1 provenance coverage remains gated before mutation; the separate
+  // optional-discovery-maintenance tests exercise that production behavior.
+  if (storyboard.requires_capability?.path === 'creative.supports_provenance') {
+    delete storyboard.requires_capability;
+  }
   const calls = [];
   const tools = ['get_adcp_capabilities', 'comply_test_controller', 'sync_creatives'];
   const key = ref => JSON.stringify([ref.brand.domain, ref.operator, ref.sandbox === true]);

@@ -148,7 +148,7 @@
 #   coverage totals of agents that never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | webhook_receiver | multi_agent (forward-compat:
+#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | field_excludes_runner | webhook_receiver | multi_agent (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
 #   Default when absent: [real_wire] — untagged storyboards run unchanged.
@@ -164,6 +164,11 @@
 #                    A storyboard using collect_product_pages MUST declare this
 #                    requirement so older runners report requirement_unmet before
 #                    fixture mutation instead of silently checking only one page.
+#
+#     field_excludes_runner — intrinsic support for complete-response negative
+#                    membership checks. Storyboards using field_excludes MUST
+#                    declare this requirement so older runners skip before
+#                    fixture mutation rather than ignoring an unknown check.
 #
 #     controller   — gate on agent advertising comply_test_controller.
 #                    Available when the agent's get_adcp_capabilities response

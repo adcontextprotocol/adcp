@@ -7,6 +7,7 @@ summary: Verifies schema-valid get_products filters affect brief curation, whole
 track: media_buy
 requires:
   - controller
+  - field_excludes_runner
 required_tools:
   - get_products
   - comply_test_controller
@@ -88,6 +89,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: brief
+          brand:
+            domain: acmeoutdoor.example
           brief: Curate premium inventory for outdoor enthusiasts.
           filters:
             channels:
@@ -115,16 +118,17 @@ phases:
         validations:
           - check: response_schema
             description: Response matches get-products-response.json
-          - check: field_value
-            path: products[0].channels[0]
+          - check: field_contains
+            path: products[0].channels[*]
             value: olv
             description: Returned product has the requested channel
           - check: field_value
             path: products[0].delivery_type
             value: non_guaranteed
             description: Returned product has the requested delivery type
-          - check: field_absent
-            path: products[1]
+          - check: field_excludes
+            path: products[*].product_id
+            value: filter_behavior_negative_channel
             description: The display-channel negative control is excluded
           - check: field_value
             path: context.expected_negative_delivery_types
@@ -140,6 +144,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: brief
+          brand:
+            domain: acmeoutdoor.example
           brief: Curate premium inventory for outdoor enthusiasts.
           filters:
             channels:
@@ -184,6 +190,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: wholesale
+          brand:
+            domain: acmeoutdoor.example
           filters:
             channels:
               - olv
@@ -200,7 +208,7 @@ phases:
             expected_negative_delivery_types:
               - guaranteed
         expected: |
-          Return only the seeded non-guaranteed OLV product. Returning the
+          Return matching non-guaranteed OLV products. Returning the
           display-channel negative control reveals an ignored channel filter.
         context_outputs:
           - key: filter_behavior_wholesale_negative_delivery_types
@@ -208,20 +216,21 @@ phases:
         validations:
           - check: response_schema
             description: Response matches get-products-response.json
-          - check: field_value
-            path: products[0].product_id
+          - check: field_contains
+            path: products[*].product_id
             value: filter_behavior_matching_olv
             description: The matching seeded product is returned
-          - check: field_value
-            path: products[0].channels[0]
+          - check: field_contains
+            path: products[0].channels[*]
             value: olv
             description: Returned wholesale product has the requested channel
           - check: field_value
             path: products[0].delivery_type
             value: non_guaranteed
             description: Returned wholesale product has the requested delivery type
-          - check: field_absent
-            path: products[1]
+          - check: field_excludes
+            path: products[*].product_id
+            value: filter_behavior_negative_channel
             description: The display-channel negative control is excluded
           - check: field_value
             path: context.expected_negative_delivery_types
@@ -237,6 +246,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: wholesale
+          brand:
+            domain: acmeoutdoor.example
           filters:
             channels:
               - olv
@@ -281,6 +292,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: refine
+          brand:
+            domain: acmeoutdoor.example
           refine:
             - scope: product
               product_id: $context.filter_behavior_product_id

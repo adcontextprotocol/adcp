@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.14.0"
+version: "2.15.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -50,6 +50,7 @@ authored_check_kinds:
   - field_value
   - field_value_or_absent
   - field_contains
+  - field_excludes
   - status_code
   - http_status
   - http_status_in
@@ -199,7 +200,7 @@ validation_result:
                               # envelope_field_present |
                               # envelope_field_absent |
                               # envelope_field_pattern | field_value |
-                              # field_value_or_absent | field_contains |
+                              # field_value_or_absent | field_contains | field_excludes |
                               # status_code | http_status | http_status_in |
                               # error_code | on_401_require_header |
                               # resource_equals_agent_url | any_of | refs_resolve |
@@ -264,6 +265,9 @@ validation_result:
                               #                          value matches; object/array
                               #                          expectations are matched as
                               #                          deep subsets
+                              #   field_excludes       → { excludes: value } or allowed_values;
+                              #                          no resolved terminal may match using
+                              #                          field_contains deep-subset semantics
                               #   field_present        → the path that should resolve
                               #   field_absent         → null (the field must not be present)
                               #   field_pattern        → object { pattern } where pattern is
@@ -333,6 +337,8 @@ validation_result:
                               #   field_contains       → array of values resolved at
                               #                          path; empty when the path
                               #                          produced no terminal values
+                              #   field_excludes       → array of resolved values,
+                              #                          using field_contains matching
                               #   field_present        → null (the field was missing)
                               #                          or the observed non-object
                               #                          value

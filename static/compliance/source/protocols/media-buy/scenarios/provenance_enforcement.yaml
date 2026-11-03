@@ -4,11 +4,23 @@ title: "Seller enforces provenance_requirements on sync_creatives"
 category: media_buy_seller
 summary: "Seller publishes provenance_requirements + accepted_verifiers on a product. Four structural rejections (no provenance, missing digital_source_type, off-list verifier, missing disclosure), then a corrected resubmission with on-list verifier is accepted."
 track: creative
+requires:
+  - controller
+
+requires_capability:
+  path: creative.supports_provenance
+  equals: true
+
 required_tools:
   - get_products
   - sync_creatives
 
 narrative: |
+  This opt-in capability was introduced in AdCP 3.3. A creative library alone
+  does not establish provenance enforcement support. Earlier wire releases
+  cannot publish this declaration, so this maintained corpus reports the gated
+  provenance coverage as unavailable rather than failing optional behavior.
+
   creative_policy carries three load-bearing fields for provenance enforcement:
   provenance_required (some provenance must be attached), provenance_requirements
   (which fields must be present), and accepted_verifiers (which governance agents

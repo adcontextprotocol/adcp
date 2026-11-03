@@ -50,6 +50,7 @@ const PATH_BEARING_CHECKS = new Set([
   'field_absent',
   'field_pattern',
   'field_contains',
+  'field_excludes',
   'envelope_field_present',
   'envelope_field_absent',
   'envelope_field_pattern',
@@ -434,7 +435,7 @@ function lintDoc(doc, filePath, allowlist = []) {
     for (const { v, index: i } of pathValidations) {
       const rawPath = v.path;
       const segments = parsePath(rawPath);
-      if (segments.includes('*') && v.check !== 'field_contains') {
+      if (segments.includes('*') && !['field_contains', 'field_excludes'].includes(v.check)) {
         violations.push({
           rule: 'wildcard_unsupported_check',
           filePath,

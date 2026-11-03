@@ -4,11 +4,23 @@ title: "Seller refutes a buyer's provenance claim via on-list verifier"
 category: media_buy_seller
 summary: "Buyer attaches a digital_source_type claim. Seller invokes get_creative_features against an on-list verifier (creative_policy.accepted_verifiers); when the verifier contradicts the claim, seller rejects with PROVENANCE_CLAIM_CONTRADICTED carrying audit-safe error.details."
 track: creative
+requires:
+  - controller
+
+requires_capability:
+  path: creative.supports_provenance
+  equals: true
+
 required_tools:
   - get_products
   - sync_creatives
 
 narrative: |
+  This opt-in capability was introduced in AdCP 3.3. A creative library alone
+  does not establish provenance enforcement support. Earlier wire releases
+  cannot publish this declaration, so this maintained corpus reports the gated
+  provenance coverage as unavailable rather than failing optional behavior.
+
   This is the truth-of-claim half of the provenance enforcement contract.
   The structural-rejection half (media_buy_seller/provenance_enforcement)
   exercises the PROVENANCE_*_MISSING / PROVENANCE_VERIFIER_NOT_ACCEPTED
