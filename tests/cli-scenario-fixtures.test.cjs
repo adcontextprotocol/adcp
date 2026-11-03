@@ -120,6 +120,33 @@ test('3.1 account-scoped creative scenarios declare the sandbox identity they us
   for (const row of fixtures) assert.deepEqual(row, fixtures[0], 'a warm 3.1 natural key must reseed idempotently');
 });
 
+test('canonical product probes bind their fixtures to the product-target sandbox account', () => {
+  const storyboard = YAML.parse(fs.readFileSync(path.join(
+    __dirname, '../static/compliance/source/universal/canonical-format-validate-input.yaml'
+  ), 'utf8'));
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  assert.equal(validateAccountRef(storyboard.context.account), true, ajv.errorsText(validateAccountRef.errors));
+  const productIds = new Set(storyboard.fixtures.products.map(product => product.product_id));
+  const probes = storyboard.phases.flatMap(phase => phase.steps)
+    .filter(step => step.sample_request?.targets?.some(target => target.kind === 'product' && productIds.has(target.id)));
+  assert.equal(probes.length, 2, 'both missing-slot and nondeterministic probes must read the seeded product');
+  for (const step of probes) assert.deepEqual(step.sample_request.account, storyboard.context.account, step.id);
+});
+
+test('vendor-metric catalog setup and both compatibility branches share the fixture sandbox account', () => {
+  const storyboard = loadAccountScenario('vendor_metric_catalog_precondition');
+  const account = storyboard.context.account;
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  assert.equal(validateAccountRef(account), true, ajv.errorsText(validateAccountRef.errors));
+  assert.equal(account.sandbox, true);
+  const steps = storyboard.phases.flatMap(phase => phase.steps);
+  const provision = steps.find(step => step.task === 'sync_accounts').sample_request.accounts[0];
+  assert.deepEqual({ brand: provision.brand, operator: provision.operator, sandbox: provision.sandbox }, account);
+  const uses = steps.filter(step => ['comply_test_controller', 'create_media_buy'].includes(step.task));
+  assert.equal(uses.length, 3, 'catalog seed and both accept/reject branches must share scope');
+  for (const step of uses) assert.deepEqual(step.sample_request.account, account, step.id);
+});
+
 // Exercise only the prerequisite contract through the public runner. Full
 // authored storyboards are verified separately against the local MCP agent.
 async function probeAccountPrerequisite(name, accounts, { omitFixture = false, rejectSeed = false } = {}) {
@@ -135,6 +162,12 @@ async function probeAccountPrerequisite(name, accounts, { omitFixture = false, r
       validations: [{ check: 'field_value', path: 'account_ready', value: true }],
     }] }],
   };
+  // This clone isolates account provisioning, including failed prerequisites.
+  // Real 3.1 provenance coverage remains gated before mutation; the separate
+  // optional-discovery-maintenance tests exercise that production behavior.
+  if (storyboard.requires_capability?.path === 'creative.supports_provenance') {
+    delete storyboard.requires_capability;
+  }
   const calls = [];
   const tools = ['get_adcp_capabilities', 'comply_test_controller', 'sync_creatives'];
   const key = ref => JSON.stringify([ref.brand.domain, ref.operator, ref.sandbox === true]);

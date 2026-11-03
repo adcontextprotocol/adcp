@@ -42,6 +42,14 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Product fixtures use the same sandbox identity as the product-target probes.
+context:
+  account:
+    brand:
+      domain: "acmeoutdoor.example"
+    operator: "pinnacle-agency.example"
+    sandbox: true
+
 fixtures:
   products:
     - product_id: "validate_input_nondeterministic_video"

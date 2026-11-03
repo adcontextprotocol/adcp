@@ -5982,6 +5982,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     product_id: pkg.productId,
     budget: pkg.budget,
     pricing_option_id: pkg.pricingOptionId,
+    ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
     paused: pkg.paused,
     start_time: pkg.startTime,
     end_time: pkg.endTime,
