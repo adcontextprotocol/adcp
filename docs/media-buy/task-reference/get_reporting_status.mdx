@@ -930,9 +930,10 @@ creates obligations for that account and purpose; a replaced subscription record
 ### When authorization ends
 
 An account is covered only while the principal is authorized for it. Caller isolation
-does not change: once the principal loses authority, this task treats the account as
-unknown, like any unauthorized identifier. The revocation is reported in the caller's
-own subscription state instead: [`get_principal`](/docs/protocol/get_principal) lists
+does not change: once the principal's grant is revoked, this task treats the account
+as unknown, like any unauthorized identifier (a grant reduced without
+`get_reporting_status` is refused instead; see below). The loss is reported in the
+caller's own subscription state instead: [`get_principal`](/docs/protocol/get_principal) lists
 the account under the subscription's `accounts_unauthorized[]` with `unauthorized_at`,
 `last_owed_period_end`, and the withheld periods. A revoked grant therefore reads
 differently from a seller that stopped publishing, without disclosing current account
@@ -943,8 +944,8 @@ data.
 - **Periods already owed.** Periods that ended at or before `unauthorized_at` but were
   not yet delivered are withheld and counted in `withheld_period_count`. They are
   never missing and never count as `delayed` or `action_required` against the seller.
-- **Receipts and statuses.** Access means access. After `unauthorized_at`, the
-  account is unavailable to every task, including
+- **Receipts and statuses.** Access means access. After a revocation's
+  `unauthorized_at`, the account is unavailable to every task, including
   [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
   and [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
 - **Partial grants.** Coverage depends only on `get_reporting_status` in
