@@ -126,6 +126,18 @@ Named milestones group roadmap items that will ship together in a future major v
 
 v4.0 is the next **breaking-changes accumulation window**, targeted for early 2027 under the [release cadence policy](/docs/reference/versioning#release-cadence). Breaking changes are gathered here so the ecosystem can plan a single migration window rather than chase per-minor deprecations. Items listed below are committed floor requirements for v4.0; additional items will be added here as RFCs are accepted.
 
+The proposed development sequence is to finish 3.3, then develop 4.0 as the next
+feature release for the early-2027 target while maintaining 3.3. The 18-month
+major-release spacing commitment applies from 4.0 onward, not to the 3.x-to-4.0
+transition. Each removal still needs its own deprecation notice period.
+
+[Budget constraints and averaged daily budgets (#8685)](https://github.com/adcontextprotocol/adcp/issues/8685)
+are a candidate for this window: per-currency daily minimums, distinct averaged
+pacing targets, and explicit daily-only authorization need coordinated changes
+to canonical pricing and accepted purchase records. Optional budget-error
+recovery details can ship in 3.3. The execution model remains a proposal rather
+than a committed 4.0 floor requirement.
+
 | Area | Item |
 |---|---|
 | Security (floor) | [Mandatory request signing for spend-committing operations (RFC 9421)](https://github.com/adcontextprotocol/adcp/issues/2307) — the 3.0 optional profile in `security.mdx` becomes required. Agents MUST sign spend-committing operations; sellers MUST verify. |

@@ -54,7 +54,7 @@
     "test:canonical-reference-resolver": "node --test --test-force-exit --test-timeout=30000 tests/canonical-reference-resolver.test.cjs",
     "test:canonical-pixel-ratio": "node --test --test-force-exit --test-timeout=30000 tests/canonical-image-pixel-ratio-vectors.test.cjs tests/canonical-display-acceptance-vectors.test.cjs",
     "test:premium-display-formats": "node --test --test-force-exit --test-timeout=30000 tests/premium-display-format-validation.test.cjs",
-    "test:error-handling": "node tests/check-error-handling.cjs",
+    "test:error-handling": "node tests/check-error-handling.cjs && node --test --test-force-exit tests/budget-too-low-details.test.cjs",
     "test:get-creative-features-contract": "node --test --test-force-exit --test-timeout=30000 tests/get-creative-features-idempotency.test.cjs",
     "test:composed": "node tests/composed-schema-validation.test.cjs && npm run test:get-creative-features-contract",
     "test:rejection-arm-mutex": "node tests/rejection-arm-mutual-exclusion.test.cjs",

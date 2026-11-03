@@ -38,7 +38,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `BUDGET_CAP_REACHED` | correctable | raise max_spend, or reduce max_creatives/max_variants, to produce the remaining items |
 | `BUDGET_EXCEEDED` | correctable | reduce requested amount or increase budget allocation |
 | `BUDGET_EXHAUSTED` | terminal | buyer must add funds or increase budget cap |
-| `BUDGET_TOO_LOW` | correctable | increase budget or check capabilities.media_buy.limits |
+| `BUDGET_TOO_LOW` | correctable | inspect the budget floor details; reconcile the constrained budget, then adjust that budget or its contributing bid within existing authorization |
 | `CAMPAIGN_SUSPENDED` | transient | wait for the escalation to resolve; contact the plan operator if the suspension persists |
 | `CATALOG_LIMIT_EXCEEDED` | correctable | remove unused catalogs, or contact the seller to raise the limit |
 | `COMMITTED_RESOURCE_PURGED` | terminal | do not automatically retry with the same or a fresh idempotency_key; reconcile through the resource read task and seller audit or operator records before deciding whether to initiate a new operation |
@@ -378,9 +378,9 @@ Account or campaign budget has been fully spent. Distinct from BUDGET_TOO_LOW (r
 
 <Accordion title="BUDGET_TOO_LOW — correctable">
 
-**Suggested action:** increase budget or check capabilities.media_buy.limits
+**Suggested action:** inspect the budget floor details; reconcile the constrained budget, then adjust that budget or its contributing bid within existing authorization
 
-Budget is below the seller's minimum. Recovery: correctable (increase budget or check capabilities.media_buy.limits).
+Budget is below the seller's minimum. Optional recovery details follow error-details/budget-too-low.json: minimum_budget and currency describe the floor; basis distinguishes daily and lifetime budgets, constraint identifies its cause, budget_field identifies the constrained budget when error.field instead names a contributing bid, and related_field can identify that bid. error.field retains its existing consistency with issues[0].pointer. Without an unambiguous budget locator, the amount is diagnostic; reconcile current state before choosing a change. Recovery: correctable (adjust the constrained budget or contributing bid within the buyer's authorization).
 
 </Accordion>
 <a id="error-code-campaign-suspended"></a>
