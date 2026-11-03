@@ -120,6 +120,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # History blobs are fetched on demand; the whole tip tree is still
+          # checked out (no sparse set), so every committed archive, doc and
+          # schema stays on disk. Deferring historical-only blobs reduces
+          # Git storage without omitting current release fixtures.
+          filter: blob:none
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -157,6 +162,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # History blobs are fetched on demand; the whole tip tree is still
+          # checked out (no sparse set), so every committed archive, doc and
+          # schema stays on disk. Deferring historical-only blobs reduces
+          # Git storage without omitting current release fixtures.
+          filter: blob:none
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
