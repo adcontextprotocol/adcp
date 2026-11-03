@@ -158,7 +158,7 @@ jobs:
             android_physical=$(readlink --canonicalize -- "$android_dir")
             [[ "$android_physical" == "$android_dir" ]]
             findmnt --noheadings --output SOURCE,TARGET,MAJ:MIN,FSTYPE --target "$android_dir"
-            mount_targets=$(findmnt --list --raw --noheadings --output TARGET)
+            mount_targets=$(findmnt --list --noheadings --output TARGET)
             [[ -n "$mount_targets" ]]
             while IFS= read -r mount_target; do
               if [[ "$mount_target" == "$android_dir" || "$mount_target" == "$android_dir/"* ]]; then
@@ -264,7 +264,7 @@ jobs:
             android_physical=$(readlink --canonicalize -- "$android_dir")
             [[ "$android_physical" == "$android_dir" ]]
             findmnt --noheadings --output SOURCE,TARGET,MAJ:MIN,FSTYPE --target "$android_dir"
-            mount_targets=$(findmnt --list --raw --noheadings --output TARGET)
+            mount_targets=$(findmnt --list --noheadings --output TARGET)
             [[ -n "$mount_targets" ]]
             while IFS= read -r mount_target; do
               if [[ "$mount_target" == "$android_dir" || "$mount_target" == "$android_dir/"* ]]; then
