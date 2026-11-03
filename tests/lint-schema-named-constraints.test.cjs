@@ -26,7 +26,7 @@ const named = {
 };
 const objectWith = (properties) => ({ type: 'object', properties });
 const inlineCurrency = { type: 'string', pattern: PATTERN, description: 'A local description.' };
-const emptyList = (extra = {}) => ({ min_repeat_sites: 3, held_apart: [], unnamed_repeats: [], ...extra });
+const emptyList = (extra = {}) => ({ min_repeat_sites: 2, held_apart: [], ...extra });
 const errorsFor = (documents, list = emptyList()) => checkTree(documents, list).errors;
 
 function assertOneError(errors, pattern) {
@@ -126,71 +126,198 @@ test('a held-apart entry that no longer occurs fails', () => {
   assertOneError(errorsFor([named], list), /stale held_apart/);
 });
 
-const threeSites = (documents = ['a.json', 'b.json', 'c.json']) => documents.map((file) => ({
+const sitesIn = (files, schema = { type: 'string', pattern: '^x-' }) => files.map((file) => ({
   file,
-  schema: objectWith({ code: { type: 'string', pattern: '^x-' } }),
+  schema: objectWith({ code: { ...schema } }),
 }));
-const repeatEntry = (extra = {}) => ({ constraint: { type: 'string', pattern: '^x-' }, sites: 3, reason: 'Not one concept.', ...extra });
+const pairInOneDocument = () => [{
+  file: 'a.json',
+  schema: objectWith({ first: { type: 'string', pattern: '^x-' }, second: { type: 'string', pattern: '^x-' } }),
+}];
 
-test('a constraint repeated at the threshold fails and lists its sites', () => {
-  const errors = errorsFor(threeSites());
+test('a constraint repeated across two documents fails and lists its sites', () => {
+  const errors = errorsFor(sitesIn(['a.json', 'b.json']));
   assertOneError(errors, /Repeated unnamed constraint/);
-  for (const file of ['a.json', 'b.json', 'c.json']) assert.ok(errors[0].includes(`${file}#/properties/code`));
+  for (const file of ['a.json', 'b.json']) assert.ok(errors[0].includes(`${file}#/properties/code`));
+  assert.match(errors[0], /titled document under core\/ or enums\//);
 });
 
-test('a constraint below the threshold passes', () => {
-  assert.deepEqual(errorsFor(threeSites(['a.json', 'b.json'])), []);
+test('a constraint repeated inside one document fails and asks for a definition', () => {
+  const errors = errorsFor(pairInOneDocument());
+  assertOneError(errors, /Repeated unnamed constraint/);
+  assert.match(errors[0], /a definitions entry in a\.json/);
 });
 
-test('repetition inside one document does not count', () => {
-  const schema = objectWith({ a: { type: 'string', pattern: '^x-' }, b: { type: 'string', pattern: '^x-' }, c: { type: 'string', pattern: '^x-' } });
-  assert.deepEqual(errorsFor([{ file: 'a.json', schema }]), []);
+test('a constraint at one site passes', () => {
+  assert.deepEqual(errorsFor(sitesIn(['a.json'])), []);
 });
 
 test('a free-text length bound repeats only on one property name', () => {
-  const documents = ['a', 'b', 'c'].map((name) => ({ file: `${name}.json`, schema: objectWith({ [name]: { type: 'string', maxLength: 500 } }) }));
+  const documents = ['a', 'b'].map((name) => ({ file: `${name}.json`, schema: objectWith({ [name]: { type: 'string', maxLength: 500 } }) }));
   assert.deepEqual(errorsFor(documents), []);
 });
 
-test('a repeat recorded with a reason and its count passes', () => {
-  assert.deepEqual(errorsFor(threeSites(), emptyList({ unnamed_repeats: [repeatEntry()] })), []);
+test('a repeat passes once all but one of its sites are held apart', () => {
+  const list = emptyList({ held_apart: [{ path: 'a.json#/properties/code', reason: 'A different code.' }] });
+  assert.deepEqual(errorsFor(sitesIn(['a.json', 'b.json']), list), []);
 });
 
-test('a recorded repeat without a reason fails', () => {
-  assertOneError(errorsFor(threeSites(), emptyList({ unnamed_repeats: [repeatEntry({ reason: '' })] })), /has no reason/);
+test('an inline copy of a local definition fails with the local $ref', () => {
+  const documents = [{
+    file: 'a.json',
+    schema: {
+      type: 'object',
+      definitions: { code: { title: 'Code', type: 'string', pattern: '^x-' } },
+      properties: { first: { type: 'string', pattern: '^x-' } },
+    },
+  }];
+  assertOneError(errorsFor(documents), /"\$ref": "#\/definitions\/code"/);
 });
 
-test('a site added to a recorded repeat fails until the count moves', () => {
-  const documents = threeSites(['a.json', 'b.json', 'c.json', 'd.json']);
-  assertOneError(errorsFor(documents, emptyList({ unnamed_repeats: [repeatEntry()] })), /grew from 3 to 4/);
+test('a local definition is not a target for another document', () => {
+  const documents = [
+    { file: 'a.json', schema: { type: 'object', definitions: { code: { title: 'Code', type: 'string', pattern: '^x-' } } } },
+    { file: 'b.json', schema: objectWith({ code: { type: 'string', pattern: '^x-' } }) },
+  ];
+  const errors = errorsFor(documents);
+  assertOneError(errors, /Repeated unnamed constraint/);
+  assert.ok(!errors[0].includes('#/definitions/code"'), 'b.json cannot reference a.json\'s definition');
 });
 
-test('a recorded repeat with fewer sites fails until the count moves', () => {
-  const documents = threeSites(['a.json', 'b.json']);
-  assertOneError(errorsFor(documents, emptyList({ unnamed_repeats: [repeatEntry()] })), /now has 2 sites, not 3/);
+test('an untyped enum copy fails, because its values imply the type', () => {
+  const documents = [
+    { file: 'enums/mode.json', schema: { title: 'Mode', type: 'string', enum: ['on', 'off'] } },
+    { file: 'a.json', schema: { type: 'object', if: {}, then: objectWith({ state: { enum: ['off', 'on'] } }) } },
+  ];
+  assertOneError(errorsFor(documents), /a\.json#\/then\/properties\/state/);
 });
 
-test('a recorded repeat that no longer occurs fails', () => {
-  assertOneError(errorsFor([named], emptyList({ unnamed_repeats: [repeatEntry()] })), /no longer occurs/);
+test('an untyped pattern under propertyNames copies a string schema', () => {
+  const documents = [named, { file: 'a.json', schema: { type: 'object', propertyNames: { pattern: PATTERN } } }];
+  assertOneError(errorsFor(documents), /a\.json#\/propertyNames/);
 });
 
-test('a grown baseline fails against the base copy', () => {
-  const base = emptyList({ unnamed_repeats: [repeatEntry()] });
-  const head = emptyList({ unnamed_repeats: [repeatEntry({ sites: 4 })] });
-  assertOneError(compareToBase(base, head).errors, /may only shrink/);
+test('an equivalent pattern spelling is a copy', () => {
+  const documents = [
+    { file: 'core/hex.json', schema: { title: 'Hex', type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' } },
+    { file: 'a.json', schema: objectWith({ color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' } }) },
+  ];
+  assertOneError(errorsFor(documents), /"\$ref": "\/schemas\/core\/hex\.json"/);
 });
 
-test('a grown baseline with a growth_reason passes and is shown to the reviewer', () => {
-  const base = emptyList({ unnamed_repeats: [repeatEntry()] });
-  const head = emptyList({ unnamed_repeats: [repeatEntry({ sites: 4, growth_reason: 'A new branch of the same field.' })] });
-  const { errors, additions } = compareToBase(base, head);
-  assert.deepEqual(errors, []);
-  assert.equal(additions.length, 1);
-  assert.match(additions[0], /A new branch of the same field/);
+test('an untyped pattern elsewhere is not a string schema', () => {
+  // Without a type, a pattern accepts non-strings, so it is not the named string schema.
+  const documents = [named, { file: 'a.json', schema: { type: 'object', then: objectWith({ code: { pattern: PATTERN } }) } }];
+  assert.deepEqual(errorsFor(documents), []);
+});
+
+test('a held-apart entry for a site that no longer repeats fails', () => {
+  const list = emptyList({ held_apart: [{ path: 'a.json#/properties/code', reason: 'A different code.' }] });
+  assertOneError(errorsFor(sitesIn(['a.json']), list), /stale held_apart/);
+});
+
+const composedBase = {
+  file: 'core/base.json',
+  schema: {
+    $id: '/schemas/core/base.json',
+    type: 'object',
+    properties: { code: { $ref: '#/definitions/code' } },
+    definitions: { code: { title: 'Code', type: 'string', pattern: '^x-' } },
+  },
+};
+const composedBy = (schema) => [composedBase, { file: 'a.json', schema }];
+const baseRef = { $ref: '/schemas/core/base.json' };
+
+test('a composed document that uses a local definition fails beside required', () => {
+  const errors = errorsFor(composedBy({ allOf: [baseRef], required: ['code'] }));
+  assertOneError(errors, /a\.json#\/allOf\/0: references core\/base\.json in allOf/);
+  assert.match(errors[0], /#\/definitions\/code/);
+});
+
+test('a composed document that uses a local definition fails beside properties', () => {
+  const errors = errorsFor(composedBy({ allOf: [baseRef], properties: { other: { type: 'string' } } }));
+  assertOneError(errors, /a\.json#\/allOf\/0: references core\/base\.json in allOf/);
+});
+
+test('a composed document passes when the site states the property that uses the definition', () => {
+  const documents = composedBy({ allOf: [baseRef], properties: { code: { type: 'string' } } });
+  assert.deepEqual(errorsFor(documents), []);
+});
+
+test('a document alone in allOf keeps its local definitions', () => {
+  assert.deepEqual(errorsFor(composedBy({ allOf: [baseRef] })), []);
+});
+
+test('a plain reference to a document with local definitions passes', () => {
+  assert.deepEqual(errorsFor(composedBy(objectWith({ params: baseRef }))), []);
+});
+
+test('a composed document whose local definition is used only outside its properties passes', () => {
+  const base = {
+    file: 'core/base.json',
+    schema: {
+      $id: '/schemas/core/base.json',
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      oneOf: [{ properties: { code: { $ref: '#/definitions/code' } } }],
+      definitions: { code: { title: 'Code', type: 'string', pattern: '^x-' } },
+    },
+  };
+  assert.deepEqual(errorsFor([base, { file: 'a.json', schema: { allOf: [baseRef], required: ['name'] } }]), []);
+});
+
+test('a branch reference on a property the parent declares fails when the target uses a local definition', () => {
+  const documents = composedBy({
+    type: 'object',
+    properties: { params: { type: 'object' } },
+    anyOf: [{ oneOf: [{ properties: { params: baseRef } }] }],
+  });
+  const errors = errorsFor(documents);
+  assertOneError(errors, /a\.json#\/anyOf\/0\/oneOf\/0\/properties\/params: references core\/base\.json on a property/);
+});
+
+test('a branch reference on a property only that branch declares passes', () => {
+  const documents = composedBy({ type: 'object', oneOf: [{ properties: { params: baseRef } }] });
+  assert.deepEqual(errorsFor(documents), []);
+});
+
+test('a reference with schema keywords beside it fails when the target uses a local definition', () => {
+  const errors = errorsFor(composedBy(objectWith({ params: { ...baseRef, type: 'object' } })));
+  assertOneError(errors, /a\.json#\/properties\/params: references core\/base\.json with schema keywords/);
+});
+
+test('a fragment reference fails when the subschema it names uses a local definition', () => {
+  const base = {
+    file: 'core/base.json',
+    schema: { definitions: { wrapper: objectWith({ code: { $ref: '#/definitions/code' } }), code: composedBase.schema.definitions.code } },
+  };
+  const errors = errorsFor([base, { file: 'a.json', schema: { allOf: [{ $ref: '/schemas/core/base.json#/definitions/wrapper' }], required: ['code'] } }]);
+  assertOneError(errors, /a\.json#\/allOf\/0: references core\/base\.json in allOf/);
+});
+
+test('a fragment reference passes when the subschema it names uses no local definition', () => {
+  const base = {
+    file: 'core/base.json',
+    schema: { definitions: { wrapper: objectWith({ code: { type: 'string' } }), other: objectWith({ x: { $ref: '#/definitions/wrapper' } }) } },
+  };
+  assert.deepEqual(errorsFor([base, { file: 'a.json', schema: { allOf: [{ $ref: '/schemas/core/base.json#/definitions/wrapper' }], required: ['code'] } }]), []);
+});
+
+test('a reference with only annotations beside it passes', () => {
+  assert.deepEqual(errorsFor(composedBy(objectWith({ params: { ...baseRef, description: 'Kept.' } }))), []);
+});
+
+test('the removed unnamed_repeats key fails', () => {
+  assertOneError(errorsFor([named], emptyList({ unnamed_repeats: [] })), /unnamed_repeats is no longer read/);
+});
+
+test('a grown baseline without a reason fails against the base copy', () => {
+  const head = emptyList({ held_apart: [{ path: 'a.json#/properties/x', reason: '' }] });
+  assertOneError(compareToBase(emptyList(), head).errors, /added without a reason/);
 });
 
 test('a raised threshold fails against the base copy', () => {
-  assertOneError(compareToBase(emptyList(), emptyList({ min_repeat_sites: 4 })).errors, /may only fall/);
+  assertOneError(compareToBase(emptyList(), emptyList({ min_repeat_sites: 3 })).errors, /may only fall/);
 });
 
 test('a new held-apart entry is shown to the reviewer with its reason', () => {
@@ -201,12 +328,8 @@ test('a new held-apart entry is shown to the reviewer with its reason', () => {
 });
 
 test('a shrunken list passes against the base copy', () => {
-  const base = emptyList({
-    held_apart: [{ path: 'a.json#/properties/x', reason: 'Means something else.' }],
-    unnamed_repeats: [repeatEntry({ sites: 5 })],
-  });
-  const head = emptyList({ unnamed_repeats: [repeatEntry({ sites: 4 })] });
-  assert.deepEqual(compareToBase(base, head), { errors: [], additions: [] });
+  const base = emptyList({ held_apart: [{ path: 'a.json#/properties/x', reason: 'Means something else.' }] });
+  assert.deepEqual(compareToBase(base, emptyList()), { errors: [], additions: [] });
 });
 
 test('the normalizer edits a site in place and keeps its formatting', () => {

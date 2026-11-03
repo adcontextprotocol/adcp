@@ -6,15 +6,21 @@
  *   npm run schemas:normalize -- --write        edit the sites, then run the proof
  *   ... --doc core/x.json --property a,b        also match a new document's
  *                                               weak constraint on these names
+ *   ... --doc "core/y.json#/definitions/z"      use a definition in core/y.json
  *   ... --site "core/y.json#/properties/z"      only this site (repeatable)
+ *   ... --adopt-annotations                     allow a target whose only
+ *                                               difference is annotations
  *
- * To name a new concept, add its titled document, register it in index.json,
- * and run this with --doc. Sites come from the same rules as
+ * To name a new concept, add its titled document under core/ or enums/ and
+ * register it in index.json, or add a definitions entry when every site is in
+ * one document, then run this with --doc. Sites come from the same rules as
  * scripts/lint-schema-named-constraints.cjs, and sites held apart there are
  * left alone.
  *
  * A site changes only when it has one target and the resolved document stays
- * identical: same enum order, and no target annotation the site doesn't state.
+ * identical, so a target annotation the site doesn't state blocks the edit
+ * unless --adopt-annotations is given. List the target in ANNOTATION_ADOPTIONS
+ * in tests/named-schema-extraction.test.cjs when you adopt.
  * Each site is edited in place and keeps its own description and annotations,
  * so there is no whitespace churn. With --write, the script then runs
  * `tests/named-schema-extraction.test.cjs` against HEAD, which resolves every
@@ -26,6 +32,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const isAnnotation = (key) => ['description', 'title', '$comment', 'examples', 'example', 'default', 'deprecated',
+  'readOnly', 'writeOnly', 'enumDescriptions', 'enumMetadata'].includes(key) || key.startsWith('x-');
 const {
   collectSites,
   constraintsOf,
@@ -119,26 +127,28 @@ function rewriteSite(text, node, removeKeys, ref) {
 }
 
 /** Why a copy can't change mechanically, or null when it can. */
-function blockedBecause(site, target, targetSchema) {
+function blockedBecause(site, target, targetSchema, adopt) {
+  if (adopt) return null;
   for (const key of Object.keys(targetSchema)) {
     if (DOCUMENT_METADATA.has(key) || key in constraintsOf(targetSchema)) continue;
     if (JSON.stringify(targetSchema[key]) !== JSON.stringify(site.node[key])) {
-      return `${target.ref} states ${key}, which the site doesn't`;
+      return `${target.ref} states ${key}, which the site doesn't (pass --adopt-annotations to adopt it)`;
     }
-  }
-  if (Array.isArray(targetSchema.enum) && JSON.stringify(targetSchema.enum) !== JSON.stringify(site.node.enum)) {
-    return `${target.ref} lists its enum values in a different order`;
   }
   return null;
 }
 
+const at = (root, pointer) => pointer.split('/').slice(1)
+  .reduce((node, raw) => node?.[raw.replace(/~1/g, '/').replace(/~0/g, '~')], root);
+
 function readArgs(args) {
-  const options = { write: false, sites: new Set(), doc: null, properties: [] };
+  const options = { write: false, sites: new Set(), doc: null, properties: [], adopt: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--write') options.write = true;
     else if (args[i] === '--site') options.sites.add(args[++i]);
     else if (args[i] === '--doc') options.doc = args[++i];
     else if (args[i] === '--property') options.properties = args[++i].split(',');
+    else if (args[i] === '--adopt-annotations') options.adopt = true;
     else throw new Error(`unknown argument ${args[i]}`);
   }
   return options;
@@ -149,11 +159,14 @@ function main() {
   const documents = loadDocuments(SCHEMAS_DIR);
   const sites = collectSites(documents);
   const named = indexNamedSchemas(documents, sites);
-  const docRef = options.doc ? `/schemas/${options.doc}` : null;
-  if (docRef) {
-    const entry = [...named.values()].flat().find((doc) => doc.ref === docRef);
-    if (!entry) throw new Error(`${options.doc} is not a named scalar document`);
-    for (const property of options.properties) entry.properties.add(property);
+  let chosenEntry = null;
+  if (options.doc) {
+    const [docFile, docPointer] = options.doc.split('#');
+    chosenEntry = [...named.values()].flat().find((doc) => (docPointer
+      ? doc.local && doc.file === docFile && doc.pointer === docPointer
+      : !doc.local && doc.file === docFile));
+    if (!chosenEntry) throw new Error(`${options.doc} is not a named scalar schema`);
+    for (const property of options.properties) chosenEntry.properties.add(property);
   }
   const held = new Set(JSON.parse(fs.readFileSync(LIST_PATH, 'utf8')).held_apart.map((entry) => entry.path));
   const edits = new Map();
@@ -161,20 +174,22 @@ function main() {
   for (const { site, targets } of findInlineCopies(sites, named)) {
     const key = siteKey(site);
     if (held.has(key) || (options.sites.size > 0 && !options.sites.has(key))) continue;
-    const chosen = docRef ? targets.filter((doc) => doc.ref === docRef) : targets;
-    if (docRef && chosen.length === 0) continue;
+    const chosen = chosenEntry ? targets.filter((doc) => doc === chosenEntry) : targets;
+    if (chosenEntry && chosen.length === 0) continue;
     if (chosen.length !== 1) {
       blocked.push(`${key}: choose one of ${chosen.map((doc) => doc.ref).join(', ')}`);
       continue;
     }
     const [target] = chosen;
-    const targetSchema = documents.find((document) => document.file === target.file).schema;
-    const reason = blockedBecause(site, target, targetSchema);
+    const targetDocument = documents.find((document) => document.file === target.file).schema;
+    const targetSchema = target.local ? at(targetDocument, target.pointer) : targetDocument;
+    const reason = blockedBecause(site, target, targetSchema, options.adopt);
     if (reason) {
       blocked.push(`${key}: ${reason}`);
       continue;
     }
-    const removeKeys = [...target.constraintKeys, ...(target.xEntity ? ['x-entity'] : [])];
+    // Every validating key of the site goes, because the target states them all.
+    const removeKeys = Object.keys(site.node).filter((key) => !isAnnotation(key) || (key === 'x-entity' && target.xEntity));
     if (!edits.has(site.file)) edits.set(site.file, []);
     edits.get(site.file).push({ pointer: site.pointer, removeKeys, ref: target.ref });
     console.log(`${key} -> ${target.ref}`);

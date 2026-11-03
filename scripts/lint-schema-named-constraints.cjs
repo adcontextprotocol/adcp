@@ -2,34 +2,61 @@
 /**
  * Keeps scalar constraints named (#8525).
  *
- * A named schema is a document whose root is a scalar: a string, number, or
- * integer with a pattern, an enum, a format, or bounds. The lint fails when:
+ * A named schema is a scalar with a pattern, an enum, or bounds that has a
+ * name: the root of a document, or an entry under `definitions` or `$defs`. A
+ * document root is named for the whole tree; a local definition is named for
+ * its own document. The lint fails when:
  *
  *   - an inline subschema states a named schema's constraints instead of
  *     referencing it. The message gives the file, the JSON pointer, and the
  *     $ref to use;
- *   - the same unnamed constraint repeats at min_repeat_sites or more sites
- *     across two or more documents. A weak string constraint must also repeat
- *     on the same property name;
- *   - scripts/schema-named-constraints.json is malformed, lists a site or a
- *     repeat that no longer occurs, or has grown against its base copy.
+ *   - the same unnamed constraint repeats at min_repeat_sites or more sites,
+ *     in one document or across documents. A weak string constraint must also
+ *     repeat on the same property name;
+ *   - a document that another document composes uses a local definition, which
+ *     only resolves inside its own document;
+ *   - scripts/schema-named-constraints.json is malformed, lists a site that no
+ *     longer needs an exception, or has grown against its base copy without a
+ *     reason.
  *
- * How constraints compare. Annotations don't count, and enum values compare as
- * a set. A constraint is strong when it has a pattern, an enum, or a numeric
- * range with both ends: equality alone is evidence. It is weak when it only
- * bounds a length or one numeric end, such as `minLength: 1`, which free text
- * and dozens of identifiers share. A weak constraint counts as a copy only when
- * the site also has the named schema's x-entity, or the name of a property that
- * already references that schema. Unbounded strings and format-only strings are
- * not constraints here, because `format` already names the value. Sites inside
- * `if` and `not` are conditions, not declarations, so the lint skips them.
+ * How constraints compare. Annotations don't count, enum values compare as a
+ * set, equivalent pattern spellings compare equal, and a `type` that the constraint already implies doesn't count either:
+ * an enum whose values all have that type, or a key under `propertyNames`,
+ * which is always a string. A constraint is strong when it has a pattern, an
+ * enum, or a numeric range with both ends: equality alone is evidence. It is
+ * weak when it only bounds a length or one numeric end, such as `minLength: 1`,
+ * which free text and dozens of identifiers share. A weak constraint counts as
+ * a copy only when the site also has the named schema's x-entity, or the name
+ * of a property that already references that schema, and it counts toward a
+ * repeat only on one string property name. Unbounded strings and format-only
+ * strings are not constraints here, because `format` already names the value.
+ * Sites inside `if` and `not` are conditions, not declarations, so the lint
+ * skips them.
  *
- * Shrink-only. scripts/schema-named-constraints.json holds the exceptions. An
- * entry that stops occurring fails, so the list shrinks as sites get fixed.
- * With --base-ref (or $ADCP_NAMED_CONSTRAINTS_BASE_REF), the lint also compares
- * the list with that ref's copy: a raised threshold fails, and a repeat count
- * that grew fails unless the entry states a growth_reason. New entries are
- * printed, so a reviewer sees each addition and its reason.
+ * Composed documents. A validator resolves `#/definitions/...` against the
+ * document that holds it, whoever references that document. Code generators
+ * resolve it against the document they are generating when they flatten a
+ * referenced document into it, and they don't bring its definitions along. That
+ * happens at three kinds of site, so what they reference, a whole document or
+ * the subschema a fragment names, must not use a local reference there:
+ *
+ *   - a `$ref` in `allOf` beside `properties` or `required`, for each of the
+ *     target's properties that the site doesn't state itself;
+ *   - a `$ref` on a property that an enclosing schema also declares, reached
+ *     through `allOf`, `anyOf`, or `oneOf`;
+ *   - a `$ref` with schema keywords beside it.
+ *
+ * Any other reference stays a reference, and resolves in its own document, so
+ * it can use local definitions freely.
+ *
+ * Exceptions. scripts/schema-named-constraints.json lists each site that keeps
+ * an inline constraint, with the reason it is not the named schema or one
+ * concept with the other sites. A repeat fails while min_repeat_sites or more
+ * of its sites are not listed. An entry that no longer needs to be there fails,
+ * so the list shrinks as sites get fixed. With --base-ref (or
+ * $ADCP_NAMED_CONSTRAINTS_BASE_REF), the lint compares the list with that ref's
+ * copy: a raised threshold fails, and each added entry is printed with its
+ * reason for the reviewer.
  */
 
 'use strict';
@@ -61,6 +88,8 @@ const SCHEMA_SINGLE_KEYS = [
   'propertyNames', 'then', 'unevaluatedItems', 'unevaluatedProperties',
 ];
 const SCHEMA_ARRAY_KEYS = ['allOf', 'anyOf', 'oneOf', 'prefixItems', 'items'];
+const COMPOSITION_KEYS = ['allOf', 'anyOf', 'oneOf'];
+const DEFINITION_POINTER = /\/(definitions|\$defs)\/[^/]+$/;
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isAnnotation = (key) => ANNOTATION_KEYS.has(key) || key.startsWith('x-');
@@ -85,39 +114,118 @@ function loadDocuments(schemasDir) {
   return documents.sort((a, b) => (a.file < b.file ? -1 : 1));
 }
 
-/** Every schema position in the tree except conditions. */
+/**
+ * Every schema position in the tree except conditions. `isKey` marks a
+ * position under `propertyNames`, which only ever validates a string key.
+ */
 function collectSites(documents) {
   const sites = [];
-  function visit(node, file, pointer, property) {
+  function visit(node, file, pointer, property, isKey) {
     if (!isObject(node)) return;
-    sites.push({ file, pointer, node, property });
+    sites.push({ file, pointer, node, property, isKey });
     for (const key of SCHEMA_MAP_KEYS) {
       if (!isObject(node[key])) continue;
       for (const [name, child] of Object.entries(node[key])) {
-        visit(child, file, `${pointer}/${key}/${escapePointer(name)}`, key === 'properties' ? name : null);
+        visit(child, file, `${pointer}/${key}/${escapePointer(name)}`, key === 'properties' ? name : null, false);
       }
     }
     for (const key of SCHEMA_SINGLE_KEYS) {
-      if (isObject(node[key])) visit(node[key], file, `${pointer}/${key}`, key === 'items' ? property : null);
+      if (isObject(node[key])) {
+        visit(node[key], file, `${pointer}/${key}`, key === 'items' ? property : null, isKey || key === 'propertyNames');
+      }
     }
     for (const key of SCHEMA_ARRAY_KEYS) {
       if (Array.isArray(node[key])) {
-        node[key].forEach((child, index) => visit(child, file, `${pointer}/${key}/${index}`, property));
+        node[key].forEach((child, index) => visit(child, file, `${pointer}/${key}/${index}`, property, isKey));
       }
     }
   }
-  for (const document of documents) visit(document.schema, document.file, '', null);
+  for (const document of documents) visit(document.schema, document.file, '', null, false);
   return sites;
 }
 
-/** The scalar constraints a node states, or null when it is not a pure scalar. */
-function constraintsOf(node) {
-  if (typeof node.$ref === 'string' || !SCALAR_TYPES.has(node.type)) return null;
+/**
+ * A pattern spelled so that equivalent ECMA-262 spellings compare equal:
+ * `\d` outside a character class becomes `[0-9]`, and the members of a simple
+ * character class (no negation, no escapes) are sorted, because a class is a
+ * set. Other text stays as written.
+ */
+function normalizePattern(pattern) {
+  let out = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '\\') {
+      if (pattern[i + 1] === 'd') out += '[0-9]';
+      else out += c + pattern[i + 1];
+      i++;
+      continue;
+    }
+    if (c !== '[') {
+      out += c;
+      continue;
+    }
+    let j = i + 1;
+    let body = '';
+    let simple = pattern[j] !== '^';
+    while (j < pattern.length && pattern[j] !== ']') {
+      if (pattern[j] === '\\') {
+        simple = false;
+        body += pattern[j] + pattern[j + 1];
+        j += 2;
+        continue;
+      }
+      body += pattern[j];
+      j++;
+    }
+    if (simple) {
+      const members = [];
+      for (let k = 0; k < body.length; k++) {
+        if (body[k + 1] === '-' && k + 2 < body.length) {
+          members.push(body.slice(k, k + 3));
+          k += 2;
+        } else members.push(body[k]);
+      }
+      // A literal - goes last and a literal ^ never first, so the sorted text
+      // reads as the same set and never as a range or a negation.
+      const plain = members.filter((m) => m !== '-' && m !== '^').sort();
+      body = [...plain, ...members.filter((m) => m === '^'), ...members.filter((m) => m === '-')].join('');
+      if (body.startsWith('^')) body = members.join('');
+    }
+    out += `[${body}]`;
+    i = j;
+  }
+  return out;
+}
+
+const ENUM_VALUE_TYPE = (value) => {
+  if (typeof value === 'string') return 'string';
+  if (Number.isInteger(value)) return 'integer';
+  return typeof value === 'number' ? 'number' : null;
+};
+
+/**
+ * The scalar constraints a node states, or null when it is not a pure scalar.
+ * A missing `type` that the constraint implies is filled in, so the typed and
+ * untyped spellings of one constraint compare equal.
+ */
+function constraintsOf(node, isKey = false) {
+  if (typeof node.$ref === 'string') return null;
   const constraints = {};
   for (const [key, value] of Object.entries(node)) {
     if (isAnnotation(key)) continue;
     if (!CONSTRAINT_KEYS.has(key)) return null;
-    constraints[key] = key === 'enum' ? [...value].map(String).sort() : value;
+    if (key === 'enum') constraints[key] = [...value].map((item) => JSON.stringify(item)).sort();
+    else if (key === 'pattern' && typeof value === 'string') constraints[key] = normalizePattern(value);
+    else constraints[key] = value;
+  }
+  if (constraints.type === undefined) {
+    const enumTypes = Array.isArray(node.enum) ? new Set(node.enum.map(ENUM_VALUE_TYPE)) : null;
+    if (enumTypes && enumTypes.size === 1 && [...enumTypes][0] !== null) constraints.type = [...enumTypes][0];
+    else if (isKey) constraints.type = 'string';
+  }
+  if (!SCALAR_TYPES.has(constraints.type)) {
+    // A pattern or enum with no implied type is still a constraint to compare.
+    if (constraints.type !== undefined || (constraints.pattern === undefined && constraints.enum === undefined)) return null;
   }
   return constraints;
 }
@@ -128,7 +236,7 @@ const fingerprint = (constraints) => JSON.stringify(
 
 function strengthOf(constraints) {
   if (constraints.pattern !== undefined) return 'strong';
-  if (Array.isArray(constraints.enum) && constraints.enum.length > 1) return 'strong';
+  if (Array.isArray(constraints.enum) && constraints.enum.length > 0) return 'strong';
   const low = constraints.minimum !== undefined || constraints.exclusiveMinimum !== undefined;
   const high = constraints.maximum !== undefined || constraints.exclusiveMaximum !== undefined;
   if (low && high) return 'strong';
@@ -136,38 +244,61 @@ function strengthOf(constraints) {
   return 'none';
 }
 
-/** Named scalar documents by constraint fingerprint. */
+/**
+ * Named scalar schemas by constraint fingerprint: document roots, and local
+ * definitions, which only their own document can reference.
+ */
 function indexNamedSchemas(documents, sites) {
   const named = new Map();
   const byRef = new Map();
-  for (const { file, schema } of documents) {
-    const constraints = constraintsOf(schema);
-    if (!constraints || strengthOf(constraints) === 'none') continue;
-    const entry = {
-      file,
-      ref: `/schemas/${file}`,
-      constraintKeys: Object.keys(constraints),
-      xEntity: schema['x-entity'] || null,
-      properties: new Set(),
-    };
+  const add = (entry, constraints) => {
     const key = fingerprint(constraints);
     if (!named.has(key)) named.set(key, []);
     named.get(key).push(entry);
-    byRef.set(entry.ref, entry);
+    byRef.set(entry.local ? `${entry.file}#${entry.pointer}` : entry.ref, entry);
+  };
+  for (const { file, schema } of documents) {
+    const constraints = constraintsOf(schema);
+    if (!constraints || strengthOf(constraints) === 'none') continue;
+    add({
+      file,
+      pointer: '',
+      ref: `/schemas/${file}`,
+      local: false,
+      constraintKeys: Object.keys(constraints),
+      xEntity: schema['x-entity'] || null,
+      properties: new Set(),
+    }, constraints);
   }
   for (const site of sites) {
-    if (typeof site.node.$ref === 'string' && byRef.has(site.node.$ref) && site.property) {
-      byRef.get(site.node.$ref).properties.add(site.property);
-    }
+    if (!DEFINITION_POINTER.test(site.pointer)) continue;
+    const constraints = constraintsOf(site.node, site.isKey);
+    if (!constraints || strengthOf(constraints) === 'none') continue;
+    add({
+      file: site.file,
+      pointer: site.pointer,
+      ref: `#${site.pointer}`,
+      local: true,
+      constraintKeys: Object.keys(constraints),
+      xEntity: site.node['x-entity'] || null,
+      properties: new Set(),
+    }, constraints);
+  }
+  for (const site of sites) {
+    const ref = site.node.$ref;
+    if (typeof ref !== 'string' || !site.property) continue;
+    const entry = byRef.get(ref.startsWith('#') ? `${site.file}${ref}` : ref);
+    if (entry) entry.properties.add(site.property);
   }
   return named;
 }
 
 /** The named schemas a site copies, narrowed by x-entity and then property name. */
 function targetsFor(site, candidates, strength) {
+  const reachable = candidates.filter((doc) => !doc.local || (doc.file === site.file && doc.pointer !== site.pointer));
   const siteEntity = site.node['x-entity'] || null;
   // A different x-entity states a different concept, whatever the constraints.
-  const compatible = candidates.filter((doc) => !doc.xEntity || !siteEntity || doc.xEntity === siteEntity);
+  const compatible = reachable.filter((doc) => !doc.xEntity || !siteEntity || doc.xEntity === siteEntity);
   const byEntity = compatible.filter((doc) => doc.xEntity && doc.xEntity === siteEntity);
   if (byEntity.length > 0) return byEntity;
   const byName = compatible.filter((doc) => site.property && doc.properties.has(site.property));
@@ -180,7 +311,7 @@ function findInlineCopies(sites, named) {
   const copies = [];
   for (const site of sites) {
     if (site.pointer === '') continue;
-    const constraints = constraintsOf(site.node);
+    const constraints = constraintsOf(site.node, site.isKey);
     if (!constraints) continue;
     const strength = strengthOf(constraints);
     if (strength === 'none') continue;
@@ -192,12 +323,12 @@ function findInlineCopies(sites, named) {
   return copies;
 }
 
-/** Unnamed constraints by group, excluding sites already reported or held apart. */
+/** Sites that state the same unnamed constraint, by group. */
 function findRepeats(sites, excluded) {
   const groups = new Map();
   for (const site of sites) {
     if (site.pointer === '' || excluded.has(siteKey(site))) continue;
-    const constraints = constraintsOf(site.node);
+    const constraints = constraintsOf(site.node, site.isKey);
     if (!constraints) continue;
     const strength = strengthOf(constraints);
     if (strength === 'none') continue;
@@ -213,12 +344,81 @@ function findRepeats(sites, excluded) {
   return groups;
 }
 
-const repeatKey = (entry) => JSON.stringify([fingerprint(normalizeEntryConstraints(entry.constraint)), entry.property || null]);
+/** The first local reference anywhere under a schema node, or null. */
+function firstLocalRef(node) {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = firstLocalRef(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isObject(node)) return null;
+  if (typeof node.$ref === 'string' && node.$ref.startsWith('#')) return node.$ref;
+  return firstLocalRef(Object.values(node));
+}
 
-function normalizeEntryConstraints(constraint) {
-  const out = { ...constraint };
-  if (Array.isArray(out.enum)) out.enum = [...out.enum].map(String).sort();
-  return out;
+/** Properties that a branch states and an enclosing schema also declares. */
+function refinedProperties(schema, inherited, pointer) {
+  const declared = new Set([...inherited, ...Object.keys(isObject(schema.properties) ? schema.properties : {})]);
+  const refined = [];
+  for (const key of COMPOSITION_KEYS) {
+    if (!Array.isArray(schema[key])) continue;
+    schema[key].forEach((branch, index) => {
+      if (!isObject(branch)) return;
+      const branchPointer = `${pointer}/${key}/${index}`;
+      for (const [name, property] of Object.entries(isObject(branch.properties) ? branch.properties : {})) {
+        if (declared.has(name) && isObject(property)) {
+          refined.push({ pointer: `${branchPointer}/properties/${escapePointer(name)}`, node: property });
+        }
+      }
+      refined.push(...refinedProperties(branch, declared, branchPointer));
+    });
+  }
+  return refined;
+}
+
+/** References whose target's local references would dangle where the target gets flattened. */
+function findComposedLocalRefs(documents, sites) {
+  const byRef = new Map(documents.map((document) => [`/schemas/${document.file}`, document]));
+  // A whole document, or the subschema a fragment names, with the file that holds it.
+  const targetOf = (ref) => {
+    if (typeof ref !== 'string') return null;
+    const [documentRef, fragment] = ref.split('#');
+    const document = byRef.get(documentRef);
+    if (!document) return null;
+    const schema = (fragment || '').split('/').slice(1)
+      .reduce((node, raw) => node?.[raw.replace(/~1/g, '/').replace(/~0/g, '~')], document.schema);
+    return isObject(schema) ? { file: document.file, schema } : null;
+  };
+  const findings = new Map();
+  const report = (file, pointer, target, localRef, how) => {
+    findings.set(`${file}#${pointer}`, { key: `${file}#${pointer}`, target: target.file, localRef, how });
+  };
+  for (const { file, pointer, node } of sites) {
+    if (Array.isArray(node.allOf) && (isObject(node.properties) || Array.isArray(node.required))) {
+      const stated = isObject(node.properties) ? node.properties : {};
+      node.allOf.forEach((member, index) => {
+        const target = isObject(member) ? targetOf(member.$ref) : null;
+        if (!target || target.file === file || !isObject(target.schema.properties)) return;
+        const unstated = Object.entries(target.schema.properties).filter(([name]) => !(name in stated));
+        const localRef = firstLocalRef(unstated.map(([, property]) => property));
+        if (localRef) report(file, `${pointer}/allOf/${index}`, target, localRef, 'in allOf beside properties or required');
+      });
+    }
+    for (const { pointer: refined, node: property } of refinedProperties(node, new Set(), pointer)) {
+      const target = targetOf(property.$ref);
+      if (!target || target.file === file) continue;
+      const localRef = firstLocalRef(target.schema);
+      if (localRef) report(file, refined, target, localRef, 'on a property that an enclosing schema also declares');
+    }
+    const target = targetOf(node.$ref);
+    if (target && target.file !== file && Object.keys(node).some((key) => key !== '$ref' && !isAnnotation(key))) {
+      const localRef = firstLocalRef(target.schema);
+      if (localRef) report(file, pointer, target, localRef, 'with schema keywords beside it');
+    }
+  }
+  return [...findings.values()];
 }
 
 /** The list's own structure: every entry states its reason. */
@@ -226,6 +426,9 @@ function checkList(list) {
   const errors = [];
   if (!Number.isInteger(list.min_repeat_sites) || list.min_repeat_sites < 2) {
     errors.push('min_repeat_sites must be an integer of at least 2');
+  }
+  if (list.unnamed_repeats !== undefined) {
+    errors.push('unnamed_repeats is no longer read: list each site that stays inline in held_apart, with its reason');
   }
   const seen = new Set();
   for (const entry of Array.isArray(list.held_apart) ? list.held_apart : []) {
@@ -236,19 +439,13 @@ function checkList(list) {
     if (seen.has(entry.path)) errors.push(`held_apart: ${entry.path} is listed twice`);
     seen.add(entry.path);
     if (typeof entry.reason !== 'string' || !entry.reason.trim()) {
-      errors.push(`held_apart: ${entry.path} has no reason; state why this site is not the named schema`);
-    }
-  }
-  for (const entry of Array.isArray(list.unnamed_repeats) ? list.unnamed_repeats : []) {
-    const label = JSON.stringify(entry.constraint);
-    if (!isObject(entry.constraint)) errors.push(`unnamed_repeats entry ${JSON.stringify(entry)}: state its constraint`);
-    if (!Number.isInteger(entry.sites)) errors.push(`unnamed_repeats ${label}: sites must be the current count`);
-    if (typeof entry.reason !== 'string' || !entry.reason.trim()) {
-      errors.push(`unnamed_repeats ${label}: has no reason; state why it stays unnamed`);
+      errors.push(`held_apart: ${entry.path} has no reason; state what this site means that the named schema or the other sites don't`);
     }
   }
   return errors;
 }
+
+const groupLabel = (group) => `${JSON.stringify(group.constraints)}${group.property ? ` on ${group.property}` : ''}`;
 
 /** Holds the tree to the named schemas and the checked-in exceptions. */
 function checkTree(documents, list) {
@@ -258,14 +455,15 @@ function checkTree(documents, list) {
   const copies = findInlineCopies(sites, named);
   const held = new Set((list.held_apart || []).map((entry) => entry.path));
   const copyKeys = new Set(copies.map(({ site }) => siteKey(site)));
+  const needed = new Set(copyKeys);
 
   for (const { site, targets } of copies) {
     const key = siteKey(site);
     if (held.has(key)) continue;
     const refs = targets.map((doc) => doc.ref);
     const removed = targets.length === 1
-      ? [...targets[0].constraintKeys, ...(targets[0].xEntity ? ['x-entity'] : [])]
-      : Object.keys(constraintsOf(site.node));
+      ? [...targets[0].constraintKeys, ...(targets[0].xEntity ? ['x-entity'] : [])].filter((k) => k in site.node)
+      : Object.keys(site.node).filter((k) => !isAnnotation(k));
     errors.push([
       `${key}: inline copy of a named schema.`,
       targets.length === 1
@@ -274,39 +472,38 @@ function checkTree(documents, list) {
       `  If it means something else, add {"path": "${key}", "reason": "..."} to held_apart in ${LIST_PATH_IN_REPO}.`,
     ].join('\n'));
   }
-  for (const key of held) {
-    if (!copyKeys.has(key)) {
-      errors.push(`stale held_apart: ${key} is no longer an inline copy of a named schema; remove it from ${LIST_PATH_IN_REPO}`);
-    }
-  }
 
   const groups = findRepeats(sites, copyKeys);
-  const recorded = new Map((list.unnamed_repeats || []).filter((e) => isObject(e.constraint)).map((entry) => [repeatKey(entry), entry]));
   const threshold = list.min_repeat_sites;
-  for (const [key, group] of groups) {
-    const count = group.sites.length;
-    const documentCount = new Set(group.sites.map((site) => site.file)).size;
-    const entry = recorded.get(key);
-    if (entry) {
-      recorded.delete(key);
-      if (count > entry.sites) {
-        errors.push(`${JSON.stringify(group.constraints)}${group.property ? ` on ${group.property}` : ''} grew from ${entry.sites} to ${count} sites. Name it, or update the count in unnamed_repeats with a growth_reason.\n  Sites:\n    ${group.sites.map(siteKey).join('\n    ')}`);
-      } else if (count < entry.sites) {
-        errors.push(`stale unnamed_repeats: ${JSON.stringify(group.constraints)}${group.property ? ` on ${group.property}` : ''} now has ${count} sites, not ${entry.sites}; lower the count or remove the entry`);
-      }
-      continue;
-    }
-    if (count >= threshold && documentCount >= 2) {
-      errors.push([
-        `Repeated unnamed constraint ${JSON.stringify(group.constraints)}${group.property ? ` on ${group.property}` : ''} at ${count} sites:`,
-        ...group.sites.map((site) => `    ${siteKey(site)}`),
-        '  Fix: add a titled document under core/ or enums/, then run npm run schemas:normalize -- --write.',
-        `  If the sites mean different things, add the constraint with its count and a reason to unnamed_repeats in ${LIST_PATH_IN_REPO}.`,
-      ].join('\n'));
-    }
+  for (const group of groups.values()) {
+    if (group.sites.length < 2) continue;
+    for (const site of group.sites) needed.add(siteKey(site));
+    const open = group.sites.filter((site) => !held.has(siteKey(site)));
+    if (open.length < threshold) continue;
+    const files = new Set(open.map((site) => site.file));
+    const where = files.size === 1
+      ? `a definitions entry in ${[...files][0]}`
+      : 'a titled document under core/ or enums/';
+    errors.push([
+      `Repeated unnamed constraint ${groupLabel(group)} at ${open.length} sites:`,
+      ...open.map((site) => `    ${siteKey(site)}`),
+      `  Fix: name it with ${where}, then run npm run schemas:normalize -- --doc <its file or file#pointer> --write.`,
+      `  If the sites mean different things, add each one that stays inline to held_apart in ${LIST_PATH_IN_REPO}, with the meaning that differs.`,
+    ].join('\n'));
   }
-  for (const entry of recorded.values()) {
-    errors.push(`stale unnamed_repeats: ${JSON.stringify(entry.constraint)}${entry.property ? ` on ${entry.property}` : ''} no longer occurs; remove it from ${LIST_PATH_IN_REPO}`);
+
+  for (const { key, target, localRef, how } of findComposedLocalRefs(documents, sites)) {
+    errors.push([
+      `${key}: references ${target} ${how}, and ${target} uses the local reference ${localRef}.`,
+      '  Code generators flatten a document composed this way into the one that references it, where the local reference does not resolve.',
+      `  Fix: move that definition to a titled document under core/ or enums/, and reference it from ${target}.`,
+    ].join('\n'));
+  }
+
+  for (const key of held) {
+    if (!needed.has(key)) {
+      errors.push(`stale held_apart: ${key} no longer copies a named schema or repeats another site; remove it from ${LIST_PATH_IN_REPO}`);
+    }
   }
   return { errors, copies, groups };
 }
@@ -320,21 +517,9 @@ function compareToBase(base, head) {
   }
   const baseHeld = new Set((base.held_apart || []).map((entry) => entry.path));
   for (const entry of head.held_apart || []) {
-    if (!baseHeld.has(entry.path)) additions.push(`held_apart ${entry.path}: ${entry.reason}`);
-  }
-  const baseRepeats = new Map((base.unnamed_repeats || []).map((entry) => [repeatKey(entry), entry]));
-  for (const entry of head.unnamed_repeats || []) {
-    const previous = baseRepeats.get(repeatKey(entry));
-    const label = `${JSON.stringify(entry.constraint)}${entry.property ? ` on ${entry.property}` : ''}`;
-    if (!previous) {
-      additions.push(`unnamed_repeats ${label}: ${entry.reason}`);
-    } else if (entry.sites > previous.sites) {
-      if (typeof entry.growth_reason === 'string' && entry.growth_reason.trim()) {
-        additions.push(`unnamed_repeats ${label} grew from ${previous.sites} to ${entry.sites}: ${entry.growth_reason}`);
-      } else {
-        errors.push(`unnamed_repeats ${label} grew from ${previous.sites} to ${entry.sites} sites without a growth_reason; the baseline may only shrink`);
-      }
-    }
+    if (baseHeld.has(entry.path)) continue;
+    if (typeof entry.reason === 'string' && entry.reason.trim()) additions.push(`held_apart ${entry.path}: ${entry.reason}`);
+    else errors.push(`held_apart ${entry.path} was added without a reason; the list only grows with one`);
   }
   return { errors, additions };
 }
@@ -370,7 +555,8 @@ function main() {
     console.error(`Schema named-constraints lint: ${errors.length} problem(s)\n\n${errors.join('\n\n')}`);
     process.exit(1);
   }
-  console.log(`✓ schema named-constraints lint: ${copies.length - (list.held_apart || []).length} unlisted inline copies, ${(list.held_apart || []).length} held apart, ${(list.unnamed_repeats || []).length} recorded unnamed repeats`);
+  const heldCount = (list.held_apart || []).length;
+  console.log(`✓ schema named-constraints lint: ${copies.length} inline copies and repeats all named or held apart, ${heldCount} held apart, threshold ${list.min_repeat_sites}`);
 }
 
 if (require.main === module) main();
@@ -381,9 +567,12 @@ module.exports = {
   collectSites,
   compareToBase,
   constraintsOf,
+  findComposedLocalRefs,
   findInlineCopies,
+  findRepeats,
   indexNamedSchemas,
   loadDocuments,
+  normalizePattern,
   siteKey,
   strengthOf,
 };

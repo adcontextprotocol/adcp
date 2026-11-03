@@ -1,737 +1,774 @@
 {
-  "$comment": "Reviewed exceptions for scripts/lint-schema-named-constraints.cjs. held_apart lists sites that state a named schema's constraints but mean something else, or cannot reference it without changing the document. unnamed_repeats lists constraints that repeat without a name, with their current site counts. Entries that stop occurring fail the lint, so this file shrinks as sites get fixed. An addition needs a reason, and a reviewer sees it in the diff.",
-  "min_repeat_sites": 3,
+  "$comment": "Reviewed exceptions for scripts/lint-schema-named-constraints.cjs. Each entry is a site that keeps an inline constraint, with what it means that the named schema or the other sites with the same constraint don't. Entries that no longer need an exception fail the lint, so this file shrinks as sites get fixed. An addition needs a reason, and a reviewer sees it in the diff.",
+  "min_repeat_sites": 2,
   "held_apart": [
     {
-      "path": "account/list-accounts-request.json#/properties/status",
-      "reason": "Same concept as enums/account-status.json, but that document adds enumDescriptions that this site does not state."
+      "path": "account/request-account-request.json#/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
-      "path": "account/sync-accounts-response.json#/oneOf/0/properties/accounts/items/properties/status",
-      "reason": "Same concept as enums/account-status.json, but that document adds enumDescriptions that this site does not state."
+      "path": "account/sync-accounts-request.json#/properties/accounts/items/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
-      "path": "account/sync-governance-request.json#/properties/accounts/items/properties/governance_agents/items/properties/authentication/properties/credentials",
-      "reason": "Authenticates to a governance agent, not a webhook."
+      "path": "account/sync-accounts-response.json#/oneOf/0/properties/accounts/items/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
-      "path": "brand.json#/definitions/brand_agent/properties/id",
-      "reason": "Identifies an agent entry for logging, not a brand, a property, or a tag."
+      "path": "brand.json#/definitions/agent_id",
+      "reason": "Identifier of an agent entry in a brand.json, not a brand ID, a property ID, or a property tag."
     },
     {
-      "path": "brand.json#/definitions/brand_id",
-      "reason": "Same concept as core/brand-id.json, but that document adds x-entity, examples, and x-max-length-4.0 that this site does not state."
+      "path": "brand.json#/definitions/brand_agent_entry/properties/description",
+      "reason": "Description of the capabilities or scope of one agent a brand declares in brand.json."
     },
     {
-      "path": "brand.json#/definitions/rights_agent/properties/id",
-      "reason": "Identifies an agent entry for logging, not a brand, a property, or a tag."
+      "path": "brand.json#/definitions/house/properties/name",
+      "reason": "Primary display name of the corporate house that owns brands in brand.json."
     },
     {
-      "path": "brand/verify-brand-claim-request.json#/oneOf/0/properties/claim/properties/subsidiary_brand_id",
-      "reason": "Same concept as core/brand-id.json, but that document adds x-entity, examples, and x-max-length-4.0 that this site does not state."
+      "path": "brand.json#/definitions/photography_style/properties/preferred_aspect_ratios/items",
+      "reason": "Aspect ratio with whole numbers only. core/aspect-ratio.json also accepts decimals, so referencing it would loosen this site; see the decision list."
     },
     {
-      "path": "brand/verify-brand-claims-request.json#/definitions/claim_entry/oneOf/0/properties/claim/properties/subsidiary_brand_id",
-      "reason": "Same concept as core/brand-id.json, but that document adds x-entity, examples, and x-max-length-4.0 that this site does not state."
+      "path": "brand.json#/definitions/trademark/properties/countries/items",
+      "reason": "Same concept as core/country-code.json with a different constraint; see the decision list. Referencing replaces the two-character length bounds with the pattern ^[A-Z]{2}$, which rejects lowercase and non-letter values."
     },
     {
-      "path": "compliance/comply-test-controller-request.json#/properties/params/properties/message",
-      "reason": "A compliance controller message, not a task message."
+      "path": "brand/get-rights-response.json#/oneOf/0/properties/rights/items/properties/match_score",
+      "reason": "Relevance ranking score a brand agent assigns to one rights search result; it orders results and is not a proportion or probability."
+    },
+    {
+      "path": "brand/verify-brand-claim-request.json#/oneOf/3/properties/claim/properties/countries/items",
+      "reason": "Same concept as core/country-code.json with a different constraint; see the decision list. Referencing replaces the two-character length bounds with the pattern ^[A-Z]{2}$, which rejects lowercase and non-letter values."
+    },
+    {
+      "path": "brand/verify-brand-claims-request.json#/definitions/claim_entry/oneOf/3/properties/claim/properties/countries/items",
+      "reason": "Same concept as core/country-code.json with a different constraint; see the decision list. Referencing replaces the two-character length bounds with the pattern ^[A-Z]{2}$, which rejects lowercase and non-letter values."
+    },
+    {
+      "path": "collection/get-collection-list-request.json#/properties/pagination/properties/max_results",
+      "reason": "Same concept as core/page-size.json with a different constraint; see the decision list. Proposed above with maximum 100. These inline pagination objects copy core/pagination-request.json but raise max_results to 10000 on purpose for large lists. Referencing the 1..100 page size would tighten the maximum from 10000 to 100."
+    },
+    {
+      "path": "compliance/comply-test-controller-request.json#/properties/params/properties/evaluation_id",
+      "reason": "Same concept as core/creative-evaluation-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
+    },
+    {
+      "path": "compliance/comply-test-controller-request.json#/properties/params/properties/proposal_id",
+      "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "compliance/comply-test-controller-request.json#/properties/params/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
+    },
+    {
+      "path": "compliance/comply-test-controller-response.json#/definitions/SetAccountTimezoneResult/properties/previous_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
+    },
+    {
+      "path": "compliance/comply-test-controller-response.json#/definitions/SetAccountTimezoneResult/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
+    },
+    {
+      "path": "compliance/comply-test-controller-response.json#/oneOf/3/properties/forced/properties/evaluation_id",
+      "reason": "Same concept as core/creative-evaluation-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
+    },
+    {
+      "path": "compliance/comply-test-controller-response.json#/oneOf/3/properties/forced/properties/proposal_id",
+      "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
     },
     {
       "path": "compliance/comply-test-controller-response.json#/oneOf/6/properties/recorded_calls/items/properties/payload_digest_sha256",
-      "reason": "Digest of a recorded request body, not hashed personal data, a credential fingerprint, or an identifier digest."
+      "reason": "Digest of a recorded outbound request body, not hashed personal data, a credential fingerprint, or an identifier digest."
+    },
+    {
+      "path": "content-standards/get-media-buy-artifacts-request.json#/properties/pagination/properties/max_results",
+      "reason": "Same concept as core/page-size.json with a different constraint; see the decision list. Proposed above with maximum 100. These inline pagination objects copy core/pagination-request.json but raise max_results to 10000 on purpose for large lists. Referencing the 1..100 page size would tighten the maximum from 10000 to 100."
+    },
+    {
+      "path": "core/account-change-recorded-webhook.json#/properties/account_id",
+      "reason": "Same concept as core/account-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
     },
     {
       "path": "core/account-change.json#/properties/action",
-      "reason": "A change action, not a resource type."
+      "reason": "A material change action such as created or linked, not a resource type."
     },
     {
       "path": "core/account-change.json#/properties/batch_id",
-      "reason": "Groups records from one operation; it appears once, and no named identifier means this."
+      "reason": "Groups records from one committed operation or one ingestion batch; it occurs once, and no named identifier means a batch."
+    },
+    {
+      "path": "core/account-change.json#/properties/resource/properties/account_id",
+      "reason": "Same concept as core/account-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
+    },
+    {
+      "path": "core/account-identity-change-preview.json#/definitions/impact/properties/reason",
+      "reason": "Explanation of how a previewed operator-identity change affects one area such as billing or reporting."
+    },
+    {
+      "path": "core/account-identity-change.json#/oneOf/1/properties/reason",
+      "reason": "Seller reason for rejecting a requested operator-identity change."
+    },
+    {
+      "path": "core/account-ref.json#/oneOf/1/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
       "path": "core/account-request-record.json#/properties/request_id",
-      "reason": "Account request identifier, not a reporting identifier. core/account-request-id.json has no pattern, so it would loosen this site."
+      "reason": "Seller-assigned account request ID. core/account-request-id.json states no pattern, so referencing it would loosen this site; see the decision list."
     },
     {
-      "path": "core/agent-reporting-destination.json#/oneOf/0/properties/operator_id",
-      "reason": "Agent-scoped operator label, repeated inside one document only."
+      "path": "core/account-request-record.json#/properties/requested/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
-      "path": "core/agent-reporting-destination.json#/oneOf/1/properties/operator_id",
-      "reason": "Agent-scoped operator label, repeated inside one document only."
+      "path": "core/account-timezone-capability.json#/properties/fixed_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Fixed seller or feature timezone, UTC or IANA. Referencing adds maxLength 255 (these sites declare x-max-length-4.0 64), the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
-      "path": "core/agent-reporting-destination.json#/oneOf/2/properties/operator_id",
-      "reason": "Agent-scoped operator label, repeated inside one document only."
+      "path": "core/account.json#/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
-      "path": "core/audience-activation-method.json#/oneOf/3/properties/consumer_identities/items/properties/cloud",
-      "reason": "Same concept as enums/delivery-recipient-cloud.json, but that document adds annotations that this site does not state."
+      "path": "core/agent-reporting-destination.json#/definitions/operator_id",
+      "reason": "Agent-scoped operator label, not a reporting configuration, destination, or subscription ID."
+    },
+    {
+      "path": "core/app-item.json#/properties/apple_id",
+      "reason": "Numeric Apple App Store ID, not a place identifier."
+    },
+    {
+      "path": "core/assets/image-asset.json#/properties/focal_point/items",
+      "reason": "One axis of a normalized image coordinate measured from the top-left corner, giving the position of the visual focal point."
+    },
+    {
+      "path": "core/attestation-evaluation.json#/properties/reason_codes/items",
+      "reason": "Machine-readable reason code of an attestation evaluation, not an acceptance policy profile ID or a change term ID."
+    },
+    {
+      "path": "core/audience-characteristic.json#/properties/taxonomy/properties/version",
+      "reason": "Version of the external taxonomy that defines an audience characteristic dimension or value."
     },
     {
       "path": "core/audience-evidence.json#/properties/relationship",
-      "reason": "Kept inline on purpose by d9b5417bc8; enums/audience-evidence-relationship.json also adds enumDescriptions."
+      "reason": "Stable since 3.2, while enums/audience-evidence-relationship.json carries x-added-in 3.3.0; see the decision list."
     },
     {
-      "path": "core/bidding-policy-capability.json#/definitions/max_bid_with_cost_per/properties/cost_per_strengths/items",
-      "reason": "Same concept as enums/outcome-target-cost-strength.json, but that document adds enumDescriptions that this site does not state."
-    },
-    {
-      "path": "core/bidding-policy-capability.json#/definitions/policy_profile/properties/cost_per_strengths/items",
-      "reason": "Same concept as enums/outcome-target-cost-strength.json, but that document adds enumDescriptions that this site does not state."
-    },
-    {
-      "path": "core/bidding-policy.json#/properties/cost_per/properties/strength",
-      "reason": "Same concept as enums/outcome-target-cost-strength.json, but that document adds enumDescriptions that this site does not state."
+      "path": "core/canonical-account-ref.json#/anyOf/1/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
       "path": "core/canonical-audience-evidence.json#/properties/relationship",
-      "reason": "Kept inline on purpose by d9b5417bc8; enums/audience-evidence-relationship.json also adds enumDescriptions."
+      "reason": "Stable since 3.2, while enums/audience-evidence-relationship.json carries x-added-in 3.3.0; see the decision list."
     },
     {
       "path": "core/canonical-format-option.json#/properties/format_kind",
       "reason": "Pinned inline on purpose: tests/tracker-execution-package-integration.test.cjs records that SDK compact-format postprocessing requires an inline literal union."
     },
     {
-      "path": "core/canonical-pricing-option.json#/properties/pricing_model",
-      "reason": "Same concept as enums/pricing-model.json, but that document adds enumDescriptions that this site does not state."
+      "path": "core/canonical-installment-ref.json#/properties/collection_ref/properties/publisher_domain",
+      "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
+    },
+    {
+      "path": "core/canonical-placement.json#/properties/name",
+      "reason": "Display name of a product placement in a canonical product."
+    },
+    {
+      "path": "core/canonical-product.json#/properties/name",
+      "reason": "Display name of a canonical product."
+    },
+    {
+      "path": "core/creative-representation-set.json#/properties/name",
+      "reason": "Buyer-authored name of a creative representation set revision."
+    },
+    {
+      "path": "core/creative-representation.json#/properties/representation_id",
+      "reason": "Representation identifier unique within one representation set, not a seller ID."
+    },
+    {
+      "path": "core/creative-representation.json#/properties/source/properties/system",
+      "reason": "Namespace of the source system that produced a creative representation."
     },
     {
       "path": "core/duration.json#/properties/unit",
-      "reason": "A general duration unit. core/frequency-cap-duration-unit.json is specific to frequency caps."
+      "reason": "A general duration unit that includes campaign. core/frequency-cap-duration-unit.json is specific to frequency caps."
+    },
+    {
+      "path": "core/error.json#/properties/buyer_reason/properties/message",
+      "reason": "Buyer-safe explanation of an actionable failure in an error buyer_reason."
     },
     {
       "path": "core/feature-requirement.json#/properties/if_not_covered",
-      "reason": "What to do when a feature is not covered, not a signal targeting mode."
+      "reason": "What to do with a property whose feature is not covered, not a signal targeting mode."
     },
     {
-      "path": "core/flight-item.json#/properties/destination/properties/airport_code",
-      "reason": "IATA airport code, not a currency."
-    },
-    {
-      "path": "core/flight-item.json#/properties/origin/properties/airport_code",
-      "reason": "IATA airport code, not a currency."
+      "path": "core/flight-item.json#/definitions/airport_code",
+      "reason": "IATA airport code, not a currency code."
     },
     {
       "path": "core/format-id.json#/properties/id",
-      "reason": "Format identifier in an agent namespace, not a signal or a capability."
+      "reason": "Format identifier within an agent namespace, not a signal ID or a creative capability ID."
+    },
+    {
+      "path": "core/geo-place-area.json#/allOf/0/then/properties/values/items",
+      "reason": "Numeric place identifier in the geonames, google_ads, or microsoft_ads system, not an App Store ID."
+    },
+    {
+      "path": "core/geo-region-support.json#/properties/catalog_version",
+      "reason": "Opaque version of the ISO subdivision catalog or seller mapping behind a region support snapshot."
     },
     {
       "path": "core/impairment.json#/properties/transition/properties/from",
-      "reason": "A prior resource status value, not an identifier."
+      "reason": "A prior resource status such as ready or approved, not an identifier."
     },
     {
-      "path": "core/inventory-list-application.json#/oneOf/0/properties/effect",
-      "reason": "Whether an inventory list includes or excludes, not a signal targeting mode."
+      "path": "core/inventory-list-application.json#/definitions/list_effect",
+      "reason": "Whether an inventory list is an allowlist or a blocklist, not a signal targeting mode."
     },
     {
-      "path": "core/inventory-list-application.json#/oneOf/1/properties/effect",
-      "reason": "Whether an inventory list includes or excludes, not a signal targeting mode."
+      "path": "core/macro-resolution-result.json#/properties/message",
+      "reason": "Diagnostic text for one macro resolution preflight result."
     },
     {
-      "path": "core/reporting-canonicalization-contract.json#/properties/golden_vectors/properties/additional/items/properties/name",
-      "reason": "Test vector name, repeated inside one document only."
+      "path": "core/measurement-window.json#/properties/description",
+      "reason": "Description of what one measurement maturation window counts."
     },
     {
-      "path": "core/reporting-canonicalization-contract.json#/properties/golden_vectors/properties/empty_report/properties/name",
-      "reason": "Test vector name, repeated inside one document only."
+      "path": "core/optimization-goal.json#/oneOf/0/properties/metric",
+      "reason": "One concept with core/canonical-optimization-goal.json metric, which lacks attention_score and attention_seconds. Naming the enum waits for the decision on whether the canonical goal keeps the narrower set."
     },
     {
-      "path": "core/reporting-canonicalization-contract.json#/properties/golden_vectors/properties/ordering_encoding/properties/name",
-      "reason": "Test vector name, repeated inside one document only."
+      "path": "core/performance-feedback-assertion.json#/properties/evidence/properties/confidence_interval/properties/level",
+      "reason": "Confidence level of a performance-index confidence interval, such as 0.95, strictly between 0 and 1."
     },
     {
-      "path": "core/reporting-dataset-share-destination.json#/definitions/ReportingCloud",
-      "reason": "Same concept as enums/delivery-recipient-cloud.json, but that document adds annotations that this site does not state."
+      "path": "core/product.json#/properties/metric_optimization/properties/supported_metrics/items",
+      "reason": "One concept with core/canonical-optimization-goal.json metric, which lacks attention_score and attention_seconds. Naming the enum waits for the decision on whether the canonical goal keeps the narrower set."
+    },
+    {
+      "path": "core/proposal-created-webhook.json#/properties/account_id",
+      "reason": "Same concept as core/account-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
+    },
+    {
+      "path": "core/reporting-canonicalization-contract.json#/definitions/golden_vector_name",
+      "reason": "Name of a golden test vector, not a reporting offering or profile ID."
+    },
+    {
+      "path": "core/reporting-consumer-status.json#/properties/period/properties/source_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Reporting period source_timezone is the IANA zone of the upstream reporting clock. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "core/reporting-delivery-config-state.json#/properties/setup/properties/message",
+      "reason": "Untrusted display text describing the manual next step to finish reporting delivery setup."
+    },
+    {
+      "path": "core/reporting-delivery-offering.json#/properties/method/properties/producer_identity/properties/provider/properties/domain",
+      "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
+    },
+    {
+      "path": "core/reporting-delivery-offering.json#/properties/method/properties/provider/properties/domain",
+      "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
+    },
+    {
+      "path": "core/reporting-file-manifest.json#/properties/period/properties/source_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Reporting period source_timezone is the IANA zone of the upstream reporting clock. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
       "path": "core/reporting-materialization.json#/properties/failure_code",
-      "reason": "A materialization failure, not a rejection of a receipt or adjustment."
+      "reason": "A materialization failure classification, not a rejection of a receipt or an adjustment."
+    },
+    {
+      "path": "core/reporting-obligation.json#/properties/period/properties/source_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Reporting period source_timezone is the IANA zone of the upstream reporting clock. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "core/reporting-obligation.json#/properties/reporting_profile",
+      "reason": "Same concept as core/reporting-profile-id.json with a different constraint; see the decision list. Same length bounds. Referencing adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
+    },
+    {
+      "path": "core/reporting-report-definition.json#/properties/calendar/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
     },
     {
       "path": "core/reporting-report-definition.json#/properties/contract_version",
-      "reason": "A canonicalization contract version. Sharing values with enums/daast-version.json is a coincidence."
+      "reason": "A canonicalization contract version. Its values match enums/daast-version.json by coincidence."
+    },
+    {
+      "path": "core/reporting-report-definition.json#/properties/reporting_profile",
+      "reason": "Same concept as core/reporting-profile-id.json with a different constraint; see the decision list. Same length bounds. Referencing adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
     },
     {
       "path": "core/reporting-resource.json#/properties/resource_ref",
-      "reason": "Opaque reference to one resource descriptor; it appears once, and no named identifier means this."
+      "reason": "Opaque reference to one reporting resource descriptor; it occurs once, and no named identifier means a resource."
+    },
+    {
+      "path": "core/reporting-revision.json#/properties/period/properties/source_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Reporting period source_timezone is the IANA zone of the upstream reporting clock. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "core/reporting-revision.json#/properties/reporting_profile",
+      "reason": "Same concept as core/reporting-profile-id.json with a different constraint; see the decision list. Same length bounds. Referencing adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
+    },
+    {
+      "path": "core/reporting-schedule-offering.json#/properties/period_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
+    },
+    {
+      "path": "core/reporting-schedule.json#/properties/period_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
     },
     {
       "path": "core/reporting-status-issue.json#/properties/external_ref",
-      "reason": "Opaque reference to a third-party tracker, not an AdCP identifier."
+      "reason": "Opaque reference to a third party's own tracker, such as a ticket key, not an AdCP identifier."
+    },
+    {
+      "path": "core/reporting-subscription-coverage.json#/properties/excluded/items/properties/offering_id",
+      "reason": "Same concept as core/reporting-delivery-offering-id.json with a different constraint; see the decision list. Referencing lowers maxLength from 255 to 128 and adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
+    },
+    {
+      "path": "core/reporting-subscription-coverage.json#/properties/excluded/items/properties/overridden_by/properties/delivery_config_id",
+      "reason": "Same concept as core/reporting-delivery-config-id.json with a different constraint; see the decision list. Same length bounds. Referencing adds the pattern ^[A-Za-z0-9_.:-]{1,64}$."
+    },
+    {
+      "path": "core/reporting-subscription-coverage.json#/properties/gaps/items/properties/offering_id",
+      "reason": "Same concept as core/reporting-delivery-offering-id.json with a different constraint; see the decision list. Referencing lowers maxLength from 255 to 128 and adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
+    },
+    {
+      "path": "core/reporting-subscription-coverage.json#/properties/timezone_cutovers/items/properties/offering_id",
+      "reason": "Same concept as core/reporting-delivery-offering-id.json with a different constraint; see the decision list. Referencing lowers maxLength from 255 to 128 and adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
+    },
+    {
+      "path": "core/reporting-subscription-coverage.json#/properties/timezone_cutovers/items/properties/previous_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
+    },
+    {
+      "path": "core/reporting-subscription-coverage.json#/properties/timezone_cutovers/items/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
+    },
+    {
+      "path": "core/reporting-subscription.json#/properties/destination_overrides/items/properties/operator_domains/items",
+      "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
+    },
+    {
+      "path": "core/reporting-subscription.json#/properties/operator_domains/items",
+      "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
+    },
+    {
+      "path": "core/reporting-subscription.json#/properties/selector/properties/period_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
     },
     {
       "path": "core/reporting-verification-profile-set.json#/items",
-      "reason": "Same concept as core/reporting-verification-profile.json, but that document adds x-status that this site does not state."
+      "reason": "A stable list of verification profiles. core/reporting-verification-profile.json is experimental, so referencing it would mark this stable site experimental."
+    },
+    {
+      "path": "core/reporting-webhook.json#/properties/token",
+      "reason": "Same concept as core/webhook-token.json with a different constraint; see the decision list. Referencing adds maxLength 4096."
+    },
+    {
+      "path": "core/representation-rejection.json#/properties/message",
+      "reason": "Explanation of why one creative representation candidate is incompatible."
     },
     {
       "path": "core/representation-selection.json#/properties/resolved_by",
-      "reason": "Same values as the party enums by coincidence: this site names who resolved or manages something."
+      "reason": "Who performed compatibility resolution. The buyer and seller values match the party enums by coincidence."
+    },
+    {
+      "path": "core/requirements/video-asset-requirements.json#/properties/aspect_ratio",
+      "reason": "Aspect ratio with whole numbers only. core/aspect-ratio.json also accepts decimals, so referencing it would loosen this site; see the decision list."
+    },
+    {
+      "path": "core/response-payload-jws-envelope.json#/definitions/base64url",
+      "reason": "Base64url value, not a signal ID or a creative capability ID."
     },
     {
       "path": "core/response-payload-jws-envelope.json#/definitions/response_payload/properties/request_hash",
       "reason": "Hashes a request-binding object, not proposal commercial terms."
     },
     {
-      "path": "formats/canonical/coordinated_placements.json#/properties/components/items/properties/component_id",
-      "reason": "Coordination-local component identifier, unique within components[]."
+      "path": "core/seller-agent-ref.json#/properties/id",
+      "reason": "Reserved registry-assigned seller identifier, not a representation ID."
     },
     {
-      "path": "formats/canonical/coordinated_placements.json#/properties/shared_slots/items/properties/asset_group_id",
-      "reason": "Identifies an asset group in a format, not a brand, a property, or a tag."
+      "path": "core/signal-coverage-forecast.json#/properties/bucket_completeness",
+      "reason": "Whether forecast buckets cover the declared denominator, not whether a policy profile is exhaustive."
+    },
+    {
+      "path": "core/signal-definition-enrichment.json#/properties/data_subject_rights/properties/upstream_source_domain",
+      "reason": "Same concept as core/domain-name.json with a different constraint; see the decision list. Referencing replaces format hostname with the lowercase domain pattern, which rejects uppercase labels, and drops maxLength 253."
+    },
+    {
+      "path": "core/signal-definition.json#/properties/data_subject_rights/properties/upstream_source_domain",
+      "reason": "Same concept as core/domain-name.json with a different constraint; see the decision list. Referencing replaces format hostname with the lowercase domain pattern, which rejects uppercase labels, and drops maxLength 253."
+    },
+    {
+      "path": "core/signal-definition.json#/properties/description",
+      "reason": "Signal Description. Its other sites state a different bound; see the decision list."
+    },
+    {
+      "path": "core/signal-definition.json#/properties/name",
+      "reason": "Signal Name. Its other sites state a different bound; see the decision list."
+    },
+    {
+      "path": "core/signal-pricing.json#/oneOf/4/properties/description",
+      "reason": "Human-readable description of a custom vendor pricing model that the buyer shows an operator for approval."
+    },
+    {
+      "path": "core/targeting-modification.json#/oneOf/1/properties/selector/properties/system",
+      "reason": "Same concept as enums/postal-system.json with a different constraint; see the decision list. The targeting-modification selector names the postal system of one postal-area group. Referencing the enum tightens any non-empty string to the postal system values."
+    },
+    {
+      "path": "core/vast-tracker-constraints.json#/allOf/5/then/properties/vast_versions/items",
+      "reason": "VAST versions that a tracker constraint requires, not an MRAID version."
+    },
+    {
+      "path": "core/warning.json#/allOf/1/then/properties/affected_resource/properties/resource_type",
+      "reason": "Type of the resource a budget warning applies to, not a budget cap scope."
+    },
+    {
+      "path": "core/warning.json#/properties/message",
+      "reason": "Short human-readable explanation of a non-blocking warning on a successful operation."
+    },
+    {
+      "path": "core/wholesale-feed-event.json#/$defs/signal/properties/description",
+      "reason": "Same concept as the other sites of this concept with a different constraint; see the decision list. The named version has with maxLength 2000 from signal-definition.json. The wholesale signal entry has minLength 1 only; referencing would drop minLength 1 and add maxLength 2000."
+    },
+    {
+      "path": "core/wholesale-feed-event.json#/$defs/signal/properties/name",
+      "reason": "Same concept as the other sites of this concept with a different constraint; see the decision list. The named version has with maxLength 255 from signal-definition.json. Referencing adds maxLength 255 to the wholesale signal entry."
+    },
+    {
+      "path": "creative/list-creatives-request.json#/properties/assignment_limit",
+      "reason": "Maximum number of assigned-package rows list_creatives returns for each creative before it sets assignments_truncated."
+    },
+    {
+      "path": "formats/canonical/coordinated_placements.json#/properties/components/items/properties/component_id",
+      "reason": "Component identifier unique within one coordinated placement's components[]."
+    },
+    {
+      "path": "formats/canonical/html5.json#/properties/max_cpu_load_percent",
+      "reason": "Ceiling on the CPU load an HTML5 creative may cause while it renders, as an integer percentage."
+    },
+    {
+      "path": "formats/canonical/html5.json#/properties/mraid_version",
+      "reason": "MRAID version that an HTML5 creative requires, not a VAST version."
     },
     {
       "path": "formats/canonical/seller_rendered_stateful_display.json#/properties/clickthrough",
-      "reason": "Same values as enums/co-branding-requirement.json by coincidence: this site states a clickthrough requirement."
-    },
-    {
-      "path": "formats/canonical/seller_rendered_stateful_display.json#/properties/states/items/properties/slot_bindings/items",
-      "reason": "Identifies an asset group in a format, not a brand, a property, or a tag."
+      "reason": "A clickthrough destination policy. Its values match enums/co-branding-requirement.json by coincidence."
     },
     {
       "path": "formats/canonical/seller_rendered_stateful_display.json#/properties/transitions/items/properties/transition_id",
-      "reason": "Identifies a state transition in a stateful display, not a state or a breakpoint."
+      "reason": "Identifier of a state transition in a stateful display, not a state or a breakpoint."
     },
     {
       "path": "governance/attribute-definition.json#/properties/attribute_id",
-      "reason": "Governance attribute identifier, not a task name or a canvas identifier."
+      "reason": "Identifier of a governance attribute definition, not a task name or a canvas identifier."
+    },
+    {
+      "path": "governance/get-plan-audit-logs-response.json#/properties/plans/items/properties/governed_actions/items/properties/status",
+      "reason": "Lifecycle status of a governed action, not of its plan."
+    },
+    {
+      "path": "governance/get-plan-audit-logs-response.json#/properties/plans/items/properties/status",
+      "reason": "Lifecycle status of a governance plan, not of a governed action."
+    },
+    {
+      "path": "governance/policy-category-definition.json#/properties/facets/items/properties/description",
+      "reason": "Human-readable description of one registry-defined facet within a policy category."
+    },
+    {
+      "path": "governance/policy-category-definition.json#/properties/facets/items/properties/name",
+      "reason": "Display name of one facet within a governance policy category."
+    },
+    {
+      "path": "governance/policy-entry.json#/properties/description",
+      "reason": "Brief summary of what one governance policy covers."
+    },
+    {
+      "path": "governance/policy-entry.json#/properties/issuer/properties/name",
+      "reason": "Name of the regulator, standards body, or platform operator that issued a policy."
+    },
+    {
+      "path": "governance/report-plan-adjustment-request.json#/properties/reason",
+      "reason": "Seller reason for a reported governance plan adjustment, kept in the audit trail."
+    },
+    {
+      "path": "manifest.schema.json#/definitions/error_recovery",
+      "reason": "manifest.schema.json is published standalone and cannot reference enums/error-recovery.json, so it keeps a local copy."
     },
     {
       "path": "manifest.schema.json#/definitions/tool_name",
-      "reason": "The manifest is standalone and has no core references; a tool name also covers tools beyond AdCP tasks."
+      "reason": "manifest.schema.json is standalone, and a tool name also covers tools that are not AdCP tasks."
     },
     {
       "path": "manifest.schema.json#/properties/tools/additionalProperties/properties/idempotency_requirement",
-      "reason": "Same values as enums/co-branding-requirement.json by coincidence: this site states an idempotency requirement."
+      "reason": "Whether a tool accepts an idempotency key. Its values match enums/co-branding-requirement.json by coincidence."
+    },
+    {
+      "path": "media-buy/accept-proposal-request.json#/properties/budget_cap_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA cap-day timezone override. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "media-buy/accept-proposal-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/accept-proposal-request.json#/properties/predecessor_media_buy_id",
+      "reason": "Same concept as core/media-buy-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
+    },
+    {
+      "path": "media-buy/accept-proposal-request.json#/properties/proposal_id",
+      "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "media-buy/acceptance-policy-catalog.json#/properties/catalog_version",
+      "reason": "Version of a seller-hosted acceptance-policy catalog."
+    },
+    {
+      "path": "media-buy/acceptance-policy-profile.json#/properties/coverage",
+      "reason": "Whether an acceptance policy profile lists every rule, not whether forecast buckets are complete."
+    },
+    {
+      "path": "media-buy/acceptance-policy-profile.json#/properties/description",
+      "reason": "Human-readable summary of a versioned acceptance-policy profile."
+    },
+    {
+      "path": "media-buy/acceptance-policy-profile.json#/properties/policy_refs/items/properties/version",
+      "reason": "Version of a governance registry policy from which an acceptance-policy profile derives; governance/policy-entry.json and governance/policy-ref.json carry the same version without minLength."
+    },
+    {
+      "path": "media-buy/acceptance-policy-profile.json#/properties/version",
+      "reason": "Version of a published acceptance-policy profile."
+    },
+    {
+      "path": "media-buy/acceptance-policy-requirement.json#/oneOf/16/properties/id",
+      "reason": "Identifier of a custom acceptance requirement, not a stable criterion."
+    },
+    {
+      "path": "media-buy/acceptance-policy-rule.json#/properties/description",
+      "reason": "Display-only explanation of one seller acceptance-policy rule."
+    },
+    {
+      "path": "media-buy/buy-products-request.json#/properties/budget_cap_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA cap-day timezone override. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "media-buy/buy-products-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/buy-products-request.json#/properties/predecessor_media_buy_id",
+      "reason": "Same concept as core/media-buy-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
+    },
+    {
+      "path": "media-buy/change-term.json#/properties/description",
+      "reason": "Display-only summary of a proposal-bound buyer change right."
+    },
+    {
+      "path": "media-buy/commercial-terms.json#/properties/budget_cap_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA cap-day timezone override. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "media-buy/control-media-buy-request.json#/properties/cancellation_reason",
+      "reason": "Same concept as core/cancellation-reason.json with a different constraint; see the decision list. Proposed above with maxLength 500 only. Referencing from control_media_buy and package-control would drop minLength 1 and allow an empty reason."
+    },
+    {
+      "path": "media-buy/control-media-buy-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/create-media-buy-request.json#/properties/artifact_webhook/properties/token",
+      "reason": "Same concept as core/webhook-token.json with a different constraint; see the decision list. Referencing adds maxLength 4096."
+    },
+    {
+      "path": "media-buy/create-media-buy-request.json#/properties/budget_cap_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA cap-day timezone override. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "media-buy/create-media-buy-request.json#/properties/predecessor_media_buy_id",
+      "reason": "Same concept as core/media-buy-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
+    },
+    {
+      "path": "media-buy/create-media-buy-response.json#/oneOf/0/properties/proposal_id",
+      "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "media-buy/decline-proposals-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/decline-proposals-response.json#/properties/results/items/properties/proposal_id",
+      "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "media-buy/decline-proposals-response.json#/properties/results/items/properties/reason",
+      "reason": "Seller explanation of why it could not apply a requested proposal decline."
+    },
+    {
+      "path": "media-buy/get-media-buy-delivery-response.json#/properties/reporting_period/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "media-buy/get-media-buy-issue-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/get-media-buys-request.json#/properties/predecessor_media_buy_id",
+      "reason": "Same concept as core/media-buy-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
+    },
+    {
+      "path": "media-buy/get-products-request.json#/properties/refine/items/oneOf/2/properties/proposal_id",
+      "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "media-buy/get-products-response.json#/properties/execution_readiness/properties/version",
+      "reason": "Opaque equality token for an account's execution-readiness state on a get_products response."
+    },
+    {
+      "path": "media-buy/get-products-response.json#/properties/incomplete/items/properties/scope",
+      "reason": "One concept with the list_products incomplete scope, which lacks proposals because list_products returns no proposals. Naming the enum waits for the decision on whether list_products keeps the narrower set."
+    },
+    {
+      "path": "media-buy/get-reporting-status-response.json#/properties/scope/properties/delivery_config_generations/items/properties/delivery_config_id",
+      "reason": "Same concept as core/reporting-delivery-config-id.json with a different constraint; see the decision list. Same length bounds. Referencing adds the pattern ^[A-Za-z0-9_.:-]{1,64}$."
+    },
+    {
+      "path": "media-buy/list-products-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/list-proposals-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/media-buy-delivery-webhook-result.json#/properties/reporting_period/properties/timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "media-buy/package-control.json#/properties/cancellation_reason",
+      "reason": "Same concept as core/cancellation-reason.json with a different constraint; see the decision list. Proposed above with maxLength 500 only. Referencing from control_media_buy and package-control would drop minLength 1 and allow an empty reason."
+    },
+    {
+      "path": "media-buy/package-control.json#/properties/catalog_ids/items",
+      "reason": "Same concept as core/catalog-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "media-buy/product-purchase.json#/properties/catalog_ids/items",
+      "reason": "Same concept as core/catalog-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "media-buy/product-refinement.json#/items/oneOf/2/properties/proposal_id",
+      "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "media-buy/proposal-refinement.json#/properties/proposal_id",
+      "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
+    },
+    {
+      "path": "media-buy/refine-proposals-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/refine-proposals-response.json#/properties/results/items/properties/reason",
+      "reason": "Seller free text that accompanies the reason_code of one proposal refinement result."
+    },
+    {
+      "path": "media-buy/refine-proposals-response.json#/properties/results/items/properties/suggestions/items",
+      "reason": "Same concept as core/seller-suggestion.json with a different constraint; see the decision list. Proposed above with maxLength 1000. These suggestions have minLength 1 only; referencing adds maxLength 1000."
+    },
+    {
+      "path": "media-buy/report-media-buy-issue-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/request-proposals-request.json#/properties/governance_context",
+      "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
+    },
+    {
+      "path": "media-buy/request-proposals-response.json#/properties/incomplete/items/properties/scope",
+      "reason": "One concept with the list_products incomplete scope, which lacks proposals because list_products returns no proposals. Naming the enum waits for the decision on whether list_products keeps the narrower set."
+    },
+    {
+      "path": "media-buy/request-proposals-response.json#/properties/reason",
+      "reason": "Same concept as core/brief-rejection-reason.json with a different constraint; see the decision list. Proposed above with maxLength 2000. request_proposals carries the same rejected-outcome reason with minLength 1 only; referencing adds maxLength 2000."
+    },
+    {
+      "path": "media-buy/request-proposals-response.json#/properties/suggestions/items",
+      "reason": "Same concept as core/seller-suggestion.json with a different constraint; see the decision list. Proposed above with maxLength 1000. These suggestions have minLength 1 only; referencing adds maxLength 1000."
     },
     {
       "path": "media-buy/sync-audiences-response.json#/oneOf/0/properties/audiences/items/properties/action",
-      "reason": "An audience sync outcome. Sharing values with the catalog and creative action enums is a coincidence."
+      "reason": "Outcome of an audience sync. Its values match the catalog and creative action enums by coincidence."
     },
     {
       "path": "media-buy/sync-event-sources-response.json#/oneOf/0/properties/event_sources/items/properties/managed_by",
-      "reason": "Same values as the party enums by coincidence: this site names who resolved or manages something."
+      "reason": "Who manages an event source. The buyer and seller values match the party enums by coincidence."
+    },
+    {
+      "path": "pricing-options/price-breakdown.json#/properties/adjustments/items/properties/rate",
+      "reason": "Proportion of the running price that one fee, discount, or commission adjustment applies in a price breakdown."
+    },
+    {
+      "path": "property/get-property-list-request.json#/properties/pagination/properties/max_results",
+      "reason": "Same concept as core/page-size.json with a different constraint; see the decision list. Proposed above with maximum 100. These inline pagination objects copy core/pagination-request.json but raise max_results to 10000 on purpose for large lists. Referencing the 1..100 page size would tighten the maximum from 10000 to 100."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/adcp/properties/capability_changes/properties/notifications/oneOf/0/properties/coalescence_window_seconds",
+      "reason": "Longest time in seconds a seller waits to coalesce related capability edits before it fires one capabilities.changed webhook."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/brand/properties/description",
+      "reason": "Description of a brand agent's brand protocol capabilities."
     },
     {
       "path": "protocol/get-adcp-capabilities-response.json#/properties/extensions_supported/items",
-      "reason": "Extension namespace, not a task name."
+      "reason": "Extension namespace such as iab_tcf, not a task name."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/budget_capping/properties/fixed_timezone",
+      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Fixed seller or feature timezone, UTC or IANA. Referencing adds maxLength 255 (these sites declare x-max-length-4.0 64), the IANA identifier pattern, and the inventory_local exclusion."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/budget_capping/properties/supported_scopes/items",
+      "reason": "Scope at which a seller supports budget caps, not the resource type of a warning."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/execution/properties/creative_specs/properties/mraid_versions/items",
+      "reason": "MRAID version such as 3.0, not an AdCP version."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/portfolio/properties/description",
+      "reason": "Markdown description of a seller's media inventory portfolio."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/supported_optimization_metrics/items",
+      "reason": "One concept with core/canonical-optimization-goal.json metric, which lacks attention_score and attention_seconds. Naming the enum waits for the decision on whether the canonical goal keeps the narrower set."
+    },
+    {
+      "path": "sponsored-intelligence/si-capabilities.json#/properties/modalities/properties/avatar/oneOf/1/properties/provider",
+      "reason": "Avatar video vendor that renders a brand avatar, such as heygen."
+    },
+    {
+      "path": "sponsored-intelligence/si-capabilities.json#/properties/modalities/properties/voice/oneOf/1/properties/provider",
+      "reason": "Text-to-speech vendor that renders a brand voice, such as elevenlabs."
+    },
+    {
+      "path": "sponsored-intelligence/si-get-offering-request.json#/properties/product_limit",
+      "reason": "Maximum number of matching products a sponsored-intelligence offering lookup returns."
     },
     {
       "path": "sponsored-intelligence/si-sponsored-context-receipt.json#/properties/host_receipt/properties/status",
-      "reason": "A host decision on sponsored context, not a reporting receipt status."
-    }
-  ],
-  "unnamed_repeats": [
-    {
-      "constraint": {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1
-      },
-      "sites": 45,
-      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+      "reason": "Whether a host accepted declared sponsored context, not a reporting receipt status."
     },
     {
-      "constraint": {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100
-      },
-      "sites": 34,
-      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+      "path": "trusted-match/context-match-request.json#/properties/context_signals/properties/summary",
+      "reason": "Publisher-written natural-language summary of page or app content for contextual relevance matching."
     },
     {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "description",
-      "sites": 23,
-      "reason": "A generic field name. The shared length bound does not show that the description sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "version",
-      "sites": 11,
-      "reason": "A generic field name. The shared length bound does not show that the version sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 4096
-      },
-      "property": "governance_context",
-      "sites": 10,
-      "reason": "Same concept as core/governance-context.json with a different constraint. Referencing it would change what these sites accept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "timezone",
-      "sites": 9,
-      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "proposal_id",
-      "sites": 8,
-      "reason": "Same concept as core/proposal-id.json with a different constraint. Referencing it would change what these sites accept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "name",
-      "sites": 7,
-      "reason": "A generic field name. The shared length bound does not show that the name sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "ask",
-      "sites": 7,
-      "reason": "A generic field name. The shared length bound does not show that the ask sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 150
-      },
-      "sites": 6,
-      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
-    },
-    {
-      "constraint": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 100
-      },
-      "sites": 6,
-      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "a2a",
-          "mcp"
-        ]
-      },
-      "sites": 5,
-      "reason": "Integration type and protocol transport use the same values; not proven to be one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "correctable",
-          "terminal",
-          "transient"
-        ]
-      },
-      "sites": 5,
-      "reason": "One concept, but the sites list the values in different orders, so a $ref would not compare identical. Reordering them is a separate edit."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "maxLength": 253,
-        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-      },
-      "sites": 5,
-      "reason": "Domain names with an added maxLength. core/domain-name.json states no length, so referencing it would loosen these sites."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "maxLength": 500
-      },
-      "property": "reason",
-      "sites": 5,
-      "reason": "A generic field name. The shared length bound does not show that the reason sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "reason",
-      "sites": 5,
-      "reason": "A generic field name. The shared length bound does not show that the reason sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 200
-      },
-      "sites": 4,
-      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
-    },
-    {
-      "constraint": {
-        "type": "integer",
-        "minimum": 100,
-        "maximum": 900
-      },
-      "sites": 4,
-      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "agent_synthesized",
-          "buyer_uploaded",
-          "publisher_host_recorded",
-          "publisher_owned_reference",
-          "seller_human_designed",
-          "seller_pre_rendered_from_brief"
-        ]
-      },
-      "sites": 4,
-      "reason": "One concept, but formats/canonical/native_in_feed.json lists a narrower set. Whether that is drift or an intentional subset is undecided."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "maxLength": 100
-      },
-      "property": "use_case",
-      "sites": 4,
-      "reason": "A generic field name. The shared length bound does not show that the use_case sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 1000
-      },
-      "property": "suggestions",
-      "sites": 4,
-      "reason": "A generic field name. The shared length bound does not show that the suggestions sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 2000
-      },
-      "property": "reason",
-      "sites": 4,
-      "reason": "A generic field name. The shared length bound does not show that the reason sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 255
-      },
-      "property": "predecessor_media_buy_id",
-      "sites": 4,
-      "reason": "Same concept as core/media-buy-id.json with a different constraint. Referencing it would change what these sites accept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "source_timezone",
-      "sites": 4,
-      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "budget_cap_timezone",
-      "sites": 4,
-      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
-    },
-    {
-      "constraint": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10000
-      },
-      "sites": 3,
-      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
-    },
-    {
-      "constraint": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 50
-      },
-      "sites": 3,
-      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "attention_score",
-          "attention_seconds",
-          "clicks",
-          "completed_views",
-          "engagements",
-          "follows",
-          "profile_visits",
-          "reach",
-          "saves",
-          "viewable_rate",
-          "viewed_seconds",
-          "views"
-        ]
-      },
-      "sites": 3,
-      "reason": "Sites use different property names; not proven to be one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "collection_card.removed",
-          "collection_card.updated",
-          "collection_catalog.bulk_change",
-          "product.created",
-          "product.priced",
-          "product.removed",
-          "product.updated",
-          "signal.created",
-          "signal.priced",
-          "signal.removed",
-          "signal.updated",
-          "wholesale_feed.bulk_change"
-        ]
-      },
-      "sites": 3,
-      "reason": "Sites use different property names; not proven to be one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "cost_per",
-          "threshold_rate"
-        ]
-      },
-      "sites": 3,
-      "reason": "Sites use different property names; not proven to be one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "dataset_share",
-          "file_transfer",
-          "warehouse_materialization"
-        ]
-      },
-      "sites": 3,
-      "reason": "Sites use different property names; not proven to be one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "floor",
-          "target"
-        ]
-      },
-      "sites": 3,
-      "reason": "Strength values for different goals; not proven to be one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "enum": [
-          "legacy",
-          "spec"
-        ]
-      },
-      "sites": 3,
-      "reason": "Sites use different property names; not proven to be one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "maxLength": 2000
-      },
-      "property": "description",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the description sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "maxLength": 500
-      },
-      "property": "description",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the description sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "maxLength": 500
-      },
-      "property": "context_note",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the context_note sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "maxLength": 500
-      },
-      "property": "summary",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the summary sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "maxLength": 500
-      },
-      "property": "reason_detail",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the reason_detail sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 1000
-      },
-      "property": "reason",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the reason sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 128
-      },
-      "property": "region",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the region sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 128
-      },
-      "property": "reporting_profile",
-      "sites": 3,
-      "reason": "Same concept as core/reporting-profile-id.json with a different constraint. Referencing it would change what these sites accept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 255
-      },
-      "property": "name",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the name sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 255
-      },
-      "property": "timezone",
-      "sites": 4,
-      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 255
-      },
-      "property": "account_id",
-      "sites": 3,
-      "reason": "Same concept as core/account-id.json with a different constraint. Referencing it would change what these sites accept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 255
-      },
-      "property": "period_timezone",
-      "sites": 3,
-      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 32
-      },
-      "property": "unit",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the unit sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 512
-      },
-      "property": "identity",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the identity sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64
-      },
-      "property": "code",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the code sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 1
-      },
-      "property": "message",
-      "sites": 3,
-      "reason": "A generic field name. The shared length bound does not show that the message sites mean one concept."
-    },
-    {
-      "constraint": {
-        "type": "string",
-        "minLength": 2,
-        "maxLength": 2
-      },
-      "property": "countries",
-      "sites": 3,
-      "reason": "Two-character country values with no pattern. Referencing core/country-code.json would tighten these sites."
+      "path": "trusted-match/provider-context-match-response.json#/properties/cache_ttl",
+      "reason": "Time in seconds a trusted-match router caches a context-match response, overriding its 5-minute default; 0 disables caching."
     }
   ]
 }
