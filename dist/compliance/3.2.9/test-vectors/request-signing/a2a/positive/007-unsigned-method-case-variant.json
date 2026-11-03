@@ -1,0 +1,38 @@
+{
+  "name": "Unsigned request whose JSON-RPC method is a case variant of SendMessage; the gate resolves no operation",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "tier": "contradiction-resolution",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/jsonrpc",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-pos-007\",\"method\":\"sendmessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-pos-007\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"create_media_buy\",\"input\":{\"idempotency_key\":\"vector-a2a-create-media-buy-0001\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}}}]}}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": true,
+    "status": "unsigned",
+    "resolved_operation": null,
+    "dispatch": "method_not_found"
+  },
+  "$comment": "Method names match exactly. sendmessage is not a message-carrying method, so it resolves no operation and passes the gate. The dispatcher MUST reject it as an unknown method. A lenient dispatcher that case-folds the method would run an unsigned create_media_buy past a gate that saw no operation."
+}

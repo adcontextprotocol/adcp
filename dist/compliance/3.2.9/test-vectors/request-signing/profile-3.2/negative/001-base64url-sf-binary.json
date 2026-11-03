@@ -1,0 +1,30 @@
+{
+  "name": "AdCP 3.2 rejects Base64URL inside Signature sf-binary",
+  "spec_reference": "#adcp-rfc-9421-profile binary value encoding and #verifier-checklist-requests step 1",
+  "signing_profile_version": "3.2",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Digest": "sha-256=:SNIVma8dgUBx/U1CBaYFQnsJep9S0/tXaNXlQQOdoxQ=:",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:RiD5mPhxpBWhmaqUL5-vceyPX5jpjzYZhSnteuYCIYhIqdIl0Yxdh5qstCPXwkKL4AZOsPBL7-8ctbPkHunSAw:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/adcp/create_media_buy\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:SNIVma8dgUBx/U1CBaYFQnsJep9S0/tXaNXlQQOdoxQ=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_header_malformed",
+    "failed_step": 1
+  },
+  "$comment": "The signature bytes are cryptographically valid for expected_signature_base, but the header uses the legacy unpadded Base64URL representation. RFC 8941 sf-binary accepts only standard Base64, so an AdCP 3.2 verifier rejects during structured-field parsing before cryptographic verification."
+}
