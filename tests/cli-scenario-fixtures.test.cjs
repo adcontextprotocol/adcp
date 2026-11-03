@@ -625,3 +625,168 @@ test('inline creatives: narrowing legacy discovery by format_kinds costs a legac
   assert.equal(coverage.passed, false, 'the conformant seller fails the coverage gate');
   assert.equal(result.overall_passed, false);
 });
+
+// deterministic_testing seeds `test-product` / `test-pricing` and consumes them as
+// Acme Outdoor buying through Pinnacle, but its deterministic_account phase also
+// provisions an unrelated test.example account through sync_accounts. Without a
+// top-level context.account nothing names which of the two owns the fixtures, so
+// accountless controller calls fall back to the run-scoped default and a
+// fail-closed seeder has no single owner to write to. The installed SDK still seeds
+// under the run-scoped default; newer runners (verified on 17.0.0-beta.15) seed
+// under context.account, which the static test below pins to the consuming account.
+const DETERMINISTIC_TESTING = path.join(
+  __dirname,
+  '../static/compliance/source/universal/deterministic-testing.yaml'
+);
+const FIXTURE_CONSUMER = {
+  brand: { domain: 'acmeoutdoor.example' },
+  operator: 'pinnacle-agency.example',
+};
+const PROVISIONED = { brand: { domain: 'test.example' }, operator: 'test.example' };
+
+// Drive the authored storyboard through the installed SDK runner against a stub
+// seller that accepts every call except the authored negative paths, so every
+// phase reaches its controller steps.
+// Validations are stripped because the stub returns minimal payloads; only the
+// wire requests the runner builds are under test here.
+async function runDeterministicTesting({ omitPhases = [] } = {}) {
+  const storyboard = loadStoryboardFile(DETERMINISTIC_TESTING);
+  storyboard.phases = storyboard.phases.filter(phase => !omitPhases.includes(phase.id));
+  const refusals = new Set();
+  for (const phase of storyboard.phases) {
+    for (const step of phase.steps) {
+      step.validations = [];
+      if (step.expect_error) refusals.add(`deterministic_testing--${step.id}`);
+    }
+  }
+  const calls = [];
+  const client = {
+    executeTask: async (task, request) => {
+      calls.push({ task, request: structuredClone(request) });
+      // Refuse exactly the negative-path steps, as a conformant controller would.
+      if (refusals.has(request.context?.correlation_id)) {
+        return { success: false, error: 'INVALID_TRANSITION', data: { context: request.context, success: false } };
+      }
+      const data = {
+        context: request.context,
+        success: true,
+        supported_protocols: ['media_buy', 'creative'],
+        scenarios: [
+          'seed_product',
+          'seed_pricing_option',
+          'force_account_status',
+          'force_media_buy_status',
+          'force_creative_status',
+          'simulate_delivery',
+          'simulate_budget_spend',
+        ],
+        accounts: [{ account_id: 'acct_provisioned', ...PROVISIONED }],
+        media_buy_id: 'mb_deterministic',
+        creatives: [{ creative_id: 'cr_deterministic' }],
+      };
+      return { success: true, status: 'completed', data };
+    },
+  };
+  const tools = [
+    'comply_test_controller',
+    'get_adcp_capabilities',
+    'sync_accounts',
+    'list_accounts',
+    'create_media_buy',
+    'get_media_buys',
+    'get_media_buy_delivery',
+    'sync_creatives',
+  ];
+  const result = await runStoryboard('https://seller.example/mcp', storyboard, {
+    protocol: 'mcp',
+    agentTools: tools,
+    _client: client,
+    _profile: { name: 'deterministic seller', tools },
+  });
+  // Every step that ran must pass, so no controller step is silently skipped. Only
+  // the SI phase is skipped: the stub advertises no si_* tools, and SI carries no account.
+  const steps = result.phases.flatMap(phase => phase.steps);
+  assert.deepEqual(steps.filter(step => !step.passed && !step.skipped).map(step => step.step_id), []);
+  assert.deepEqual(
+    [...new Set(steps.filter(step => step.skipped).map(step => step.phase_id))],
+    ['deterministic_session']
+  );
+  const stepOf = call => (call.request.context?.correlation_id ?? '').replace(/^deterministic_testing--/, '');
+  // Negative-path steps are sent as authored, without account enrichment, so they
+  // say nothing about which owner the runner resolves.
+  const enriched = calls.filter(call => !refusals.has(call.request.context?.correlation_id));
+  return { storyboard, calls, enriched, stepOf };
+}
+
+test('deterministic_testing names the fixture-consuming account as its fixture owner', () => {
+  const storyboard = YAML.parse(fs.readFileSync(DETERMINISTIC_TESTING, 'utf8'));
+  assert.equal(storyboard.prerequisites.controller_seeding, true);
+  const owner = storyboard.context?.account;
+  assert.ok(owner, 'a controller-seeded storyboard with two account identities must name its fixture owner');
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  assert.equal(validateAccountRef(owner), true, ajv.errorsText(validateAccountRef.errors));
+  assert.deepEqual(owner, { ...FIXTURE_CONSUMER, sandbox: true });
+
+  // The owner is the account that actually buys the seeded product.
+  const productIds = new Set(storyboard.fixtures.products.map(product => product.product_id));
+  const steps = storyboard.phases.flatMap(phase => phase.steps);
+  const consumers = steps.filter(step =>
+    (step.sample_request?.packages ?? []).some(pkg => productIds.has(pkg.product_id))
+  );
+  assert.equal(consumers.length, 3, 'state-machine, delivery and budget buys all consume the seeded product');
+  for (const step of consumers) assert.deepEqual(step.sample_request.account, FIXTURE_CONSUMER, step.id);
+
+  // Account provisioning keeps its own, deliberately different identity.
+  const provisioning = steps.filter(step => step.task === 'sync_accounts');
+  assert.equal(provisioning.length, 1);
+  const row = provisioning[0].sample_request.accounts[0];
+  assert.deepEqual({ brand: row.brand, operator: row.operator }, PROVISIONED);
+  assert.notDeepEqual({ brand: row.brand, operator: row.operator }, FIXTURE_CONSUMER);
+});
+
+test('deterministic_testing controller calls resolve to the fixture owner while provisioning stays test.example', async () => {
+  const { storyboard, calls, enriched, stepOf } = await runDeterministicTesting();
+  const owner = { ...FIXTURE_CONSUMER, sandbox: true };
+
+  // A controller call that authors only `sandbox: true` resolves to the fixture
+  // owner instead of the run-scoped default identity.
+  const validationSteps = storyboard.phases
+    .find(phase => phase.id === 'controller_validation')
+    .steps.map(step => step.id);
+  const controllerChecks = enriched.filter(
+    call => call.task === 'comply_test_controller' && validationSteps.includes(stepOf(call))
+  );
+  assert.deepEqual(controllerChecks.map(stepOf), ['list_scenarios']);
+  for (const call of controllerChecks) assert.deepEqual(call.request.account, owner, stepOf(call));
+
+  // sync_accounts still provisions its authored, unrelated identity.
+  const provisioning = calls.filter(call => call.task === 'sync_accounts');
+  assert.equal(provisioning.length, 1);
+  const [row] = provisioning[0].request.accounts;
+  assert.deepEqual({ brand: row.brand, operator: row.operator }, PROVISIONED);
+});
+
+// The runner rebinds context.account to whatever account the deterministic_account
+// phase's sync_accounts call returns, for the rest of the run; that is how its
+// force_account_status steps reach the provisioned account. Omitting the phase
+// isolates the fallback the other phases' force_* and simulate_* calls take when
+// they author no account identity.
+test('deterministic_testing force and simulate calls without an authored identity resolve to the fixture owner', async () => {
+  const { calls, enriched, stepOf } = await runDeterministicTesting({ omitPhases: ['deterministic_account'] });
+  const owner = { ...FIXTURE_CONSUMER, sandbox: true };
+  const scenarios = ['force_media_buy_status', 'force_creative_status', 'simulate_delivery', 'simulate_budget_spend'];
+  const directives = enriched.filter(
+    call => call.task === 'comply_test_controller' && scenarios.includes(call.request.scenario)
+  );
+  for (const scenario of scenarios) {
+    assert.ok(directives.some(call => call.request.scenario === scenario), `${scenario} must be exercised`);
+  }
+  for (const call of directives) {
+    assert.deepEqual(call.request.account, owner, `${stepOf(call)} (${call.request.scenario})`);
+  }
+  // The buys those directives act on take their sandbox flag from the same owner.
+  const buys = enriched.filter(call => call.task === 'create_media_buy');
+  assert.equal(buys.length, 3);
+  for (const call of buys) assert.deepEqual(call.request.account, owner, stepOf(call));
+  assert.equal(calls.some(call => call.task === 'sync_accounts'), false);
+});

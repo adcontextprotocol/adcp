@@ -55,6 +55,14 @@ prerequisites:
   test_kit: 'test-kits/acme-outdoor.yaml'
   controller_seeding: true
 
+# Bind pre-flight fixture seeds and accountless controller calls to the fixture-consuming account.
+context:
+  account:
+    brand:
+      domain: "acmeoutdoor.example"
+    operator: "pinnacle-agency.example"
+    sandbox: true
+
 fixtures:
   products:
     - product_id: 'test-product'
