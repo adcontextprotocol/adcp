@@ -3,6 +3,8 @@
 // Every optional-product-collection-* file loads this module first, so the
 // guard covers them all.
 require("./helpers/ajv-maglev-guard.cjs");
+// This fixture is also imported by Vitest through CJS, outside its TS resolver.
+require("tsx/cjs");
 
 // Executes the actual authored storyboards through the production caller and
 // public SDK MCP transport. All seller data/credentials are controlled fixtures.
@@ -13,11 +15,12 @@ const {
   loadStoryboardFile,
   prepareStoryboardFixtures,
 } = require("@adcp/sdk/testing");
-const {
-  runCatalogReportingStoryboard: runStoryboard,
-  runCatalogReportingStoryboardStep: runStoryboardStep,
-  withHostedReportingBudget,
-} = require("../server/src/compliance/catalog-reporting-runner.ts");
+// Match the server's ESM import boundary, including its public SDK error classes.
+// Register a scoped TS resolver while loading the production module for CJS tests.
+const unregisterProductionLoader = require("tsx/esm/api").register();
+const productionRunner = import(
+  "../server/src/compliance/catalog-reporting-runner.ts"
+).finally(unregisterProductionLoader);
 const {
   classifyComplianceStep,
 } = require("../server/src/compliance/step-disposition.ts");
@@ -148,6 +151,11 @@ async function execute(
     scenarioOnly = false,
   } = {},
 ) {
+  const {
+    runCatalogReportingStoryboard: runStoryboard,
+    runCatalogReportingStoryboardStep: runStoryboardStep,
+    withHostedReportingBudget,
+  } = await productionRunner;
   const calls = [],
     wire = [],
     http = [],

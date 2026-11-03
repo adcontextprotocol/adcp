@@ -971,6 +971,7 @@ test('product refinement requires the advertised refine buying mode', async () =
 // assertions through the runner. Schema validation is covered separately; this
 // client stub returns only the fields needed by the filtering contract.
 async function runProductFilterBehavior(buyingModes, brokenMode) {
+  const { runCatalogReportingStoryboard: runProductStoryboard } = require('../server/src/compliance/catalog-reporting-runner.ts');
   const storyboard = loadMediaBuyStoryboard('product_filter_behavior');
   const executable = {
     ...storyboard,
@@ -986,7 +987,7 @@ async function runProductFilterBehavior(buyingModes, brokenMode) {
   };
   const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
   const requests = [];
-  const result = await runStoryboard('https://agent.example/mcp', executable, {
+  const result = await runProductStoryboard('https://agent.example/mcp', executable, {
     _profile: {
       tools,
       raw_capabilities: {
@@ -1012,11 +1013,14 @@ async function runProductFilterBehavior(buyingModes, brokenMode) {
         const products = request.buying_mode === 'refine' || request.filters?.delivery_type === 'guaranteed'
           ? [] : [matchingProduct];
         if (request.buying_mode === brokenMode) {
-          products.push(request.buying_mode === 'refine' ? matchingProduct : {
-            product_id: 'product-that-should-have-been-filtered-out',
+          const leaked = request.buying_mode === 'refine' ? matchingProduct : {
+            product_id: 'filter_behavior_negative_channel',
             channels: ['display'],
             delivery_type: 'guaranteed',
-          });
+          };
+          // This test isolates cascade behavior, so fail the first-product
+          // predicates even on runners that predate field_excludes.
+          products.unshift(leaked);
         }
         return { success: true, data: { products, context: request.context } };
       },

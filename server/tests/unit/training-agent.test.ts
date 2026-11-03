@@ -18000,6 +18000,26 @@ describe('get_adcp_capabilities handler', () => {
     expect(signals.signals).toMatchObject({ anonymous_discovery: true });
   });
 
+  it.each(['3.0', '3.1', '3.2'])('withholds provenance capability from the %s contract', async servedAdcpVersion => {
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion,
+    });
+
+    expect(result.creative).not.toHaveProperty('supports_provenance');
+  });
+
+  it('advertises provenance enforcement on the 3.3 seller contract', async () => {
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: '3.3-beta.1',
+    });
+
+    expect(result.creative).toMatchObject({ supports_provenance: true });
+  });
+
   it('advertises a served acceptance-policy catalog with an exact byte digest', async () => {
     const result = await handleGetAdcpCapabilities({}, {
       ...DEFAULT_CTX,
