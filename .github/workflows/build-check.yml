@@ -22,6 +22,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # Full history, refs and tags stay; blobs outside the sparse set are
+          # fetched on demand. The committed release tarballs under
+          # dist/protocol/ are ~1.1 GiB of the ~1.9 GiB HEAD payload and no
+          # step in this job reads them from disk (build:protocol-tarball only
+          # writes latest.tgz; the immutable-artifact check reads git trees).
+          filter: blob:none
+          sparse-checkout: |
+            /*
+            !/dist/protocol/
+          sparse-checkout-cone-mode: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7

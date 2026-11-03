@@ -28,6 +28,7 @@ const {
   historyPairs,
   lintAdditiveMinor,
   recordedCorrections,
+  readBaselineAtRef,
 } = require('../scripts/lint-additive-minor.cjs');
 
 /** A small, valid schema tree. Each test clones it and changes one thing. */
@@ -1039,4 +1040,40 @@ test('the repository source passes against the recorded baseline', () => {
   const result = lintAdditiveMinor();
   assert.equal(result.ok, true, result.errors.join('\n'));
   if (!result.skipped) assert.ok(result.filesCompared > 500, 'expected the lint to see the released tree');
+});
+
+// The shrink-only check may be skipped only when the baseline is genuinely
+// absent from the ref's tree. Failed or malformed reads must throw.
+test('readBaselineAtRef returns null only for a baseline absent from the tree', () => {
+  const calls = [];
+  const absent = (args) => { calls.push(args); return ''; };
+  assert.strictEqual(readBaselineAtRef('origin/main', '/repo', absent), null);
+  assert.strictEqual(calls.length, 1, 'absence is decided by the tree lookup alone');
+  assert.strictEqual(calls[0][0], 'ls-tree');
+});
+
+test('readBaselineAtRef parses a present, readable baseline', () => {
+  const runGit = (args) => {
+    if (args[0] === 'ls-tree') return `${args[args.length - 1]}\0`;
+    return JSON.stringify({ base: '3.2.8', entries: [] });
+  };
+  assert.deepStrictEqual(readBaselineAtRef('origin/main', '/repo', runGit), { base: '3.2.8', entries: [] });
+});
+
+test('readBaselineAtRef throws when a present baseline cannot be read', () => {
+  const runGit = (args) => {
+    if (args[0] === 'ls-tree') return `${args[args.length - 1]}\0`;
+    throw new Error('fatal: could not fetch blob from promisor remote');
+  };
+  assert.throws(() => readBaselineAtRef('origin/main', '/repo', runGit), /promisor remote/);
+});
+
+test('readBaselineAtRef throws when a present baseline is not valid JSON', () => {
+  const runGit = (args) => (args[0] === 'ls-tree' ? `${args[args.length - 1]}\0` : '{ not json');
+  assert.throws(() => readBaselineAtRef('origin/main', '/repo', runGit), /present but is not valid JSON/);
+});
+
+test('readBaselineAtRef throws when the tree lookup itself fails', () => {
+  const runGit = () => { throw new Error('fatal: Not a valid object name origin/nope'); };
+  assert.throws(() => readBaselineAtRef('origin/nope', '/repo', runGit), /Not a valid object name/);
 });

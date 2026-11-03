@@ -1207,11 +1207,18 @@ function validateBaseline(value) {
   return { entries: value.entries, base: typeof value.base === 'string' ? value.base : null, errors };
 }
 
-function readBaselineAtRef(ref, repoRoot = REPO_ROOT) {
+// Only a baseline that is genuinely absent from the ref's tree may skip the
+// shrink-only check. A tree lookup decides that without reading the blob; a
+// present baseline that cannot be read (failed lazy fetch in a blobless clone)
+// or does not parse throws instead of silently disabling the guard.
+function readBaselineAtRef(ref, repoRoot = REPO_ROOT, runGit = git) {
+  const listed = runGit(['ls-tree', '-z', '--name-only', ref, '--', BASELINE_REPO_PATH], { cwd: repoRoot });
+  if (!listed.split('\0').includes(BASELINE_REPO_PATH)) return null;
+  const text = runGit(['show', `${ref}:${BASELINE_REPO_PATH}`], { cwd: repoRoot });
   try {
-    return JSON.parse(git(['show', `${ref}:${BASELINE_REPO_PATH}`], { cwd: repoRoot }));
-  } catch {
-    return null;
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${ref}:${BASELINE_REPO_PATH} is present but is not valid JSON: ${error.message}`);
   }
 }
 
@@ -1488,6 +1495,7 @@ function main() {
 }
 
 module.exports = {
+  readBaselineAtRef,
   NOTICE_KINDS,
   VIOLATION_KINDS,
   WHOLE_SCHEMA,

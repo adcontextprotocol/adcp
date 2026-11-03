@@ -6,6 +6,7 @@ const {
   formatViolationMessage,
   parseImmutableArtifactPath,
   parseNameStatus,
+  pathExistsAtRef,
 } = require('../scripts/check-immutable-release-artifacts.cjs');
 
 function hasBasePath(paths) {
@@ -156,3 +157,35 @@ assert(message.includes('Do not patch existing versioned dist artifacts in-place
 assert(message.includes('ship a new versioned artifact'));
 
 console.log('Immutable release artifact tests passed.');
+
+// pathExistsAtRef reads trees only and fails closed: a failed git read must
+// throw, never report the path as absent (which would skip protection).
+{
+  const calls = [];
+  const present = args => { calls.push(args); return 'dist/schemas/3.2.8\0'; };
+  assert.strictEqual(pathExistsAtRef('origin/main', 'dist/schemas/3.2.8', present), true);
+  assert.deepStrictEqual(calls[0], ['ls-tree', '-z', '--name-only', 'origin/main', '--', 'dist/schemas/3.2.8']);
+  assert.ok(!calls[0].includes('cat-file') && !calls[0].includes('show'), 'existence check must not read blobs');
+
+  assert.strictEqual(pathExistsAtRef('origin/main', 'dist/schemas/3.2.8/', present), true, 'trailing slash is normalized');
+  assert.strictEqual(pathExistsAtRef('origin/main', 'dist/protocol/3.2.8.tgz', () => ''), false, 'real absence');
+  assert.strictEqual(
+    pathExistsAtRef('origin/main', 'dist/schemas/3.2', () => 'dist/schemas/3.2.8\0'),
+    false,
+    'a sibling with a longer name is not a match'
+  );
+
+  const failing = () => {
+    const error = new Error('fatal: unable to read tree (promisor fetch failed)');
+    error.status = 128;
+    throw error;
+  };
+  assert.throws(() => pathExistsAtRef('origin/main', 'dist/protocol/3.2.8.tgz', failing), /promisor fetch failed/);
+}
+
+// Against the real repository: tree lookups work without materialized blobs.
+{
+  assert.strictEqual(pathExistsAtRef('HEAD', 'package.json'), true);
+  assert.strictEqual(pathExistsAtRef('HEAD', 'dist/schemas/definitely-not-a-release'), false);
+  assert.throws(() => pathExistsAtRef('refs/heads/definitely-not-a-ref-8726', 'package.json'));
+}
