@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { getSchemaDocumentByRef } from '@adcp/sdk/schemas';
+import { ensureCreative33SchemaBundle } from '../../src/training-agent/creative33/schema.js';
 import {
   fieldsAddedAfterRelease,
   omitFieldsAddedAfterRelease,
@@ -10,12 +11,16 @@ import {
 const CAPABILITIES = 'protocol/get-adcp-capabilities-response.json';
 
 describe('served-release field gate (#8487)', () => {
+  beforeAll(() => ensureCreative33SchemaBundle());
+
   it('withholds the 3.3 canonical-product fields from 3.2, and only fields 3.2 lacks', () => {
     const withheld = propertiesAddedAfterRelease('core/canonical-product.json', '3.2');
     expect(withheld).toContain('installments');
-    const threeTwo = getSchemaDocumentByRef('core/canonical-product.json', '3.2')?.schema as
+    const bundled = getSchemaDocumentByRef('core/canonical-product.json', '3.2');
+    expect(bundled?.resolvedVersion).toBe('3.2.8');
+    const threeTwo = bundled?.schema as
       { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
-    expect(threeTwo?.additionalProperties).toBe(false);
+    expect(threeTwo?.additionalProperties).toBe(true);
     for (const field of withheld) expect(threeTwo?.properties, field).not.toHaveProperty(field);
     expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3-beta.1')).toEqual(new Set());
   });

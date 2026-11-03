@@ -18,7 +18,7 @@ import {
 
 export const FIELD_EXCLUDES_RUNNER_CONTRACT = "field_excludes_runner";
 export const FIELD_EXCLUDES_ASSERTION_ID = "adcp.field_excludes_compat";
-// The installed SDK's type union predates this additive authored check.
+// Keep the bridge usable with runners that predate this additive check.
 const EXCLUDES_CHECK = "field_excludes" as StoryboardValidation["check"];
 
 function nativeExclusionSupport(): boolean {
@@ -209,14 +209,18 @@ export function withExclusionSupport(storyboard: Storyboard, options: Storyboard
   };
 }
 
-/** The SDK currently omits regular onStep assertion hooks on standalone steps. */
+/** Failed standalone exclusions cannot publish response-derived continuation state. */
 export function gradeStandaloneExclusions(
   storyboard: Storyboard,
   step: StoryboardStepResult,
   agentUrl: string,
   options: StoryboardRunOptions,
 ): StoryboardStepResult {
-  if (!applyExclusions(storyboard, step, agentUrl, { ...storyboard.context, ...options.context })) return step;
+  const failedFallback = applyExclusions(storyboard, step, agentUrl, { ...storyboard.context, ...options.context });
+  const failedNative = !step.skipped && step.validations.some((validation) =>
+    validation.check === EXCLUDES_CHECK && !validation.passed && validation.not_applicable !== true && validation.severity !== "advisory",
+  );
+  if (!failedFallback && !failedNative) return step;
   step.passed = false;
   step.error ??= "A required field_excludes validation failed";
   step.context = Object.fromEntries(Object.entries({ ...storyboard.context, ...options.context }).filter(([key]) => !isProtectedContextKey(key)));

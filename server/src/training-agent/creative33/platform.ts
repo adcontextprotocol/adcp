@@ -6,6 +6,7 @@ import { getAgentUrl } from '../config.js';
 import { createLogger } from '../../logger.js';
 import { AdcpError, TestControllerError, scopedStore, patchWithRetry, type Account, type AdcpStateStore, type DecisioningPlatform, type CreativeAdServerPlatform } from '@adcp/sdk/server';
 import type { ComplyControllerConfig, ComplyControllerContext } from '@adcp/sdk/testing';
+import { ensureCreative33SchemaBundle } from './schema.js';
 import {
   CREATIVE33_ROUTE, CREATIVE33_SCHEMA_VERSION, CREATIVE33_SIZES, CREATIVE33_WIRE_VERSION,
   CREATIVE33_HTML_SCHEMA_DIGEST,
@@ -185,6 +186,7 @@ function previewHtml(manifest: Json, dimensions: Json): string {
 }
 
 export function createCreative33Sandbox(store: AdcpStateStore) {
+  ensureCreative33SchemaBundle();
   const read = async (ctx: CallContext): Promise<State> => clone(await scope(store, ctx).get<State>('library', 'state') ?? empty());
   const mutate = async (ctx: CallContext, fn: (state: State) => void) => {
     return patchWithRetry<State>(scope(store, ctx), 'library', 'state', current => {

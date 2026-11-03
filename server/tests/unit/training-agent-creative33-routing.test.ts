@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { InMemoryStateStore } from '@adcp/sdk/server';
 import { isCreative33McpPath } from '../../src/training-agent/lab-route-paths.js';
+import * as creative33Platform from '../../src/training-agent/creative33/platform.js';
 import {
   creative33SandboxEnabled,
   mountCreative33Sandbox,
@@ -132,6 +133,24 @@ describe('creative 3.3 beta route security boundaries', () => {
   it('does not mount a disabled endpoint', async () => {
     const response = await tool(boot({ enabled: false }), 'get_adcp_capabilities');
     expect(response.status).toBe(404);
+  });
+
+  it('initializes the frozen lab only for an authenticated valid MCP request and reuses it', async () => {
+    const initialize = vi.spyOn(creative33Platform, 'createCreative33Sandbox');
+    try {
+      const app = boot();
+      expect(initialize).not.toHaveBeenCalled();
+      expect((await request(app).get('/beta/3.3/creative/fixtures/responsive.html')).status).toBe(200);
+      expect((await rpc(app, 'tools/list')).status).toBe(401);
+      const wrongVersion = await tool(app, 'get_adcp_capabilities', { adcp_version: '3.3-beta.3' });
+      expect(payload(wrongVersion.body).adcp_error).toBeTruthy();
+      expect(initialize).not.toHaveBeenCalled();
+      expect((await rpc(app, 'tools/list', {}, 'buyer-a')).status).toBe(200);
+      expect((await tool(app, 'get_adcp_capabilities')).status).toBe(200);
+      expect(initialize).toHaveBeenCalledTimes(1);
+    } finally {
+      initialize.mockRestore();
+    }
   });
 
   it('rejects missing, invalid and cookie-only credentials', async () => {
