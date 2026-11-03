@@ -251,8 +251,9 @@ describe('sync_creatives assignment_operations', () => {
     const server = createTrainingAgentServer(CTX);
     const first = await buyWithPackage(server);
     const second = await buyWithPackage(server);
-    expect(second.packageId).not.toBe(first.packageId);
-    expect(first.packageId.startsWith(`${first.mediaBuyId}-`)).toBe(true);
+    // Numbered across the account: the first buy keeps pkg-0, the next gets pkg-1.
+    expect(first.packageId).toBe('pkg-0');
+    expect(second.packageId).toBe('pkg-1');
     const result = await call(server, 'sync_creatives', {
       account: ACCOUNT,
       creatives: [creative('hero_v1')],

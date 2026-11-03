@@ -16894,8 +16894,9 @@ async function handleCreateMediaBuyUnlocked(
     : `mb_${randomUUID().slice(0, 8)}`;
   // package_id is the seller's unique identifier for the package
   // (core/package.json), and sync_creatives addresses a package by package_id
-  // alone, so scope the deterministic per-buy index to this buy.
-  for (const pkg of createdPackages) pkg.packageId = `${mediaBuyId}-${pkg.packageId}`;
+  // alone, so number packages across the account's buys rather than per buy.
+  const firstPackageIndex = nextPackageIndex(session);
+  createdPackages.forEach((pkg, index) => { pkg.packageId = `pkg-${firstPackageIndex + index}`; });
   const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
   if (govCtx && governanceAgents[0] && governanceIntentClaims) {
@@ -18865,6 +18866,19 @@ const FROZEN_PAGINATION_CREATIVE_IDS = new Set([
   'pagination_integrity_creative_3',
 ]);
 
+/** Next free pkg-N index across the account's buys. Deterministic, and the
+ * first buy in a fresh account still gets pkg-0, pkg-1, ... */
+function nextPackageIndex(session: Pick<SessionState, 'mediaBuys'>): number {
+  let max = -1;
+  for (const mb of session.mediaBuys.values()) {
+    for (const pkg of mb.packages) {
+      const match = /^pkg-(\d+)$/.exec(pkg.packageId);
+      if (match) max = Math.max(max, Number(match[1]));
+    }
+  }
+  return max + 1;
+}
+
 const EMPTY_FORMAT_IDENTITY = { formatId: undefined, formatKind: undefined, formatOptionRef: undefined } as const;
 
 /** Live creative updates ship with the creative library surfaces (3.2+ wire,
@@ -20277,6 +20291,12 @@ async function handleUpdateMediaBuyUnlocked(
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
       };
     }
+    // Number new packages after every pkg-N in the account, including this
+    // buy's own (the working copy may hold packages the session doesn't yet).
+    const firstNewPackageIndex = Math.max(
+      nextPackageIndex(session),
+      nextPackageIndex({ mediaBuys: new Map([[mb.mediaBuyId, mb]]) }),
+    );
     for (let i = 0; i < newPackages.length; i++) {
       const npkg = newPackages[i];
       const productId = npkg.product_id;
@@ -20312,7 +20332,7 @@ async function handleUpdateMediaBuyUnlocked(
         formatSnapshot.selectedLegacyFormatIds,
       );
 
-      const pkgId = `${mb.mediaBuyId}-pkg-${mb.packages.length + i}`;
+      const pkgId = `pkg-${firstNewPackageIndex + i}`;
       const newTargeting = genderTargetingMutation(undefined, npkg.targeting_overlay ?? npkg.targeting);
       const targetingResult = validateTargeting(newTargeting, `new_packages[${i}].targeting_overlay`);
       if (targetingResult.errors.length) {

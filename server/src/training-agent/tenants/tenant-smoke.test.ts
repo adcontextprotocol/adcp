@@ -3584,11 +3584,11 @@ describe('tenant routing smoke', () => {
         };
       };
       expect(updated.result?.structuredContent?.adcp_error, JSON.stringify(updated)).toBeUndefined();
-      const added = updated.result?.structuredContent?.packages?.find(pkg => String(pkg.package_id).endsWith('-pkg-1'));
+      const added = updated.result?.structuredContent?.packages?.find(pkg => pkg.package_id === 'pkg-1');
       expect(added?.format_ids).toEqual([legacyFormat]);
       expect(added).not.toHaveProperty('format_option_refs');
       const affected = updated.result?.structuredContent?.affected_packages
-        ?.find(pkg => String(pkg.package_id).endsWith('-pkg-1'));
+        ?.find(pkg => pkg.package_id === 'pkg-1');
       expect(affected?.format_ids).toEqual([legacyFormat]);
       expect(affected).not.toHaveProperty('format_option_refs');
       expect(JSON.stringify(updated.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
