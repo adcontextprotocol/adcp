@@ -30,6 +30,7 @@ const {
   recordedCorrections,
   readBaselineAtRef,
 } = require('../scripts/lint-additive-minor.cjs');
+const { gitFixture } = require('./helpers/git-object-fixture.cjs');
 
 /** A small, valid schema tree. Each test clones it and changes one thing. */
 function fixture() {
@@ -1076,4 +1077,72 @@ test('readBaselineAtRef throws when a present baseline is not valid JSON', () =>
 test('readBaselineAtRef throws when the tree lookup itself fails', () => {
   const runGit = () => { throw new Error('fatal: Not a valid object name origin/nope'); };
   assert.throws(() => readBaselineAtRef('origin/nope', '/repo', runGit), /Not a valid object name/);
+});
+
+test('readBaselineAtRef throws when a present baseline is valid JSON but not a baseline', () => {
+  for (const text of ['null', 'false', '0', '""', '{}', '[]', '{"entries":{}}']) {
+    const runGit = (args) => (args[0] === 'ls-tree' ? `${args[args.length - 1]}\0` : text);
+    assert.throws(
+      () => readBaselineAtRef('origin/main', '/repo', runGit),
+      /present but invalid: baseline must be an object with an entries array/,
+      `present baseline ${text} must not read as absent`
+    );
+  }
+});
+
+test('readBaselineAtRef still returns a base baseline whose entries have problems', () => {
+  // checkAgainstBaseline tolerates entry-level problems in the previous
+  // baseline (for example a kind renamed on the PR branch); only the shape fails.
+  const value = { base: '3.2.8', entries: [{ file: 'core/a.json', kind: 'retired-kind' }] };
+  const runGit = (args) => (args[0] === 'ls-tree' ? `${args[args.length - 1]}\0` : JSON.stringify(value));
+  assert.deepStrictEqual(readBaselineAtRef('origin/main', '/repo', runGit), value);
+});
+
+// Real git objects, no stubs: the blob or the containing tree is deleted after
+// the commit, the way a failed lazy fetch leaves a blobless clone.
+const BASELINE_FIXTURE_PATH = 'scripts/lint-additive-minor-baseline.json';
+
+test('readBaselineAtRef (real repo) returns null when the baseline is absent from the tree', () => {
+  const fixture = gitFixture({ filePath: 'scripts/other.json', content: '{}' });
+  try {
+    assert.strictEqual(readBaselineAtRef('HEAD', fixture.repo, fixture.runGit), null);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('readBaselineAtRef (real repo) reads a present baseline', () => {
+  const fixture = gitFixture({ filePath: BASELINE_FIXTURE_PATH, content: '{"base":"3.2.8","entries":[]}' });
+  try {
+    assert.deepStrictEqual(readBaselineAtRef('HEAD', fixture.repo, fixture.runGit), { base: '3.2.8', entries: [] });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('readBaselineAtRef (real repo) throws when the baseline blob is unavailable', () => {
+  const fixture = gitFixture({ filePath: BASELINE_FIXTURE_PATH, content: '{"base":"3.2.8","entries":[]}', missing: 'blob' });
+  try {
+    assert.throws(() => readBaselineAtRef('HEAD', fixture.repo, fixture.runGit));
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('readBaselineAtRef (real repo) throws when the scripts/ tree is unavailable', () => {
+  const fixture = gitFixture({ filePath: BASELINE_FIXTURE_PATH, content: '{"base":"3.2.8","entries":[]}', missing: 'tree' });
+  try {
+    assert.throws(() => readBaselineAtRef('HEAD', fixture.repo, fixture.runGit));
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('readBaselineAtRef (real repo) throws when the committed baseline is JSON null', () => {
+  const fixture = gitFixture({ filePath: BASELINE_FIXTURE_PATH, content: 'null' });
+  try {
+    assert.throws(() => readBaselineAtRef('HEAD', fixture.repo, fixture.runGit), /present but invalid/);
+  } finally {
+    fixture.cleanup();
+  }
 });

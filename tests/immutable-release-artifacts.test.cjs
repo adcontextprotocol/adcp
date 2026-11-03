@@ -8,6 +8,7 @@ const {
   parseNameStatus,
   pathExistsAtRef,
 } = require('../scripts/check-immutable-release-artifacts.cjs');
+const { gitFixture } = require('./helpers/git-object-fixture.cjs');
 
 function hasBasePath(paths) {
   const basePaths = new Set(paths);
@@ -156,8 +157,6 @@ const message = formatViolationMessage(violations);
 assert(message.includes('Do not patch existing versioned dist artifacts in-place.'));
 assert(message.includes('ship a new versioned artifact'));
 
-console.log('Immutable release artifact tests passed.');
-
 // pathExistsAtRef reads trees only and fails closed: a failed git read must
 // throw, never report the path as absent (which would skip protection).
 {
@@ -189,3 +188,23 @@ console.log('Immutable release artifact tests passed.');
   assert.strictEqual(pathExistsAtRef('HEAD', 'dist/schemas/definitely-not-a-release'), false);
   assert.throws(() => pathExistsAtRef('refs/heads/definitely-not-a-ref-8726', 'package.json'));
 }
+
+// Real git objects, no stubs: the blob or the containing tree is deleted after
+// the commit, the way a failed lazy fetch leaves a blobless clone. A path whose
+// blob is unavailable still exists; a tree that cannot be read must throw.
+{
+  const filePath = 'dist/schemas/3.2.8/index.json';
+  const blobGone = gitFixture({ filePath, content: '{}', missing: 'blob' });
+  const treeGone = gitFixture({ filePath, content: '{}', missing: 'tree' });
+  try {
+    assert.strictEqual(pathExistsAtRef('HEAD', filePath, blobGone.runGit), true, 'unavailable blob is still present');
+    assert.strictEqual(pathExistsAtRef('HEAD', 'dist/schemas/3.2.8', blobGone.runGit), true);
+    assert.strictEqual(pathExistsAtRef('HEAD', 'dist/schemas/3.2.9', blobGone.runGit), false, 'real absence');
+    assert.throws(() => pathExistsAtRef('HEAD', filePath, treeGone.runGit), 'unreadable tree must not read as absent');
+  } finally {
+    blobGone.cleanup();
+    treeGone.cleanup();
+  }
+}
+
+console.log('Immutable release artifact tests passed.');
