@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/billing-variance-percent.json",
+  "title": "Billing Variance Percent",
+  "description": "Largest acceptable difference between the billing vendor's count and the other party's count before resolution starts, as a percentage below 100.",
+  "type": "number",
+  "minimum": 0,
+  "exclusiveMaximum": 100
+}

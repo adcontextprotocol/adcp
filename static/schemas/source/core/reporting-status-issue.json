@@ -9,11 +9,7 @@
     "ReportingStatusSeverity": {
       "title": "Reporting Status Severity",
       "x-adcp-model-context-inline": true,
-      "type": "string",
-      "enum": [
-        "delayed",
-        "action_required"
-      ]
+      "$ref": "/schemas/enums/reporting-status-severity.json"
     }
   },
   "properties": {

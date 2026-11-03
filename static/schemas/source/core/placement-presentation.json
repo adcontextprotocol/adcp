@@ -14,8 +14,8 @@
       "type": "object",
       "required": ["width", "height"],
       "properties": {
-        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
-        "height": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "width": { "$ref": "#/definitions/pixel_extent" },
+        "height": { "$ref": "#/definitions/pixel_extent" },
         "background_color": {
           "$ref": "/schemas/core/hex-color.json",
           "default": "#ffffff"
@@ -28,13 +28,12 @@
       "description": "Rectangle into which the selected creative render is fitted and clipped without changing its manifest or renderer.",
       "required": ["x", "y", "width", "height", "fit", "clip"],
       "properties": {
-        "x": { "type": "integer", "minimum": 0, "maximum": 8192 },
-        "y": { "type": "integer", "minimum": 0, "maximum": 8192 },
-        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
-        "height": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "x": { "$ref": "#/definitions/pixel_offset" },
+        "y": { "$ref": "#/definitions/pixel_offset" },
+        "width": { "$ref": "#/definitions/pixel_extent" },
+        "height": { "$ref": "#/definitions/pixel_extent" },
         "fit": {
-          "type": "string",
-          "enum": ["contain", "cover", "stretch"],
+          "$ref": "#/definitions/fit",
           "description": "How the creative render is scaled into the slot. contain preserves the whole render, cover fills and crops, and stretch fills without preserving aspect ratio."
         },
         "clip": {
@@ -62,10 +61,10 @@
       "type": "object",
       "required": ["x", "y", "width", "height"],
       "properties": {
-        "x": { "type": "integer", "minimum": 0, "maximum": 8192 },
-        "y": { "type": "integer", "minimum": 0, "maximum": 8192 },
-        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
-        "height": { "type": "integer", "minimum": 1, "maximum": 8192 }
+        "x": { "$ref": "#/definitions/pixel_offset" },
+        "y": { "$ref": "#/definitions/pixel_offset" },
+        "width": { "$ref": "#/definitions/pixel_extent" },
+        "height": { "$ref": "#/definitions/pixel_extent" }
       },
       "additionalProperties": false
     },
@@ -115,7 +114,7 @@
           },
           "additionalProperties": false
         },
-        "fit": { "type": "string", "enum": ["contain", "cover", "stretch"] }
+        "fit": { "$ref": "#/definitions/fit" }
       },
       "additionalProperties": false
     },
@@ -125,6 +124,30 @@
     },
     "color": {
       "$ref": "/schemas/core/hex-color.json"
+    },
+    "fit": {
+      "title": "Fit Mode",
+      "description": "How a render is scaled into its slot: contain, cover, or stretch.",
+      "type": "string",
+      "enum": [
+        "contain",
+        "cover",
+        "stretch"
+      ]
+    },
+    "pixel_extent": {
+      "title": "Pixel Extent",
+      "description": "Width or height of a placement canvas or rectangle, in pixels.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8192
+    },
+    "pixel_offset": {
+      "title": "Pixel Offset",
+      "description": "Horizontal or vertical position of a rectangle from the canvas origin, in pixels.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8192
     }
   },
   "additionalProperties": false,

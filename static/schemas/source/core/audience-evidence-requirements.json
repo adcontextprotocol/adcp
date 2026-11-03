@@ -58,16 +58,14 @@
       "uniqueItems": true
     },
     "minimum_confidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1
+      "$ref": "/schemas/core/fraction.json"
     },
     "maximum_age": {
       "allOf": [
         { "$ref": "/schemas/core/duration.json" },
         {
           "properties": {
-            "unit": { "enum": ["seconds", "minutes", "hours", "days"] }
+            "unit": { "$ref": "/schemas/enums/evidence-age-unit.json" }
           }
         }
       ],

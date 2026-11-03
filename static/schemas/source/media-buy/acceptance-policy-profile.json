@@ -80,7 +80,7 @@
     "region_aliases": {
       "type": "object",
       "description": "Profile-local named country groups. Rules may reference only keys declared here; consumers expand them before matching.",
-      "propertyNames": { "pattern": "^[A-Z][A-Z0-9_-]*$" },
+      "propertyNames": { "$ref": "/schemas/core/jurisdiction-group.json" },
       "additionalProperties": {
         "type": "array",
         "items": { "$ref": "/schemas/core/country-code.json" },

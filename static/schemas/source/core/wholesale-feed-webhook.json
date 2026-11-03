@@ -25,21 +25,7 @@
       "description": "Stable identifier for this logical wholesale feed event. MUST equal event.event_id. Re-emissions of the same logical event reuse this value under a new idempotency_key."
     },
     "notification_type": {
-      "type": "string",
-      "enum": [
-        "product.created",
-        "product.updated",
-        "product.priced",
-        "product.removed",
-        "signal.created",
-        "signal.updated",
-        "signal.priced",
-        "signal.removed",
-        "wholesale_feed.bulk_change",
-        "collection_card.updated",
-        "collection_card.removed",
-        "collection_catalog.bulk_change"
-      ],
+      "$ref": "/schemas/enums/wholesale-feed-event-type.json",
       "description": "Wholesale feed notification type discriminator. MUST match event.event_type."
     },
     "fired_at": {

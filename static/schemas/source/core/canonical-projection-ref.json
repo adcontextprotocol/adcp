@@ -11,8 +11,7 @@
       "description": "The v2 canonical-format-kind this v1 format projects to (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_vast`, `audio_daast`, `sponsored_placement`, `native_in_feed`, `responsive_creative`, `agent_placement`, `seller_rendered_stateful_display`, `coordinated_placements`, or `custom`)."
     },
     "asset_source": {
-      "type": "string",
-      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized", "publisher_owned_reference"],
+      "$ref": "/schemas/enums/asset-source.json",
       "description": "Where the rendered asset bytes come from on the projected v2 declaration. Default (when omitted) is `buyer_uploaded` — the canonical's default. Set explicitly when the v1 named format doesn't follow that default. Required for generative entries (`agent_synthesized` or `seller_pre_rendered_from_brief`) because their asset shape doesn't carry image/video/audio bytes, and for published-post reference entries (`publisher_owned_reference`) because their asset shape carries a post reference rather than uploaded bytes. Projection without this hint produces a lossy v2 declaration that claims buyer-uploaded bytes."
     },
     "slots_override": {

@@ -38,8 +38,7 @@
       ]
     },
     "vast_target": {
-      "type": "string",
-      "enum": ["linear", "non_linear", "companion"],
+      "$ref": "/schemas/enums/vast-tracker-target.json",
       "default": "linear"
     },
     "vast_offset": {

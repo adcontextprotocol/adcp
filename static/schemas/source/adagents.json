@@ -40,10 +40,8 @@
           "description": "Contact information for the entity managing this adagents.json file (may be publisher or third-party operator)",
           "properties": {
             "name": {
-              "type": "string",
-              "description": "Name of the entity managing this file (e.g., 'Meta Advertising Operations', 'Clear Channel Digital')",
-              "minLength": 1,
-              "maxLength": 255
+              "$ref": "/schemas/core/contact-name.json",
+              "description": "Name of the entity managing this file (e.g., 'Meta Advertising Operations', 'Clear Channel Digital')"
             },
             "email": {
               "type": "string",

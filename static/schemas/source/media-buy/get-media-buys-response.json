@@ -179,9 +179,8 @@
                 "description": "Which party initiated the cancellation."
               },
               "reason": {
-                "type": "string",
-                "description": "Reason the media buy was canceled.",
-                "maxLength": 500
+                "$ref": "/schemas/core/cancellation-reason.json",
+                "description": "Reason the media buy was canceled."
               }
             },
             "additionalProperties": false
@@ -293,9 +292,8 @@
                   "description": "What happened. Standard actions: created, activated, paused, resumed, canceled, rejected, completed, updated_budget, updated_dates, updated_packages, package_canceled, package_paused, package_resumed. Sellers MAY use additional platform-specific actions (e.g., creative_approved, targeting_updated) — use ext on the history entry for structured metadata about custom actions."
                 },
                 "summary": {
-                  "type": "string",
-                  "description": "Human-readable summary of the change (e.g., 'Budget increased from $5,000 to $7,500 on pkg_abc').",
-                  "maxLength": 500
+                  "$ref": "/schemas/core/change-summary.json",
+                  "description": "Human-readable summary of the change (e.g., 'Budget increased from $5,000 to $7,500 on pkg_abc')."
                 },
                 "package_id": {
                   "type": "string",
@@ -487,9 +485,8 @@
                       "description": "Which party initiated the package cancellation."
                     },
                     "reason": {
-                      "type": "string",
-                      "description": "Reason the package was canceled.",
-                      "maxLength": 500
+                      "$ref": "/schemas/core/cancellation-reason.json",
+                      "description": "Reason the package was canceled."
                     }
                   },
                   "additionalProperties": false
@@ -623,20 +620,14 @@
                         "properties": {
                           "indicator_types_evaluated": {
                             "items": {
-                              "enum": [
-                                "creative_fatigue",
-                                "creative_quality_opportunity"
-                              ]
+                              "$ref": "/schemas/enums/creative-indicator-type.json"
                             }
                           },
                           "indicators": {
                             "items": {
                               "properties": {
                                 "type": {
-                                  "enum": [
-                                    "creative_fatigue",
-                                    "creative_quality_opportunity"
-                                  ]
+                                  "$ref": "/schemas/enums/creative-indicator-type.json"
                                 }
                               }
                             }
@@ -674,7 +665,7 @@
                             "approval_scopes": {
                               "allOf": [
                                 { "contains": { "properties": { "approval_status": { "const": "approved" } } } },
-                                { "contains": { "properties": { "approval_status": { "enum": ["pending_review", "rejected"] } } } }
+                                { "contains": { "properties": { "approval_status": { "$ref": "/schemas/enums/creative-unapproved-status.json" } } } }
                               ]
                             }
                           }
@@ -803,30 +794,14 @@
                   "properties": {
                     "indicator_types_evaluated": {
                       "items": {
-                        "enum": [
-                          "creative_diversity_low",
-                          "audience_saturation",
-                          "inventory_shortfall_forecast",
-                          "pacing_risk",
-                          "budget_constrained",
-                          "flight_extension_opportunity",
-                          "scale_budget_opportunity"
-                        ]
+                        "$ref": "#/definitions/package_indicator_type"
                       }
                     },
                     "indicators": {
                       "items": {
                         "properties": {
                           "type": {
-                            "enum": [
-                              "creative_diversity_low",
-                              "audience_saturation",
-                              "inventory_shortfall_forecast",
-                              "pacing_risk",
-                              "budget_constrained",
-                              "flight_extension_opportunity",
-                              "scale_budget_opportunity"
-                            ]
+                            "$ref": "#/definitions/package_indicator_type"
                           }
                         }
                       }
@@ -939,22 +914,14 @@
             "properties": {
               "indicator_types_evaluated": {
                 "items": {
-                  "enum": [
-                    "budget_constrained",
-                    "flight_extension_opportunity",
-                    "scale_budget_opportunity"
-                  ]
+                  "$ref": "#/definitions/media_buy_indicator_type"
                 }
               },
               "indicators": {
                 "items": {
                   "properties": {
                     "type": {
-                      "enum": [
-                        "budget_constrained",
-                        "flight_extension_opportunity",
-                        "scale_budget_opportunity"
-                      ]
+                      "$ref": "#/definitions/media_buy_indicator_type"
                     }
                   }
                 }
@@ -1029,5 +996,31 @@
   "required": [
     "media_buys"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "package_indicator_type": {
+      "title": "Package Indicator Type",
+      "description": "Indicator type that applies to a package.",
+      "type": "string",
+      "enum": [
+        "creative_diversity_low",
+        "audience_saturation",
+        "inventory_shortfall_forecast",
+        "pacing_risk",
+        "budget_constrained",
+        "flight_extension_opportunity",
+        "scale_budget_opportunity"
+      ]
+    },
+    "media_buy_indicator_type": {
+      "title": "Media Buy Indicator Type",
+      "description": "Indicator type that applies to a whole media buy.",
+      "type": "string",
+      "enum": [
+        "budget_constrained",
+        "flight_extension_opportunity",
+        "scale_budget_opportunity"
+      ]
+    }
+  }
 }

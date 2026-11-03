@@ -78,9 +78,7 @@
             "maxLength": 200
           },
           "email": {
-            "type": "string",
-            "format": "email",
-            "maxLength": 254
+            "$ref": "/schemas/core/email-address.json"
           },
           "phone": {
             "type": "string",

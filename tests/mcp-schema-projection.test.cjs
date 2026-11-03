@@ -131,13 +131,15 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // after the beta.1 cut. Naming five repeated scalar subschemas (#8525) makes
 // each a shared definition, which brings the media-buy context to 496,720
 // bytes / 485.08 KiB. Naming the further repeated scalar concepts brings it to
-// 529,573 bytes / 517.16 KiB, and repeated enums to 533,507 bytes / 521.00 KiB;
-// bound it at 522 KiB.
+// 529,573 bytes / 517.16 KiB, and repeated enums to 533,507 bytes / 521.00 KiB.
+// Naming every remaining repeat, including repeats inside one document, brings
+// it to 551,679 bytes / 538.75 KiB; bound it at 539 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 522,
+  'media-buy': 539,
   // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
-  // 424.09 KiB, and repeated enums to 436,047 bytes / 425.83 KiB.
-  creative: 427,
+  // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
+  // repeat to 446,778 bytes / 436.31 KiB.
+  creative: 437,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
@@ -206,9 +208,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // trimmed to 1_374_852); the controller measures 1_375_833 bytes, bound at
 // 1_376_000. Naming five repeated scalar subschemas (#8525) brings the
 // controller to 1_378_383 bytes, and the further repeated
-// scalar concepts to 1_401_918, and repeated enums to 1_412_332; bound it at
-// 1_415_000.
-const PARITY_COMPILE_LIMIT = 1_415_000;
+// scalar concepts to 1_401_918, repeated enums to 1_412_332, and every remaining
+// repeat to 1_442_008; bound it at 1_443_000.
+const PARITY_COMPILE_LIMIT = 1_443_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1276,9 +1278,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // measured), so the cap moves to 23 MiB. Composing the protocol envelope
   // into every task response (every response bundles the envelope) also
   // grows it; the 23 MiB cap holds both. Naming five repeated scalar subschemas
-  // (#8525) brings it to 24,176,139 bytes and the full extraction to 25,034,871
-  // bytes, so the cap moves to 24 MiB.
-  assert.ok(totalBytes < 24 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // (#8525) brings it to 24,176,139 bytes, the further concepts to 25,034,871
+  // bytes, and naming every remaining repeat to 25,664,885 bytes (24.48 MiB), so
+  // the cap moves to 25 MiB.
+  assert.ok(totalBytes < 25 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/proposal-description.json",
+  "title": "Proposal Description",
+  "description": "Explanation of a proposal's media-plan strategy and what it achieves.",
+  "type": "string",
+  "maxLength": 2000
+}

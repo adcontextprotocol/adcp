@@ -8,9 +8,7 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
@@ -62,9 +60,7 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
@@ -112,9 +108,7 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
@@ -159,5 +153,14 @@
       "additionalProperties": false
     }
   ],
-  "discriminator": { "propertyName": "asset_type" }
+  "discriminator": { "propertyName": "asset_type" },
+  "definitions": {
+    "selector_id": {
+      "title": "Tracker Selector ID",
+      "description": "Stable identifier of one tracker selector, unique within its execution contract.",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "tracker_execution_selector"
+    }
+  }
 }

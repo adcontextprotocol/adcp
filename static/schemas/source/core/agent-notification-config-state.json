@@ -9,8 +9,7 @@
       "$ref": "/schemas/core/subscriber-id.json"
     },
     "url": {
-      "type": "string",
-      "format": "uri"
+      "$ref": "/schemas/core/webhook-url.json"
     },
     "event_types": {
       "type": "array",

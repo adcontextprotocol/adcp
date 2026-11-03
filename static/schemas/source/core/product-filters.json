@@ -296,8 +296,7 @@
                 "type": "array",
                 "description": "Require a non-empty intersection with the method's declared directions (file_transfer only).",
                 "items": {
-                  "type": "string",
-                  "enum": ["buyer_to_seller", "seller_to_buyer"]
+                  "$ref": "/schemas/enums/audience-activation-direction.json"
                 },
                 "minItems": 1,
                 "uniqueItems": true

@@ -99,15 +99,7 @@
                 "description": "Action taken for this account. created: new account provisioned. updated: existing account modified. unchanged: no changes needed. failed: could not process (see errors)."
               },
               "status": {
-                "type": "string",
-                "enum": [
-                  "active",
-                  "pending_approval",
-                  "rejected",
-                  "payment_required",
-                  "suspended",
-                  "closed"
-                ],
+                "$ref": "/schemas/enums/account-status.json",
                 "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal); on a settings-update row, the seller is reviewing the entry's countries change, and the account keeps its current countries until the seller approves. rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated. Required for every non-failed action; omitted on failed results where the seller could not reach or resolve the account far enough to know a lifecycle state (see errors)."
               },
               "billing": {

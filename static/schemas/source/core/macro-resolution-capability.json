@@ -17,8 +17,7 @@
     "dialect_revision": { "$ref": "/schemas/core/macro-dialect-revision.json", "x-max-length-4.0": 128 },
     "dialect_semantic": { "$ref": "/schemas/core/macro-dialect-semantic.json", "x-max-length-4.0": 128 },
     "mapping_status": {
-      "type": "string",
-      "enum": ["verified_universal", "dialect_defined"]
+      "$ref": "/schemas/enums/resolved-macro-mapping-status.json"
     },
     "universal_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
     "operation": {
@@ -98,7 +97,7 @@
         "properties": {
           "operation": { "const": "resolve_value" },
           "performed_by": { "const": "seller" },
-          "supported_contexts": { "items": { "enum": ["url_query_value", "url_path_segment"] } },
+          "supported_contexts": { "items": { "$ref": "/schemas/enums/url-macro-context.json" } },
           "supported_encodings": {
             "items": {
               "properties": { "kind": { "const": "rfc3986" }, "depth": { "const": 1 } },

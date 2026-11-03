@@ -25,8 +25,7 @@
       ]
     },
     "daast_target": {
-      "type": "string",
-      "enum": ["linear", "companion"],
+      "$ref": "/schemas/enums/daast-tracker-target.json",
       "default": "linear"
     },
     "daast_offset": {

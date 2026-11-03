@@ -347,8 +347,7 @@
             },
             "adcp_version": { "type": "string" },
             "grading_profile": {
-              "type": "string",
-              "enum": ["legacy", "spec"],
+              "$ref": "/schemas/enums/verification-grading-profile.json",
               "description": "Grading profile that produced the badge. Historical events emitted before profile selection may omit this field and are Legacy."
             }
           },
@@ -371,8 +370,7 @@
             "reason": { "type": "string" },
             "adcp_version": { "type": "string" },
             "grading_profile": {
-              "type": "string",
-              "enum": ["legacy", "spec"],
+              "$ref": "/schemas/enums/verification-grading-profile.json",
               "description": "Grading profile in force when the badge was lost. Historical events emitted before profile selection may omit this field and are Legacy."
             }
           },

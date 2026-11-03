@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/error-recovery.json",
+  "title": "Error Recovery",
+  "description": "How a caller responds to an error: correctable means fix the request and retry, transient means retry later, and terminal means don't retry.",
+  "type": "string",
+  "enum": [
+    "transient",
+    "correctable",
+    "terminal"
+  ]
+}

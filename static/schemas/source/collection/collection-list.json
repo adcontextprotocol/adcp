@@ -38,8 +38,7 @@
       "description": "Brand reference used to automatically apply appropriate rules. Resolved to full brand identity at execution time."
     },
     "webhook_url": {
-      "type": "string",
-      "format": "uri",
+      "$ref": "/schemas/core/webhook-url.json",
       "description": "URL to receive notifications when the resolved list changes"
     },
     "cache_duration_hours": {

@@ -91,20 +91,8 @@
             "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field and all monetary or money-derived values from row totals; report those values only at package level with each package's own currency. AdCP does not perform currency conversion."
           },
           "status": {
-            "type": "string",
-            "description": "Current media buy lifecycle or reporting status. This is distinct from the webhook envelope's top-level task status.",
-            "enum": [
-              "pending_creatives",
-              "pending_start",
-              "pending",
-              "active",
-              "paused",
-              "completed",
-              "rejected",
-              "canceled",
-              "failed",
-              "reporting_delayed"
-            ]
+            "$ref": "/schemas/enums/media-buy-delivery-status.json",
+            "description": "Current media buy lifecycle or reporting status. This is distinct from the webhook envelope's top-level task status."
           },
           "expected_availability": {
             "type": "string",

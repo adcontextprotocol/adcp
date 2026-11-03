@@ -10,9 +10,7 @@
       "description": "The performance metric this standard applies to."
     },
     "threshold": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1,
+      "$ref": "/schemas/core/fraction.json",
       "description": "Rate threshold as a decimal (e.g., 0.70 for 70%). Whether this is a floor or ceiling depends on the metric: for viewability, completion_rate, brand_safety, attention_score the actual rate must be >= threshold; for ivt the actual rate must be <= threshold."
     },
     "standard": {

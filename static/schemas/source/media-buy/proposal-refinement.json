@@ -74,9 +74,7 @@
       "description": "Request drafts with distinct commercial terms by count. Every returned alternative MUST carry distinct commercial_terms and therefore a unique terms_digest; diversity preferences remain in ask.",
       "properties": {
         "count": {
-          "type": "integer",
-          "minimum": 2,
-          "maximum": 10,
+          "$ref": "/schemas/core/proposal-alternative-count.json",
           "description": "Number of draft alternatives requested. The protocol maximum is 10. Buyers MUST NOT exceed a seller's lower advertised proposal_refinement.max_alternatives; sellers reject an excessive count at task level with VALIDATION_ERROR rather than clamping it."
         }
       },
@@ -84,8 +82,7 @@
       "additionalProperties": false
     },
     "ask": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/refinement-ask.json",
       "description": "What the buyer is asking for on this proposal, or the cancellation reason for action revise. The seller returns a new draft proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
     },
     "criteria": {

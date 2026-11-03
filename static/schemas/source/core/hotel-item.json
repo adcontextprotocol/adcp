@@ -93,13 +93,11 @@
       "minItems": 1
     },
     "check_in_time": {
-      "type": "string",
-      "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+      "$ref": "#/definitions/clock_time",
       "description": "Standard check-in time in HH:MM format (e.g., '15:00')."
     },
     "check_out_time": {
-      "type": "string",
-      "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+      "$ref": "#/definitions/clock_time",
       "description": "Standard check-out time in HH:MM format (e.g., '11:00')."
     },
     "tags": {
@@ -171,5 +169,13 @@
         "tags": ["budget", "beach"]
       }
     }
-  ]
+  ],
+  "definitions": {
+    "clock_time": {
+      "title": "Clock Time",
+      "description": "Local clock time in HH:MM form, such as 15:00.",
+      "type": "string",
+      "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+    }
+  }
 }

@@ -7,14 +7,13 @@
   "type": "object",
   "properties": {
     "unsupported_dimension": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "#/definitions/targeting_dimension",
       "description": "The targeting field name that was rejected, for example `geo_countries`. Names the dimension, not an individual value; value-level problems inside a supported dimension follow that dimension's own rules."
     },
     "supported_dimensions": {
       "type": "array",
       "description": "Targeting dimensions the caller could already read from `get_adcp_capabilities` or the product's `overlay_support`. Sellers MAY omit it; absence means consult those surfaces, not that any dimension is supported.",
-      "items": { "type": "string", "minLength": 1 },
+      "items": { "$ref": "#/definitions/targeting_dimension" },
       "uniqueItems": true
     },
     "deprecated": {
@@ -51,5 +50,13 @@
       "deprecated": true,
       "replacement_dimension": "demographics"
     }
-  ]
+  ],
+  "definitions": {
+    "targeting_dimension": {
+      "title": "Targeting Dimension",
+      "description": "Name of a targeting field, such as geo_countries.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
 }

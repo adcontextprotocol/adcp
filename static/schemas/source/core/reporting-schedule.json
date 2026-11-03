@@ -9,8 +9,7 @@
     "ReportingScheduleAlignment": {
       "title": "Reporting Schedule Alignment",
       "x-adcp-model-context-inline": true,
-      "type": "string",
-      "enum": ["utc", "account_timezone", "source_timezone", "billing_cycle"],
+      "$ref": "/schemas/enums/reporting-schedule-alignment.json",
       "description": "Calendar used to establish exact period boundaries. source_timezone is an explicit upstream reporting clock, such as an ad server network timezone, that may differ from the AdCP account timezone. The obligation echoes resolved timestamps and source timezone."
     }
   },
@@ -25,7 +24,7 @@
   "allOf": [
     {
       "if": { "properties": { "alignment": { "enum": ["account_timezone", "source_timezone", "billing_cycle"] } }, "required": ["alignment"] },
-      "then": { "properties": { "period_duration": { "anyOf": [{ "pattern": "^P(?:0+[YMD])*T" }, { "pattern": "^P[^T]*(?:T(?:0+[HMS])*)?$" }] } } }
+      "then": { "properties": { "period_duration": { "anyOf": [{ "$ref": "/schemas/core/time-duration.json" }, { "$ref": "/schemas/core/date-duration.json" }] } } }
     },
     {
       "if": { "properties": { "alignment": { "const": "billing_cycle" } }, "required": ["alignment"] },

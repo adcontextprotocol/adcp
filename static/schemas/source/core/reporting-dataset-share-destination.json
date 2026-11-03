@@ -9,8 +9,7 @@
     "ReportingCloud": {
       "title": "Reporting Cloud",
       "x-adcp-model-context-inline": true,
-      "type": "string",
-      "enum": ["aws", "azure", "gcp"]
+      "$ref": "/schemas/enums/delivery-recipient-cloud.json"
     }
   },
   "oneOf": [
@@ -33,9 +32,9 @@
           "type": "object",
           "description": "Intended buyer principal. The identity is interpreted by the provider and access mode; for example, a Databricks sharing identifier, Snowflake organization/account pair, or Open Sharing recipient email. It is an identifier, never a credential.",
           "properties": {
-            "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "identity": { "$ref": "/schemas/core/sharing-principal-identity.json" },
             "cloud": { "$ref": "#/definitions/ReportingCloud" },
-            "region": { "type": "string", "minLength": 1, "maxLength": 128 }
+            "region": { "$ref": "/schemas/core/cloud-region.json" }
           },
           "required": ["identity"],
           "dependencies": {

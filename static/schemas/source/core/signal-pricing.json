@@ -43,10 +43,8 @@
           "const": "percent_of_media"
         },
         "percent": {
-          "type": "number",
-          "description": "Percentage of media spend, e.g. 15 = 15%",
-          "minimum": 0,
-          "maximum": 100
+          "$ref": "/schemas/core/percentage.json",
+          "description": "Percentage of media spend, e.g. 15 = 15%"
         },
         "max_cpm": {
           "type": "number",

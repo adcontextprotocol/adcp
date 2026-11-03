@@ -81,9 +81,7 @@
                       "description": "Maximum budget for this purchase type."
                     },
                     "max_pct": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 100,
+                      "$ref": "/schemas/core/percentage.json",
                       "description": "Maximum percentage of total budget for this purchase type."
                     }
                   },

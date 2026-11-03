@@ -117,8 +117,7 @@
             "type": "object",
             "properties": {
               "id": {
-                "type": "string",
-                "minLength": 1,
+                "$ref": "/schemas/core/signal-taxonomy-node-id.json",
                 "description": "Taxonomy node identifier."
               },
               "path": {
@@ -177,8 +176,7 @@
       "additionalProperties": false
     },
     "segmentation_criteria": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/signal-segmentation-criteria.json",
       "description": "Rules governing inclusion of identifiers in the segment. Aligns with IAB Data Transparency Standard audience criteria disclosure."
     },
     "criteria_url": {
@@ -190,26 +188,7 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "enum": [
-          "app_behavior",
-          "app_usage",
-          "web_usage",
-          "geo_location",
-          "email",
-          "tv_ott_or_stb_device",
-          "panel",
-          "online_ecommerce",
-          "credit_data",
-          "loyalty_card",
-          "transaction",
-          "online_survey",
-          "offline_survey",
-          "public_record_census",
-          "public_record_voter_file",
-          "public_record_other",
-          "offline_transaction"
-        ]
+        "$ref": "/schemas/enums/signal-data-source.json"
       },
       "description": "Origin categories of the raw data used to compile the signal, aligned with IAB Data Transparency Standard source disclosure. Use 'panel' for respondent-panel or JIC-style audience sources. Offline and public-record sources require onboarder disclosure. Co-viewing projection and reconciliation of seller claims against a JIC or measurement vendor belong in measurement reporting/vendor metrics rather than package signal targeting."
     },
@@ -241,8 +220,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string",
-            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone"]
+            "$ref": "/schemas/enums/signal-match-key.json"
           }
         },
         "pre_onboarding_audience_expansion": {
@@ -366,7 +344,7 @@
               "rights": {
                 "type": "array",
                 "contains": {
-                  "enum": ["access", "erasure", "objection"]
+                  "$ref": "/schemas/enums/required-data-subject-right.json"
                 }
               }
             },
@@ -417,9 +395,7 @@
           }
         },
         "response_sla_days": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 90,
+          "$ref": "/schemas/core/rights-response-sla-days.json",
           "description": "Maximum response time in days for rights requests handled through the declared rights channels. For provider-published signals, providers SHOULD avoid duplicating this field across every signal unless the value varies by signal or upstream source; consumers MAY also consult the provider's public privacy policy or registry disclosures when present."
         },
         "ccpa_opt_out_url": {

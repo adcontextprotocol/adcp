@@ -28,8 +28,7 @@
           "description": "The receipt describes a property list."
         },
         "effect": {
-          "type": "string",
-          "enum": ["include", "exclude"],
+          "$ref": "#/definitions/list_effect",
           "description": "Whether matching properties were retained as an allowlist or removed as a blocklist."
         },
         "agent_url": {
@@ -91,8 +90,7 @@
           "description": "The receipt describes a collection list."
         },
         "effect": {
-          "type": "string",
-          "enum": ["include", "exclude"],
+          "$ref": "#/definitions/list_effect",
           "description": "Whether matching collections were retained as an allowlist or removed as a blocklist."
         },
         "agent_url": {
@@ -144,5 +142,16 @@
       ],
       "additionalProperties": false
     }
-  ]
+  ],
+  "definitions": {
+    "list_effect": {
+      "title": "Inventory List Effect",
+      "description": "Whether an inventory list kept matching inventory as an allowlist (include) or removed it as a blocklist (exclude).",
+      "type": "string",
+      "enum": [
+        "include",
+        "exclude"
+      ]
+    }
+  }
 }

@@ -51,9 +51,8 @@
                       "description": "The seller authenticates outbound check_governance calls with the registered Bearer credential. Other shared webhook authentication schemes are not valid for this agent-to-agent call."
                     },
                     "credentials": {
-                      "type": "string",
-                      "description": "Authentication credential (e.g., Bearer token).",
-                      "minLength": 32
+                      "$ref": "/schemas/core/auth-credential.json",
+                      "description": "Authentication credential (e.g., Bearer token)."
                     }
                   },
                   "required": [

@@ -10,8 +10,7 @@
       "description": "Buyer-supplied identifier for this subscription endpoint. This is the stable logical key within one account's notification_configs[] set: re-sending the same subscriber_id for the same account replaces that subscriber's URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload and on every `webhook_activity[]` record fired against this config so the buyer can attribute fires across multiple endpoints. MUST be unique within the account's `notification_configs[]`. Sending two entries with the same `subscriber_id` in a single `sync_accounts` request array is rejected as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR`, and `error.field` MUST point at the duplicate entry. `subscriber_id` is the stable match key for the per-account declarative-replace diff. Always required (even with a single subscriber) so the SDK contract is uniform — no conditional required-when-multiple rules to trip up implementations. Format is opaque — recommended values are short kebab-case slugs (`buyer-primary`, `audit-bus`, `dx-team`)."
     },
     "url": {
-      "type": "string",
-      "format": "uri",
+      "$ref": "/schemas/core/webhook-url.json",
       "description": "Webhook endpoint URL. Same wire contract as `push-notification-config.url` — `format: \"uri\"`, no destination-port allowlist enforced by the protocol, SSRF protection via the IP-range check defined in docs/building/by-layer/L1/security.mdx#webhook-url-validation-ssrf. Sellers MUST validate URL syntax, HTTPS usage, hostname normalization, and reserved-range rejection when writing any config, including `active: false` configs. Sellers MUST complete an activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active."
     },
     "event_types": {
@@ -68,7 +67,7 @@
           "maxItems": 1
         },
         "credentials": {
-          "$ref": "/schemas/core/webhook-auth-credential.json",
+          "$ref": "/schemas/core/auth-credential.json",
           "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only."
         }
       },

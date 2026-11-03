@@ -140,8 +140,7 @@
       "description": "Whether trackers, landing pages, and image URLs must be served over HTTPS."
     },
     "asset_source": {
-      "type": "string",
-      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized", "publisher_owned_reference"],
+      "$ref": "/schemas/enums/asset-source.json",
       "default": "buyer_uploaded",
       "description": "Where the rendered native assets come from. `publisher_host_recorded` is omitted (audio-specific and not meaningful for native). Other values mirror the shared production-source axis used on `image` / `video_hosted`. `buyer_uploaded` (default): buyer ships pre-rendered title/image/body. `seller_pre_rendered_from_brief`: buyer ships a brief, seller renders the native bundle. `agent_synthesized`: AI synthesis pipeline produces title + image + body from a brief; pair with `synthesis_nondeterministic: true` for generative pipelines that can't guarantee in-spec output. `publisher_owned_reference`: buyer ships an existing published post reference; the seller resolves the post into the native presentation after authorization/review."
     },

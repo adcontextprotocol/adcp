@@ -519,7 +519,9 @@ async function runTests() {
     const enforcementAjv = new Ajv({ strict: false });
     addFormats(enforcementAjv);
     enforcementAjv.addSchema(loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/accepted-governance-agents.json')));
-    const validateEnforcement = enforcementAjv.compile(enforcementSchema);
+    enforcementAjv.addSchema(loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/verification-token-mode.json')));
+    // The subschema references the capability document's own definitions.
+    const validateEnforcement = enforcementAjv.compile({ ...enforcementSchema, definitions: capabilities.definitions });
     if (!validateEnforcement({ tasks: [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }] })) {
       return 'valid media-buy online enforcement claim was rejected';
     }

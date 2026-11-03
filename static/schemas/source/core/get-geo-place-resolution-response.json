@@ -47,9 +47,9 @@
           "matches": {
             "items": {
               "properties": {
-                "value": { "pattern": "^[0-9]+$" },
+                "value": { "$ref": "#/definitions/numeric_place_value" },
                 "replaced_by_values": {
-                  "items": { "pattern": "^[0-9]+$" }
+                  "items": { "$ref": "#/definitions/numeric_place_value" }
                 }
               }
             }
@@ -58,5 +58,12 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "definitions": {
+    "numeric_place_value": {
+      "title": "Numeric Place Value",
+      "description": "Numeric place identifier, required for the geonames, google_ads, and microsoft_ads systems.",
+      "pattern": "^[0-9]+$"
+    }
+  }
 }

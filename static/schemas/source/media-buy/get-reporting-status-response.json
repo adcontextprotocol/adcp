@@ -155,7 +155,7 @@
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "failed" },
-        "view": { "enum": ["summary", "periods", "revision"] },
+        "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
         "failure_kind": { "type": "string", "const": "lookup_unavailable" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
@@ -192,7 +192,7 @@
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "failed" },
-        "view": { "enum": ["summary", "periods", "revision"] },
+        "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
         "failure_kind": { "type": "string", "const": "operational" },
         "context": { "$ref": "/schemas/core/context.json" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }

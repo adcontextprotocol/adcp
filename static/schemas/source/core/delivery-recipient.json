@@ -6,17 +6,13 @@
   "type": "object",
   "properties": {
     "identity": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 512
+      "$ref": "/schemas/core/sharing-principal-identity.json"
     },
     "cloud": {
       "$ref": "/schemas/enums/delivery-recipient-cloud.json"
     },
     "region": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128
+      "$ref": "/schemas/core/cloud-region.json"
     }
   },
   "required": [

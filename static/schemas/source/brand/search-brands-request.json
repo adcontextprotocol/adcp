@@ -11,9 +11,8 @@
       "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version."
     },
     "query": {
-      "type": "string",
-      "description": "Natural language description of the brands to find. The agent interprets intent, category, and roster coverage from this text.",
-      "maxLength": 2000
+      "$ref": "/schemas/core/brand-agent-query.json",
+      "description": "Natural language description of the brands to find. The agent interprets intent, category, and roster coverage from this text."
     },
     "industries": {
       "type": "array",

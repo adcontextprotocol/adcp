@@ -67,7 +67,7 @@
       "properties": {
         "io_id": { "type": "string", "minLength": 1 },
         "accepted_at": { "type": "string", "format": "date-time" },
-        "signatory": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "signatory": { "$ref": "/schemas/core/io-signatory.json" },
         "signature_id": { "type": "string", "minLength": 1 }
       },
       "required": ["io_id", "accepted_at", "signatory"],

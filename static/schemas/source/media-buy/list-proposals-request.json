@@ -68,7 +68,7 @@
       "uniqueItems": true
     },
     "cursor": { "$ref": "/schemas/core/page-cursor.json" },
-    "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
+    "max_results": { "$ref": "/schemas/core/page-size.json", "default": 25 },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["account"],

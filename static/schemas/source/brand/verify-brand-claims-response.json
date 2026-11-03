@@ -171,8 +171,7 @@
               "additionalProperties": true
             },
             "context_note": {
-              "type": "string",
-              "maxLength": 500,
+              "$ref": "/schemas/core/brand-claim-context-note.json",
               "description": "Public — free-text context the brand chooses to surface."
             }
           },

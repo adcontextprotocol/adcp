@@ -9,14 +9,12 @@
     "ReportingFeedPurpose": {
       "title": "Reporting Feed Purpose",
       "x-adcp-model-context-inline": true,
-      "type": "string",
-      "enum": ["pacing", "analytics", "billing"],
+      "$ref": "/schemas/enums/reporting-feed-purpose.json",
       "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
     },
     "ReportingDeliveryPattern": {
       "title": "Reporting Delivery Pattern",
-      "type": "string",
-      "enum": ["file_transfer", "dataset_share", "warehouse_materialization"]
+      "$ref": "/schemas/enums/reporting-delivery-pattern.json"
     }
   },
   "properties": {
@@ -97,9 +95,9 @@
           "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
           "properties": {
             "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
-            "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "identity": { "$ref": "/schemas/core/sharing-principal-identity.json" },
             "cloud": { "$ref": "/schemas/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud" },
-            "region": { "type": "string", "minLength": 1, "maxLength": 128 }
+            "region": { "$ref": "/schemas/core/cloud-region.json" }
           },
           "required": ["provider", "identity"],
           "dependencies": { "cloud": ["region"], "region": ["cloud"] },

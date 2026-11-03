@@ -59,9 +59,7 @@
       "uniqueItems": true
     },
     "confidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1,
+      "$ref": "/schemas/core/fraction.json",
       "description": "Optional evaluator-produced confidence in the normalized outcome on the AdCP 0–1 scale. This is evaluation output, never copied from an authoritative presenter field. Omit when the proof or evaluator does not support a meaningful confidence score."
     },
     "revocation_checked_at": {
@@ -84,9 +82,7 @@
           "description": "Absolute URI naming the action vocabulary, such as an AdCP governance-check or audience-evidence snapshot type."
         },
         "action_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 1024,
+          "$ref": "/schemas/core/attestation-action-id.json",
           "description": "Stable identifier of the consuming action within the domain consumer's namespace.",
           "$comment": "x-entity deliberately omitted because action_type determines which domain entity this identifier names."
         },

@@ -47,8 +47,7 @@
       "description": "Categorical reason for the offline transition. Drives buyer-side remediation logic."
     },
     "reason": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/reason-detail.json",
       "description": "Human-readable explanation. Supplements reason_code with seller-specific detail."
     },
     "observed_at": {

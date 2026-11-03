@@ -141,7 +141,7 @@
       "then": {
         "required": ["performed_by", "translation_target"],
         "properties": {
-          "mapping_status": { "enum": ["verified_universal", "dialect_defined"] },
+          "mapping_status": { "$ref": "/schemas/enums/resolved-macro-mapping-status.json" },
           "encoding": { "properties": { "kind": { "const": "none" }, "depth": { "const": 0 } } }
         }
       }
@@ -150,7 +150,7 @@
       "if": { "properties": { "operation": { "const": "resolve_value" } }, "required": ["operation"] },
       "then": {
         "required": ["performed_by"],
-        "properties": { "mapping_status": { "enum": ["verified_universal", "dialect_defined"] } },
+        "properties": { "mapping_status": { "$ref": "/schemas/enums/resolved-macro-mapping-status.json" } },
         "not": { "required": ["translation_target"] }
       }
     },
@@ -199,7 +199,7 @@
         "properties": {
           "operation": { "const": "resolve_value" },
           "performed_by": { "const": "seller" },
-          "location": { "properties": { "context": { "enum": ["url_query_value", "url_path_segment"] } } },
+          "location": { "properties": { "context": { "$ref": "/schemas/enums/url-macro-context.json" } } },
           "encoding": { "properties": { "kind": { "const": "rfc3986" }, "depth": { "const": 1 } } }
         }
       }

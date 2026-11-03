@@ -85,10 +85,8 @@
             "description": "Human-readable source name for the signal, when applicable. For data_provider-scoped signals this is the data provider name; for signal_source-scoped signals it may identify the signal source or proprietary origin."
           },
           "coverage_percentage": {
-            "type": "number",
+            "$ref": "/schemas/core/percentage.json",
             "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only. If coverage_forecast includes an absent bucket over the same denominator, coverage_percentage SHOULD align with 100 * (1 - absent coverage_rate.mid).",
-            "minimum": 0,
-            "maximum": 100,
             "deprecated": true
           },
           "coverage_forecast": {

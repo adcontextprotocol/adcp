@@ -38,9 +38,7 @@
               "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
             },
             "configuration_version": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
+              "$ref": "/schemas/core/principal-configuration-version.json",
               "description": "Opaque version of the persisted configuration. Compare only for equality and pass it as expected_configuration_version on a later guarded sync_principal replacement."
             },
             "configuration": {
@@ -53,7 +51,7 @@
               "description": "Present when and only when the request carried reporting_subscription_page: one page of the requested list, with the same entries and order as the inline list (account_id byte order for the account lists, newest first for prior_versions). Exactly the property named by list is present.",
               "properties": {
                 "subscription_id": { "$ref": "/schemas/core/reporting-subscription-id.json" },
-                "list": { "type": "string", "enum": ["accounts_with_exceptions", "accounts_unauthorized", "prior_versions"] },
+                "list": { "$ref": "/schemas/enums/reporting-subscription-page-list.json" },
                 "accounts_with_exceptions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionAccountExceptions" }, "maxItems": 100 },
                 "accounts_unauthorized": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionUnauthorizedAccount" }, "maxItems": 100 },
                 "prior_versions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionPriorVersion" }, "maxItems": 100 },
@@ -162,7 +160,7 @@
   "then": {
     "properties": {
       "status": {
-        "enum": ["failed", "rejected"]
+        "$ref": "/schemas/enums/task-failure-status.json"
       }
     }
   },

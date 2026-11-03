@@ -218,10 +218,8 @@
             "x-added-in": "3.3.0"
           },
           "weight": {
-            "type": "number",
-            "description": "Relative delivery weight (0-100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
-            "minimum": 0,
-            "maximum": 100
+            "$ref": "/schemas/core/creative-rotation-weight.json",
+            "description": "Relative delivery weight (0-100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery)."
           },
           "placement_ids": {
             "type": "array",
@@ -283,10 +281,10 @@
                 "description": "Override the creative's click-through destination for this creative on this package only, without changing the library creative. The override applies to every click-through destination for this assignment, including per-state destinations; partial application MUST be rejected. AdCP macros follow the same rules as the creative's own click-through without declarations, retaining existing 3.x compatibility behavior. Declarations on the original creative assets do not transfer to this URL. Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise and sellers without the capability MUST reject it with UNSUPPORTED_FEATURE. The seller MUST serve the override or reject the assignment through existing assignment errors, including when an embedded HTML, JavaScript, or VAST click cannot be overridden. Creative approval remains valid; destination review applies to the assignment. Omission on an additive upsert preserves an existing override. To restore inheritance, atomically unassign then assign without this field; null is not accepted.",
                 "x-added-in": "3.3.0"
               },
-              "weight": { "type": "number", "minimum": 0, "maximum": 100 },
+              "weight": { "$ref": "/schemas/core/creative-rotation-weight.json" },
               "placement_ids": {
                 "type": "array",
-                "items": { "type": "string", "minLength": 1 },
+                "items": { "$ref": "/schemas/core/placement-id.json" },
                 "minItems": 1,
                 "uniqueItems": true
               }
@@ -326,11 +324,11 @@
               "creative_id": { "$ref": "/schemas/core/creative-id.json", "description": "Replacement creative ID." },
               "replaces_creative_id": { "$ref": "/schemas/core/creative-id.json", "description": "Currently assigned creative ID to remove atomically. Its authored assignment settings transfer to creative_id." },
               "package_id": { "$ref": "/schemas/core/package-id.json" },
-              "weight": { "type": "number", "minimum": 0, "maximum": 100, "description": "Delivery weight for the replacement. Omitted: the replaced assignment's weight transfers." },
+              "weight": { "$ref": "/schemas/core/creative-rotation-weight.json", "description": "Delivery weight for the replacement. Omitted: the replaced assignment's weight transfers." },
               "placement_ids": {
                 "type": "array",
                 "description": "Placement routing for the replacement. Supplied: replaces the transferred routing entirely, including any placement_refs. Omitted: the replaced assignment's placement_ids and placement_refs transfer.",
-                "items": { "type": "string", "minLength": 1 },
+                "items": { "$ref": "/schemas/core/placement-id.json" },
                 "minItems": 1,
                 "uniqueItems": true
               }

@@ -10,22 +10,16 @@
       "description": "ID of the product (must reference a product in the products array)"
     },
     "allocation_percentage": {
-      "type": "number",
-      "description": "Exact percentage of total budget allocated to this product in a fixed proposal. Percentages across all allocations MUST sum to 100. Must be absent in a seller-optimized proposal.",
-      "minimum": 0,
-      "maximum": 100
+      "$ref": "/schemas/core/percentage.json",
+      "description": "Exact percentage of total budget allocated to this product in a fixed proposal. Percentages across all allocations MUST sum to 100. Must be absent in a seller-optimized proposal."
     },
     "min_spend_target_percentage": {
-      "type": "number",
-      "description": "Soft minimum-spend target as a percentage of the executed total budget. Only valid in seller-optimized proposals, and sellers MUST NOT emit it unless they advertise media_buy.features.seller_optimized_min_spend_targets. The seller SHOULD attempt to reach it, but it is not a delivery guarantee. Minimum targets across allocations MUST sum to no more than 100.",
-      "minimum": 0,
-      "maximum": 100
+      "$ref": "/schemas/core/percentage.json",
+      "description": "Soft minimum-spend target as a percentage of the executed total budget. Only valid in seller-optimized proposals, and sellers MUST NOT emit it unless they advertise media_buy.features.seller_optimized_min_spend_targets. The seller SHOULD attempt to reach it, but it is not a delivery guarantee. Minimum targets across allocations MUST sum to no more than 100."
     },
     "max_spend_percentage": {
-      "type": "number",
-      "description": "Hard maximum share of the executed total budget that this product may spend. Only valid in seller-optimized proposals, and sellers MUST NOT emit it unless they advertise media_buy.features.seller_optimized_package_budgets. Maximums across allocations MUST collectively permit 100 percent of the budget to be spent.",
-      "minimum": 0,
-      "maximum": 100
+      "$ref": "/schemas/core/percentage.json",
+      "description": "Hard maximum share of the executed total budget that this product may spend. Only valid in seller-optimized proposals, and sellers MUST NOT emit it unless they advertise media_buy.features.seller_optimized_package_budgets. Maximums across allocations MUST collectively permit 100 percent of the budget to be spent."
     },
     "pacing": {
       "$ref": "/schemas/enums/pacing.json",

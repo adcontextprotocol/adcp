@@ -349,8 +349,7 @@
           "type": "array",
           "description": "Target kinds available for metric goals on this product. Values match target.kind on the optimization goal. Only these target kinds are accepted — goals with unlisted target kinds will be rejected. When omitted, buyers can set target-less metric goals (maximize volume within budget) but cannot set specific targets.",
           "items": {
-            "type": "string",
-            "enum": ["cost_per", "threshold_rate"]
+            "$ref": "/schemas/enums/metric-optimization-target-kind.json"
           }
         }
       },
@@ -386,8 +385,7 @@
           "type": "array",
           "description": "Target kinds available for event goals on this product. Values match target.kind on the optimization goal. cost_per: target cost per conversion event. per_ad_spend: target return on ad spend (requires value_field on event sources). maximize_value: maximize total conversion value without a specific ratio target (requires value_field). Only these target kinds are accepted — goals with unlisted target kinds will be rejected. A goal without a target implicitly maximizes conversion count within budget — no declaration needed for that mode. When omitted, buyers can still set target-less event goals.",
           "items": {
-            "type": "string",
-            "enum": ["cost_per", "per_ad_spend", "maximize_value"]
+            "$ref": "/schemas/enums/conversion-optimization-target.json"
           },
           "minItems": 1
         },

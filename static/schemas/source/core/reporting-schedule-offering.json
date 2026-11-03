@@ -18,7 +18,7 @@
   "allOf": [
     {
       "if": { "properties": { "alignment": { "enum": ["account_timezone", "source_timezone", "billing_cycle"] } }, "required": ["alignment"] },
-      "then": { "properties": { "period_duration": { "anyOf": [{ "pattern": "^P(?:0+[YMD])*T" }, { "pattern": "^P[^T]*(?:T(?:0+[HMS])*)?$" }] } } }
+      "then": { "properties": { "period_duration": { "anyOf": [{ "$ref": "/schemas/core/time-duration.json" }, { "$ref": "/schemas/core/date-duration.json" }] } } }
     },
     {
       "if": { "properties": { "alignment": { "const": "billing_cycle" } }, "required": ["alignment"] },

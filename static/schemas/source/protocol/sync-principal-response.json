@@ -41,9 +41,7 @@
               "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
             },
             "configuration_version": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
+              "$ref": "/schemas/core/principal-configuration-version.json",
               "description": "Opaque version of the persisted configuration. Compare only for equality and return it as expected_configuration_version on a later guarded replacement."
             },
             "configuration": {
@@ -132,7 +130,7 @@
   "then": {
     "properties": {
       "status": {
-        "enum": ["failed", "rejected"]
+        "$ref": "/schemas/enums/task-failure-status.json"
       }
     }
   },

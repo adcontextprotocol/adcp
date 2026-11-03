@@ -42,7 +42,7 @@
         "type": "object",
         "properties": {
           "scope": { "type": "string", "enum": ["products", "pricing", "forecast", "wholesale_feed"] },
-          "description": { "type": "string", "minLength": 1 },
+          "description": { "$ref": "/schemas/core/incomplete-scope-description.json" },
           "estimated_wait": { "$ref": "/schemas/core/duration.json" }
         },
         "required": ["scope", "description"],

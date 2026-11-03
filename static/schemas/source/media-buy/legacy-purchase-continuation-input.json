@@ -30,8 +30,7 @@
       "minItems": 2,
       "uniqueItems": true,
       "items": {
-        "type": "string",
-        "enum": ["feed_version_not_atomic", "pricing_version_not_atomic", "mutation_idempotency_not_guaranteed"]
+        "$ref": "/schemas/enums/purchase-continuation-loss.json"
       },
       "allOf": [
         { "contains": { "const": "feed_version_not_atomic" } },

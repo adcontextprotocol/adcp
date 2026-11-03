@@ -10,9 +10,7 @@
   ],
   "properties": {
     "percentage": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 100,
+      "$ref": "/schemas/core/percentage.json",
       "description": "Progress percentage of the signal discovery operation."
     },
     "current_step": {

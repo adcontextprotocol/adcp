@@ -95,7 +95,7 @@
     {
       "if": { "properties": { "outcome": { "const": "rejected" } }, "required": ["outcome"] },
       "then": {
-        "properties": { "creative_status": { "enum": ["approved", "rejected"] } }
+        "properties": { "creative_status": { "$ref": "/schemas/enums/creative-review-decision.json" } }
       }
     }
   ],

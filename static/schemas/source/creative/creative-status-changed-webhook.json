@@ -93,7 +93,7 @@
           },
           "then": {
             "properties": {
-              "to": { "enum": ["pending_review", "rejected"] }
+              "to": { "$ref": "/schemas/enums/creative-unapproved-status.json" }
             }
           }
         },
@@ -106,7 +106,7 @@
           },
           "then": {
             "properties": {
-              "to": { "enum": ["approved", "rejected"] }
+              "to": { "$ref": "/schemas/enums/creative-review-decision.json" }
             }
           }
         },
@@ -132,7 +132,7 @@
           },
           "then": {
             "properties": {
-              "to": { "enum": ["approved", "rejected"] }
+              "to": { "$ref": "/schemas/enums/creative-review-decision.json" }
             }
           }
         }
@@ -143,8 +143,7 @@
       "description": "Categorical reason for the transition. Per-transition valid subsets are constrained by impairment.coherence-style narrative rules — see docs/creative/creative-lifecycle-webhooks.mdx. Receivers MUST treat unknown reason codes as forward-compatible additions and not reject the fire."
     },
     "reason_detail": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/reason-detail.json",
       "description": "Human-readable supplement to `reason_code`. Free text from the seller. Sellers MUST NOT include third-party PII in this field."
     },
     "initiator": {

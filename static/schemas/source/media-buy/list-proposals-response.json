@@ -69,8 +69,8 @@
                 "proposal": {
                   "properties": {
                     "proposal_initiator": { "const": "seller" },
-                    "proposal_kind": { "enum": ["media_buy_update", "media_buy_cancellation"] },
-                    "proposal_status": { "enum": ["committed", "accepted"] }
+                    "proposal_kind": { "$ref": "/schemas/enums/seller-proposal-kind.json" },
+                    "proposal_status": { "$ref": "/schemas/enums/seller-proposal-status.json" }
                   },
                   "required": ["proposal_initiator"]
                 }

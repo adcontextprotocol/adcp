@@ -10,8 +10,7 @@
       "description": "Buyer- or registry-supplied identifier for this agent-level subscription endpoint. This is the stable logical key within the authenticated caller's agent-level notification config set: re-sending the same subscriber_id replaces that caller's subscriber URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload so multi-subscriber consumers can route by endpoint. MUST be unique within the submitted `notification_configs[]` array."
     },
     "url": {
-      "type": "string",
-      "format": "uri",
+      "$ref": "/schemas/core/webhook-url.json",
       "description": "Webhook endpoint URL. Same wire contract as `push-notification-config.url` and account-level `notification-config.url`: `format: \"uri\"`, no destination-port allowlist enforced by the protocol, SSRF protection via the IP-range check defined in docs/building/by-layer/L1/security.mdx#webhook-url-validation-ssrf. Sellers MUST validate URL syntax, HTTPS usage, hostname normalization, and reserved-range rejection when writing any config, including `active: false` configs. Sellers MUST complete an activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active."
     },
     "event_types": {
@@ -63,7 +62,7 @@
           "maxItems": 1
         },
         "credentials": {
-          "$ref": "/schemas/core/webhook-auth-credential.json",
+          "$ref": "/schemas/core/auth-credential.json",
           "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only."
         }
       },

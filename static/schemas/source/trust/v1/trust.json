@@ -139,11 +139,7 @@
           "type": "array",
           "description": "Transport protocols the endpoint speaks. Informational.",
           "items": {
-            "type": "string",
-            "enum": [
-              "mcp",
-              "a2a"
-            ]
+            "$ref": "/schemas/enums/agent-protocol.json"
           },
           "uniqueItems": true
         },

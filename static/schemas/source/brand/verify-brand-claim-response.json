@@ -28,8 +28,7 @@
           "additionalProperties": true
         },
         "context_note": {
-          "type": "string",
-          "maxLength": 500,
+          "$ref": "/schemas/core/brand-claim-context-note.json",
           "description": "Public — free-text context the brand chooses to surface. For disputed/transferring, typically carries the rationale or transition details."
         },
         "context": {
@@ -142,8 +141,7 @@
           "additionalProperties": true
         },
         "context_note": {
-          "type": "string",
-          "maxLength": 500
+          "$ref": "/schemas/core/brand-claim-context-note.json"
         },
         "context": {
           "$ref": "/schemas/core/context.json"

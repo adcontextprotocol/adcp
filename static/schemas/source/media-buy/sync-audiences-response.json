@@ -72,10 +72,8 @@
                 "minimum": 0
               },
               "effective_match_rate": {
-                "type": "number",
-                "description": "Deduplicated match rate across all identifier types (matched_count / total_uploaded_count after deduplication). A single number for reach estimation. Populated when status is 'ready' and the seller can report it. MAY be absent when the seller cannot report a match rate. Buyers MUST NOT read an absent effective_match_rate as zero. match_rate_basis says whether the platform reported the value or the seller derived it.",
-                "minimum": 0,
-                "maximum": 1
+                "$ref": "/schemas/core/fraction.json",
+                "description": "Deduplicated match rate across all identifier types (matched_count / total_uploaded_count after deduplication). A single number for reach estimation. Populated when status is 'ready' and the seller can report it. MAY be absent when the seller cannot report a match rate. Buyers MUST NOT read an absent effective_match_rate as zero. match_rate_basis says whether the platform reported the value or the seller derived it."
               },
               "match_rate_basis": {
                 "x-added-in": "3.3.0",
@@ -113,10 +111,8 @@
                       "minimum": 0
                     },
                     "match_rate": {
-                      "type": "number",
-                      "description": "Match rate for this identifier type (matched / submitted). Server-authoritative — consumers should prefer this value over computing their own.",
-                      "minimum": 0,
-                      "maximum": 1
+                      "$ref": "/schemas/core/fraction.json",
+                      "description": "Match rate for this identifier type (matched / submitted). Server-authoritative — consumers should prefer this value over computing their own."
                     }
                   },
                   "required": [

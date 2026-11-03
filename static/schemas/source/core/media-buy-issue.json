@@ -25,9 +25,7 @@
       "$ref": "/schemas/enums/media-buy-issue-category.json"
     },
     "description": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4000
+      "$ref": "/schemas/core/media-buy-issue-description.json"
     },
     "status": {
       "type": "string",

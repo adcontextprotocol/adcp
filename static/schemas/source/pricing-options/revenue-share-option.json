@@ -27,10 +27,8 @@
       "description": "Event source whose attribution is authoritative for billing. Must match an event source configured through sync_event_sources."
     },
     "commission_rate": {
-      "type": "number",
-      "description": "Decimal proportion applied to commissionable_value. For example, 0.04 means 4%.",
-      "exclusiveMinimum": 0,
-      "maximum": 1
+      "$ref": "/schemas/core/commission-rate.json",
+      "description": "Decimal proportion applied to commissionable_value. For example, 0.04 means 4%."
     },
     "currency": {
       "$ref": "/schemas/core/currency-code.json",
@@ -38,9 +36,7 @@
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
     "commission_basis_description": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 1000,
+      "$ref": "/schemas/core/commission-basis-description.json",
       "description": "Human-readable definition of inclusions, exclusions, and return or cancellation treatment used by the billing authority to calculate commissionable_value."
     }
   },

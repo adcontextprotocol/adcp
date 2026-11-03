@@ -304,9 +304,7 @@
               "x-entity": "creative_evaluation"
             },
             "reason": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
+              "$ref": "/schemas/core/brief-rejection-reason.json",
               "description": "Echo of the deterministic buyer-facing rejection reason. Required when arm is 'rejected'."
             },
             "suggestions": {
@@ -315,9 +313,7 @@
               "minItems": 1,
               "maxItems": 20,
               "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1000
+                "$ref": "/schemas/core/seller-suggestion.json"
               }
             },
             "proposal_id": {

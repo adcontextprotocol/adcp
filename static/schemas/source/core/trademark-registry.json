@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/trademark-registry.json",
+  "title": "Trademark Registry",
+  "description": "Name of the trademark registry, such as USPTO or EUIPO.",
+  "type": "string",
+  "maxLength": 50
+}

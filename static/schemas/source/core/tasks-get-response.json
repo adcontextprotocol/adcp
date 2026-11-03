@@ -71,9 +71,7 @@
       "description": "Progress information for long-running tasks",
       "properties": {
         "percentage": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
+          "$ref": "/schemas/core/percentage.json",
           "description": "Completion percentage (0-100)"
         },
         "current_step": {

@@ -9,7 +9,7 @@
       "type": "object",
       "description": "Selectable ISO subdivision values keyed by ISO 3166-1 alpha-2 country.",
       "propertyNames": {
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "additionalProperties": {
         "anyOf": [

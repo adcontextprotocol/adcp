@@ -53,8 +53,7 @@
       ]
     },
     "url": {
-      "type": "string",
-      "format": "uri",
+      "$ref": "/schemas/core/webhook-url.json",
       "description": "Target URL for this fire. Query string and fragment MUST be stripped before surfacing — buyers commonly stash bearer tokens in the query string and sellers MUST NOT echo those back through this debug surface. Sellers SHOULD additionally redact path segments matching obvious secret patterns (e.g., a path segment that is high-entropy random material or matches a UUID / token format). Buyers matching this against their own configured URL should compare by origin + path; query strings will not match and that mismatch is expected."
     },
     "http_status_code": {

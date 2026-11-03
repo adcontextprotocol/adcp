@@ -19,8 +19,7 @@
             "description": "Change scoped to the overall request."
           },
           "ask": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/refinement-ask.json",
             "description": "What the buyer is asking for at the request level."
           }
         },
@@ -44,8 +43,7 @@
             "description": "Requested product-level action."
           },
           "ask": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/refinement-ask.json",
             "description": "What the buyer is asking for on this product."
           }
         },
@@ -70,8 +68,7 @@
             "description": "Requested proposal-level action."
           },
           "ask": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/refinement-ask.json",
             "description": "What the buyer is asking for on this proposal."
           }
         },

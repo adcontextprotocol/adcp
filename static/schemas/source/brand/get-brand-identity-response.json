@@ -217,17 +217,13 @@
                             "description": "HTTPS URL to the font file"
                           },
                           "weight": {
-                            "type": "integer",
-                            "minimum": 100,
-                            "maximum": 900,
+                            "$ref": "/schemas/core/font-weight.json",
                             "description": "CSS numeric font-weight"
                           },
                           "weight_range": {
                             "type": "array",
                             "items": {
-                              "type": "integer",
-                              "minimum": 100,
-                              "maximum": 900
+                              "$ref": "/schemas/core/font-weight.json"
                             },
                             "minItems": 2,
                             "maxItems": 2,
@@ -256,8 +252,7 @@
                     "fallbacks": {
                       "type": "array",
                       "items": {
-                        "type": "string",
-                        "maxLength": 100
+                        "$ref": "/schemas/core/font-family-name.json"
                       },
                       "maxItems": 10,
                       "description": "Ordered fallback font-family names for script coverage"
@@ -509,22 +504,7 @@
           "type": "array",
           "description": "Fields available but not returned in this response due to authorization level. Tells the caller what they would gain by linking their account via sync_accounts. Values match the request fields enum.",
           "items": {
-            "type": "string",
-            "enum": [
-              "description",
-              "industries",
-              "keller_type",
-              "logos",
-              "colors",
-              "fonts",
-              "visual_guidelines",
-              "tone",
-              "tagline",
-              "voice_synthesis",
-              "assets",
-              "rights",
-              "collections"
-            ]
+            "$ref": "/schemas/enums/brand-identity-field.json"
           }
         },
         "context": {

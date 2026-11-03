@@ -47,11 +47,11 @@
       "minItems": 1,
       "uniqueItems": true
     },
-    "minimum_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "minimum_confidence": { "$ref": "/schemas/core/fraction.json" },
     "maximum_age": {
       "allOf": [
         { "$ref": "/schemas/core/duration.json" },
-        { "properties": { "unit": { "enum": ["seconds", "minutes", "hours", "days"] } } }
+        { "properties": { "unit": { "$ref": "/schemas/enums/evidence-age-unit.json" } } }
       ]
     },
     "methodology_documentation_required": { "type": "boolean", "default": false },

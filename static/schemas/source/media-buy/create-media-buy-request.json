@@ -170,10 +170,8 @@
           "description": "ISO 8601 timestamp when the IO was accepted"
         },
         "signatory": {
-          "type": "string",
-          "description": "Who accepted the IO — agent identifier or human name",
-          "minLength": 1,
-          "maxLength": 250
+          "$ref": "/schemas/core/io-signatory.json",
+          "description": "Who accepted the IO — agent identifier or human name"
         },
         "signature_id": {
           "type": "string",
@@ -236,8 +234,7 @@
       "description": "Optional webhook configuration for content artifact delivery. Used by governance agents to validate content adjacency. Seller pushes artifacts to this endpoint; orchestrator forwards to governance agent for validation.",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
+          "$ref": "/schemas/core/webhook-url.json",
           "description": "Webhook endpoint URL for artifact delivery"
         },
         "token": {
@@ -261,7 +258,7 @@
               "maxItems": 1
             },
             "credentials": {
-              "$ref": "/schemas/core/webhook-auth-credential.json",
+              "$ref": "/schemas/core/auth-credential.json",
               "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding."
             }
           },
@@ -294,9 +291,7 @@
           "x-added-in": "3.3.0"
         },
         "sampling_rate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
+          "$ref": "/schemas/core/fraction.json",
           "description": "Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sample. Default: 1.0"
         }
       },

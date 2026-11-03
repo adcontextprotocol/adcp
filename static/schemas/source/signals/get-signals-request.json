@@ -38,11 +38,7 @@
   ],
   "properties": {
     "discovery_mode": {
-      "type": "string",
-      "enum": [
-        "brief",
-        "wholesale"
-      ],
+      "$ref": "/schemas/enums/signal-discovery-mode.json",
       "default": "brief",
       "description": "Declares caller intent for this request. 'brief' (default): semantic discovery — signal_spec, signal_refs, or legacy signal_ids is required and the agent performs inference/RAG. 'wholesale': raw wholesale signals feed enumeration — signal_spec, signal_refs, and signal_ids MUST NOT be provided and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries when present. Sellers receiving requests from pre-v3.1 clients without discovery_mode MUST default to 'brief'. Timing semantics: 'wholesale' is a wholesale signals feed read — agents SHOULD respond synchronously and MUST NOT route a 'wholesale' request through the async/Submitted arm; partial completion is signalled via the response's incomplete[] field, not via a task-handoff envelope. Agents that do not implement wholesale enumeration MAY return INVALID_REQUEST for wholesale calls; callers SHOULD probe via get_adcp_capabilities (signals.discovery_modes) first."
     },

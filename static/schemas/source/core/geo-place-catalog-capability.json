@@ -10,8 +10,7 @@
       "description": "Optional catalog dataset or derivative-source identifier. This records provenance/coverage and does not change the identifier namespace in system."
     },
     "current_version": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/geo-place-system-version.json",
       "description": "Version applied when a buyer omits system_version. Sellers MUST echo this version on persisted package state.",
       "x-max-length-4.0": 32
     },

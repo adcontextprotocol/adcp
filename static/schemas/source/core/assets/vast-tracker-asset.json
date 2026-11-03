@@ -51,8 +51,7 @@
       "description": "VAST `offset` attribute. Required when `vast_event` is `progress`; ignored otherwise for compatibility with existing 3.x manifests. Format matches the VAST 4.2 XSD `Tracking@offset` pattern: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus."
     },
     "target": {
-      "type": "string",
-      "enum": ["linear", "non_linear", "companion"],
+      "$ref": "/schemas/enums/vast-tracker-target.json",
       "default": "linear",
       "description": "Which VAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>`, `non_linear` for `<NonLinearAds>/<TrackingEvents>`, `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>`. Defaults to `linear`. Existing 3.x assets remain structurally permissive; a tracker execution contract applies the standards-valid event/target matrix when matching a creative to a product."
     },

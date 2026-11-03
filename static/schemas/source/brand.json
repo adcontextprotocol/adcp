@@ -9,9 +9,8 @@
       "description": "A valid domain name"
     },
     "brand_id": {
-      "type": "string",
-      "description": "Brand identifier within the house portfolio. Lowercase alphanumeric with underscores. House chooses this ID.",
-      "pattern": "^[a-z0-9_]+$"
+      "$ref": "/schemas/core/brand-id.json",
+      "description": "Brand identifier within the house portfolio. Lowercase alphanumeric with underscores. House chooses this ID."
     },
     "logo_slot": {
       "$ref": "/schemas/enums/logo-slot.json"
@@ -223,8 +222,7 @@
           "description": "Literal hex color when no palette key exists."
         },
         "surface": {
-          "type": "string",
-          "enum": ["background", "foreground", "text", "logo_background", "cta", "accent", "border", "icon", "graphic_element"],
+          "$ref": "#/definitions/color_surface",
           "description": "Usage surface rather than a specific color value."
         }
       },
@@ -273,10 +271,10 @@
       "description": "A font file with weight, style, and variable font metadata",
       "properties": {
         "url": { "$ref": "/schemas/core/https-url.json", "description": "HTTPS URL to the font file (WOFF2, TTF, or OTF)" },
-        "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight for static fonts (100-900)" },
+        "weight": { "$ref": "/schemas/core/font-weight.json", "description": "CSS numeric font-weight for static fonts (100-900)" },
         "weight_range": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 100, "maximum": 900 },
+          "items": { "$ref": "/schemas/core/font-weight.json" },
           "minItems": 2,
           "maxItems": 2,
           "description": "Variable font weight axis range as [min, max] (e.g., [100, 900]). Use instead of weight for variable fonts."
@@ -312,7 +310,7 @@
             },
             "fallbacks": {
               "type": "array",
-              "items": { "type": "string", "maxLength": 100 },
+              "items": { "$ref": "/schemas/core/font-family-name.json" },
               "maxItems": 10,
               "description": "Ordered fallback font-family names for when the primary font is unavailable or does not support the required script (e.g., ['Noto Sans Arabic', 'Noto Sans SC', 'sans-serif'])"
             }
@@ -383,8 +381,7 @@
           "minLength": 1
         },
         "store": {
-          "type": "string",
-          "enum": ["apple", "google", "amazon", "roku", "samsung", "lg", "other"],
+          "$ref": "/schemas/enums/app-store.json",
           "description": "App store for mobile/CTV apps"
         },
         "region": {
@@ -751,9 +748,8 @@
           "description": "Brand agent MCP endpoint URL. Callers comparing this URL against another value (e.g., resolving 'is this the brand's declared agent?' against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
         },
         "id": {
-          "type": "string",
-          "description": "Agent identifier (useful for logging, multi-tenant DAMs)",
-          "pattern": "^[a-z0-9_]+$"
+          "$ref": "#/definitions/agent_id",
+          "description": "Agent identifier (useful for logging, multi-tenant DAMs)"
         }
       },
       "required": ["url", "id"],
@@ -768,9 +764,8 @@
           "description": "Rights agent MCP endpoint URL. Callers comparing this URL against another value (e.g., matching against a brand's declared rights endpoint) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
         },
         "id": {
-          "type": "string",
-          "description": "Agent identifier",
-          "pattern": "^[a-z0-9_]+$"
+          "$ref": "#/definitions/agent_id",
+          "description": "Agent identifier"
         },
         "available_uses": {
           "type": "array",
@@ -916,8 +911,7 @@
           "description": "Overall color temperature of photography"
         },
         "contrast": {
-          "type": "string",
-          "enum": ["low", "medium", "high"],
+          "$ref": "#/definitions/intensity_level",
           "description": "Contrast level in photography"
         },
         "depth_of_field": {
@@ -1201,8 +1195,7 @@
               "description": "Texture style applied to creative assets"
             },
             "intensity": {
-              "type": "string",
-              "enum": ["low", "medium", "high"],
+              "$ref": "#/definitions/intensity_level",
               "description": "Texture intensity"
             }
           },
@@ -1260,8 +1253,7 @@
         "applies_to": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": ["background", "foreground", "text", "logo_background", "cta", "accent", "border", "icon", "graphic_element"]
+            "$ref": "#/definitions/color_surface"
           },
           "description": "Surfaces where this color may be used."
         },
@@ -1689,12 +1681,58 @@
       "type": "object",
       "description": "Contact information",
       "properties": {
-        "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "name": { "$ref": "/schemas/core/contact-name.json" },
         "email": { "type": "string", "format": "email", "maxLength": 255 },
         "domain": { "$ref": "#/definitions/domain" }
       },
       "required": ["name"],
       "additionalProperties": true
+    },
+    "agent_id": {
+      "title": "Brand Agent ID",
+      "description": "Identifier of an agent entry in a brand.json, used in logs and multi-tenant routing. It is not a brand ID.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "color_surface": {
+      "title": "Color Surface",
+      "description": "Usage surface that a brand color applies to, such as background or cta.",
+      "type": "string",
+      "enum": [
+        "background",
+        "foreground",
+        "text",
+        "logo_background",
+        "cta",
+        "accent",
+        "border",
+        "icon",
+        "graphic_element"
+      ]
+    },
+    "intensity_level": {
+      "title": "Intensity Level",
+      "description": "Qualitative level of a visual property: low, medium, or high.",
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "redirect_reason": {
+      "title": "Redirect Reason",
+      "description": "Why a brand.json redirect was put in place.",
+      "type": "string",
+      "enum": [
+        "acquisition",
+        "divestiture",
+        "rebrand",
+        "regional",
+        "legacy",
+        "consolidation",
+        "other"
+      ]
     }
   },
   "oneOf": [
@@ -1709,8 +1747,7 @@
           "description": "HTTPS URL of the authoritative brand.json file"
         },
         "redirect_reason": {
-          "type": "string",
-          "enum": ["acquisition", "divestiture", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "$ref": "#/definitions/redirect_reason",
           "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'divestiture' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
         },
         "redirect_effective_at": {
@@ -1742,8 +1779,7 @@
           "description": "ISO 3166-1 alpha-2 country code if this is a regional domain"
         },
         "redirect_reason": {
-          "type": "string",
-          "enum": ["acquisition", "divestiture", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "$ref": "#/definitions/redirect_reason",
           "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'divestiture' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
         },
         "redirect_effective_at": {

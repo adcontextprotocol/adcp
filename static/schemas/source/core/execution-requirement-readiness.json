@@ -23,8 +23,7 @@
       "description": "The resource to use when `readiness_status` is `ready`, for `event_source` and `catalog`; REQUIRED then. The buyer MUST still bind `resource_id`: `ready` does not waive binding (`not_bound` per `error-details/execution-requirement-unmet.json`).",
       "properties": {
         "resource_id": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "#/definitions/readiness_resource_id",
           "description": "Directly usable in `binding_field`: the `event_source_id` from `sync_event_sources` (including a seller-managed source) or a `catalog_id`. Never a raw platform ID unless that is what the field accepts."
         },
         "name": {
@@ -45,8 +44,7 @@
         "type": "object",
         "properties": {
           "resource_id": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "#/definitions/readiness_resource_id",
             "description": "Directly usable in `binding_field`, as for `resolved.resource_id`."
           },
           "name": {
@@ -296,5 +294,13 @@
     }
   ],
   "x-status": "experimental",
-  "x-added-in": "3.3.0"
+  "x-added-in": "3.3.0",
+  "definitions": {
+    "readiness_resource_id": {
+      "title": "Readiness Resource ID",
+      "description": "Event source ID or catalog ID that a buyer binds to satisfy an execution requirement.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
 }

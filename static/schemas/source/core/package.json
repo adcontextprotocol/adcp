@@ -293,9 +293,8 @@
           "description": "Which party initiated the package cancellation."
         },
         "reason": {
-          "type": "string",
-          "description": "Reason the package was canceled.",
-          "maxLength": 500
+          "$ref": "/schemas/core/cancellation-reason.json",
+          "description": "Reason the package was canceled."
         },
         "acknowledged_at": {
           "type": "string",

@@ -20,7 +20,7 @@
       "properties": {
         "mode": { "type": "string", "const": "provision" },
         "provider": { "type": "object", "description": "Platform hosting the destination.", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": false },
-        "location": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Provider-native bucket, prefix, project/dataset, catalog/schema, or equivalent locator. It MUST NOT contain an embedded credential or signed URL." },
+        "location": { "$ref": "/schemas/core/provider-storage-locator.json", "description": "Provider-native bucket, prefix, project/dataset, catalog/schema, or equivalent locator. It MUST NOT contain an embedded credential or signed URL." },
         "access_mode": { "$ref": "/schemas/core/reporting-access-mode.json", "description": "Optional provider access family used for capability matching." }
       },
       "required": ["mode", "provider", "location"],

@@ -123,9 +123,7 @@
       }
     },
     "reason": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 2000,
+      "$ref": "/schemas/core/brief-rejection-reason.json",
       "description": "Buyer-facing market explanation required only on the GetProductsRejected arm. MAY be sanitized to protect confidential seller rules. Plain text only."
     },
     "suggestions": {
@@ -133,9 +131,7 @@
       "description": "Actionable alternatives available only on the GetProductsRejected arm.",
       "maxItems": 20,
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 1000
+        "$ref": "/schemas/core/seller-suggestion.json"
       }
     },
     "property_list_applied": {
@@ -163,12 +159,7 @@
                 "description": "Echoes scope 'request' from the corresponding refine entry."
               },
               "status": {
-                "type": "string",
-                "enum": [
-                  "applied",
-                  "partial",
-                  "unable"
-                ],
+                "$ref": "#/definitions/refinement_status",
                 "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
@@ -213,12 +204,7 @@
                 "description": "Required with result_product_id. Exact forecast flight end after resolving explicit package timestamps or date-filter defaults. Buyers materialize this timestamp on the package at create. MUST be after resolved_start_time."
               },
               "status": {
-                "type": "string",
-                "enum": [
-                  "applied",
-                  "partial",
-                  "unable"
-                ],
+                "$ref": "#/definitions/refinement_status",
                 "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
@@ -260,12 +246,7 @@
                 "description": "Echoes proposal_id from the corresponding refine entry."
               },
               "status": {
-                "type": "string",
-                "enum": [
-                  "applied",
-                  "partial",
-                  "unable"
-                ],
+                "$ref": "#/definitions/refinement_status",
                 "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
               },
               "notes": {
@@ -547,5 +528,17 @@
       }
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "refinement_status": {
+      "title": "Refinement Status",
+      "description": "Whether a refinement ask was applied, partially applied, or unable to be applied.",
+      "type": "string",
+      "enum": [
+        "applied",
+        "partial",
+        "unable"
+      ]
+    }
+  }
 }

@@ -60,10 +60,8 @@
           }
         },
         "match_quality": {
-          "type": "number",
-          "description": "Overall match quality score for the batch (0.0 = no matches, 1.0 = all matched)",
-          "minimum": 0,
-          "maximum": 1
+          "$ref": "/schemas/core/fraction.json",
+          "description": "Overall match quality score for the batch (0.0 = no matches, 1.0 = all matched)"
         },
         "sandbox": {
           "type": "boolean",

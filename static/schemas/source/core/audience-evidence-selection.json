@@ -11,7 +11,7 @@
     "snapshot_id": {
       "$ref": "/schemas/core/audience-evidence-snapshot-id.json"
     },
-    "version": { "type": "string", "minLength": 1 },
+    "version": { "$ref": "/schemas/core/audience-evidence-version.json" },
     "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
     "decision_use": {
       "$ref": "/schemas/enums/audience-evidence-decision-use.json",
@@ -38,9 +38,7 @@
                     "properties": {
                       "action_type": { "const": "https://adcontextprotocol.org/actions/audience-evidence-evaluation" },
                       "action_id": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 1024,
+                        "$ref": "/schemas/core/attestation-action-id.json",
                         "$comment": "x-entity deliberately omitted because the surrounding selection requires this value to equal snapshot_id."
                       },
                       "action_digest": {

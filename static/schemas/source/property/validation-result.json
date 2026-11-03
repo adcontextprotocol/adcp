@@ -66,9 +66,7 @@
             "additionalProperties": false
           },
           "confidence": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
+            "$ref": "/schemas/core/fraction.json",
             "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
           }
         },

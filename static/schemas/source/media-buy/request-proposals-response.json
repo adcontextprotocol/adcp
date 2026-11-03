@@ -52,7 +52,7 @@
         "type": "object",
         "properties": {
           "scope": { "type": "string", "enum": ["products", "pricing", "forecast", "proposals", "wholesale_feed"] },
-          "description": { "type": "string", "minLength": 1 },
+          "description": { "$ref": "/schemas/core/incomplete-scope-description.json" },
           "estimated_wait": { "$ref": "/schemas/core/duration.json" }
         },
         "required": ["scope", "description"],
@@ -126,8 +126,7 @@
               "minItems": 2,
               "uniqueItems": true,
               "items": {
-                "type": "string",
-                "enum": ["feed_version_not_atomic", "pricing_version_not_atomic", "mutation_idempotency_not_guaranteed"]
+                "$ref": "/schemas/enums/purchase-continuation-loss.json"
               },
               "allOf": [
                 { "contains": { "const": "feed_version_not_atomic" } },

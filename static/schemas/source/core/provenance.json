@@ -288,9 +288,7 @@
             "description": "Verification outcome"
           },
           "confidence": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
+            "$ref": "/schemas/core/fraction.json",
             "description": "Confidence score of the verification result (0.0 to 1.0)"
           },
           "details_url": {

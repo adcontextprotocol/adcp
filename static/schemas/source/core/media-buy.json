@@ -71,9 +71,8 @@
           "description": "Which party initiated the cancellation. 'buyer' when canceled through control_media_buy or the 3.x update_media_buy facade; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal)."
         },
         "reason": {
-          "type": "string",
-          "description": "Reason provided when the media buy was canceled.",
-          "maxLength": 500
+          "$ref": "/schemas/core/cancellation-reason.json",
+          "description": "Reason provided when the media buy was canceled."
         }
       },
       "additionalProperties": false

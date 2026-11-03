@@ -43,7 +43,7 @@
       "description": "Resource identity copied from the corresponding account change record.",
       "properties": {
         "type": {"$ref": "/schemas/core/account-change-resource-type.json"},
-        "resource_id": {"type": "string", "minLength": 1, "maxLength": 255},
+        "resource_id": {"$ref": "/schemas/core/account-change-resource-id.json"},
         "parent_ids": {
           "type": "object",
           "additionalProperties": {"type": "string", "maxLength": 255},

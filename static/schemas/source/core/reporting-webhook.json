@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "url": {
-      "type": "string",
-      "format": "uri",
+      "$ref": "/schemas/core/webhook-url.json",
       "description": "Webhook endpoint URL for reporting notifications"
     },
     "operation_id": {
@@ -36,7 +35,7 @@
           "maxItems": 1
         },
         "credentials": {
-          "$ref": "/schemas/core/webhook-auth-credential.json",
+          "$ref": "/schemas/core/auth-credential.json",
           "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding."
         }
       },

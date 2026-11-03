@@ -130,7 +130,7 @@
       "description": "Optional non-secret human escalation path for reporting issues the protocol cannot resolve. It is display metadata for an operator, not an AdCP endpoint: agents MUST NOT dereference, probe, or send protocol traffic to these values, and they carry no authorization. Required when consumer_mismatch_escalation_seconds is advertised.",
       "properties": {
         "url": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "maxLength": 2048, "description": "HTTPS page a human uses to open or track a reporting issue, such as a support portal or status page. Same hardened origin shape as the offering document URIs: never an IP literal, userinfo URL, loopback host, AdCP task endpoint, webhook target, or credentialed link." },
-        "email": { "type": "string", "format": "email", "maxLength": 254, "description": "Monitored operations mailbox for reporting escalations. A role address, not an individual." }
+        "email": { "$ref": "/schemas/core/email-address.json", "description": "Monitored operations mailbox for reporting escalations. A role address, not an individual." }
       },
       "minProperties": 1,
       "additionalProperties": false

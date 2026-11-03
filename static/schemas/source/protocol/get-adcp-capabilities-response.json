@@ -16,6 +16,33 @@
       "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["account", "fixed"]
+    },
+    "governance_enforcement_mode": {
+      "title": "Governance Enforcement Mode",
+      "description": "How a seller enforces governance on a task: signed_context or online_execution_check.",
+      "type": "string",
+      "enum": [
+        "signed_context",
+        "online_execution_check"
+      ]
+    },
+    "attestation_requirement": {
+      "title": "Attestation Requirement",
+      "description": "Whether a check needs a verified attestation: required or optional.",
+      "type": "string",
+      "enum": [
+        "optional",
+        "required"
+      ]
+    },
+    "hashed_identifier_type": {
+      "title": "Hashed Identifier Type",
+      "description": "Hashed identifier that a seller accepts: hashed_email or hashed_phone.",
+      "type": "string",
+      "enum": [
+        "hashed_email",
+        "hashed_phone"
+      ]
     }
   },
   "allOf": [
@@ -1011,8 +1038,7 @@
                 "type": "object",
                 "properties": {
                   "pattern": {
-                    "type": "string",
-                    "enum": ["file_transfer", "warehouse_materialization", "dataset_share"]
+                    "$ref": "/schemas/enums/reporting-delivery-pattern.json"
                   },
                   "transports": {
                     "type": "array",
@@ -1152,8 +1178,7 @@
                       "type": "array",
                       "description": "Agent-level notification types this seller can emit for capability changes. Currently only `capabilities.changed` is defined.",
                       "items": {
-                        "type": "string",
-                        "enum": ["capabilities.changed"]
+                        "$ref": "/schemas/enums/capability-change-event-type.json"
                       },
                       "minItems": 1,
                       "uniqueItems": true
@@ -1232,7 +1257,7 @@
                       "task": { "type": "string", "const": "create_media_buy" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1246,7 +1271,7 @@
                       "task": { "type": "string", "const": "update_media_buy" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1260,7 +1285,7 @@
                       "task": { "type": "string", "const": "buy_products" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1274,7 +1299,7 @@
                       "task": { "type": "string", "const": "accept_proposal" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1288,7 +1313,7 @@
                       "task": { "type": "string", "const": "control_media_buy" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1744,8 +1769,7 @@
           "type": "array",
           "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
           "items": {
-            "type": "string",
-            "enum": ["brief", "wholesale", "refine"]
+            "$ref": "/schemas/enums/buying-mode.json"
           },
           "minItems": 1,
           "uniqueItems": true,
@@ -1794,9 +1818,7 @@
               "description": "Experimental (media_buy.delegated_composition). What a successful finalize commits by default, for products and drafts that do not declare hold_policy (experimental, media_buy.hold_policy); it is not one setting for the whole agent. A product or draft hold_policy overrides it: a terms_only agent can hold specific products, and an inventory_hold agent can declare non-holdable ones. The rules apply per finalize entry, according to that entry's effective policy. inventory_hold (the default when absent): the seller reserves inventory for the committed proposal and reports its hold expiry; hold_unavailable and hold-driven batch_aborted are possible outcomes. terms_only: the seller commits commercial terms without placing an inventory hold — reservation is owned by the requesting side (delegated composition, where the requester owns the sellable catalog). For an entry whose effective policy is terms-only, the seller MUST NOT return hold_unavailable, and returns batch_aborted only when a sibling failed for a non-hold reason or, in a batch that also contains holdable entries, a holdable sibling returned hold_unavailable. Buyers integrating a terms_only seller perform their own availability control at acceptance. Because committed meant inventory reserved before this field existed, a seller MUST NOT return a committed proposal whose effective policy is terms-only to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
             },
             "max_alternatives": {
-              "type": "integer",
-              "minimum": 2,
-              "maximum": 10,
+              "$ref": "/schemas/core/proposal-alternative-count.json",
               "description": "Optional maximum alternatives.count the seller accepts, up to the protocol maximum of 10. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
             },
             "hold_extension": {
@@ -2407,8 +2429,7 @@
           "description": "Seller evaluation policy for portable rights-grant attestations carried on creative rights constraints. Presence requires adcp.attestations and the rights-grant claim URI in accepted_claim_types. The seller remains verifier-of-record and never treats verification_url or a buyer-authored evaluation as authorization.",
           "properties": {
             "requirement": {
-              "type": "string",
-              "enum": ["optional", "required"],
+              "$ref": "#/definitions/attestation_requirement",
               "description": "required means every applicable rights constraint needs at least one current verified attestation evaluation before the creative is eligible to serve. optional permits independent legacy contractual policy, but unattested constraints remain machine-unverified and verification_url is never a downgrade path."
             }
           },
@@ -2423,8 +2444,7 @@
               "type": "array",
               "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
               "items": {
-                "type": "string",
-                "enum": ["hashed_email", "hashed_phone"]
+                "$ref": "#/definitions/hashed_identifier_type"
               },
               "minItems": 1,
               "x-max-items-4.0": 16
@@ -2518,8 +2538,7 @@
               "type": "array",
               "description": "Target kinds this seller can support for vendor_metric optimization goals on at least one product. Values match optimization_goals[].target.kind for kind: vendor_metric. A target-less vendor_metric goal maximizes the metric within budget and does not require a target-kind declaration.",
               "items": {
-                "type": "string",
-                "enum": ["cost_per", "threshold_rate"]
+                "$ref": "/schemas/enums/metric-optimization-target-kind.json"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -2557,8 +2576,7 @@
               "type": "array",
               "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. cost_per also declares that the seller binds criteria.outcome_target.cost_per to an event goal; buyers do not rely on event-goal cost targets without it. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
               "items": {
-                "type": "string",
-                "enum": ["cost_per", "per_ad_spend", "maximize_value"]
+                "$ref": "/schemas/enums/conversion-optimization-target.json"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -2576,8 +2594,7 @@
               "type": "array",
               "description": "Hashed PII types accepted for user matching. Buyers must hash before sending (SHA-256, normalized).",
               "items": {
-                "type": "string",
-                "enum": ["hashed_email", "hashed_phone"]
+                "$ref": "#/definitions/hashed_identifier_type"
               },
               "minItems": 1,
               "x-max-items-4.0": 16
@@ -2885,8 +2902,7 @@
           "type": "array",
           "description": "Discovery modes this signals agent supports on get_signals. 'brief' (default — every signals agent supports this): semantic discovery driven by signal_spec or signal_refs, with deprecated signal_ids accepted for older clients. 'wholesale': raw wholesale signals feed enumeration — caller omits signal_spec, signal_refs, and signal_ids and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries. Agents that do not declare 'wholesale' MAY return INVALID_REQUEST for wholesale calls. Absent declaration is treated as ['brief'].",
           "items": {
-            "type": "string",
-            "enum": ["brief", "wholesale"]
+            "$ref": "/schemas/enums/signal-discovery-mode.json"
           },
           "minItems": 1,
           "uniqueItems": true,
@@ -2927,8 +2943,7 @@
               "type": "object",
               "properties": {
                 "requirement": {
-                  "type": "string",
-                  "enum": ["optional", "required"],
+                  "$ref": "#/definitions/attestation_requirement",
               "description": "Whether an activate_signal activation check may omit runtime_attestations. When required, missing evidence fails an activation check. Deactivation and privacy-removal checks never require signal-quality evidence and remain available without it."
                 },
                 "claim_types": {
@@ -3087,8 +3102,7 @@
                 "type": "object",
                 "properties": {
                   "type": {
-                    "type": "string",
-                    "enum": ["mcp", "a2a"],
+                    "$ref": "/schemas/enums/agent-protocol.json",
                     "description": "Protocol transport type"
                   },
                   "url": {
@@ -3104,8 +3118,7 @@
               "maxItems": 8
             },
             "preferred": {
-              "type": "string",
-              "enum": ["mcp", "a2a"],
+              "$ref": "/schemas/enums/agent-protocol.json",
               "description": "Preferred transport when host supports multiple"
             }
           },
@@ -3785,8 +3798,7 @@
           "type": "array",
           "description": "Signature algorithms this agent uses on outbound webhooks. 3.0 profile permits 'ed25519' and 'ecdsa-p256-sha256' only; other values are reserved for future profile versions and MUST NOT be emitted under adcp/webhook-signing/v1.",
           "items": {
-            "type": "string",
-            "enum": ["ed25519", "ecdsa-p256-sha256"]
+            "$ref": "/schemas/enums/webhook-signing-algorithm.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -4182,21 +4194,7 @@
           "type": "array",
           "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path. collection_card.updated, collection_card.removed and collection_catalog.bulk_change (experimental) require list_collections, so listing any of them requires media_buy.collection_catalog in experimental_features; buyers MUST NOT register them with a seller that does not list them here, and sellers reject undeclared types.",
           "items": {
-            "type": "string",
-            "enum": [
-              "product.created",
-              "product.updated",
-              "product.priced",
-              "product.removed",
-              "signal.created",
-              "signal.updated",
-              "signal.priced",
-              "signal.removed",
-              "wholesale_feed.bulk_change",
-              "collection_card.updated",
-              "collection_card.removed",
-              "collection_catalog.bulk_change"
-            ]
+            "$ref": "/schemas/enums/wholesale-feed-event-type.json"
           },
           "minItems": 1,
           "uniqueItems": true,

@@ -17,9 +17,7 @@
       "description": "Computed end of the later-proposal window: the earliest of later_proposals.until, the end of planning_horizon.end in UTC, and the seller's max_open_duration measured from the call that last set accepted true. Required when accepted is true. Closing the opportunity ends the window earlier."
     },
     "max_count": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 50,
+      "$ref": "/schemas/core/later-proposal-limit.json",
       "description": "Effective cap on later proposals under the current consent: the buyer's value, the protocol default of 5, or a lower seller cap. Required when accepted is true."
     },
     "min_interval": {

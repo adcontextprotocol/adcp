@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-discovery-mode.json",
+  "title": "Signal Discovery Mode",
+  "description": "Caller intent for a signals discovery request: brief or wholesale.",
+  "type": "string",
+  "enum": [
+    "brief",
+    "wholesale"
+  ]
+}

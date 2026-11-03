@@ -84,13 +84,7 @@
     {
       "properties": {
         "offer_reason": {
-          "enum": [
-            "installment_postponed",
-            "installment_cancelled",
-            "preemption",
-            "under_delivery",
-            "seller_request"
-          ]
+          "$ref": "/schemas/enums/offer-reason.json"
         }
       }
     }

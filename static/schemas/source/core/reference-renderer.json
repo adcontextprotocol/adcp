@@ -21,8 +21,7 @@
       "description": "Exact semantic version. Ranges and tags such as latest are forbidden so the registry entry is reproducible. Package semantic versioning identifies the pinned distribution artifact; it is independent of any one format revision because one package may expose renderers for multiple formats."
     },
     "export": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/renderer-export-name.json",
       "description": "Named package export that implements the renderer contract for this enclosing format entry. Compatibility is bound at the export-to-entry edge, not to matching version labels: registry review and contract fixtures verify that the export implements the entry's input contract. When that input contract changes, the registry MUST rerun those fixtures and MAY retain the existing export and package pin when they still pass. One package version MAY expose different named exports for different formats or input contracts."
     },
     "format_revision": {

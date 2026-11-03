@@ -75,10 +75,8 @@
       "default": false
     },
     "webhook_activity_limit": {
-      "type": "integer",
+      "$ref": "/schemas/core/webhook-activity-limit.json",
       "description": "Maximum number of webhook delivery records to return per media buy, ordered most-recent first. Ignored when `include_webhook_activity` is false. Sellers that surface webhook activity MUST retain records for at least 30 days from each record's `completed_at` (see `webhook_activity` description in the response schema for the `pending`-status carve-out); sellers unable to honor that floor MUST omit the field entirely rather than truncate. When a buy has more historical fires than the limit, only the most recent are returned — there is no cursor for older fires; this surface is a debug aid, not a full audit log.",
-      "minimum": 1,
-      "maximum": 200,
       "default": 50
     },
     "pagination": {

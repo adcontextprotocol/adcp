@@ -11,8 +11,7 @@
       "description": "Unresolved place name or alias supplied by the user."
     },
     "value": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/geo-place-id.json",
       "description": "Existing identifier to look up in the requested/current catalog version for lifecycle refresh or replacement discovery. Mutually exclusive with q."
     },
     "country": {
@@ -38,9 +37,7 @@
       "$ref": "/schemas/core/page-cursor.json"
     },
     "limit": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 100,
+      "$ref": "/schemas/core/page-size.json",
       "default": 20
     }
   },

@@ -11,7 +11,7 @@
     "snapshot_id": {
       "$ref": "/schemas/core/audience-evidence-snapshot-id.json"
     },
-    "version": { "type": "string", "minLength": 1 },
+    "version": { "$ref": "/schemas/core/audience-evidence-version.json" },
     "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

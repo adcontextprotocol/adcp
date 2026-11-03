@@ -12,6 +12,20 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 128
+    },
+    "golden_vector_name": {
+      "title": "Golden Vector Name",
+      "description": "Name of a golden test vector in a canonicalization contract.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+    },
+    "canonical_utf8_base64": {
+      "title": "Canonical Bytes Base64",
+      "description": "Base64 encoding of the exact canonical UTF-8 bytes a golden vector expects.",
+      "type": "string",
+      "minLength": 1
     }
   },
   "properties": {
@@ -33,7 +47,7 @@
           "title": "EmptyReportGoldenVector",
           "type": "object",
           "properties": {
-            "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+            "name": { "$ref": "#/definitions/golden_vector_name" },
             "purpose": { "type": "string", "const": "empty_report" },
             "input_rows": { "type": "array", "maxItems": 0 },
             "canonical_utf8_base64": { "type": "string", "const": "W10=", "description": "Base64 of the exact UTF-8 bytes for []." },
@@ -46,10 +60,10 @@
           "title": "OrderingEncodingGoldenVector",
           "type": "object",
           "properties": {
-            "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+            "name": { "$ref": "#/definitions/golden_vector_name" },
             "purpose": { "type": "string", "const": "ordering_encoding" },
             "input_rows": { "type": "array", "items": { "type": "object" }, "minItems": 2 },
-            "canonical_utf8_base64": { "type": "string", "minLength": 1, "description": "Base64 of the exact expected canonical UTF-8 bytes." },
+            "canonical_utf8_base64": { "$ref": "#/definitions/canonical_utf8_base64", "description": "Base64 of the exact expected canonical UTF-8 bytes." },
             "sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" }
           },
           "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],
@@ -61,10 +75,10 @@
             "title": "AdditionalGoldenVector",
             "type": "object",
             "properties": {
-              "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+              "name": { "$ref": "#/definitions/golden_vector_name" },
               "purpose": { "type": "string", "const": "additional" },
               "input_rows": { "type": "array", "items": { "type": "object" } },
-              "canonical_utf8_base64": { "type": "string", "minLength": 1, "description": "Base64 of the exact expected canonical UTF-8 bytes." },
+              "canonical_utf8_base64": { "$ref": "#/definitions/canonical_utf8_base64", "description": "Base64 of the exact expected canonical UTF-8 bytes." },
               "sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" }
             },
             "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],

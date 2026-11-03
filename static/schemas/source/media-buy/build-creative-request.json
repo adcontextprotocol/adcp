@@ -321,8 +321,7 @@
       "additionalProperties": true
     },
     "keep_mode": {
-      "type": "string",
-      "enum": ["keep_all", "keep_one", "keep_some"],
+      "$ref": "/schemas/enums/variant-keep-mode.json",
       "default": "keep_all",
       "description": "Advisory hint for how the buyer intends to use the variants. `keep_one` (best-of-N) and `keep_some` signal the agent to set `recommended`/`rank` on returned variants. Advisory only — it does not change what is returned or billed; every produced variant is returned and charged. Keeping is a client act of trafficking the chosen build_variant_id(s)."
     },

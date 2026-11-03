@@ -46,14 +46,7 @@
         "reasons": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "offering_unsupported",
-              "capacity",
-              "overridden",
-              "excluded_by_buyer",
-              "action_required"
-            ]
+            "$ref": "/schemas/enums/reporting-subscription-exclusion-reason.json"
           },
           "minItems": 1,
           "uniqueItems": true,

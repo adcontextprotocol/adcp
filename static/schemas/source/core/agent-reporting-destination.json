@@ -19,10 +19,7 @@
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "$ref": "#/definitions/operator_id",
           "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
         },
         "active": {
@@ -37,10 +34,7 @@
           "description": "Open provider transport name, such as s3, gcs, or azure_blob."
         },
         "location": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2048,
-          "pattern": "^[!$&-;=@-~]+$",
+          "$ref": "#/definitions/destination_locator",
           "description": "Provider-native bucket/prefix locator, such as s3://bucket/prefix/ or abfss://container@account.dfs.core.windows.net/path. Printable ASCII without whitespace, '?', '#', '%', '\"', '<', or '>'. Never a credential or signed URL; sellers additionally screen and normalize per the secret_rejection and normalization rules."
         },
         "accepted_formats": {
@@ -82,10 +76,7 @@
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "$ref": "#/definitions/operator_id",
           "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
         },
         "active": {
@@ -100,10 +91,7 @@
           "description": "Open provider transport name, such as bigquery, snowflake, or databricks_sql."
         },
         "location": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2048,
-          "pattern": "^[!$&-;=@-~]+$",
+          "$ref": "#/definitions/destination_locator",
           "description": "Provider-native project/dataset, database/schema, or catalog/schema locator. Printable ASCII without whitespace, '?', '#', '%', '\"', '<', or '>'. Never a credential or signed URL; sellers additionally screen and normalize per the secret_rejection and normalization rules."
         },
         "accepted_verification_profiles": {
@@ -135,10 +123,7 @@
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
-          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "$ref": "#/definitions/operator_id",
           "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
         },
         "active": {
@@ -186,5 +171,23 @@
     "replacement": "destination_id values are unique within reporting_destinations. An exact replay preserves destination_ref. Changing provider, transport, normalized location/recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and a new destination_ref; old references remain immutable and resolvable for authorized account bindings and retained reporting history, and remain enumerable to their owner through configuration readback.",
     "suspension_and_revocation": "Setting active to false suspends every generation of the destination_id: the seller MUST stop initiating new deliveries within its advertised suspension interval and mark affected account bindings with a typed destination_suspended issue. Omitting a previously present destination_id from a submitted reporting_destinations section revokes it: in addition to suspension effects, the destination and its generations leave current state, remain enumerable as retired generations, and can only be reused through fresh registration and proof. Neither operation deletes data already delivered.",
     "operator_scope": "operator_id scopes resources within one principal only. Suspension, revocation, and audit enumeration MAY be applied per operator_id, and consolidated delivery for one operator SHOULD use that operator's own destinations when contracted. Matching operator_id values or operator domains across different principals MUST NOT be linked, deduped, or granted shared authority; bridging principals requires the explicitly authorized administrative delegation surface."
+  },
+  "definitions": {
+    "operator_id": {
+      "title": "Operator Label",
+      "description": "Agent-scoped label naming the operator that a reporting destination serves, for per-operator isolation, audit, and offboarding.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "destination_locator": {
+      "title": "Destination Locator",
+      "description": "Provider-native locator of a reporting destination, such as a bucket prefix or a dataset, in printable ASCII without whitespace.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[!$&-;=@-~]+$"
+    }
   }
 }

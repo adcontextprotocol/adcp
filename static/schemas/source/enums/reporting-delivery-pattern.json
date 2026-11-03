@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/reporting-delivery-pattern.json",
+  "title": "Reporting Delivery Pattern",
+  "description": "How reporting data reaches a destination: file_transfer, dataset_share, or warehouse_materialization.",
+  "type": "string",
+  "enum": [
+    "file_transfer",
+    "dataset_share",
+    "warehouse_materialization"
+  ]
+}

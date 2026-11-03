@@ -82,8 +82,8 @@
       }
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },
-    "description": { "type": "string", "maxLength": 2000 },
-    "brief_alignment": { "type": "string", "maxLength": 2000 },
+    "description": { "$ref": "/schemas/core/proposal-description.json" },
+    "brief_alignment": { "$ref": "/schemas/core/proposal-brief-alignment.json" },
     "commercial_terms": { "$ref": "/schemas/media-buy/commercial-terms.json" },
     "terms_digest": {
       "$ref": "/schemas/core/proposal-terms-digest.json",
@@ -116,8 +116,8 @@
         "not": { "required": ["opportunity_id"] },
         "properties": {
           "proposal_id": { "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
-          "proposal_kind": { "enum": ["media_buy_update", "media_buy_cancellation"] },
-          "proposal_status": { "enum": ["committed", "accepted"] }
+          "proposal_kind": { "$ref": "/schemas/enums/seller-proposal-kind.json" },
+          "proposal_status": { "$ref": "/schemas/enums/seller-proposal-status.json" }
         }
       }
     },

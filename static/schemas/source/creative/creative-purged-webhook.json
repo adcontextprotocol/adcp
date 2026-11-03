@@ -51,8 +51,7 @@
       "description": "Categorical reason for the purge. Typical values: `retention_expired`, `legal_erasure`, `takedown_request`. Receivers MUST treat unknown reason codes as forward-compatible additions."
     },
     "reason_detail": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/reason-detail.json",
       "description": "Human-readable supplement. Sellers MUST NOT include third-party PII or the asset content in this field — the field is meant for operational context, not asset preservation."
     },
     "initiator": {

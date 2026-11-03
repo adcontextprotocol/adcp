@@ -57,7 +57,7 @@
           "slot_bindings": {
             "type": "array",
             "uniqueItems": true,
-            "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+            "items": { "$ref": "/schemas/core/asset-group-id.json" },
             "description": "Asset group IDs rendered in this state (components mode). Makes the template executable: given components and bindings, assembly is deterministic. Every value MUST resolve to a declared slot. Omitted means all supplied component slots may render."
           },
           "motion": {
@@ -208,9 +208,7 @@
             "description": "Duration of a seller-rendered animated transition."
           },
           "scroll_threshold_percent": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100,
+            "$ref": "/schemas/core/percentage.json",
             "description": "Viewport/page scroll threshold that starts a `scroll_threshold` transition."
           },
           "scroll_reference": {
@@ -219,15 +217,11 @@
             "description": "Reference frame for scroll percentages. Progress is `scroll_offset / max(scroll_extent - viewport_extent, 1) * 100`, measured on either the page document or the nearest seller-declared containing scroller."
           },
           "scroll_start_percent": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100,
+            "$ref": "/schemas/core/percentage.json",
             "description": "Start of the bounded scroll interval for a `scroll_progress` transition."
           },
           "scroll_end_percent": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100,
+            "$ref": "/schemas/core/percentage.json",
             "description": "End of the bounded scroll interval for a `scroll_progress` transition. MUST be greater than `scroll_start_percent`."
           },
           "preserve_playback": {
@@ -241,7 +235,7 @@
           {
             "properties": {
               "trigger": { "type": "string", "const": "timer" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "delay_ms"],
             "not": { "anyOf": [{ "required": ["input"] }, { "required": ["media_event"] }, { "required": ["scroll_reference"] }, { "required": ["scroll_threshold_percent"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }] }
@@ -249,7 +243,7 @@
           {
             "properties": {
               "trigger": { "type": "string", "const": "in_view_timer" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "delay_ms"],
             "not": { "anyOf": [{ "required": ["input"] }, { "required": ["media_event"] }, { "required": ["scroll_reference"] }, { "required": ["scroll_threshold_percent"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }] }
@@ -258,7 +252,7 @@
             "properties": {
               "trigger": { "type": "string", "const": "scroll_threshold" },
               "input": { "type": "string", "const": "scroll" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "input", "scroll_reference", "scroll_threshold_percent"],
             "not": { "anyOf": [{ "required": ["delay_ms"] }, { "required": ["media_event"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }] }
@@ -275,7 +269,7 @@
           {
             "properties": {
               "trigger": { "type": "string", "const": "user_action" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "input"],
             "not": { "anyOf": [{ "required": ["delay_ms"] }, { "required": ["media_event"] }, { "required": ["scroll_reference"] }, { "required": ["scroll_threshold_percent"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }, { "required": ["direction"] }] }
@@ -283,7 +277,7 @@
           {
             "properties": {
               "trigger": { "type": "string", "const": "media_event" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "media_event"],
             "not": { "anyOf": [{ "required": ["input"] }, { "required": ["delay_ms"] }, { "required": ["scroll_reference"] }, { "required": ["scroll_threshold_percent"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }, { "required": ["direction"] }] }

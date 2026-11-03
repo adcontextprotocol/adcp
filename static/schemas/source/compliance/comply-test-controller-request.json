@@ -963,7 +963,7 @@
                 "then": {
                   "required": ["target_health"],
                   "properties": {
-                    "target_health": { "enum": ["delayed", "action_required"] }
+                    "target_health": { "$ref": "/schemas/enums/reporting-status-severity.json" }
                   }
                 },
                 "else": {
@@ -978,7 +978,7 @@
                 "then": {
                   "required": ["received_reporting_revision_id"],
                   "properties": {
-                    "advance_to": { "enum": ["within_grace", "past_grace"] }
+                    "advance_to": { "$ref": "#/definitions/grace_boundary" }
                   }
                 },
                 "else": {
@@ -1190,8 +1190,7 @@
           "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, and advance_past_escalation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, buyer-side missing-obligation detection, counted consumer-status silence, and consumer-mismatch escalation. advance_past_status_deadline moves the clock strictly past expected_at plus the advertised automated_recovery_window_seconds without recording any consumer status, so obligation_counts.consumer_status_pending is gradable; advance_past_escalation moves it strictly past the open CONSUMER_STATUS_MISMATCH issue opened_at plus the advertised consumer_mismatch_escalation_seconds and returns both that boundary and any still-future stale_received_grace_deadline, so the escalation precedence rule is gradable. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence. reporting_subscription_probe (experimental, media_buy.reporting_subscriptions) uses revoke_grant, regrant, reduce_grant, set_account_timezone, and advance_time to drive grants, account timezone cutovers, and the sandbox clock for reporting-subscription coverage."
         },
         "target_health": {
-          "type": "string",
-          "enum": ["delayed", "action_required"],
+          "$ref": "/schemas/enums/reporting-status-severity.json",
           "description": "Clock-derived health boundary selected by reporting_core_lifecycle_probe advance_time. The controller chooses the corresponding deterministic target time; callers do not supply timestamps."
         },
         "received_reporting_revision_id": {
@@ -1199,8 +1198,7 @@
           "description": "Revision the caller currently reports as received, required by reporting_core_lifecycle_probe restate_after_received. The seller MUST reject the operation unless this names the caller's current required revision for the fixture obligation, and a seller advertising consumer_status_task MUST additionally require a current received consumer status from this caller naming it. This binds the restatement to a real prior read instead of restating into a vacuum."
         },
         "advance_to": {
-          "type": "string",
-          "enum": ["within_grace", "past_grace"],
+          "$ref": "#/definitions/grace_boundary",
           "default": "within_grace",
           "description": "Where reporting_core_lifecycle_probe restate_after_received leaves the virtual clock relative to the returned stale_received_grace_deadline. within_grace grades the delayed projection; past_grace grades the escalation to action_required. Repeating the operation is convergent: it reuses the committed restatement and only moves the clock."
         },
@@ -1502,9 +1500,7 @@
           }
         },
         "spend_percentage": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
+          "$ref": "/schemas/core/percentage.json",
           "description": "Spend to this percentage of budget (0–100). Used by simulate_budget_spend."
         },
         "arm": {
@@ -1530,14 +1526,11 @@
           "x-entity": "creative_evaluation"
         },
         "message": {
-          "type": "string",
-          "maxLength": 2000,
+          "$ref": "/schemas/core/task-message.json",
           "description": "Optional human-readable explanation surfaced on the next forced operation response. Used by force_create_media_buy_arm, force_get_products_arm, force_get_signals_arm, and force_get_creative_features_arm for the submitted arm. Plain text only."
         },
         "reason": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
+          "$ref": "/schemas/core/brief-rejection-reason.json",
           "description": "Deterministic buyer-facing reason the seller MUST emit on the next get_products response when force_get_products_arm uses arm 'rejected'. Plain text only; MUST NOT expose confidential internal rules, inventory identifiers, credentials, or stack traces."
         },
         "suggestions": {
@@ -1546,9 +1539,7 @@
           "minItems": 1,
           "maxItems": 20,
           "items": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
+            "$ref": "/schemas/core/seller-suggestion.json"
           }
         },
         "format_id": {
@@ -1825,5 +1816,16 @@
         }
       }
     }
-  ]
+  ],
+  "definitions": {
+    "grace_boundary": {
+      "title": "Grace Boundary",
+      "description": "Where a lifecycle probe leaves the virtual clock relative to a reporting grace period: within_grace or past_grace.",
+      "type": "string",
+      "enum": [
+        "within_grace",
+        "past_grace"
+      ]
+    }
+  }
 }

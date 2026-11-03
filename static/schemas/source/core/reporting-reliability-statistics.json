@@ -23,6 +23,13 @@
       },
       "required": ["start", "end"],
       "additionalProperties": false
+    },
+    "decimal_string": {
+      "title": "Decimal String",
+      "description": "Non-negative decimal number written as a string, such as 0.25.",
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
     }
   },
   "properties": {
@@ -41,10 +48,10 @@
         "type": "object",
         "properties": {
           "control_total_name": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "unit": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "unit": { "$ref": "/schemas/core/control-total-unit.json" },
           "sample_count": { "type": "integer", "minimum": 1 },
-          "p50_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$", "maxLength": 32 },
-          "p95_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$", "maxLength": 32 }
+          "p50_absolute_delta": { "$ref": "#/definitions/decimal_string" },
+          "p95_absolute_delta": { "$ref": "#/definitions/decimal_string" }
         },
         "required": ["control_total_name", "unit", "sample_count", "p50_absolute_delta", "p95_absolute_delta"],
         "additionalProperties": false

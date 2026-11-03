@@ -16,8 +16,7 @@
       "description": "Exact semantic version of the renderer implementation."
     },
     "export": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/renderer-export-name.json",
       "description": "Renderer export or entry-point name used for this render."
     },
     "rendering_origin": {

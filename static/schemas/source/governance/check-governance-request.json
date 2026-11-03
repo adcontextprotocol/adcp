@@ -376,18 +376,14 @@
           "type": "object",
           "description": "Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages.",
           "additionalProperties": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100
+            "$ref": "/schemas/core/percentage.json"
           }
         },
         "channel_distribution": {
           "type": "object",
           "description": "Actual channel distribution. Keys are channel enum values, values are percentages.",
           "additionalProperties": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100
+            "$ref": "/schemas/core/percentage.json"
           }
         },
         "pacing": {
@@ -420,7 +416,7 @@
               "type": "object",
               "description": "Audience index values for the current reporting period. Keys are seller-defined dimension:value strings (e.g., 'age:25-34', 'gender:female', 'income:high'). The protocol does not mandate a taxonomy — dimensions and value labels vary by seller. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
               "propertyNames": {
-                "pattern": "^[a-z_]+:.+$"
+                "$ref": "#/definitions/audience_dimension_key"
               },
               "additionalProperties": {
                 "type": "number",
@@ -431,7 +427,7 @@
               "type": "object",
               "description": "Cumulative audience index values since the governed action started. Same key format as indices (dimension:value). Use for detecting sustained bias drift that may not appear in a single reporting period.",
               "propertyNames": {
-                "pattern": "^[a-z_]+:.+$"
+                "$ref": "#/definitions/audience_dimension_key"
               },
               "additionalProperties": {
                 "type": "number",
@@ -502,5 +498,13 @@
   "required": [
     "caller"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "audience_dimension_key": {
+      "title": "Audience Dimension Key",
+      "description": "Key of an audience distribution index, written as dimension:value.",
+      "type": "string",
+      "pattern": "^[a-z_]+:.+$"
+    }
+  }
 }

@@ -56,9 +56,9 @@
           "type": "object",
           "description": "Override brand colors (hex strings).",
           "properties": {
-            "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+            "primary": { "$ref": "/schemas/core/hex-color.json" },
+            "secondary": { "$ref": "/schemas/core/hex-color.json" },
+            "accent": { "$ref": "/schemas/core/hex-color.json" }
           },
           "additionalProperties": true
         },

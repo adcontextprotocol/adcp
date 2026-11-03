@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "protected": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$",
+      "$ref": "#/definitions/base64url",
       "description": "Base64url-encoded JWS protected header. The decoded header MUST include alg, kid, and typ: adcp-response-payload+jws, and MUST NOT include the RFC 7797 b64 header. Verifiers enforce the key purpose by resolving kid to a JWK with adcp_use: response-signing."
     },
     "payload": {
@@ -15,8 +14,7 @@
       "description": "Decoded signed payload. Signers compute the JWS payload bytes from the RFC 8785/JCS canonicalization of this object."
     },
     "signature": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$",
+      "$ref": "#/definitions/base64url",
       "description": "Base64url-encoded JWS signature over the protected header and canonicalized payload."
     }
   },
@@ -84,6 +82,12 @@
         "response"
       ],
       "additionalProperties": true
+    },
+    "base64url": {
+      "title": "Base64url Value",
+      "description": "Base64url-encoded value without padding.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
     }
   }
 }

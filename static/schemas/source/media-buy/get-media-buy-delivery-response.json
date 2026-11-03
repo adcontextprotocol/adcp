@@ -195,10 +195,8 @@
           "minimum": 0
         },
         "new_to_brand_rate": {
-          "type": "number",
-          "description": "Fraction of total conversions across all media buys from first-time brand buyers (weighted by conversion volume, not a simple average of per-buy rates)",
-          "minimum": 0,
-          "maximum": 1
+          "$ref": "/schemas/core/fraction.json",
+          "description": "Fraction of total conversions across all media buys from first-time brand buyers (weighted by conversion volume, not a simple average of per-buy rates)"
         },
         "cost_per_acquisition": {
           "type": "number",
@@ -307,20 +305,8 @@
             "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field, daily_breakdown, and all monetary or money-derived values from row and window totals; report those values only at package grain with each package's own currency. AdCP does not perform currency conversion."
           },
           "status": {
-            "type": "string",
-            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_start.",
-            "enum": [
-              "pending_creatives",
-              "pending_start",
-              "pending",
-              "active",
-              "paused",
-              "completed",
-              "rejected",
-              "canceled",
-              "failed",
-              "reporting_delayed"
-            ]
+            "$ref": "/schemas/enums/media-buy-delivery-status.json",
+            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_start."
           },
           "expected_availability": {
             "type": "string",
@@ -732,9 +718,7 @@
                             "type": "object",
                             "properties": {
                               "demographic": {
-                                "type": "string",
-                                "minLength": 1,
-                                "pattern": "\\S",
+                                "$ref": "/schemas/core/demographic-label.json",
                                 "description": "Demographic code in the declared system's notation (for example, P25-54 for Nielsen)."
                               },
                               "demographic_system": {
@@ -1103,10 +1087,8 @@
                             "minimum": 0
                           },
                           "new_to_brand_rate": {
-                            "type": "number",
-                            "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
-                            "minimum": 0,
-                            "maximum": 1
+                            "$ref": "/schemas/core/fraction.json",
+                            "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)"
                           }
                         },
                         "required": [
@@ -1237,10 +1219,8 @@
                   "minimum": 0
                 },
                 "new_to_brand_rate": {
-                  "type": "number",
-                  "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
-                  "minimum": 0,
-                  "maximum": 1
+                  "$ref": "/schemas/core/fraction.json",
+                  "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)"
                 }
               },
               "required": [

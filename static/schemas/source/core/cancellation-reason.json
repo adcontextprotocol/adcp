@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/cancellation-reason.json",
+  "title": "Cancellation Reason",
+  "description": "Free-text reason recorded when a media buy or package is canceled. Sellers store it and return it on later reads.",
+  "type": "string",
+  "maxLength": 500
+}

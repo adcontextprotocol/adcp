@@ -10,7 +10,7 @@
       "properties": {
         "kind": { "type": "string", "const": "category_declaration" },
         "declaration": { "type": "string", "minLength": 1 },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -19,7 +19,7 @@
       "properties": {
         "kind": { "type": "string", "const": "advertiser_verification" },
         "verification_scheme": { "type": "string", "minLength": 1 },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -29,12 +29,12 @@
         "kind": { "type": "string", "const": "advertiser_eligibility" },
         "criteria": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$" },
+          "items": { "$ref": "#/definitions/criterion_id" },
           "minItems": 1,
           "uniqueItems": true,
           "description": "Stable criteria such as domestic_entity, citizen_or_resident, official_election_authority, or eligible_agency."
         },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind", "criteria"],
       "additionalProperties": false
@@ -44,12 +44,12 @@
         "kind": { "type": "string", "const": "funding_restriction" },
         "criteria": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$" },
+          "items": { "$ref": "#/definitions/criterion_id" },
           "minItems": 1,
           "uniqueItems": true,
           "description": "Stable restrictions such as no_foreign_funding or sponsor_identity_required."
         },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind", "criteria"],
       "additionalProperties": false
@@ -57,8 +57,8 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "certification" },
-        "credential": { "type": "string", "minLength": 1 },
-        "description": { "type": "string", "minLength": 1 }
+        "credential": { "$ref": "#/definitions/required_credential" },
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -66,8 +66,8 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "license" },
-        "credential": { "type": "string", "minLength": 1 },
-        "description": { "type": "string", "minLength": 1 }
+        "credential": { "$ref": "#/definitions/required_credential" },
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -75,7 +75,7 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "prior_authorization" },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -83,7 +83,7 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "account_setup" },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -91,7 +91,7 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "sales_assisted" },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -101,7 +101,7 @@
         "kind": { "type": "string", "const": "disclosure" },
         "format": { "type": "string", "minLength": 1 },
         "placement": { "type": "string", "minLength": 1 },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -115,7 +115,7 @@
           "minItems": 1,
           "uniqueItems": true
         },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -123,7 +123,7 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "creative_restriction" },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind", "description"],
       "additionalProperties": false
@@ -131,7 +131,7 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "destination_restriction" },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind", "description"],
       "additionalProperties": false
@@ -149,7 +149,7 @@
           "x-removed-in": "4.0.0",
           "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. This named-format restriction is retained for 3.x compatibility; new policies identify canonical format options in description or an extension until a registry-stable format-option identity is standardized."
         },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -159,7 +159,7 @@
         "kind": { "type": "string", "const": "time_restriction" },
         "starts_at": { "type": "string", "format": "date-time" },
         "ends_at": { "type": "string", "format": "date-time" },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -167,7 +167,7 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "transparency_reporting" },
-        "description": { "type": "string", "minLength": 1 }
+        "description": { "$ref": "#/definitions/requirement_description" }
       },
       "required": ["kind"],
       "additionalProperties": false
@@ -176,11 +176,31 @@
       "properties": {
         "kind": { "type": "string", "const": "custom" },
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$" },
-        "description": { "type": "string", "minLength": 1 },
+        "description": { "$ref": "#/definitions/requirement_description" },
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["kind", "id", "description"],
       "additionalProperties": false
     }
-  ]
+  ],
+  "definitions": {
+    "criterion_id": {
+      "title": "Acceptance Criterion ID",
+      "description": "Stable identifier of an acceptance criterion, such as domestic_entity or eligible_agency.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
+    },
+    "requirement_description": {
+      "title": "Requirement Description",
+      "description": "Human-readable description of one acceptance-policy requirement.",
+      "type": "string",
+      "minLength": 1
+    },
+    "required_credential": {
+      "title": "Required Credential",
+      "description": "Name of the certification or license that an acceptance-policy requirement demands.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
 }

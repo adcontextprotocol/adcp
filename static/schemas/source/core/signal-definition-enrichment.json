@@ -58,8 +58,7 @@
             "type": "object",
             "properties": {
               "id": {
-                "type": "string",
-                "minLength": 1
+                "$ref": "/schemas/core/signal-taxonomy-node-id.json"
               },
               "path": {
                 "type": "string"
@@ -109,8 +108,7 @@
       "additionalProperties": false
     },
     "segmentation_criteria": {
-      "type": "string",
-      "maxLength": 500
+      "$ref": "/schemas/core/signal-segmentation-criteria.json"
     },
     "criteria_url": {
       "type": "string",
@@ -120,26 +118,7 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "enum": [
-          "app_behavior",
-          "app_usage",
-          "web_usage",
-          "geo_location",
-          "email",
-          "tv_ott_or_stb_device",
-          "panel",
-          "online_ecommerce",
-          "credit_data",
-          "loyalty_card",
-          "transaction",
-          "online_survey",
-          "offline_survey",
-          "public_record_census",
-          "public_record_voter_file",
-          "public_record_other",
-          "offline_transaction"
-        ]
+        "$ref": "/schemas/enums/signal-data-source.json"
       }
     },
     "methodology": {
@@ -164,8 +143,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string",
-            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone"]
+            "$ref": "/schemas/enums/signal-match-key.json"
           }
         },
         "pre_onboarding_audience_expansion": {
@@ -255,7 +233,7 @@
               "rights": {
                 "type": "array",
                 "contains": {
-                  "enum": ["access", "erasure", "objection"]
+                  "$ref": "/schemas/enums/required-data-subject-right.json"
                 }
               }
             },
@@ -301,9 +279,7 @@
           }
         },
         "response_sla_days": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 90
+          "$ref": "/schemas/core/rights-response-sla-days.json"
         },
         "ccpa_opt_out_url": {
           "$ref": "/schemas/core/https-url.json"

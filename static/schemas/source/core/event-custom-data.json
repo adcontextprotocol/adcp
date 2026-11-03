@@ -47,9 +47,7 @@
       "description": "Search query for search events"
     },
     "progress_percent": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 100,
+      "$ref": "/schemas/core/percentage.json",
       "description": "Content progress percentage reached, primarily for `watch_milestone` events. Use 25, 50, 75, or 100 for quartiles, or another publisher-defined threshold. Do not use `value` for non-monetary progress."
     },
     "progress_seconds": {

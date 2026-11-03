@@ -77,7 +77,7 @@
       "type": "object",
       "description": "Operating hours. Keys are ISO day names (monday–sunday), values are time ranges.",
       "propertyNames": {
-        "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        "$ref": "/schemas/enums/day-of-week.json"
       },
       "additionalProperties": {
         "type": "string",

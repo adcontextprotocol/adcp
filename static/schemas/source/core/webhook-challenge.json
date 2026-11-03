@@ -33,12 +33,7 @@
       "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config.",
       "properties": {
         "mode": {
-          "type": "string",
-          "enum": [
-            "rfc9421",
-            "Bearer",
-            "HMAC-SHA256"
-          ],
+          "$ref": "/schemas/enums/webhook-delivery-auth-mode.json",
           "description": "Future webhook delivery authentication mode. `rfc9421` is used when notification_configs[].authentication is absent; Bearer and HMAC-SHA256 are the deprecated legacy modes selected by notification_configs[].authentication."
         },
         "credential_fingerprint": {

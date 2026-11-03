@@ -12,9 +12,8 @@
   "x-status": "experimental",
   "properties": {
     "query": {
-      "type": "string",
-      "description": "Natural language description of desired rights. The agent interprets intent, budget signals, and compatibility from this text.",
-      "maxLength": 2000
+      "$ref": "/schemas/core/brand-agent-query.json",
+      "description": "Natural language description of desired rights. The agent interprets intent, budget signals, and compatibility from this text."
     },
     "uses": {
       "type": "array",

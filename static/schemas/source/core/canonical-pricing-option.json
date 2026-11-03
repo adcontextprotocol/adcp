@@ -7,8 +7,7 @@
   "properties": {
     "pricing_option_id": { "$ref": "/schemas/core/pricing-option-id.json", "x-entity": "product_pricing_option" },
     "pricing_model": {
-      "type": "string",
-      "enum": ["cpm", "vcpm", "cpc", "cpcv", "cpv", "cpp", "cpa", "revenue_share", "flat_rate", "time"]
+      "$ref": "/schemas/enums/pricing-model.json"
     },
     "currency": { "$ref": "/schemas/core/currency-code.json" },
     "fixed_price": { "type": "number", "minimum": 0 },
@@ -25,8 +24,8 @@
     "event_type": { "$ref": "/schemas/enums/event-type.json" },
     "custom_event_name": { "$ref": "/schemas/core/custom-event-name.json" },
     "event_source_id": { "$ref": "/schemas/core/event-source-id.json", "x-entity": "event_source" },
-    "commission_rate": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
-    "commission_basis_description": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    "commission_rate": { "$ref": "/schemas/core/commission-rate.json" },
+    "commission_basis_description": { "$ref": "/schemas/core/commission-basis-description.json" }
   },
   "required": ["pricing_option_id", "pricing_model", "currency"],
   "allOf": [

@@ -87,9 +87,8 @@
       "const": true
     },
     "cancellation_reason": {
-      "type": "string",
-      "description": "Reason for canceling this package.",
-      "maxLength": 500
+      "$ref": "/schemas/core/cancellation-reason.json",
+      "description": "Reason for canceling this package."
     },
     "catalogs": {
       "type": "array",

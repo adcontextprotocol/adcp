@@ -155,8 +155,9 @@ describe('product discovery MCP schema parity', () => {
     // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
     // without relaxing standalone-schema parity. Naming repeated scalar
     // constraints (#8525) makes them shared definitions in the bundled tools;
-    // 169,806 bytes / 165.83 KiB measured, bounded at 166 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(166 * 1024);
+    // 169,806 bytes / 165.83 KiB measured. Naming every remaining repeat
+    // brings it to 172,361 bytes / 168.32 KiB, bounded at 169 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(169 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

@@ -64,9 +64,7 @@
               "description": "Remaining credit available (credit_limit minus outstanding balance)"
             },
             "utilization_percent": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100,
+              "$ref": "/schemas/core/percentage.json",
               "description": "Credit utilization as a percentage (0-100)"
             }
           },

@@ -142,9 +142,8 @@
       "const": true
     },
     "cancellation_reason": {
-      "type": "string",
-      "description": "Reason for cancellation. Sellers SHOULD store this and return it in subsequent get_media_buys responses.",
-      "maxLength": 500
+      "$ref": "/schemas/core/cancellation-reason.json",
+      "description": "Reason for cancellation. Sellers SHOULD store this and return it in subsequent get_media_buys responses."
     },
     "start_time": {
       "$ref": "/schemas/core/start-timing.json"

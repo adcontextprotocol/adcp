@@ -166,8 +166,7 @@
       "additionalProperties": false,
       "properties": {
         "default_unknown_recovery": {
-          "type": "string",
-          "enum": ["correctable", "transient", "terminal"],
+          "$ref": "#/definitions/error_recovery",
           "description": "The recovery classification an agent MUST apply to a code that is not present in this manifest's `error_codes` block. `transient` is the safe default — unknown codes from a non-conforming seller should be retried with backoff, not classified as fatal."
         },
         "note": {
@@ -186,8 +185,7 @@
         "additionalProperties": false,
         "properties": {
           "recovery": {
-            "type": "string",
-            "enum": ["correctable", "transient", "terminal"],
+            "$ref": "#/definitions/error_recovery",
             "description": "How the caller should respond. correctable: fix the request and retry. transient: retry with backoff. terminal: no autonomous recovery — operator intervention required."
           },
           "description": {
@@ -245,6 +243,16 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\\.json$",
       "description": "Normalized relative path to a JSON schema within the published release root."
+    },
+    "error_recovery": {
+      "title": "Error Recovery",
+      "description": "How a caller responds to an error code: correctable, transient, or terminal.",
+      "type": "string",
+      "enum": [
+        "correctable",
+        "transient",
+        "terminal"
+      ]
     }
   }
 }

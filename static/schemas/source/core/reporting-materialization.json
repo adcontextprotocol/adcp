@@ -13,7 +13,7 @@
     "delivery_config_version": { "type": "integer", "minimum": 1 },
     "destination_ref": { "$ref": "/schemas/core/reporting-destination-ref.json", "x-entity": "reporting_destination", "description": "Immutable caller-owned destination generation selected by the account-authorized obligation. It may be reused by the same caller across other independently authorized accounts." },
     "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" },
-    "method": { "type": "string", "enum": ["file_transfer", "dataset_share", "warehouse_materialization"] },
+    "method": { "$ref": "/schemas/enums/reporting-delivery-pattern.json" },
     "transport": { "$ref": "/schemas/core/reporting-transport.json" },
     "attempt": { "type": "integer", "minimum": 1 },
     "status": { "type": "string", "enum": ["pending", "available", "delivered", "failed"], "description": "Lifecycle of this attempt. pending may transition once to available, delivered, or failed; terminal evidence is immutable. Staleness is evaluated in get_reporting_status health, not stored as a materialization state." },

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/asset-group-id.json",
+  "title": "Asset Group ID",
+  "description": "Identifier of an asset group in a format's asset manifest, in lowercase letters, digits, and underscores.",
+  "type": "string",
+  "pattern": "^[a-z0-9_]+$"
+}

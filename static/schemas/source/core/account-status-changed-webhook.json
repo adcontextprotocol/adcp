@@ -65,9 +65,8 @@
       "description": "Machine-readable reason for the transition. This is advisory routing/debug metadata; receivers MUST re-read list_accounts rather than relying on the reason code as the source of truth."
     },
     "reason_detail": {
-      "type": "string",
-      "description": "Optional short human-readable detail. Treat as untrusted text. Sellers MUST NOT include secrets, setup tokens, internal stack traces, or regulated financial details.",
-      "maxLength": 500
+      "$ref": "/schemas/core/reason-detail.json",
+      "description": "Optional short human-readable detail. Treat as untrusted text. Sellers MUST NOT include secrets, setup tokens, internal stack traces, or regulated financial details."
     },
     "setup": {
       "type": "object",

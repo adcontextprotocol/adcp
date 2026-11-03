@@ -42,10 +42,8 @@
           "x-entity": "account"
         },
         "resource_id": {
-          "type": "string",
-          "description": "Canonical identifier for the resource within its type. For an account change this equals account_id.",
-          "minLength": 1,
-          "maxLength": 255
+          "$ref": "/schemas/core/account-change-resource-id.json",
+          "description": "Canonical identifier for the resource within its type. For an account change this equals account_id."
         },
         "parent_ids": {
           "type": "object",
@@ -162,9 +160,8 @@
       "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
     },
     "summary": {
-      "type": "string",
-      "description": "Optional brief, untrusted human-readable summary. MUST NOT contain secrets or sensitive payload data.",
-      "maxLength": 500
+      "$ref": "/schemas/core/change-summary.json",
+      "description": "Optional brief, untrusted human-readable summary. MUST NOT contain secrets or sensitive payload data."
     },
     "ext": {
       "allOf": [{"$ref": "/schemas/core/ext.json"}],
