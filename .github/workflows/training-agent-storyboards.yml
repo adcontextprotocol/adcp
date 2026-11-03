@@ -832,7 +832,7 @@ jobs:
             # runner implements it; the steps also pin deterministic values.
             # The one skip is the backfill_on_regrant: true phase, which this
             # seller (backfill false) does not take.
-            "media_buy_seller/reporting_subscription_coverage:36:1"
+            "media_buy_seller/reporting_subscription_coverage:46:1"
             "media_buy_seller/reporting_subscription_capacity:16:0"
             # Experimental 3.3 holds over seeded hold policies. terms_only:
             # the 4 skips are the hold_semantics inventory_hold-declared and
