@@ -124,6 +124,18 @@ These endpoints resolve domains to brand identities. The `source` field identifi
 
 All sources produce the same resolution response structure, but they are not equivalent evidence. `hosted` and `brand_json` are backed by domain control; `community` and `enriched` describe what the registry has learned without proving that the domain operator asserted it. `source` is the authoritative response provenance, not proof of a house relationship—use `relationship_trust` for that. `enrichment_provider`, when present, is the preferred open-ended attribution/diagnostic identifier and is only emitted for `source: "enriched"`; clients must not treat it as a trust tier or behavioral switch. `provenance_provider` is temporarily also emitted with the same value as a deprecated compatibility alias for enriched responses. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
 
+#### Resolved brand entry
+
+`GET /api/brands/resolve` and each successful result from `POST /api/brands/resolve/bulk` can include an optional `brand` object containing the complete selected brand entry. Read logos, colors, fonts, localized `names` and `tagline`, and tone directly from it. Fields retain their brand.json shapes; the registry does not rename or flatten them. The existing `brand_manifest` output remains available with its existing semantics.
+
+The entry comes from the same winning identity source as the response's `source`. A higher-priority stored portfolio never borrows an entry from a lower-priority live document. `fresh=true` applies the existing source-selection rules to the entry as well as the rest of the response.
+
+For a canonical single-brand document, `brand` is the brand document itself. For a portfolio, selection uses a known stored `brand_id` when present; otherwise it requires a unique entry matching the requested domain through its homepage `url` or an owned website property. Non-owned properties do not select brand identity. On the house's own domain, a unique `master` entry supplies the default; a sole inline brand can supply it only when there are no pointer brands. The resolver also recognizes an exact apex/`www` house hostname confirmed by its validated HTTPS redirect path. A redirect to another house does not grant that default.
+
+`brand` is omitted when no complete entry can be selected, more than one entry matches, the entry disagrees with the existing live identity selection, or the selected document contains only an agent or an unexpanded redirect/pointer. It never falls back to the first portfolio entry. Successful live resolution through a house redirect, `authoritative_location`, or a portfolio pointer can supply the terminal brand entry, provided that live source wins. Legacy stored documents without a canonical brand entry still return their existing metadata and manifest without the new field. Historical ephemeral `brand_context` is excluded from both public outputs.
+
+This is a convenience identity projection. It does not change source provenance, establish a house relationship, or authorize an operator. Continue applying the trust rules below. Clients receiving older registry responses can keep their existing fallback when `brand` is absent.
+
 #### Reading trust
 
 A domain is authoritative for its own identity — TLS proves the document came from that domain and nothing more. Relationships between a brand and a house need both sides to publish them, so resolution reports how each relationship was established rather than flattening it into a single answer.

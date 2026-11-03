@@ -15,6 +15,7 @@ import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
 import { assertValidBrandDomain } from './services/identifier-normalization.js';
 import { getSandboxBrand } from './services/sandbox-brands.js';
+import { selectBrandEntry } from './services/brand-entry-selection.js';
 import {
   observeBrandRelationshipDeclaration,
   type BrandRelationshipDeclaration,
@@ -1231,6 +1232,7 @@ export class BrandManager {
           const brand = this.findBrandByProperty(portfolioData, normalizedDomain);
           if (brand) {
             const primaryName = this.getPrimaryName(brand.names);
+            const entry = selectBrandEntry(portfolioData, { domain: normalizedDomain });
             const result: ResolvedBrand = {
               canonical_id: brand.parent_brand
                 ? `${brand.parent_brand}#${brand.id}`
@@ -1244,6 +1246,7 @@ export class BrandManager {
               house_name: portfolioData.house.name,
               relationship_trust: 'inline',
               brand_manifest: this.buildBrandManifest(brand),
+              brand: entry?.id === brand.id ? entry : undefined,
               ...this.promotionMetadata(validationResult),
               source: 'brand_json',
             };
@@ -1279,6 +1282,10 @@ export class BrandManager {
             const masterBrand = brands.find((b) => b.keller_type === 'master');
             if (masterBrand) {
               const primaryName = this.getPrimaryName(masterBrand.names);
+              const entry = selectBrandEntry(portfolioData, {
+                domain: normalizedDomain,
+                houseDomains: requestedDomainHostnames,
+              });
               const result: ResolvedBrand = {
                 canonical_id: masterBrand.id,
                 canonical_domain: masterBrand.id,
@@ -1289,6 +1296,7 @@ export class BrandManager {
                 house_name: portfolioData.house.name,
                 relationship_trust: 'inline',
                 brand_manifest: this.buildBrandManifest(masterBrand),
+                brand: entry?.id === masterBrand.id ? entry : undefined,
                 ...this.promotionMetadata(validationResult),
                 source: 'brand_json',
               };
@@ -1397,6 +1405,7 @@ export class BrandManager {
           house_name: portfolio.house.name,
           relationship_trust: 'inline',
           brand_manifest: this.buildBrandManifest(brand),
+          brand: selectBrandEntry(portfolio, { domain: ref.domain, brandId: ref.brand_id }),
           ...this.promotionMetadata(validationResult),
           source: 'brand_json',
         };
@@ -1604,6 +1613,7 @@ export class BrandManager {
         promoted_from_schema: options.promoted_from_schema,
         migration_warnings: options.migration_warnings,
         brand_manifest: this.buildBrandManifest(data),
+        brand: selectBrandEntry(data, { domain }),
         source: 'brand_json',
       },
       retainCachedMutual,
@@ -1623,6 +1633,7 @@ export class BrandManager {
       keller_type: data.keller_type,
       relationship_trust: 'standalone',
       brand_manifest: this.buildBrandManifest(data),
+      brand: selectBrandEntry(data, { domain }),
       source: 'hosted',
     };
   }

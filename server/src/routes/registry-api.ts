@@ -182,6 +182,7 @@ import {
 
 import type { BrandManager } from "../brand-manager.js";
 import { resolveBrandFromJson, type BrandDatabase } from "../db/brand-db.js";
+import { selectBrandEntry } from "../services/brand-entry-selection.js";
 import type { PropertyDatabase } from "../db/property-db.js";
 import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
@@ -1420,6 +1421,9 @@ function storedBrandResolutionResponse(
       ? { enrichment_provider: brand.enrichment_provider }
       : {}),
     brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
+    // Keep this explicit even when undefined: a stored winner with no entry
+    // must clear a lower-provenance live entry when the candidates are merged.
+    brand: selectBrandEntry(brand.brand_manifest, { domain: brand.domain, brandId: brand.brand_id }),
     ...(liveValidation ? { live_brand_json: liveValidation } : {}),
   });
 }
