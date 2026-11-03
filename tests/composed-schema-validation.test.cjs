@@ -4560,6 +4560,11 @@ async function runTests() {
   };
   await testSchemaValidation(
     '/schemas/media-buy/buy-products-request.json',
+    { ...cleanPurchase, opportunity: { opportunity_id: 'opp_nova_za_q4' } },
+    'buy_products retains ID-only opportunity acceptance for inferred closure'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-request.json',
     cleanPurchase,
     'buy_products creates directly from canonical product selections'
   );
@@ -5252,22 +5257,78 @@ async function runTests() {
     },
     'create_media_buy rejects non-winning explicit opportunity closure'
   );
+  const packagePurchase = {
+    idempotency_key: 'create-package-opportunity-0001',
+    account: { account_id: 'account-opportunity-test' },
+    brand: { domain: 'buyer.example' },
+    packages: [{
+      product_id: 'display-standard',
+      pricing_option_id: 'fixed-cpm',
+      budget: 50000
+    }],
+    start_time: 'asap',
+    end_time: '2027-07-01T00:00:00Z'
+  };
+  const correlationOpportunity = { opportunity_id: 'opp-package-mode' };
+  for (const [mode, request] of [
+    ['implicit fixed', packagePurchase],
+    ['explicit fixed', { ...packagePurchase, budget_allocation: { mode: 'fixed' } }],
+    ['seller-optimized', {
+      ...packagePurchase,
+      packages: [{ product_id: 'display-standard', pricing_option_id: 'fixed-cpm' }],
+      total_budget: { amount: 50000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [{ kind: 'metric', metric: 'clicks' }]
+      }
+    }]
+  ]) {
+    await testSchemaValidation(
+      '/schemas/media-buy/create-media-buy-request.json',
+      request,
+      `create_media_buy ${mode} packages remain valid without opportunity`
+    );
+    await testSchemaValidation(
+      '/schemas/media-buy/create-media-buy-request.json',
+      { ...request, opportunity: correlationOpportunity },
+      `create_media_buy ${mode} packages accept correlation without a proposal`
+    );
+    for (const [label, opportunity] of [
+      ['open status', { ...correlationOpportunity, status: 'open' }],
+      ['closed status without reason', { ...correlationOpportunity, status: 'closed' }],
+      ['winning closure', { ...correlationOpportunity, status: 'closed', close_reason: 'accepted_with_seller' }],
+      ['other closure', { ...correlationOpportunity, status: 'closed', close_reason: 'not_pursued' }],
+      ['close reason alone', { ...correlationOpportunity, close_reason: 'accepted_with_seller' }],
+      ['close detail alone', { ...correlationOpportunity, close_detail: 'Campaign complete.' }],
+      ['consent grant', { ...correlationOpportunity, later_proposals: { accepted: true } }],
+      ['consent withdrawal', { ...correlationOpportunity, later_proposals: { accepted: false } }],
+      ['missing ID', {}],
+      ['empty ID', { opportunity_id: '' }],
+      ['invalid ID', { opportunity_id: 'opp/invalid' }],
+      ['oversized ID', { opportunity_id: 'o'.repeat(256) }]
+    ]) {
+      await testSchemaRejection(
+        '/schemas/media-buy/create-media-buy-request.json',
+        { ...request, opportunity },
+        `create_media_buy ${mode} packages reject ${label}`
+      );
+    }
+  }
+  for (const [label, opportunity] of [
+    ['open status', { ...correlationOpportunity, status: 'open' }],
+    ['closed status without reason', { ...correlationOpportunity, status: 'closed' }],
+    ['consent', { ...correlationOpportunity, later_proposals: { accepted: true } }]
+  ]) {
+    await testSchemaRejection(
+      '/schemas/media-buy/create-media-buy-request.json',
+      { ...proposalExecution, opportunity },
+      `create_media_buy committed proposal still rejects ${label}`
+    );
+  }
   await testSchemaRejection(
     '/schemas/media-buy/create-media-buy-request.json',
-    {
-      idempotency_key: 'create-package-opportunity-0001',
-      account: { account_id: 'account-opportunity-test' },
-      brand: { domain: 'buyer.example' },
-      packages: [{
-        product_id: 'display-standard',
-        pricing_option_id: 'fixed-cpm',
-        budget: 50000
-      }],
-      start_time: 'asap',
-      end_time: '2027-07-01T00:00:00Z',
-      opportunity: { opportunity_id: 'opp-package-mode' }
-    },
-    'create_media_buy restricts opportunity closure to proposal mode'
+    { ...packagePurchase, proposal_id: 'proposal-1', total_budget: { amount: 50000, currency: 'USD' }, opportunity: correlationOpportunity },
+    'create_media_buy correlation does not allow packages with proposal_id'
   );
   const splitCapabilityBase = {
     status: 'completed',

@@ -10644,7 +10644,7 @@ const ACCEPT_PROPOSAL_INPUT_SCHEMA = loadProductDiscoveryInputSchema('accept-pro
 const CONTROL_MEDIA_BUY_INPUT_SCHEMA = loadProductDiscoveryInputSchema('control-media-buy-request');
 const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
   type: 'object',
-  description: 'Planning-cycle closure for proposal execution. Omit status to infer accepted closure, or send closed with accepted_with_seller.',
+  description: 'Planning-cycle context. Explicit packages carry opportunity_id for account-scoped correlation only and omit status, close_reason, close_detail, and later_proposals; they never change opportunity status or consent. Proposal execution infers accepted closure when status is omitted, or accepts closed with accepted_with_seller. Canonical request validation enforces the mode-specific rules.',
   properties: {
     opportunity_id: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{1,255}$' },
     phase: { type: 'string', enum: ['exploratory', 'planning', 'active_sourcing'] },
@@ -10868,7 +10868,6 @@ const TOOLS = [
         },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
-      dependencies: { opportunity: ['proposal_id'] },
     },
   },
   {
