@@ -1,12 +1,11 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
-Add the optional creative.supports_provenance capability and gate provenance
-storyboards on explicit support. Remove the product-filter storyboard's result
-count assumption using the additive field_excludes validation, and construct
-auction bids from discovered pricing without requiring optional price guidance
-in the non-guaranteed sales flow.
+Gate provenance storyboards on explicit support. Remove the product-filter
+storyboard's result count assumption using the additive field_excludes validation,
+and construct auction bids from discovered pricing without requiring optional
+price guidance in the non-guaranteed sales flow.
 
 Gate audit-observation assertions on the advertised sandbox query hook and
 retain the complete account reference across provenance discovery, creative
