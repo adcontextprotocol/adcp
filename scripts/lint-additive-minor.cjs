@@ -1181,10 +1181,12 @@ function findingKey(entry) {
   return `${entry.file}#${entry.pointer} ${entry.kind}: ${entry.detail}`;
 }
 
+const BASELINE_SHAPE_ERROR = 'baseline must be an object with an entries array';
+
 function validateBaseline(value) {
   const errors = [];
   if (!isObject(value) || !Array.isArray(value.entries)) {
-    return { entries: [], base: null, errors: ['baseline must be an object with an entries array'] };
+    return { entries: [], base: null, errors: [BASELINE_SHAPE_ERROR] };
   }
   const seen = new Set();
   value.entries.forEach((entry, index) => {
@@ -1207,12 +1209,28 @@ function validateBaseline(value) {
   return { entries: value.entries, base: typeof value.base === 'string' ? value.base : null, errors };
 }
 
-function readBaselineAtRef(ref, repoRoot = REPO_ROOT) {
+// Only a baseline that is genuinely absent from the ref's tree may skip the
+// shrink-only check. A tree lookup decides that without reading the blob; a
+// present baseline that cannot be read (failed lazy fetch in a blobless clone)
+// or does not parse throws instead of silently disabling the guard.
+function readBaselineAtRef(ref, repoRoot = REPO_ROOT, runGit = git) {
+  const listed = runGit(['ls-tree', '-z', '--name-only', ref, '--', BASELINE_REPO_PATH], { cwd: repoRoot });
+  if (!listed.split('\0').includes(BASELINE_REPO_PATH)) return null;
+  const text = runGit(['show', `${ref}:${BASELINE_REPO_PATH}`], { cwd: repoRoot });
+  let value;
   try {
-    return JSON.parse(git(['show', `${ref}:${BASELINE_REPO_PATH}`], { cwd: repoRoot }));
-  } catch {
-    return null;
+    value = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${ref}:${BASELINE_REPO_PATH} is present but is not valid JSON: ${error.message}`);
   }
+  // A present file that is not a baseline at all (`null`, `false`, `0`, `""`,
+  // no entries array) must not read as absent and skip the shrink-only check.
+  // Entry-level problems stay tolerated on the base ref, as
+  // checkAgainstBaseline already does when it reads the previous entries.
+  if (validateBaseline(value).errors.includes(BASELINE_SHAPE_ERROR)) {
+    throw new Error(`${ref}:${BASELINE_REPO_PATH} is present but invalid: ${BASELINE_SHAPE_ERROR}`);
+  }
+  return value;
 }
 
 /**
@@ -1488,6 +1506,7 @@ function main() {
 }
 
 module.exports = {
+  readBaselineAtRef,
   NOTICE_KINDS,
   VIOLATION_KINDS,
   WHOLE_SCHEMA,
