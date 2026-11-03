@@ -102,6 +102,7 @@ import {
   taskRegistryScopeFromContext,
 } from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
+import { validateProductDiscoverySourceInput } from './source-schema.js';
 import { finishCollectionRead, prepareCollectionRead, runCollectionRead } from './collections/include-collections.js';
 import {
   withHoldsAcceptProposal,
@@ -1685,6 +1686,17 @@ export class TrainingSalesPlatform
           this.storyboardCompat,
         )
         : withCurrentAccountScope(requestWithRawSelectors, ctx.account, ctx.input);
+      // The routed SDK path bypasses the legacy dispatcher's canonical
+      // validation; discovery schemas alone do not enforce purchase branches.
+      if ((args as unknown as Record<string, unknown>).opportunity !== undefined) {
+        const validationError = validateProductDiscoverySourceInput(
+          'create-media-buy-request',
+          args as unknown as Record<string, unknown>,
+        );
+        if (validationError) {
+          throw new AdcpError('INVALID_REQUEST', { ...validationError, recovery: 'correctable' });
+        }
+      }
       const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
