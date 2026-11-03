@@ -52,6 +52,7 @@ const PATH_BEARING_CHECKS = new Set([
   'field_absent',
   'field_pattern',
   'field_contains',
+  'field_excludes',
   'array_length',
   'field_greater_than',
   'all_fields_in_context_array',
@@ -487,6 +488,7 @@ function lintDoc(doc, filePath, allowlist = []) {
       if (
         segments.includes('*') &&
         v.check !== 'field_contains' &&
+        v.check !== 'field_excludes' &&
         v.check !== 'all_fields_in_context_array' &&
         v.check !== 'all_fields_present'
       ) {

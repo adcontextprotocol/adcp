@@ -579,6 +579,16 @@
       "pullRequestNo": 1690,
       "comment_id": 6509364608,
       "comment_url": "https://github.com/adcontextprotocol/adcp-client-python/pull/1690#issuecomment-6509364608"
+    },
+    {
+      "name": "stephenkiers",
+      "id": 1245512,
+      "created_at": "2026-11-02T23:37:31Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 8697,
+      "comment_id": 6591275100,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8697#issuecomment-6591275100"
     }
   ]
 }

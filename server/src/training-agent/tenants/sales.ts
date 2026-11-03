@@ -20,6 +20,7 @@ import {
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
 import { listAccountChangesTool, listAccountsTool, requestAccountTool, syncGovernanceTool } from './account-tools.js';
+import { listCollectionsTool } from '../collections/list-collections.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
 import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
@@ -232,6 +233,8 @@ export function buildSalesTenantConfig(
     proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
     /** Set on the experimental 3.3 identity route's registry holder. */
     identity33?: unknown;
+    /** Set on the hosted 3.3 preview's registry holder. */
+    preview?: boolean;
   } = {},
   taskRegistry?: TaskRegistry,
 ): {
@@ -243,6 +246,7 @@ export function buildSalesTenantConfig(
     options.storyboardCompat,
     options.proposalNegotiationProfile ?? 'ask-only',
     taskRegistry,
+    options.preview === true,
   );
   return {
     tenantId: TENANT_ID,
@@ -279,10 +283,16 @@ export function buildSalesTenantConfig(
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
           // Experimental 3.3 account requests: registered where the 3.3 wire
-          // is served (the identity route, and storyboard candidate mode).
+          // is served (the identity route, the hosted preview, and storyboard
+          // candidate mode).
           ...(options.storyboardCompat?.version !== '3.0'
-            && (options.identity33 || TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33)
+            && (options.identity33 || options.preview || TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33)
             && { request_account: requestAccountTool() }),
+          // Experimental 3.3 collection catalog (media_buy.collection_catalog),
+          // registered where the 3.3 wire is served, like request_account.
+          ...(options.storyboardCompat?.version !== '3.0'
+            && (options.identity33 || options.preview || TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33)
+            && { list_collections: listCollectionsTool() }),
           report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
           ...(options.storyboardCompat?.version !== '3.0' && {
             get_reporting_status: customToolFor(

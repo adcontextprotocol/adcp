@@ -177,6 +177,7 @@ describe('local candidate wire contract', () => {
       const current = adcp_version === '3.3-beta.1';
       const sales = await call('sales', 'get_adcp_capabilities', { adcp_version });
       expect(sales.account.stable_account_id).toBe(current ? true : undefined);
+      expect(sales.creative.supports_provenance).toBe(current ? true : undefined);
       expect(sales.media_buy.features.supports_property_breakdown).toBe(current ? true : undefined);
       expect(sales.media_buy.features.supports_installment_property_breakdown).toBe(current ? true : undefined);
       if (current) {

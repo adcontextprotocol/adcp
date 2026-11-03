@@ -541,10 +541,113 @@ For `UNSUPPORTED_FEATURE` rejecting an unsupported or removed targeting dimensio
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | correctable | Budget below seller's minimum | Increase budget or check `capabilities.media_buy.limits` |
+| [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | correctable | Budget below seller's minimum | Use `field` and the budget floor details below to adjust the constrained budget or its contributing bid |
 | [`BUDGET_EXHAUSTED`](/docs/building/verification/compliance-catalog#error-code-budget-exhausted) | terminal | Account or campaign budget fully spent | Buyer must add funds or increase budget cap |
 | `CREATIVE_NOT_FOUND` | correctable | Referenced creative does not exist in the library | Verify `creative_id` via [`list_creatives`](/docs/creative/task-reference/list_creatives), or register it via [`sync_creatives`](/docs/creative/task-reference/sync_creatives) |
 | [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | correctable | Creative failed content-policy, brand-safety, or accessibility review | Revise according to the applicable policy or validated accessibility criteria |
+
+#### Budget floor recovery
+
+In AdCP 3.3, sellers can describe a budget rejection using the optional fields
+in [`error-details/budget-too-low.json`](https://adcontextprotocol.org/schemas/v3/error-details/budget-too-low.json).
+The enclosing `error.field` retains its existing meaning and, when `issues[]`
+is present, continues to mirror the first issue's pointer in JSONPath-lite
+form. Details can identify the constrained budget separately:
+
+| Field | Meaning |
+|---|---|
+| `minimum_budget` | The minimum acceptable budget amount in `currency`; not the increment to add or a minimum bid. |
+| `budget_field` | The constrained budget in the request's target scope, in JSONPath-lite form. May name a retained budget omitted from an update. |
+| `basis` | `daily` or `lifetime`. Omission means the period is undeclared. |
+| `constraint` | `product_minimum` for a product/pricing-option minimum, or `effective_bid_floor` when the effective bid determines the minimum. Other non-empty values may describe seller-specific constraints. |
+| `related_field` | A contributing request field, such as an explicitly authored bid. Omitted when the floor comes from a seller default with no corresponding request field. |
+
+Use `budget_field` as the budget locator when present; otherwise use
+`error.field` only when it unambiguously names a budget control. In an update,
+`packages[i]` indexes a submitted request row, whose `package_id` identifies
+the existing package. It never indexes the current-state readback array. Read
+and reconcile a retained budget before choosing a change to it.
+
+For a bid-dependent floor, `minimum_budget` is the computed required budget
+after resolving the proposed request's inherited bidding policy and package
+overrides. The buyer can evaluate raising the budget or lowering the contributing
+bid, subject to its existing authorization. `bid` is a cause, not a duration
+value for `basis`. A seller evaluates a combined budget/bid change against the
+resulting state rather than either field's previous value.
+
+For example, a lifetime package budget can be rejected with this error:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/error.json",
+  "code": "BUDGET_TOO_LOW",
+  "message": "Package lifetime budget is below the selected pricing option's minimum",
+  "recovery": "correctable",
+  "field": "packages[0].budget",
+  "details": {
+    "minimum_budget": 500,
+    "currency": "GBP",
+    "basis": "lifetime",
+    "constraint": "product_minimum"
+  }
+}
+```
+
+For a product whose daily minimum depends on the manual bid, this package row
+in a [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy)
+request raises the bid to 30 GBP while retaining a daily cap of 25 GBP:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/package-control.json",
+  "package_id": "pkg_stream",
+  "bidding": { "bid_amount": 30 }
+}
+```
+
+If that row is `packages[0]`, the seller can preserve the submitted bid's issue
+pointer while identifying the retained daily cap separately:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/error.json",
+  "code": "BUDGET_TOO_LOW",
+  "message": "The proposed bid requires a daily budget of at least 30 GBP",
+  "recovery": "correctable",
+  "field": "packages[0].bidding.bid_amount",
+  "issues": [
+    {
+      "pointer": "/packages/0/bidding/bid_amount",
+      "message": "The bid exceeds the retained daily budget",
+      "keyword": "maximum"
+    }
+  ],
+  "details": {
+    "minimum_budget": 30,
+    "currency": "GBP",
+    "budget_field": "packages[0].daily_budget_cap",
+    "basis": "daily",
+    "constraint": "effective_bid_floor",
+    "related_field": "packages[0].bidding.bid_amount"
+  }
+}
+```
+
+The amount is a budget floor; applying 30 GBP to the bid would not repair the
+retained cap. If a media-buy bid update affects packages absent from the
+request, the seller omits a package `budget_field` rather than inventing a
+request index. A root budget locator is appropriate only when the constrained
+budget is actually at media-buy scope. When no locator identifies the budget
+unambiguously, the amount remains diagnostic: the buyer reads authoritative
+state and reconciles the affected budgets, or seeks clarification. It does
+not apply the amount to the bid or infer package identity from array ordering.
+
+These details do not introduce a new budget control. `basis: "daily"` describes
+the constrained daily field and does not change its spend
+guarantees: `daily_budget_cap` remains a hard ceiling. A buyer must not assume
+that an undeclared budget period is lifetime, or treat a bid-driven floor as a
+reason to increase spending automatically. Earlier details containing only
+`minimum_budget` and `currency` remain valid.
 
 ### System
 

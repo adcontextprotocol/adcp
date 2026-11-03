@@ -62,6 +62,9 @@ import {
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
 import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, trainingBuyerDocumentation, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
+import { requestPinsPreview } from './candidate-version.js';
+import { collectionAuthorizationSelectors, declaredCollections } from './collections/card-catalog.js';
+import { ensurePreviewSchemaBundle } from './schema-compat.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -428,6 +431,8 @@ export function createTrainingAgentRouter(options: {
         }
       }
 
+      // Served-release shaping reads the hosted preview's published bundle.
+      if (requestPinsPreview(req.body)) await ensurePreviewSchemaBundle();
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -515,6 +520,7 @@ export function createTrainingAgentRouter(options: {
           }
         }
 
+        if (requestPinsPreview(req.body)) await ensurePreviewSchemaBundle();
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
           enableJsonResponse: true,
@@ -810,6 +816,25 @@ export function createTrainingAgentRouter(options: {
             })),
           ),
         },
+        // The collections the sales agent sells, scoped by collection
+        // selectors: every collection each publisher declares below. Response
+        // copies of these collections (include_collections, list_collections)
+        // are verified against this file (#8181).
+        {
+          url: `${agentUrl}/sales/mcp`,
+          authorized_for: 'AdCP training — sales (collections: shows, podcasts, creator channels)',
+          authorization_type: 'inline_properties',
+          properties: PUBLISHERS
+            .filter(pub => (pub.shows?.length ?? 0) > 0)
+            .flatMap(pub => pub.properties.map(prop => ({
+              identifier_type: prop.identifierType,
+              identifier_value: prop.identifierValue,
+              name: prop.name,
+              supported_channels: prop.channels,
+              tags: prop.tags,
+            }))),
+          collections: collectionAuthorizationSelectors(),
+        },
         {
           url: `${agentUrl}/signals/mcp`,
           authorized_for: 'AdCP training — signals (marketplace + owned)',
@@ -817,6 +842,11 @@ export function createTrainingAgentRouter(options: {
           signal_tags: SIGNAL_TAG_VALUES,
         },
       ],
+      // The publishers' collection declarations. This shared file speaks for
+      // several publishers, so each carries its publisher_domain. Anchored
+      // facts live here; a selling agent's card copy wins only on its closed
+      // list of display fields.
+      collections: declaredCollections(),
       signals: SIGNAL_PROVIDERS.flatMap(provider =>
         provider.signals.map(signal => ({
           id: signal.signalAgentSegmentId,

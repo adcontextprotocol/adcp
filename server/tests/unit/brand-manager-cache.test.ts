@@ -49,6 +49,63 @@ describe('BrandManager caching', () => {
     vi.useRealTimers();
   });
 
+  it.each(['house_redirect', 'authoritative_location'] as const)(
+    'retains the full terminal entry after a %s document',
+    async variant => {
+      const entry = {
+        id: 'acme', names: [{ en: 'Acme' }],
+        properties: [{ type: 'website', identifier: 'acme.example', relationship: 'owned' }],
+        tagline: [{ en: 'Made for everyday' }],
+        fonts: { primary: { family: 'Example Sans' } },
+        tone: { voice: 'Warm and direct' },
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(variant === 'house_redirect'
+          ? { house: 'nova-brands.example' }
+          : { authoritative_location: 'https://assets.example/acme/brand.json' })),
+      }).mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify({
+          version: '1.0', house: { domain: variant === 'house_redirect' ? 'nova-brands.example' : 'acme.example', name: 'Nova Brands' },
+          brands: [entry],
+        })),
+      });
+
+      const resolved = await manager.resolveBrand('acme.example');
+
+      expect(resolved?.brand).toEqual(entry);
+      expect(resolved?.brand_manifest).toMatchObject({ fonts: entry.fonts, tagline: entry.tagline, tone: entry.tone });
+      expect(resolved?.brand_manifest).not.toHaveProperty('id');
+    },
+  );
+
+  it('retains the full canonical brand document independently of its creative manifest', async () => {
+    const document = {
+      version: '1.0', id: 'acme', names: [{ en: 'Acme' }],
+      tagline: [{ en: 'Made for everyday' }], colors: { primary: '#047857' },
+    };
+    mockedSafeFetch.mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(document)) });
+
+    const resolved = await manager.resolveBrand('acme.example');
+    expect(resolved?.brand).toEqual(document);
+    expect(resolved?.brand_manifest).toEqual({ tagline: document.tagline, colors: document.colors });
+  });
+
+  it('omits an entry that would contradict the existing live identity selection', async () => {
+    mockedSafeFetch.mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify({
+      version: '1.0', house: { domain: 'nova-brands.example', name: 'Nova Brands' },
+      brands: [
+        { id: 'nova', names: [{ en: 'Nova Brands' }], keller_type: 'master' },
+        { id: 'spark', names: [{ en: 'Spark' }], url: 'https://nova-brands.example' },
+      ],
+    })) });
+
+    const resolved = await manager.resolveBrand('nova-brands.example');
+    expect(resolved?.canonical_id).toBe('nova');
+    expect(resolved?.brand).toBeUndefined();
+  });
+
   describe('validateDomain caching', () => {
     it('caches successful validation results', async () => {
       const mockBrandJson = {

@@ -93,7 +93,7 @@ import {
   runWithSessionContext,
   sessionKeyFromArgs,
 } from './state.js';
-import { supportsAccountSurfaces33, supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
+import { supportsAccountSurfaces33, supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_STABLE_REGISTRY_VERSIONS, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -102,6 +102,14 @@ import {
   taskRegistryScopeFromContext,
 } from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
+import { finishCollectionRead, prepareCollectionRead, runCollectionRead } from './collections/include-collections.js';
+import {
+  withHoldsAcceptProposal,
+  withHoldsDeclineProposals,
+  withHoldsListProducts,
+  withHoldsRefineProposals,
+  withHoldsRequestProposals,
+} from './holds/service.js';
 import {
   SellerManagedControlJobCoordinator,
   type SellerManagedControlJobContext,
@@ -1165,7 +1173,11 @@ export function legacyGetProductsHandler(
     const servedAdcpVersion = ctx.servedAdcpVersion
       ?? (versionResolution.ok ? versionResolution.servedVersion : undefined);
     if (servedAdcpVersion) trainingCtx.servedAdcpVersion = servedAdcpVersion;
-    const executed = await executeTrainingAgentTool('get_products', normalizedReq, trainingCtx);
+    const executed = await executeTrainingAgentTool(
+      'get_products',
+      prepareCollectionRead('get_products', normalizedRecord, trainingCtx) as typeof normalizedReq,
+      trainingCtx,
+    );
     if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
     const rawResponse = executed.data as Record<string, unknown> | undefined;
     if (
@@ -1214,10 +1226,15 @@ export function legacyGetProductsHandler(
       executed.data,
       { allowAdvisories: true },
     );
-    return projectGetProductsCompatibilityWire(
-      response,
-      req as unknown as Record<string, unknown>,
-      servedAdcpVersion,
+    return finishCollectionRead(
+      'get_products',
+      normalizedRecord,
+      projectGetProductsCompatibilityWire(
+        response,
+        req as unknown as Record<string, unknown>,
+        servedAdcpVersion,
+      ),
+      trainingCtx,
     ) as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['getProducts']>>>;
   };
 }
@@ -1562,6 +1579,8 @@ export class TrainingSalesPlatform
     private readonly storyboardCompat?: TrainingContext['storyboardCompat'],
     private readonly proposalNegotiationProfile: NonNullable<TrainingContext['proposalNegotiationProfile']> = 'ask-only',
     taskRegistry?: TaskRegistry,
+    /** This platform serves the hosted 3.3 preview's registry. */
+    private readonly servesPreview = false,
   ) {
     if (taskRegistry) {
       this.sellerManagedControlJobs = new SellerManagedControlJobCoordinator(
@@ -1625,7 +1644,11 @@ export class TrainingSalesPlatform
     // no longer derives the retained 3.2-rc.7 checkpoint on its own. Declare
     // the served releases explicitly so exact prerelease pins negotiate to
     // the checkpoint the agent advertises instead of downshifting to 3.1.
-    return { ...TRAINING_SALES_CAPABILITIES, supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS] };
+    // Only the preview's own registry negotiates the hosted preview.
+    return {
+      ...TRAINING_SALES_CAPABILITIES,
+      supported_versions: [...(this.servesPreview ? TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS : TRAINING_AGENT_STABLE_REGISTRY_VERSIONS)],
+    };
   }
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {
@@ -1804,44 +1827,57 @@ export class TrainingSalesPlatform
     return {
     proposalRefinement: proposalCapabilitiesForProfile(this.proposalNegotiationProfile),
 
-    listProducts: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'list_products',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
-
-    requestProposals: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'request_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
-
-    refineProposals: async (req, ctx) => {
+    // Experimental 3.3: include_collections (collections/include-collections.ts)
+    // prepares the split reads and adds collection cards; holds
+    // (holds/service.ts) wrap the engine call for 3.3 callers. Other callers
+    // pass straight through both.
+    listProducts: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
       return translateV5Result(
-        await executeProductDiscoveryPlatformTool(
-          'refine_proposals',
+        await runCollectionRead(
+          'list_products',
           withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
           trainingCtx,
+          args => withHoldsListProducts(args, trainingCtx, () => executeProductDiscoveryPlatformTool('list_products', args, trainingCtx)),
         ),
         { allowAdvisories: true },
       );
     },
 
-    declineProposals: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'decline_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
+    requestProposals: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await runCollectionRead(
+          'request_proposals',
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+          trainingCtx,
+          args => withHoldsRequestProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('request_proposals', args, trainingCtx)),
+        ),
+        { allowAdvisories: true },
+      );
+    },
+
+    refineProposals: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await runCollectionRead(
+          'refine_proposals',
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+          trainingCtx,
+          args => withHoldsRefineProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('refine_proposals', args, trainingCtx)),
+        ),
+        { allowAdvisories: true },
+      );
+    },
+
+    declineProposals: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>;
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsDeclineProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('decline_proposals', args, trainingCtx)),
+        { allowAdvisories: true },
+      );
+    },
 
     buyProducts: async (req, ctx) => translateV5CommitmentResult(
       await handleBuyProducts(
@@ -1850,12 +1886,13 @@ export class TrainingSalesPlatform
       ),
     ),
 
-    acceptProposal: async (req, ctx) => translateV5Result(
-      await handleAcceptProposal(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0],
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-    ),
+    acceptProposal: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0];
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsAcceptProposal(args as unknown as Record<string, unknown>, trainingCtx, () => handleAcceptProposal(args, trainingCtx)),
+      );
+    },
 
     controlMediaBuy: async (req, ctx) => {
       const args = withCurrentAccountScope(

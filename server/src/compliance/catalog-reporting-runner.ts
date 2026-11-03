@@ -31,6 +31,7 @@ import {
   type StoryboardResult,
   type StoryboardStepResult,
 } from "@adcp/sdk/testing";
+import { gradeStandaloneExclusions, withExclusionSupport } from "./storyboard-exclusion-check.js";
 
 export const REPORTING_PRICE_CAPTURE = "__adcp_fixture_reporting_price";
 export const REPORTING_BUDGET_CONTEXT = "catalog_reporting_budget";
@@ -669,6 +670,7 @@ export function runCatalogReportingStoryboard(
   storyboard: Storyboard,
   options: StoryboardRunOptions = {},
 ) {
+  ({ storyboard, options } = withExclusionSupport(storyboard, options));
   return withReportingPreparation(
     agentUrl,
     storyboard,
@@ -684,12 +686,13 @@ export function runCatalogReportingStoryboardStep(
   stepId: string,
   options: StoryboardRunOptions = {},
 ) {
+  ({ storyboard, options } = withExclusionSupport(storyboard, options));
   return withReportingPreparation(
     agentUrl,
     storyboard,
     options,
-    (preparedOptions) =>
-      runSdkStoryboardStep(agentUrl, storyboard, stepId, preparedOptions),
+    async (preparedOptions) =>
+      gradeStandaloneExclusions(storyboard, await runSdkStoryboardStep(agentUrl, storyboard, stepId, preparedOptions), agentUrl, preparedOptions),
     stepId,
     async (gatedOptions) => {
       const result = await runSdkStoryboard(agentUrl, storyboard, gatedOptions);

@@ -137,6 +137,10 @@ components:
         brand_manifest:
           type: object
           additionalProperties: {}
+        brand:
+          type: object
+          additionalProperties: {}
+          description: Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.
         source:
           type: string
           enum:

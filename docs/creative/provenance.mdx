@@ -11,6 +11,12 @@ Provenance metadata declares how creative content was produced — whether AI wa
 EU AI Act Article 50 enforcement begins August 2026. California SB 942 is already in effect. Major platforms mandate AI content labeling today. AdCP carries the structured, machine-readable provenance and disclosure metadata these regulations rely on through the programmatic supply chain, where no standard for it previously existed. The protocol moves the data; the legal obligation still sits with the deployer making the disclosure to the end user.
 </Info>
 
+Sellers opt in to provenance-enforcement conformance testing with `creative.supports_provenance: true` in `get_adcp_capabilities` (added in 3.3). Omitting the flag or setting it to `false` skips the provenance storyboards, even when `has_creative_library` is true. `creative_policy` and its provenance fields already exist in AdCP 3.1, but publishing them is optional. A seller that publishes a provenance policy must enforce it.
+
+The audit-observation storyboard also requires the sandbox controller to
+advertise `query_provenance_audit_observations`. Provenance support alone does
+not require exposing internal audit observations through the test controller.
+
 ## The provenance object
 
 Provenance is an optional object that can attach to creative assets, creative manifests, individual typed assets, and content artifacts. No fields are required at the provenance level -- each section is independently useful.
