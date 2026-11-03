@@ -146,7 +146,7 @@ In AdCP, request signing, webhook signing, governance JWS `iss`, rights attestat
    - The pointer MUST be exactly `https://{H}/.well-known/trust.json`. In AdCP it is `identity.trust_url`.
    - Fetch it with zero HTTP redirects, following at most one `authoritative_location` hop, also with zero redirects. The operator is `H`.
    - If the legacy `identity.brand_json_url` is also present, its host MUST equal `H`.
-3. **Origin binding.** eTLD+1(`A`) MUST equal eTLD+1(`H`), using the pinned PSL snapshot.
+3. **Origin binding.** eTLD+1(`A`) MUST equal eTLD+1(`H`), using the verifier's bundled Public Suffix List, as `security.mdx` requires (DR-0037).
    - There is no hosting-delegation fallback.
    - Cross-organization cases, such as a platform running an agent for a brand, go through a grant: the platform lists the agent in its own record, and the brand grants the platform.
 4. **Match the agent.** Exactly one `agents[]` entry must canonically equal `A`. No match → `request_signature_agent_not_in_trust_record`. More than one → `…_ambiguous`.
