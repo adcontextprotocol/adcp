@@ -21,11 +21,13 @@ import {
   recordTimezoneChange,
   reduceGrant,
   regrantGrant,
+  resetSandbox,
   revokeGrant,
   sandboxNowIso,
   sandboxNowMs,
   timezoneChangesFor,
   type SandboxDocument,
+  type TimezoneChange,
 } from './account-sandbox.js';
 import { advanceAccountRequestsForCaller } from './account-requests.js';
 import { timezoneCutoverInstants } from './reporting-subscriptions.js';
@@ -46,6 +48,23 @@ const advanceHooks: AdvanceHook[] = [async ctx => advanceAccountRequestsForCalle
 
 export function onSandboxClockAdvanced(hook: AdvanceHook): void {
   advanceHooks.push(hook);
+}
+
+/**
+ * Controller `reset_state` for this probe: put back each account timezone the
+ * probe changed, then discard the caller's clock, grants, and timezone history.
+ * The clock reads the wall clock again until the next `advance_time`.
+ */
+export async function resetReportingSubscriptionProbe(ctx: TrainingContext): Promise<void> {
+  const { doc } = await loadSandbox(ctx.principal);
+  for (const { account_id: accountId, changes } of doc.timezone_changes) {
+    const original = changes[0]?.previous_timezone;
+    if (!original) continue;
+    await updateCallerAccount(ctx, accountId, { timezone: original }, {
+      summary: 'Account timezone restored by the sandbox controller reset.',
+    });
+  }
+  await resetSandbox(ctx.principal);
 }
 
 function failure(error: string, detail: string): Json {
@@ -128,7 +147,8 @@ export async function handleReportingSubscriptionProbe(
     return success(doc, { account_id: accountId, allowed_tasks: grant.allowed_tasks }, `Grant on ${accountId} reduced`);
   }
 
-  // set_account_timezone
+  // set_account_timezone: SetAccountTimezoneResult in
+  // comply-test-controller-response.json.
   const timezone = params.timezone;
   if (!isIanaTimezone(timezone)) return failure('INVALID_PARAMS', 'timezone must be an IANA timezone name');
   if (grantFor(doc, accountId)?.unauthorized_at) {
@@ -139,25 +159,39 @@ export async function handleReportingSubscriptionProbe(
   const last = changes[changes.length - 1];
   if (previous === timezone) {
     // Convergent: a repeat at the same instant reports the change it made.
+    // Otherwise nothing changed, so there is no changed_at and no cutover.
     const repeated = last && last.timezone === timezone && last.at === nowIso ? last : undefined;
+    if (repeated) return success(doc, timezoneChangeResult(accountId, repeated), `Account ${accountId} already uses ${timezone}`);
     return success(doc, {
       account_id: accountId,
-      previous_timezone: repeated?.previous_timezone ?? previous,
+      previous_timezone: previous,
       timezone,
-      timezone_cutovers: repeated
-        ? timezoneCutoverInstants(repeated.previous_timezone, timezone, Date.parse(nowIso))
-        : [],
+      timezone_cutovers: [],
     }, `Account ${accountId} already uses ${timezone}`);
   }
   await updateCallerAccount(ctx, accountId, { timezone }, {
     summary: 'Account timezone changed by the sandbox controller.',
   });
-  recordTimezoneChange(doc, accountId, { at: nowIso, previous_timezone: previous, timezone });
+  const change: TimezoneChange = { at: nowIso, previous_timezone: previous, timezone };
+  recordTimezoneChange(doc, accountId, change);
   sandbox.save();
-  return success(doc, {
+  return success(doc, timezoneChangeResult(accountId, change), `Account ${accountId} timezone changed from ${previous} to ${timezone}`);
+}
+
+/** The applied change, with each account-timezone offering's cutover shaped as
+ * the get_reporting_status subscription_coverage timezone_cutovers entry. */
+function timezoneChangeResult(accountId: string, change: TimezoneChange): Json {
+  return {
     account_id: accountId,
-    previous_timezone: previous,
-    timezone,
-    timezone_cutovers: timezoneCutoverInstants(previous, timezone, Date.parse(nowIso)),
-  }, `Account ${accountId} timezone changed from ${previous} to ${timezone}`);
+    previous_timezone: change.previous_timezone,
+    timezone: change.timezone,
+    changed_at: change.at,
+    timezone_cutovers: timezoneCutoverInstants(change.previous_timezone, change.timezone, Date.parse(change.at))
+      .map(cutover => ({
+        offering_id: cutover.offering_id,
+        previous_timezone: change.previous_timezone,
+        timezone: change.timezone,
+        effective_at: cutover.effective_at,
+      })),
+  };
 }

@@ -2070,16 +2070,40 @@
 #       entry (excluded[], gaps[], timezone_cutovers[]).
 #   It applies the coverage rule of core/reporting-subscription.json (the rule
 #   the canonical vectors in test-vectors/reporting-subscriptions/ pin) with
-#   now = ledger_as_of, and keeps periods that start at or after
-#   scope.ledger_retained_from and fall inside the request's period when one is
-#   set. It passes when the owed set equals the response's obligations whose
-#   delivery_config_id is the subscription_id: one obligation per
-#   (delivery_config_version, offering_id, period.start, period.end), with the
-#   same media_buy_ids and stub flag, compared as instants. A response with
-#   pagination.has_more true fails as unverifiable; request a page large enough
-#   for the window. Runners that do not implement the check grade it
-#   not_applicable (forward compatibility); storyboards declare it advisory
-#   until runner support ships.
+#   now = ledger_as_of, then compares the two sets over one window.
+#
+#   Comparison window. The window starts at the later of:
+#     - the expected start: the request's period.start when one is set;
+#       otherwise the window has no lower bound here and every period the
+#       coverage rule owes from the subscription's first version on counts;
+#     - the retention bound: scope.ledger_retained_from from this response,
+#       the earliest period boundary the seller still retains after purging
+#       older history, capped at ledger_as_of minus status_retention_days
+#       (exact 86,400-second days). The seller keeps obligation metadata
+#       queryable for at least status_retention_days, so a
+#       ledger_retained_from later than that instant does not move the
+#       window start past it.
+#   The end of the window is unchanged: the coverage rule with now =
+#   ledger_as_of decides which periods are owed so far, and when the request
+#   sets a period only periods that fall inside it are compared. Only periods
+#   that start at or after the window start are compared, on both sides: an
+#   owed period that starts before the window start is not required, and an
+#   obligation the seller returns for a period that starts before it is
+#   ignored, not counted as unexpected. Inside the window an obligation the
+#   coverage rule does not owe is still a mismatch. A seller that purged
+#   history beyond its retention therefore passes, and one that purged inside
+#   it fails on the periods it no longer returns.
+#
+#   Within the window the check passes when the owed set equals the
+#   response's obligations whose delivery_config_id is the subscription_id:
+#   one obligation per (delivery_config_version, offering_id, period.start,
+#   period.end), with the same media_buy_ids and stub flag, compared as
+#   instants. A response with pagination.has_more true fails as
+#   unverifiable; request a page large enough for the window. Failure output
+#   reports the window start and which bound set it (expected_start,
+#   ledger_retained_from, or retention_cap). Runners that do not implement
+#   the check grade it not_applicable (forward compatibility); storyboards
+#   declare it advisory until runner support ships.
 #
 #   Fields:
 #     check: owed_periods_match

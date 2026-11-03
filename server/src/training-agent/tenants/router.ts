@@ -284,9 +284,11 @@ function salesComplyScenarios(
   const withChangeFeed = supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...current, 'expire_account_change_cursor']
     : current;
-  // Experimental 3.3: grants, account timezone, and the sandbox clock.
+  // Experimental 3.3: grants, account timezone, and the sandbox clock. A
+  // seller that lists the probe MUST also list reset_state, which unpins the
+  // clock and undoes the probe's changes before each storyboard.
   const withAccounts33 = supportsAccountSurfaces33(servedVersion)
-    ? [...withChangeFeed, 'reporting_subscription_probe']
+    ? [...withChangeFeed, 'reporting_subscription_probe', 'reset_state']
     : withChangeFeed;
   // Experimental 3.3 collection cards: change cards to drive card webhooks.
   return supportsCollections33(servedVersion)

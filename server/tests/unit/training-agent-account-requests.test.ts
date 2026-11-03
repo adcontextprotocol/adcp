@@ -7,6 +7,7 @@ const {
   handleRequestAccount,
 } = await import('../../src/training-agent/account-requests.js');
 const { handleReportingSubscriptionProbe } = await import('../../src/training-agent/subscription-probe.js');
+const { handleComplyTestController } = await import('../../src/training-agent/comply-test-controller.js');
 const { STATUS_RETENTION_DAYS } = await import('../../src/training-agent/account-sandbox.js');
 
 type Json = Record<string, any>;
@@ -33,6 +34,10 @@ const request = (args: Json, context: Ctx = ctx()) =>
 
 const probe = (params: Json, context: Ctx = ctx()) =>
   inSession(() => handleReportingSubscriptionProbe(params, context)) as Promise<Json>;
+
+const RESET_ACCOUNT = { brand: { domain: 'nova-athletics.example' }, operator: 'pinnacle-media.example', sandbox: true };
+const control = (args: Json, context: Ctx = ctx()) =>
+  inSession(() => handleComplyTestController(args as never, context as never)) as Promise<Json>;
 
 const listAccounts = (args: Json = {}, context: Ctx = ctx()) =>
   inSession(() => handleListAccounts(args as never, context)) as Promise<Json>;
@@ -311,6 +316,67 @@ describe('reporting_subscription_probe: grants, timezone, clock', () => {
     expect(changed.simulated).toMatchObject({ account_id: accountId, previous_timezone: 'America/New_York', timezone: 'America/Los_Angeles' });
     expect(await readAccount(accountId)).toMatchObject({ timezone: 'America/Los_Angeles', revision: 2 });
     expect(await probe({ operation: 'set_account_timezone', account_id: accountId, timezone: '+05:00' }))
+      .toMatchObject({ success: false, error: 'INVALID_PARAMS' });
+  });
+
+  it('returns SetAccountTimezoneResult: the change instant and cutovers shaped as coverage entries', async () => {
+    const accountId = await openAccount({ timezone: 'America/New_York' });
+    await probe({ operation: 'advance_time', target_time: '2030-06-02T15:30:00Z' });
+    const changed = await probe({ operation: 'set_account_timezone', account_id: accountId, timezone: 'America/Los_Angeles' });
+    expect(changed.simulated).toEqual({
+      simulated_now: '2030-06-02T15:30:00.000Z',
+      account_id: accountId,
+      previous_timezone: 'America/New_York',
+      timezone: 'America/Los_Angeles',
+      changed_at: '2030-06-02T15:30:00.000Z',
+      timezone_cutovers: [{
+        offering_id: 'analytics-daily-account-tz',
+        previous_timezone: 'America/New_York',
+        timezone: 'America/Los_Angeles',
+        effective_at: '2030-06-03T04:00:00.000Z',
+      }],
+    });
+    // Convergent: a repeat at the same instant reports the same change.
+    expect((await probe({ operation: 'set_account_timezone', account_id: accountId, timezone: 'America/Los_Angeles' })).simulated).toEqual(changed.simulated);
+    // Later, naming the current zone changes nothing: no changed_at, no cutover.
+    await probe({ operation: 'advance_time', target_time: '2030-06-03T15:30:00Z' });
+    const unchanged = await probe({ operation: 'set_account_timezone', account_id: accountId, timezone: 'America/Los_Angeles' });
+    expect(unchanged.simulated).toEqual({
+      simulated_now: '2030-06-03T15:30:00.000Z',
+      account_id: accountId,
+      previous_timezone: 'America/Los_Angeles',
+      timezone: 'America/Los_Angeles',
+      timezone_cutovers: [],
+    });
+  });
+
+  it('reset_state unpins the clock and discards what the probe changed', async () => {
+    const accountId = await openAccount({ timezone: 'America/New_York' });
+    const far = new Date(Date.now() + 400 * 86_400_000).toISOString();
+    await probe({ operation: 'advance_time', target_time: far });
+    await probe({ operation: 'set_account_timezone', account_id: accountId, timezone: 'America/Los_Angeles' });
+    await probe({ operation: 'revoke_grant', account_id: accountId });
+
+    expect(await control({ scenario: 'reset_state', account: RESET_ACCOUNT })).toEqual({ success: true });
+
+    // The clock reads the wall clock again, so a target before the old pin is accepted.
+    const soon = new Date(Date.now() + 86_400_000);
+    const advanced = await probe({ operation: 'advance_time', target_time: soon.toISOString() });
+    expect(advanced).toMatchObject({ success: true, simulated: { simulated_now: soon.toISOString() } });
+    // The account the probe acted on is kept with the probe's changes undone:
+    // the revocation is gone and the timezone is the one it was opened with.
+    const restored = await readAccount(accountId);
+    expect(restored).toMatchObject({ timezone: 'America/New_York' });
+    const repeat = await probe({ operation: 'set_account_timezone', account_id: accountId, timezone: 'America/New_York' });
+    expect(repeat.simulated).toMatchObject({ previous_timezone: 'America/New_York', timezone_cutovers: [] });
+    expect(repeat.simulated.changed_at).toBeUndefined();
+  });
+
+  it('reset_state leaves another caller\'s clock alone', async () => {
+    const far = new Date(Date.now() + 400 * 86_400_000).toISOString();
+    await probe({ operation: 'advance_time', target_time: far }, ctx('static:buyer-b'));
+    expect(await control({ scenario: 'reset_state', account: RESET_ACCOUNT })).toEqual({ success: true });
+    expect(await probe({ operation: 'advance_time', target_time: new Date(Date.now() + 86_400_000).toISOString() }, ctx('static:buyer-b')))
       .toMatchObject({ success: false, error: 'INVALID_PARAMS' });
   });
 
