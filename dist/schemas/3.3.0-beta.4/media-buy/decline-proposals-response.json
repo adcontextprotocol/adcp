@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/media-buy/decline-proposals-response.json",
+  "title": "Decline Proposals Response",
+  "description": "One ordered terminal result for each requested proposal decline.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/protocol-envelope.json"
+    }
+  ],
+  "anyOf": [
+    {
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "not": {
+        "required": [
+          "task_id"
+        ]
+      }
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/compact-task-submitted.json"
+    }
+  ],
+  "properties": {
+    "results": {
+      "type": "array",
+      "minItems": 0,
+      "description": "One result per requested decline, in request order. Empty only when the request carried an empty declines array with an opportunity update.",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "outcome"
+        },
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "proposal"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "declined",
+              "unable"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why the seller could not apply a decline. Present only for outcome unable."
+          }
+        },
+        "required": [
+          "proposal_id",
+          "outcome"
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "outcome": {
+                "const": "declined"
+              }
+            },
+            "required": [
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "reason"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "const": "unable"
+              }
+            },
+            "required": [
+              "outcome",
+              "reason"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

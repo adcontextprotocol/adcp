@@ -1,0 +1,254 @@
+id: media_buy_seller/creative_live_update_refusal
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Seller refuses an undeclared change to a live creative and leaves it unchanged"
+category: media_buy_seller
+summary: "Verifies that a seller declaring creative.live_updates without format refuses a format change to a live creative with CREATIVE_LIVE_UPDATE_UNSUPPORTED, names the refused kind and the live package, returns the same refusal on dry_run, and leaves the creative unchanged."
+track: creative
+requires:
+  - controller
+
+required_tools:
+  - get_adcp_capabilities
+  - sync_creatives
+  - list_creatives
+  - comply_test_controller
+
+requires_all_capabilities:
+  - path: creative.live_updates
+    present: true
+  - path: creative.live_updates.in_place
+    not_contains: { change: "format", serving: "uninterrupted" }
+  - path: creative.live_updates.in_place
+    not_contains: { change: "format", serving: "paused_for_review" }
+  - path: creative.live_updates.in_place
+    not_contains: { change: "format", serving: "staged" }
+  - path: creative.live_updates.in_place
+    not_contains: { change: "format", serving: "staged", on_rejection: "keeps_prior" }
+  - path: creative.live_updates.in_place
+    not_contains: { change: "format", serving: "staged", on_rejection: "stops" }
+
+narrative: |
+  A seller that declares creative.live_updates but does not list the format
+  kind cannot change a trafficked creative's format in place
+  (docs/creative/task-reference/sync_creatives#live-creative-updates). It MUST
+  refuse such a change to a live creative with CREATIVE_LIVE_UPDATE_UNSUPPORTED
+  rather than INVALID_STATE, leave the creative unchanged, and return the same
+  answer on dry_run so a buyer can check before sending.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - has_creative_library
+  examples:
+    - "Ad servers that cannot change the format of a trafficked creative"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds one active media buy whose package carries the
+    scenario creative ID. The seller must accept an image creative and
+    recognize format_option_ref as part of format identity.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_cab80d0d7a5c"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_creative_live_updat-6501f86c"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  media_buys:
+    - media_buy_id: "live_refusal_buy"
+      account:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_creative_live_updat-6501f86c"
+        sandbox: true
+      status: "active"
+      currency: "USD"
+      start_time: "2026-01-01T00:00:00Z"
+      end_time: "2099-12-31T00:00:00Z"
+      packages:
+        - package_id: "live_refusal_package"
+          product_id: "live_refusal_product"
+          pricing_option_id: "live_refusal_pricing"
+          budget: 1000
+          creative_assignments:
+            - "live_refusal_banner"
+
+phases:
+  - id: make_creative_live
+    title: "Sync and approve the assigned creative"
+    steps:
+      - id: sync_live_creative
+        title: "Sync the creative the seeded package carries"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: &refusal_account
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_creative_live_updat-6501f86c"
+            sandbox: true
+          creatives:
+            - creative_id: "live_refusal_banner"
+              name: "Live refusal banner"
+              format_kind: "image"
+              assets: &refusal_assets
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/live-refusal-v1.png"
+                  width: 300
+                  height: 250
+          idempotency_key: "$generate:uuid_v4#creative_live_update_refusal_initial_sync"
+          context:
+            correlation_id: "creative_live_update_refusal--initial_sync"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_absent
+            path: "creatives[0].errors"
+            description: "The creative is accepted"
+
+      - id: approve_live_creative
+        title: "Approve the creative"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account: *refusal_account
+          scenario: "force_creative_status"
+          params: { creative_id: "live_refusal_banner", status: "approved" }
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "The controller approves the creative (or it already is)"
+
+  - id: refuse_format_change
+    title: "Refuse a format change, on dry run and for real"
+    steps:
+      - id: dry_run_format_change
+        title: "Dry-run a format change"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#live-creative-updates"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: *refusal_account
+          dry_run: true
+          creatives:
+            - creative_id: "live_refusal_banner"
+              name: "Live refusal banner"
+              format_kind: "image"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "live_refusal_leaderboard"
+              assets: *refusal_assets
+          idempotency_key: "$generate:uuid_v4#creative_live_update_refusal_dry_run"
+          context:
+            correlation_id: "creative_live_update_refusal--dry_run"
+        expected: |
+          Return the same refusal the real sync would, without changing anything.
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "The dry run reports the refusal"
+          - check: field_value
+            path: "creatives[0].errors[0].code"
+            value: "CREATIVE_LIVE_UPDATE_UNSUPPORTED"
+            description: "A declaring seller refuses with CREATIVE_LIVE_UPDATE_UNSUPPORTED, not INVALID_STATE"
+
+      - id: sync_format_change
+        title: "Send the format change"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#live-creative-updates"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account: *refusal_account
+          creatives:
+            - creative_id: "live_refusal_banner"
+              name: "Live refusal banner"
+              format_kind: "image"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "live_refusal_leaderboard"
+              assets: *refusal_assets
+          idempotency_key: "$generate:uuid_v4#creative_live_update_refusal_sync"
+          context:
+            correlation_id: "creative_live_update_refusal--sync"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "The item fails"
+          - check: field_value
+            path: "creatives[0].errors[0].code"
+            value: "CREATIVE_LIVE_UPDATE_UNSUPPORTED"
+            description: "The refusal uses the precise code"
+          - check: field_contains
+            path: "creatives[0].errors[0].details.refused_changes[*]"
+            value: "format"
+            description: "details.refused_changes names the refused kind"
+          - check: field_contains
+            path: "creatives[0].errors[0].details.live_package_ids[*]"
+            value: "live_refusal_package"
+            description: "details.live_package_ids names the package that makes the creative live"
+
+      - id: read_unchanged_creative
+        title: "The creative is unchanged"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_library
+        stateful: true
+        sample_request:
+          account: *refusal_account
+          filters:
+            creative_ids: ["live_refusal_banner"]
+          context:
+            correlation_id: "creative_live_update_refusal--readback"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "approved"
+            description: "Review state is unchanged"
+          - check: field_absent
+            path: "creatives[0].format_option_ref"
+            description: "The refused format change was not applied"
+          - check: field_absent
+            path: "creatives[0].staged_update"
+            description: "A refused change is not staged"

@@ -1,0 +1,1137 @@
+id: media_buy_seller/canonical_formats
+version: 1.1.1
+title: Canonical formats and deprecated named-format compatibility
+category: media_buy_seller
+summary: Validates canonical product formats and the optional, explicitly deprecated named-format compatibility projection.
+track: products
+requires:
+  - controller
+  - collect_product_pages_runner
+introduced_in: "3.1"
+required_tools:
+  - get_products
+  - create_media_buy
+  - comply_test_controller
+narrative: |
+  AdCP 3.2 requires canonical product-bound format declarations on
+  `products[].format_options[]`. Legacy `format_ids[]` is deprecated and is
+  exercised here only as an optional compatibility projection. Producers that
+  voluntarily dual-emit both shapes MUST describe the same underlying creative
+  requirement in each path.
+
+  This is an opt-in compatibility track, not the primary 3.2 authoring path.
+  Normal 3.2 products carry `format_options`; the runner deliberately seeds
+  deprecated named-format-only and dual-emitted fixtures to verify agents that
+  advertise compatibility with those older shapes.
+
+  The scenario first discovers native canonical image and named-format support.
+  Only then does it seed deterministic display products. Format checks bind
+  each contract to its product ID without requiring vendor metrics. The
+  buyer requests the wholesale product feed and verifies that the seeded
+  products cover the migration shapes from the canonical-formats conformance
+  track: agreeing compatibility projection, deprecated named-format-only
+  emission, canonical-only emission, and divergent compatibility projection
+  advisories.
+
+  After discovery, the buyer creates media buys against the seeded fixed-size
+  product to validate create-time format satisfaction: a legacy fixed MREC
+  selector satisfies the canonical declaration after normalization, while a
+  bare canonical image selector without dimensions does not satisfy a fixed
+  300x250 product.
+
+  Custom and experimental declarations are covered by independent optional scenarios so their absence cannot suppress image and named-format compatibility coverage.
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - exposes_canonical_formats
+  examples:
+    - Any media-buy seller that voluntarily supports deprecated named-format compatibility alongside canonical declarations
+caller:
+  role: buyer_agent
+  example: Compliance test harness
+prerequisites:
+  description: This optional compatibility slice requires wholesale catalog evidence of canonical image declarations and a named-format projection. A valid no-match produces a fixture_unsatisfied coverage gap before feature seeding. Custom and experimental format families have independent scenarios and do not gate this base slice. This optional compatibility slice does not relax canonical requirements in AdCP 3.2 and later. The controller must advertise seed_product and accept supported deterministic fixtures.
+  test_kit: test-kits/acme-outdoor.yaml
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: acct_acmeoutdoor_example_sandbox_5cf62d0533d9
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: pinnacle-agency.example
+        operator_unit:
+          id: compliance-media_buy_seller_canonical_formats-a323283f
+        billing: operator
+        status: active
+        sandbox: true
+  products:
+    - product_id: native_canonical_compatibility_support
+phases:
+  - id: seed_supported_canonical_fixtures
+    title: Prepare supported canonical compatibility fixtures
+    narrative: Native catalog discovery established both canonical image declarations and named-format compatibility before these deterministic fixtures are seeded. Custom and experimental declarations are exercised in independent scenarios. A valid no-match is a fixture_unsatisfied coverage gap; failed discovery and failed accepted seed operations remain failures.
+    steps:
+      - id: seed_canonical_formats_mrec_display
+        title: Seed canonical_formats_mrec_display
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: canonical_formats_mrec_display
+            fixture:
+              name: Canonical Formats MREC Display
+              description: Seeded wholesale product for canonical image dual-emission validation.
+              publisher_properties:
+                - publisher_domain: outdoormagazine.example
+                  selection_type: all
+              channels:
+                - display
+              delivery_type: non_guaranteed
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_300x250_image
+              format_options:
+                - format_kind: image
+                  format_option_id: canonical_formats_image_mrec
+                  display_name: Canonical Formats Image MREC
+                  v1_format_ref:
+                    - agent_url: https://creative.adcontextprotocol.org/
+                      id: display_300x250_image
+                  params:
+                    width: 300
+                    height: 250
+                    max_file_size_kb: 200
+                    image_formats:
+                      - jpg
+                      - png
+                    ssl_required: true
+                    asset_source: buyer_uploaded
+                    buyer_asset_acceptance: accepted
+                    composition_model: deterministic
+                    slots:
+                      - asset_group_id: image_main
+                        asset_type: image
+                        required: true
+              pricing_options:
+                - pricing_option_id: canonical_formats_mrec_cpm
+                  pricing_model: cpm
+                  currency: USD
+                  floor_price: 12
+              reporting_capabilities:
+                available_reporting_frequencies:
+                  - daily
+                expected_delay_minutes: 60
+                timezone: UTC
+                supports_webhooks: false
+                available_metrics:
+                  - impressions
+                  - clicks
+                  - spend
+                date_range_support: date_range
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The controller accepts the supported compatibility fixture
+      - id: seed_canonical_formats_ids_only_display
+        title: Seed canonical_formats_ids_only_display
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: canonical_formats_ids_only_display
+            fixture:
+              name: Canonical Formats IDs Only Display
+              description: Seeded wholesale product for v1-only format declaration validation.
+              publisher_properties:
+                - publisher_domain: outdoormagazine.example
+                  selection_type: all
+              channels:
+                - display
+              delivery_type: non_guaranteed
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_728x90_image
+              pricing_options:
+                - pricing_option_id: canonical_formats_ids_only_cpm
+                  pricing_model: cpm
+                  currency: USD
+                  floor_price: 10
+              reporting_capabilities:
+                available_reporting_frequencies:
+                  - daily
+                expected_delay_minutes: 60
+                timezone: UTC
+                supports_webhooks: false
+                available_metrics:
+                  - impressions
+                  - clicks
+                  - spend
+                date_range_support: date_range
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The controller accepts the supported compatibility fixture
+      - id: seed_canonical_formats_options_only_display
+        title: Seed canonical_formats_options_only_display
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: canonical_formats_options_only_display
+            fixture:
+              name: Canonical Formats Options Only Display
+              description: Seeded wholesale product for v2-only canonical image declaration validation.
+              publisher_properties:
+                - publisher_domain: outdoormagazine.example
+                  selection_type: all
+              channels:
+                - display
+              delivery_type: non_guaranteed
+              format_options:
+                - format_kind: image
+                  format_option_id: canonical_formats_image_leaderboard
+                  display_name: Canonical Formats Image Leaderboard
+                  params:
+                    width: 728
+                    height: 90
+                    max_file_size_kb: 200
+                    image_formats:
+                      - jpg
+                      - png
+                    ssl_required: true
+                    asset_source: buyer_uploaded
+                    buyer_asset_acceptance: accepted
+                    composition_model: deterministic
+                    slots:
+                      - asset_group_id: image_main
+                        asset_type: image
+                        required: true
+              pricing_options:
+                - pricing_option_id: canonical_formats_options_only_cpm
+                  pricing_model: cpm
+                  currency: USD
+                  floor_price: 11
+              reporting_capabilities:
+                available_reporting_frequencies:
+                  - daily
+                expected_delay_minutes: 60
+                timezone: UTC
+                supports_webhooks: false
+                available_metrics:
+                  - impressions
+                  - clicks
+                  - spend
+                date_range_support: date_range
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The controller accepts the supported compatibility fixture
+      - id: seed_canonical_formats_divergent_display
+        title: Seed canonical_formats_divergent_display
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: canonical_formats_divergent_display
+            fixture:
+              name: Canonical Formats Divergent Display
+              description: Seeded wholesale product with intentionally divergent v1 and v2 references.
+              publisher_properties:
+                - publisher_domain: outdoormagazine.example
+                  selection_type: all
+              channels:
+                - display
+              delivery_type: non_guaranteed
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_300x250_image
+              format_options:
+                - format_kind: image
+                  format_option_id: canonical_formats_divergent_image
+                  display_name: Canonical Formats Divergent Image
+                  v1_format_ref:
+                    - agent_url: https://creative.adcontextprotocol.org/
+                      id: display_728x90_image
+                  params:
+                    width: 728
+                    height: 90
+                    max_file_size_kb: 200
+                    image_formats:
+                      - jpg
+                      - png
+                    ssl_required: true
+                    asset_source: buyer_uploaded
+                    buyer_asset_acceptance: accepted
+                    composition_model: deterministic
+                    slots:
+                      - asset_group_id: image_main
+                        asset_type: image
+                        required: true
+              pricing_options:
+                - pricing_option_id: canonical_formats_divergent_cpm
+                  pricing_model: cpm
+                  currency: USD
+                  floor_price: 8
+              reporting_capabilities:
+                available_reporting_frequencies:
+                  - daily
+                expected_delay_minutes: 60
+                timezone: UTC
+                supports_webhooks: false
+                available_metrics:
+                  - impressions
+                  - clicks
+                  - spend
+                date_range_support: date_range
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The controller accepts the supported compatibility fixture
+  - id: canonical_product_discovery
+    title: Canonical product discovery
+    narrative: |
+      The buyer reads the wholesale product feed and checks each seeded
+      product by identity and format contract within the same response object.
+      Catalog order, unrelated products, and reporting vendor support do not
+      affect the canonical or named-format compatibility assertions.
+    steps:
+      - id: get_seeded_canonical_product
+        title: Read products with canonical format declarations
+        narrative: |
+          Request the wholesale product feed so seeded catalog entries are
+          returned without brief-mode ranking or curation. The response schema
+          validates the full product shape, while a same-product membership
+          check verifies the canonical declaration and its v1 projection link.
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return products including the seeded canonical_formats_mrec_display
+          product with:
+          - format_ids[] containing the display_300x250_image v1 fallback from https://creative.adcontextprotocol.org/
+          - format_options[] containing an image declaration
+          - v1_format_ref[] linking the image declaration back to that fallback
+          - params.width = 300 and params.height = 250
+        sample_request:
+          buying_mode: wholesale
+          filters:
+            channels:
+              - display
+            delivery_type: non_guaranteed
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          context:
+            correlation_id: canonical_formats--get_seeded_canonical_product
+        validations:
+          - check: response_schema
+            description: Response matches get-products-response.json schema
+          - check: field_present
+            path: context
+            description: Response echoes back the context object
+          - check: field_value
+            path: context.correlation_id
+            value: canonical_formats--get_seeded_canonical_product
+            description: Context correlation_id returned unchanged
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: canonical_formats_mrec_display
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_300x250_image
+              format_options:
+                - format_kind: image
+                  format_option_id: canonical_formats_image_mrec
+                  v1_format_ref:
+                    - agent_url: https://creative.adcontextprotocol.org/
+                      id: display_300x250_image
+                  params:
+                    width: 300
+                    height: 250
+            description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true
+      - id: get_seeded_v1_only_product
+        title: Read v1-only format declarations
+        narrative: |
+          Request the seeded product that intentionally publishes only
+          `format_ids[]` on the producer side. This remains a valid 3.x
+          product shape during the canonical-format migration window; this
+          producer storyboard MUST NOT require the seller to synthesize
+          `format_options[]` for that product.
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_ids_only_display product with a
+          v1 fallback format_id. No producer-side `format_options[]` projection
+          is required for v1-only products.
+        sample_request:
+          buying_mode: wholesale
+          filters:
+            channels:
+              - display
+            delivery_type: non_guaranteed
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          context:
+            correlation_id: canonical_formats--get_seeded_v1_only_product
+        validations:
+          - check: response_schema
+            description: Response matches get-products-response.json schema
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: canonical_formats_ids_only_display
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_728x90_image
+            description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true
+      - id: get_seeded_v2_only_product
+        title: Read v2-only format declarations
+        narrative: |
+          Request the seeded product that intentionally publishes only
+          `format_options[]`. Producers can expose canonical product-bound
+          declarations without also carrying v1 named-format fallbacks.
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_options_only_display product with
+          an image canonical declaration and no format_ids fallback.
+        sample_request:
+          buying_mode: wholesale
+          filters:
+            channels:
+              - display
+            delivery_type: non_guaranteed
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          context:
+            correlation_id: canonical_formats--get_seeded_v2_only_product
+        validations:
+          - check: response_schema
+            description: Response matches get-products-response.json schema
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: canonical_formats_options_only_display
+              format_options:
+                - format_kind: image
+                  format_option_id: canonical_formats_image_leaderboard
+                  params:
+                    width: 728
+                    height: 90
+            description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true
+      - id: provision_test_kit_account
+        title: Provision the account for the test-kit credential
+        narrative: |
+          The next step authenticates with the test kit's API key, a different
+          buyer principal from the one controller seeding ran under. A natural
+          key resolves on discovery only after that caller provisions it
+          (accounts overview: Account references before provisioning), so the
+          test-kit caller syncs the same account first.
+        task: sync_accounts
+        schema_ref: account/sync-accounts-request.json
+        response_schema_ref: account/sync-accounts-response.json
+        doc_ref: /accounts/tasks/sync_accounts
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: true
+        expected: |
+          Provision the natural key for the test-kit caller.
+        sample_request:
+          accounts:
+            - brand:
+                domain: acmeoutdoor.example
+              operator: pinnacle-agency.example
+              operator_unit:
+                id: compliance-media_buy_seller_canonical_formats-a323283f
+              billing: operator
+              payment_terms: net_30
+              sandbox: true
+          idempotency_key: $generate:uuid_v4#media_buy_seller_canonical_formats_provision_test_kit_account
+          context:
+            correlation_id: canonical_formats--provision_test_kit_account
+        validations:
+          - check: response_schema
+            description: Response matches sync-accounts-response.json schema
+          - check: field_present
+            path: accounts[0].account_id
+            description: The seller provisions the account for the test-kit caller
+      - id: get_seeded_divergent_product
+        title: Flag divergent dual-emission
+        narrative: |
+          Request the seeded product whose `format_ids[]` and
+          `format_options[].v1_format_ref[]` intentionally disagree. Producers
+          that self-detect this drift surface a non-fatal advisory on
+          `errors[]` so consumers do not silently lose inventory.
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        comply_scenario: schema_compliance
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_divergent_display product and
+          flag the divergent declarations with a non-fatal
+          FORMAT_DECLARATION_DIVERGENT advisory in `errors[]`.
+        sample_request:
+          buying_mode: wholesale
+          filters:
+            channels:
+              - display
+            delivery_type: non_guaranteed
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          context:
+            correlation_id: canonical_formats--get_seeded_divergent_product
+        validations:
+          - check: response_schema
+            description: Divergent dual-emission remains a populated get_products success response
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: canonical_formats_divergent_display
+            description: The seeded product retains its format contract regardless of catalog or format ordering
+          - check: field_contains
+            path: errors[*]
+            value:
+              code: FORMAT_DECLARATION_DIVERGENT
+              source: producer
+            description: Divergent declarations emit the producer advisory regardless of advisory ordering
+        collect_product_pages: true
+  - id: canonical_create_satisfaction
+    title: Canonical create-time format satisfaction
+    narrative: |
+      The buyer rereads the fixed-size seeded product so the runner's product
+      context points at `canonical_formats_mrec_display`, then exercises every
+      PackageRequest selector migration path. Both canonical-only routes and
+      legacy-only requests are accepted. Equivalent canonical-plus-legacy dual
+      emission is accepted for older 3.x peers, while conflicting resolvable
+      routes are rejected with CONFLICTING_SELECTORS and an unprojectable route
+      is rejected first with UNSUPPORTED_FEATURE. A bare canonical image and a
+      width-only image selector are rejected because they under-specify the
+      product's fixed 300x250 constraint; the width-only case is also
+      schema-invalid because fixed-size image dimensions are atomic.
+    steps:
+      - id: get_canonical_product_for_create_satisfaction
+        title: Read the fixed-size canonical product before create
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_mrec_display product so create-time
+          validations can compare package format selectors against the product's
+          canonical format_options[] declaration.
+        sample_request:
+          buying_mode: wholesale
+          filters:
+            channels:
+              - display
+            delivery_type: non_guaranteed
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          context:
+            correlation_id: canonical_formats--get_canonical_product_for_create_satisfaction
+        validations:
+          - check: response_schema
+            description: Response matches get-products-response.json schema
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: canonical_formats_mrec_display
+              format_options:
+                - params:
+                    width: 300
+                    height: 250
+            description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true
+      - id: create_media_buy_with_canonical_format_option
+        title: Accept canonical-only format option selector
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expected: |
+          Accept the buy. The package uses only the product-local canonical
+          format_option_ref published by the fixed 300x250 product.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_option_refs:
+                - scope: product
+                  format_option_id: canonical_formats_image_mrec
+              context:
+                buyer_ref: canonical_formats_option_ref_positive
+          context:
+            correlation_id: canonical_formats--create_media_buy_with_canonical_format_option
+          idempotency_key: $generate:uuid_v4#canonical_formats_create_media_buy_with_canonical_format_option
+        validations:
+          - check: response_schema
+            description: Response matches create-media-buy-response.json schema
+          - check: field_present
+            path: media_buy_id
+            description: Accepted canonical-only create allocates a media_buy_id
+          - check: canonical_format_satisfaction
+            value: true
+            description: Product-local format_option_ref satisfies the fixed canonical image declaration
+      - id: create_media_buy_with_direct_canonical_selector
+        title: Accept direct canonical format selector
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expected: |
+          Accept the buy. The package uses only a direct canonical image
+          selector with the complete dimensions required by the product.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_kind: image
+              params:
+                width: 300
+                height: 250
+                max_file_size_kb: 200
+                image_formats:
+                  - jpg
+                  - png
+              context:
+                buyer_ref: canonical_formats_direct_selector_positive
+          context:
+            correlation_id: canonical_formats--create_media_buy_with_direct_canonical_selector
+          idempotency_key: $generate:uuid_v4#canonical_formats_create_media_buy_with_direct_canonical_selector
+        validations:
+          - check: response_schema
+            description: Response matches create-media-buy-response.json schema
+          - check: field_present
+            path: media_buy_id
+            description: Accepted direct-canonical create allocates a media_buy_id
+          - check: canonical_format_satisfaction
+            value: true
+            description: Complete direct image selector satisfies the fixed canonical declaration
+      - id: create_media_buy_with_legacy_mrec_format
+        title: Accept legacy fixed MREC selector after canonical normalization
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expected: |
+          Accept the buy. The package uses the legacy display_300x250_image
+          format_id; canonical satisfaction validates that the legacy selector
+          normalizes to the product's image format_options[] declaration.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_300x250_image
+              context:
+                buyer_ref: canonical_formats_legacy_mrec_positive
+          context:
+            correlation_id: canonical_formats--create_media_buy_with_legacy_mrec_format
+          idempotency_key: $generate:uuid_v4#canonical_formats_create_media_buy_with_legacy_mrec_format
+        validations:
+          - check: response_schema
+            description: Response matches create-media-buy-response.json schema
+          - check: field_present
+            path: media_buy_id
+            description: Accepted create allocates a media_buy_id
+          - check: canonical_format_satisfaction
+            value: true
+            description: Legacy display_300x250_image selector satisfies the fixed canonical image declaration after normalization
+      - id: create_media_buy_with_equivalent_dual_emission
+        title: Accept equivalent legacy dual emission
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expected: |
+          Accept the older 3.x request after independently resolving both
+          selector routes. The product-local canonical option and legacy
+          display_300x250_image selector normalize to the same declaration.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_option_refs:
+                - scope: product
+                  format_option_id: canonical_formats_image_mrec
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_300x250_image
+              context:
+                buyer_ref: canonical_formats_equivalent_dual_positive
+          context:
+            correlation_id: canonical_formats--create_media_buy_with_equivalent_dual_emission
+          idempotency_key: $generate:uuid_v4#canonical_formats_create_media_buy_with_equivalent_dual_emission
+        validations:
+          - check: response_schema
+            description: Response matches create-media-buy-response.json schema
+          - check: field_present
+            path: media_buy_id
+            description: Equivalent dual emission remains valid during the 3.x compatibility window
+          - check: canonical_format_satisfaction
+            value: true
+            description: Both selector routes normalize to the fixed 300x250 image declaration
+      - id: create_media_buy_with_equivalent_direct_legacy_emission
+        title: Accept equivalent direct and legacy selectors
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expected: |
+          Accept the older 3.x request. The direct image selector and legacy
+          display_300x250_image selector both select the product's fixed MREC
+          declaration under the canonical v2-narrows-v1 comparison.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_kind: image
+              params:
+                width: 300
+                height: 250
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_300x250_image
+              context:
+                buyer_ref: canonical_formats_direct_legacy_positive
+          context:
+            correlation_id: canonical_formats--create_media_buy_with_equivalent_direct_legacy_emission
+          idempotency_key: $generate:uuid_v4#canonical_formats_create_media_buy_with_equivalent_direct_legacy_emission
+        validations:
+          - check: response_schema
+            description: Response matches create-media-buy-response.json schema
+          - check: field_present
+            path: media_buy_id
+            description: Equivalent direct-plus-legacy emission remains valid for older 3.x peers
+          - check: canonical_format_satisfaction
+            value: true
+            description: Direct and legacy routes select the same fixed 300x250 image declaration
+      - id: reject_conflicting_dual_emission
+        title: Reject conflicting canonical and legacy selectors
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with CONFLICTING_SELECTORS. The canonical option selects the
+          product's 300x250 image declaration while the registry-backed legacy
+          display_728x90 selector normalizes to a 728x90 image. Canonical precedence must not hide the
+          dimensional conflict.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_option_refs:
+                - scope: product
+                  format_option_id: canonical_formats_image_mrec
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: display_728x90
+              context:
+                buyer_ref: canonical_formats_conflicting_dual_negative
+          context:
+            correlation_id: canonical_formats--reject_conflicting_dual_emission
+          idempotency_key: $generate:uuid_v4#canonical_formats_reject_conflicting_dual_emission
+        validations:
+          - check: error_code
+            value: CONFLICTING_SELECTORS
+            description: Seller rejects disagreeing canonical and legacy selector projections
+          - check: canonical_format_satisfaction
+            value: false
+            description: The registry-backed 728x90 legacy projection does not select the same product contract as the 300x250 canonical route
+      - id: reject_conflicting_canonical_routes
+        title: Reject conflicting canonical selector routes
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with CONFLICTING_SELECTORS. The product-local option selects
+          the fixed 300x250 declaration while the co-present direct selector
+          describes a 728x90 image. Canonical precedence must not hide a
+          conflict between two resolvable canonical routes.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_option_refs:
+                - scope: product
+                  format_option_id: canonical_formats_image_mrec
+              format_kind: image
+              params:
+                width: 728
+                height: 90
+              context:
+                buyer_ref: canonical_formats_conflicting_canonical_negative
+          context:
+            correlation_id: canonical_formats--reject_conflicting_canonical_routes
+          idempotency_key: $generate:uuid_v4#canonical_formats_reject_conflicting_canonical_routes
+        validations:
+          - check: error_code
+            value: CONFLICTING_SELECTORS
+            description: Seller rejects canonical routes that select different product format contracts
+          - check: canonical_format_satisfaction
+            value: false
+            description: The two canonical routes describe incompatible fixed image dimensions
+      - id: reject_unprojectable_legacy_dual_emission
+        title: Reject an unprojectable legacy route before equivalence
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with UNSUPPORTED_FEATURE. The canonical option resolves, but
+          the legacy ID has no product link or canonical registry mapping.
+          Resolution failure is reported before selector equivalence and must
+          not be mislabeled CONFLICTING_SELECTORS.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_option_refs:
+                - scope: product
+                  format_option_id: canonical_formats_image_mrec
+              format_ids:
+                - agent_url: https://creative.adcontextprotocol.org/
+                  id: unmapped_legacy_selector_6648
+              context:
+                buyer_ref: canonical_formats_unprojectable_legacy_negative
+          context:
+            correlation_id: canonical_formats--reject_unprojectable_legacy_dual_emission
+          idempotency_key: $generate:uuid_v4#canonical_formats_reject_unprojectable_legacy_dual_emission
+        validations:
+          - check: error_code
+            value: UNSUPPORTED_FEATURE
+            description: Seller reports route resolution failure before attempting equivalence
+          - check: canonical_format_satisfaction
+            value: false
+            description: The legacy selector cannot be normalized to a canonical declaration
+      - id: reject_bare_image_selector_for_fixed_mrec
+        title: Reject bare canonical image selector for fixed-size product
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with UNSUPPORTED_FEATURE. The bare canonical image selector
+          does not include width and height, so it does not satisfy the product's
+          fixed 300x250 declaration.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_kind: image
+              context:
+                buyer_ref: canonical_formats_bare_image_negative
+          context:
+            correlation_id: canonical_formats--reject_bare_image_selector_for_fixed_mrec
+          idempotency_key: $generate:uuid_v4#canonical_formats_reject_bare_image_selector_for_fixed_mrec
+        validations:
+          - check: error_code
+            allowed_values:
+              - UNSUPPORTED_FEATURE
+            description: Seller rejects an under-specified format selector as unsupported for the product
+          - check: canonical_format_satisfaction
+            value: false
+            description: Bare canonical image selector lacks the dimensions required by the fixed canonical image declaration
+      - id: reject_image_width_without_height
+        title: Reject fixed-size image width without height
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        expect_error: true
+        negative_path: schema_invalid
+        stateful: true
+        expected: |
+          Reject with INVALID_REQUEST. Fixed-size image dimensions are atomic,
+          so params.width without params.height is schema-invalid.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_mrec_display
+              budget: 1000
+              pricing_option_id: canonical_formats_mrec_cpm
+              format_kind: image
+              params:
+                width: 300
+              context:
+                buyer_ref: canonical_formats_width_only_negative
+          context:
+            correlation_id: canonical_formats--reject_image_width_without_height
+          idempotency_key: $generate:uuid_v4#canonical_formats_reject_image_width_without_height
+        validations:
+          - check: error_code
+            value: INVALID_REQUEST
+            description: Seller rejects a schema-invalid fixed-size image selector
+requires_all_capabilities:
+  - path: media_buy.buying_modes
+    contains: wholesale
+  - path: compliance_testing.scenarios
+    contains: seed_product
+fixture_resolution:
+  products:
+    - handle: native_canonical_compatibility_support
+      allow_reuse: true
+      strategies:
+        - discover
+      match:
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /channels
+          operator: contains_all
+          value:
+            - display
+        - path: /pricing_options
+          operator: any_match
+          where:
+            - path: /pricing_model
+              operator: equals
+              value: cpm
+        - path: /format_options
+          operator: any_match
+          where:
+            - path: /format_kind
+              operator: equals
+              value: image
+        - path: /format_ids
+          operator: any_match
+          where:
+            - path: /agent_url
+              operator: present
+            - path: /id
+              operator: present
+context:
+  account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_canonical_formats-a323283f
+    sandbox: true

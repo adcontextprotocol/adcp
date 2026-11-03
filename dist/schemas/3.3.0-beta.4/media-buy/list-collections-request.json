@@ -1,0 +1,207 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/media-buy/list-collections-request.json",
+  "title": "List Collections Request",
+  "description": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. Read the selling agent's catalog of collection cards: look up specific collections by key, or browse with filters and pages. Returns the same core/response-collection.json copies, under the same authority rules, as include_collections on product and proposal reads, and never returns products. Not to be confused with list_collection_lists, which lists buyer-owned collection targeting lists on a governance agent. Side-effect free: the call never provisions an account. It is the bootstrap and repair read for collection_card.* and collection_catalog.bulk_change webhooks, which are registered only through sync_accounts notification_configs; the request takes no push_notification_config, so a call never creates a subscription. Sellers implementing it MUST list media_buy.collection_catalog and media_buy.collection_cards in experimental_features. A seller MUST NOT serve this task to a caller whose adcp_version is below 3.3; it fails the request with UNSUPPORTED_FEATURE.",
+  "x-tool-summary": "List a seller's collection cards (shows, creators, podcasts) by key or with filters, without products.",
+  "x-status": "experimental",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Optional replay key accepted uniformly on read calls."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/context.json"
+    },
+    "account": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/canonical-account-ref.json"
+        }
+      ],
+      "description": "Optional account scope. Only the set of collections visible to the caller may vary by account; the content of a copy for a given (publisher_domain, collection_id) never does. Without account the response is cache_scope public."
+    },
+    "collections": {
+      "type": "array",
+      "description": "Optional selectors, the same shape as a product's collections, so a buyer can pass a product's selectors through unchanged. A selector with collection_ids is a key lookup; a selector with only publisher_domain means every collection of that publisher that this seller represents. At most 100 collection_ids in total across all selectors; sellers reject more with VALIDATION_ERROR. A key that is unknown or not visible to the caller is omitted from the response without a per-key error. Omit to browse the whole catalog.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/collection-selector.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "filters": {
+      "type": "object",
+      "description": "Optional filters, applied with the selectors before pagination. Values within one filter are alternatives (OR); different filters combine with AND. Filters run on the seller's copy, so a match on genre, status, talent or kind is a discovery hint: buyers confirm those fields against the publisher's adagents.json before relying on them for suitability. A seller that cannot apply a filter it receives fails the request with VALIDATION_ERROR and never returns a broader result.",
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "description": "Include only collections of these kinds. Same semantics as kinds in collection/collection-list-filters.json.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/collection-kind.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "genres_include": {
+          "type": "array",
+          "description": "Include only collections with any of these genres; collections without genre metadata are excluded. Values are interpreted against genre_taxonomy when present. Same semantics as in collection/collection-list-filters.json.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "genres_exclude": {
+          "type": "array",
+          "description": "Exclude collections tagged with any of these genres, applied after genres_include. Values are interpreted against genre_taxonomy when present.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "genre_taxonomy": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/genre-taxonomy.json",
+          "description": "Taxonomy for genre filter values. When present, genres_include and genres_exclude values are taxonomy IDs."
+        },
+        "statuses": {
+          "type": "array",
+          "description": "Include only collections with any of these statuses.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/collection-status.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "languages": {
+          "type": "array",
+          "description": "Include only collections whose language matches any of these BCP 47 language ranges under RFC 4647 basic filtering, compared case-insensitively: 'en' matches 'en' and 'en-US', but 'en-US' does not match 'en'.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/locale-tag.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "talent": {
+          "type": "array",
+          "description": "Include only collections with a talent entry whose brand_ref matches any of these brands. Only domain and brand_id are compared, as on talent; brand_id omitted matches any brand_ref at that domain.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "brand_id": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/brand-id.json"
+              }
+            },
+            "required": [
+              "domain"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "platforms": {
+          "type": "array",
+          "description": "Include only collections with a distribution entry whose publisher_domain is any of these domains.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "name_contains": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Include only collections whose name contains this string, compared case-insensitively."
+        }
+      },
+      "additionalProperties": false
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/pagination-request.json",
+      "description": "Cursor pagination (default 50, maximum 100 per page). The cursor is outside the collections_version scope. Order is seller-defined and stable within one collections_version; if a later page returns a different collections_version, restart from the first page."
+    },
+    "if_collections_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque collections_version from a prior list_collections response for the same scope: the canonicalized collections selectors and filters (arrays compared as sets, pagination.cursor excluded), plus account identity when that response's cache_scope was account. When it matches, the seller returns outcome unchanged without collections. A token from a different scope is a mismatch and gets a full listed response. Unrelated to feed_version and wholesale_feed_version. A webhook-fed mirror repairing after a gap sends its last applied version, never a newer webhook version."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Key lookup to refresh two cards, passing product selectors through unchanged",
+      "data": {
+        "adcp_version": "3.3",
+        "collections": [
+          {
+            "publisher_domain": "novacreators.example",
+            "collection_ids": [
+              "kitchen_lab"
+            ]
+          },
+          {
+            "publisher_domain": "pinnaclepods.example",
+            "collection_ids": [
+              "founders_hour"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Browse active English series featuring one creator on one platform",
+      "data": {
+        "adcp_version": "3.3",
+        "account": {
+          "account_id": "acct_nova_agency"
+        },
+        "filters": {
+          "kinds": [
+            "series"
+          ],
+          "statuses": [
+            "active"
+          ],
+          "languages": [
+            "en"
+          ],
+          "talent": [
+            {
+              "domain": "jordanvega.example"
+            }
+          ],
+          "platforms": [
+            "videoplatform.example"
+          ]
+        },
+        "pagination": {
+          "max_results": 50
+        }
+      }
+    }
+  ]
+}
