@@ -1,0 +1,737 @@
+{
+  "$comment": "Reviewed exceptions for scripts/lint-schema-named-constraints.cjs. held_apart lists sites that state a named schema's constraints but mean something else, or cannot reference it without changing the document. unnamed_repeats lists constraints that repeat without a name, with their current site counts. Entries that stop occurring fail the lint, so this file shrinks as sites get fixed. An addition needs a reason, and a reviewer sees it in the diff.",
+  "min_repeat_sites": 3,
+  "held_apart": [
+    {
+      "path": "account/list-accounts-request.json#/properties/status",
+      "reason": "Same concept as enums/account-status.json, but that document adds enumDescriptions that this site does not state."
+    },
+    {
+      "path": "account/sync-accounts-response.json#/oneOf/0/properties/accounts/items/properties/status",
+      "reason": "Same concept as enums/account-status.json, but that document adds enumDescriptions that this site does not state."
+    },
+    {
+      "path": "account/sync-governance-request.json#/properties/accounts/items/properties/governance_agents/items/properties/authentication/properties/credentials",
+      "reason": "Authenticates to a governance agent, not a webhook."
+    },
+    {
+      "path": "brand.json#/definitions/brand_agent/properties/id",
+      "reason": "Identifies an agent entry for logging, not a brand, a property, or a tag."
+    },
+    {
+      "path": "brand.json#/definitions/brand_id",
+      "reason": "Same concept as core/brand-id.json, but that document adds x-entity, examples, and x-max-length-4.0 that this site does not state."
+    },
+    {
+      "path": "brand.json#/definitions/rights_agent/properties/id",
+      "reason": "Identifies an agent entry for logging, not a brand, a property, or a tag."
+    },
+    {
+      "path": "brand/verify-brand-claim-request.json#/oneOf/0/properties/claim/properties/subsidiary_brand_id",
+      "reason": "Same concept as core/brand-id.json, but that document adds x-entity, examples, and x-max-length-4.0 that this site does not state."
+    },
+    {
+      "path": "brand/verify-brand-claims-request.json#/definitions/claim_entry/oneOf/0/properties/claim/properties/subsidiary_brand_id",
+      "reason": "Same concept as core/brand-id.json, but that document adds x-entity, examples, and x-max-length-4.0 that this site does not state."
+    },
+    {
+      "path": "compliance/comply-test-controller-request.json#/properties/params/properties/message",
+      "reason": "A compliance controller message, not a task message."
+    },
+    {
+      "path": "compliance/comply-test-controller-response.json#/oneOf/6/properties/recorded_calls/items/properties/payload_digest_sha256",
+      "reason": "Digest of a recorded request body, not hashed personal data, a credential fingerprint, or an identifier digest."
+    },
+    {
+      "path": "core/account-change.json#/properties/action",
+      "reason": "A change action, not a resource type."
+    },
+    {
+      "path": "core/account-change.json#/properties/batch_id",
+      "reason": "Groups records from one operation; it appears once, and no named identifier means this."
+    },
+    {
+      "path": "core/account-request-record.json#/properties/request_id",
+      "reason": "Account request identifier, not a reporting identifier. core/account-request-id.json has no pattern, so it would loosen this site."
+    },
+    {
+      "path": "core/agent-reporting-destination.json#/oneOf/0/properties/operator_id",
+      "reason": "Agent-scoped operator label, repeated inside one document only."
+    },
+    {
+      "path": "core/agent-reporting-destination.json#/oneOf/1/properties/operator_id",
+      "reason": "Agent-scoped operator label, repeated inside one document only."
+    },
+    {
+      "path": "core/agent-reporting-destination.json#/oneOf/2/properties/operator_id",
+      "reason": "Agent-scoped operator label, repeated inside one document only."
+    },
+    {
+      "path": "core/audience-activation-method.json#/oneOf/3/properties/consumer_identities/items/properties/cloud",
+      "reason": "Same concept as enums/delivery-recipient-cloud.json, but that document adds annotations that this site does not state."
+    },
+    {
+      "path": "core/audience-evidence.json#/properties/relationship",
+      "reason": "Kept inline on purpose by d9b5417bc8; enums/audience-evidence-relationship.json also adds enumDescriptions."
+    },
+    {
+      "path": "core/bidding-policy-capability.json#/definitions/max_bid_with_cost_per/properties/cost_per_strengths/items",
+      "reason": "Same concept as enums/outcome-target-cost-strength.json, but that document adds enumDescriptions that this site does not state."
+    },
+    {
+      "path": "core/bidding-policy-capability.json#/definitions/policy_profile/properties/cost_per_strengths/items",
+      "reason": "Same concept as enums/outcome-target-cost-strength.json, but that document adds enumDescriptions that this site does not state."
+    },
+    {
+      "path": "core/bidding-policy.json#/properties/cost_per/properties/strength",
+      "reason": "Same concept as enums/outcome-target-cost-strength.json, but that document adds enumDescriptions that this site does not state."
+    },
+    {
+      "path": "core/canonical-audience-evidence.json#/properties/relationship",
+      "reason": "Kept inline on purpose by d9b5417bc8; enums/audience-evidence-relationship.json also adds enumDescriptions."
+    },
+    {
+      "path": "core/canonical-format-option.json#/properties/format_kind",
+      "reason": "Pinned inline on purpose: tests/tracker-execution-package-integration.test.cjs records that SDK compact-format postprocessing requires an inline literal union."
+    },
+    {
+      "path": "core/canonical-pricing-option.json#/properties/pricing_model",
+      "reason": "Same concept as enums/pricing-model.json, but that document adds enumDescriptions that this site does not state."
+    },
+    {
+      "path": "core/duration.json#/properties/unit",
+      "reason": "A general duration unit. core/frequency-cap-duration-unit.json is specific to frequency caps."
+    },
+    {
+      "path": "core/feature-requirement.json#/properties/if_not_covered",
+      "reason": "What to do when a feature is not covered, not a signal targeting mode."
+    },
+    {
+      "path": "core/flight-item.json#/properties/destination/properties/airport_code",
+      "reason": "IATA airport code, not a currency."
+    },
+    {
+      "path": "core/flight-item.json#/properties/origin/properties/airport_code",
+      "reason": "IATA airport code, not a currency."
+    },
+    {
+      "path": "core/format-id.json#/properties/id",
+      "reason": "Format identifier in an agent namespace, not a signal or a capability."
+    },
+    {
+      "path": "core/impairment.json#/properties/transition/properties/from",
+      "reason": "A prior resource status value, not an identifier."
+    },
+    {
+      "path": "core/inventory-list-application.json#/oneOf/0/properties/effect",
+      "reason": "Whether an inventory list includes or excludes, not a signal targeting mode."
+    },
+    {
+      "path": "core/inventory-list-application.json#/oneOf/1/properties/effect",
+      "reason": "Whether an inventory list includes or excludes, not a signal targeting mode."
+    },
+    {
+      "path": "core/reporting-canonicalization-contract.json#/properties/golden_vectors/properties/additional/items/properties/name",
+      "reason": "Test vector name, repeated inside one document only."
+    },
+    {
+      "path": "core/reporting-canonicalization-contract.json#/properties/golden_vectors/properties/empty_report/properties/name",
+      "reason": "Test vector name, repeated inside one document only."
+    },
+    {
+      "path": "core/reporting-canonicalization-contract.json#/properties/golden_vectors/properties/ordering_encoding/properties/name",
+      "reason": "Test vector name, repeated inside one document only."
+    },
+    {
+      "path": "core/reporting-dataset-share-destination.json#/definitions/ReportingCloud",
+      "reason": "Same concept as enums/delivery-recipient-cloud.json, but that document adds annotations that this site does not state."
+    },
+    {
+      "path": "core/reporting-materialization.json#/properties/failure_code",
+      "reason": "A materialization failure, not a rejection of a receipt or adjustment."
+    },
+    {
+      "path": "core/reporting-report-definition.json#/properties/contract_version",
+      "reason": "A canonicalization contract version. Sharing values with enums/daast-version.json is a coincidence."
+    },
+    {
+      "path": "core/reporting-resource.json#/properties/resource_ref",
+      "reason": "Opaque reference to one resource descriptor; it appears once, and no named identifier means this."
+    },
+    {
+      "path": "core/reporting-status-issue.json#/properties/external_ref",
+      "reason": "Opaque reference to a third-party tracker, not an AdCP identifier."
+    },
+    {
+      "path": "core/reporting-verification-profile-set.json#/items",
+      "reason": "Same concept as core/reporting-verification-profile.json, but that document adds x-status that this site does not state."
+    },
+    {
+      "path": "core/representation-selection.json#/properties/resolved_by",
+      "reason": "Same values as the party enums by coincidence: this site names who resolved or manages something."
+    },
+    {
+      "path": "core/response-payload-jws-envelope.json#/definitions/response_payload/properties/request_hash",
+      "reason": "Hashes a request-binding object, not proposal commercial terms."
+    },
+    {
+      "path": "formats/canonical/coordinated_placements.json#/properties/components/items/properties/component_id",
+      "reason": "Coordination-local component identifier, unique within components[]."
+    },
+    {
+      "path": "formats/canonical/coordinated_placements.json#/properties/shared_slots/items/properties/asset_group_id",
+      "reason": "Identifies an asset group in a format, not a brand, a property, or a tag."
+    },
+    {
+      "path": "formats/canonical/seller_rendered_stateful_display.json#/properties/clickthrough",
+      "reason": "Same values as enums/co-branding-requirement.json by coincidence: this site states a clickthrough requirement."
+    },
+    {
+      "path": "formats/canonical/seller_rendered_stateful_display.json#/properties/states/items/properties/slot_bindings/items",
+      "reason": "Identifies an asset group in a format, not a brand, a property, or a tag."
+    },
+    {
+      "path": "formats/canonical/seller_rendered_stateful_display.json#/properties/transitions/items/properties/transition_id",
+      "reason": "Identifies a state transition in a stateful display, not a state or a breakpoint."
+    },
+    {
+      "path": "governance/attribute-definition.json#/properties/attribute_id",
+      "reason": "Governance attribute identifier, not a task name or a canvas identifier."
+    },
+    {
+      "path": "manifest.schema.json#/definitions/tool_name",
+      "reason": "The manifest is standalone and has no core references; a tool name also covers tools beyond AdCP tasks."
+    },
+    {
+      "path": "manifest.schema.json#/properties/tools/additionalProperties/properties/idempotency_requirement",
+      "reason": "Same values as enums/co-branding-requirement.json by coincidence: this site states an idempotency requirement."
+    },
+    {
+      "path": "media-buy/sync-audiences-response.json#/oneOf/0/properties/audiences/items/properties/action",
+      "reason": "An audience sync outcome. Sharing values with the catalog and creative action enums is a coincidence."
+    },
+    {
+      "path": "media-buy/sync-event-sources-response.json#/oneOf/0/properties/event_sources/items/properties/managed_by",
+      "reason": "Same values as the party enums by coincidence: this site names who resolved or manages something."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/extensions_supported/items",
+      "reason": "Extension namespace, not a task name."
+    },
+    {
+      "path": "sponsored-intelligence/si-sponsored-context-receipt.json#/properties/host_receipt/properties/status",
+      "reason": "A host decision on sponsored context, not a reporting receipt status."
+    }
+  ],
+  "unnamed_repeats": [
+    {
+      "constraint": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "sites": 45,
+      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+    },
+    {
+      "constraint": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "sites": 34,
+      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "description",
+      "sites": 23,
+      "reason": "A generic field name. The shared length bound does not show that the description sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "version",
+      "sites": 11,
+      "reason": "A generic field name. The shared length bound does not show that the version sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "property": "governance_context",
+      "sites": 10,
+      "reason": "Same concept as core/governance-context.json with a different constraint. Referencing it would change what these sites accept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "timezone",
+      "sites": 9,
+      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "proposal_id",
+      "sites": 8,
+      "reason": "Same concept as core/proposal-id.json with a different constraint. Referencing it would change what these sites accept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "name",
+      "sites": 7,
+      "reason": "A generic field name. The shared length bound does not show that the name sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "ask",
+      "sites": 7,
+      "reason": "A generic field name. The shared length bound does not show that the ask sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 150
+      },
+      "sites": 6,
+      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+    },
+    {
+      "constraint": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "sites": 6,
+      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "a2a",
+          "mcp"
+        ]
+      },
+      "sites": 5,
+      "reason": "Integration type and protocol transport use the same values; not proven to be one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "correctable",
+          "terminal",
+          "transient"
+        ]
+      },
+      "sites": 5,
+      "reason": "One concept, but the sites list the values in different orders, so a $ref would not compare identical. Reordering them is a separate edit."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "maxLength": 253,
+        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      },
+      "sites": 5,
+      "reason": "Domain names with an added maxLength. core/domain-name.json states no length, so referencing it would loosen these sites."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "property": "reason",
+      "sites": 5,
+      "reason": "A generic field name. The shared length bound does not show that the reason sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "reason",
+      "sites": 5,
+      "reason": "A generic field name. The shared length bound does not show that the reason sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200
+      },
+      "sites": 4,
+      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+    },
+    {
+      "constraint": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 900
+      },
+      "sites": 4,
+      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "agent_synthesized",
+          "buyer_uploaded",
+          "publisher_host_recorded",
+          "publisher_owned_reference",
+          "seller_human_designed",
+          "seller_pre_rendered_from_brief"
+        ]
+      },
+      "sites": 4,
+      "reason": "One concept, but formats/canonical/native_in_feed.json lists a narrower set. Whether that is drift or an intentional subset is undecided."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "property": "use_case",
+      "sites": 4,
+      "reason": "A generic field name. The shared length bound does not show that the use_case sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      },
+      "property": "suggestions",
+      "sites": 4,
+      "reason": "A generic field name. The shared length bound does not show that the suggestions sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "property": "reason",
+      "sites": 4,
+      "reason": "A generic field name. The shared length bound does not show that the reason sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "property": "predecessor_media_buy_id",
+      "sites": 4,
+      "reason": "Same concept as core/media-buy-id.json with a different constraint. Referencing it would change what these sites accept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "source_timezone",
+      "sites": 4,
+      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "budget_cap_timezone",
+      "sites": 4,
+      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
+    },
+    {
+      "constraint": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+      },
+      "sites": 3,
+      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+    },
+    {
+      "constraint": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      },
+      "sites": 3,
+      "reason": "A numeric range such as a fraction, a percentage, or a page limit. The shared range proves no shared meaning or unit."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "attention_score",
+          "attention_seconds",
+          "clicks",
+          "completed_views",
+          "engagements",
+          "follows",
+          "profile_visits",
+          "reach",
+          "saves",
+          "viewable_rate",
+          "viewed_seconds",
+          "views"
+        ]
+      },
+      "sites": 3,
+      "reason": "Sites use different property names; not proven to be one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "collection_card.removed",
+          "collection_card.updated",
+          "collection_catalog.bulk_change",
+          "product.created",
+          "product.priced",
+          "product.removed",
+          "product.updated",
+          "signal.created",
+          "signal.priced",
+          "signal.removed",
+          "signal.updated",
+          "wholesale_feed.bulk_change"
+        ]
+      },
+      "sites": 3,
+      "reason": "Sites use different property names; not proven to be one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "cost_per",
+          "threshold_rate"
+        ]
+      },
+      "sites": 3,
+      "reason": "Sites use different property names; not proven to be one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "dataset_share",
+          "file_transfer",
+          "warehouse_materialization"
+        ]
+      },
+      "sites": 3,
+      "reason": "Sites use different property names; not proven to be one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "floor",
+          "target"
+        ]
+      },
+      "sites": 3,
+      "reason": "Strength values for different goals; not proven to be one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "enum": [
+          "legacy",
+          "spec"
+        ]
+      },
+      "sites": 3,
+      "reason": "Sites use different property names; not proven to be one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "property": "description",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the description sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "property": "description",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the description sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "property": "context_note",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the context_note sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "property": "summary",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the summary sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "property": "reason_detail",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the reason_detail sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      },
+      "property": "reason",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the reason sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "property": "region",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the region sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "property": "reporting_profile",
+      "sites": 3,
+      "reason": "Same concept as core/reporting-profile-id.json with a different constraint. Referencing it would change what these sites accept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "property": "name",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the name sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "property": "timezone",
+      "sites": 4,
+      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "property": "account_id",
+      "sites": 3,
+      "reason": "Same concept as core/account-id.json with a different constraint. Referencing it would change what these sites accept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "property": "period_timezone",
+      "sites": 3,
+      "reason": "Same concept as core/iana-timezone.json with a weaker constraint. Referencing it would tighten these sites, which is a breaking decision."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32
+      },
+      "property": "unit",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the unit sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "property": "identity",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the identity sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "property": "code",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the code sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 1
+      },
+      "property": "message",
+      "sites": 3,
+      "reason": "A generic field name. The shared length bound does not show that the message sites mean one concept."
+    },
+    {
+      "constraint": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 2
+      },
+      "property": "countries",
+      "sites": 3,
+      "reason": "Two-character country values with no pattern. Referencing core/country-code.json would tighten these sites."
+    }
+  ]
+}
