@@ -700,6 +700,8 @@ export interface ResolvedBrand {
   migration_warnings?: Array<{ field: string; message: string; suggestion?: string }>;
   brand_agent_url?: string;
   brand_manifest?: Record<string, unknown>;
+  /** Complete selected brand.json entry; absent when a unique entry is unavailable. */
+  brand?: Record<string, unknown>;
   source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
   /** Preferred provider attribution; present only when source is enriched and the writer is known. */
   enrichment_provider?: string;
