@@ -53,10 +53,12 @@ caller:
 prerequisites:
   description: |
     The seller declares media_buy.reporting_delivery.subscriptions with
-    max_accounts 3 and the reporting_subscription_probe controller scenario.
-    The sandbox clock starts before 2030-06-01, so the first account's grant
-    begins before the others, and the caller holds no other account for the
-    capacity-agency.example operator.
+    max_accounts 3 and the reporting_subscription_probe and reset_state
+    controller scenarios. The runner calls reset_state before the storyboard,
+    which unpins the sandbox clock so it reads the seller's wall clock, before
+    2030-06-01; the first account's grant therefore begins before the others,
+    and the caller holds no other account for the capacity-agency.example
+    operator.
 
 phases:
   - id: setup
@@ -84,6 +86,10 @@ phases:
             path: "media_buy.reporting_delivery.subscriptions.max_accounts"
             value: 3
             description: "Each subscription serves at most three accounts"
+          - check: field_contains
+            path: "compliance_testing.scenarios[*]"
+            value: "reset_state"
+            description: "A seller with the reporting_subscription_probe also offers reset_state, which unpins the sandbox clock"
 
       - id: open_account_a
         title: "Open account A"

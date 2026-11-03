@@ -78,9 +78,11 @@ prerequisites:
     The seller advertises media_buy.reporting_delivery.subscriptions, the
     media_buy.reporting_subscriptions feature, and the reporting_subscription_probe
     controller scenario, and offers an hourly UTC pacing feed and a daily
-    account-timezone analytics feed (API-delivered) on its products. The
-    sandbox clock starts before 2030-06-01, so the account's grant begins
-    before the subscription's first version. A per-run operator unit keeps the
+    account-timezone analytics feed (API-delivered) on its products. It also
+    offers reset_state, which the runner calls before the storyboard: that
+    unpins the sandbox clock so it reads the seller's wall clock, before
+    2030-06-01, and the account's grant begins before the subscription's first
+    version. A per-run operator unit keeps the
     account fresh. No test kit is declared, so the runner sends the brand the
     steps author.
 
@@ -117,6 +119,10 @@ phases:
           - check: field_present
             path: "media_buy.reporting_delivery.offerings[0].standard_dimensions"
             description: "Offerings publish their breakdown in the standard vocabulary"
+          - check: field_contains
+            path: "compliance_testing.scenarios[*]"
+            value: "reset_state"
+            description: "A seller with the reporting_subscription_probe also offers reset_state, which unpins the sandbox clock"
 
       - id: open_coverage_account
         title: "Open a sandbox account in New York time"
@@ -932,6 +938,9 @@ phases:
           params:
             operation: "advance_time"
             target_time: "2030-11-04T18:00:00Z"
+        context_outputs:
+          - name: timezone_change_now
+            path: "simulated.simulated_now"
         validations:
           - check: field_value
             path: "success"
@@ -954,10 +963,27 @@ phases:
             account_id: "$context.coverage_account_id"
             timezone: "America/Los_Angeles"
         validations:
+          - check: response_schema
+            description: "The result matches SetAccountTimezoneResult"
+          - check: field_equals_context
+            path: "simulated.account_id"
+            context_key: "coverage_account_id"
+            description: "The change names the account it acted on"
           - check: field_value
             path: "simulated.previous_timezone"
             value: "America/New_York"
             description: "The change reports the previous zone"
+          - check: field_value
+            path: "simulated.timezone"
+            value: "America/Los_Angeles"
+            description: "The change reports the new zone"
+          - check: field_equals_context
+            path: "simulated.changed_at"
+            context_key: "timezone_change_now"
+            description: "The change applies at the current sandbox instant"
+          - check: field_present
+            path: "simulated.timezone_cutovers[0].effective_at"
+            description: "The change previews the cutover instant of each account-timezone offering"
 
       - id: read_timezone_account
         title: "list_accounts shows the new timezone"

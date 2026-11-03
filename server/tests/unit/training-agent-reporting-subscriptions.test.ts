@@ -176,7 +176,10 @@ describe('reporting subscriptions: coverage', () => {
     });
     await advance('2030-06-04T12:00:00Z');
     const changed = await probe({ operation: 'set_account_timezone', account_id: accountId, timezone: 'America/Los_Angeles' });
-    expect(changed.simulated.timezone_cutovers).toEqual([{ offering_id: 'analytics-daily-account-tz', effective_at: '2030-06-05T04:00:00.000Z' }]);
+    expect(changed.simulated.changed_at).toBe('2030-06-04T12:00:00.000Z');
+    expect(changed.simulated.timezone_cutovers).toEqual([{
+      offering_id: 'analytics-daily-account-tz', previous_timezone: 'America/New_York', timezone: 'America/Los_Angeles', effective_at: '2030-06-05T04:00:00.000Z',
+    }]);
     await advance('2030-06-10T12:00:00Z');
     const result = await view(accountId);
     expect(result.coverage[0].timezone_cutovers).toEqual([{

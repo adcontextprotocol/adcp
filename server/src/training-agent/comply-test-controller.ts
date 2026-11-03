@@ -96,9 +96,8 @@ import {
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
 import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
-import { resetSandbox } from './account-sandbox.js';
 import { resetAccountRequests } from './account-requests.js';
-import { handleReportingSubscriptionProbe, REPORTING_SUBSCRIPTION_PROBE } from './subscription-probe.js';
+import { handleReportingSubscriptionProbe, REPORTING_SUBSCRIPTION_PROBE, resetReportingSubscriptionProbe } from './subscription-probe.js';
 import {
   taskRegistryNamespaceForTenant,
   type TaskRegistryTenant,
@@ -2367,8 +2366,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return forceHoldUnavailable(params, ctx);
   }
   if (scenario === 'reset_state') {
-    // The caller's sandbox clock, grants, and account requests reset too.
-    await resetSandbox(ctx.principal);
+    // The caller's sandbox clock, grants, timezone changes, and account
+    // requests reset too (reporting_subscription_probe reset effects).
+    await resetReportingSubscriptionProbe(ctx);
     await resetAccountRequests(ctx);
     // These stores intentionally use the same keys as their public handlers,
     // which differ from the principal-aware controller-fixture session above.
