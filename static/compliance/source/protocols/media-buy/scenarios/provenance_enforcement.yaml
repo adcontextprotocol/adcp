@@ -16,6 +16,11 @@ required_tools:
   - sync_creatives
 
 narrative: |
+  creative.supports_provenance was introduced in AdCP 3.3. A creative library
+  alone does not establish provenance enforcement support. Responses served
+  before 3.3 cannot publish this declaration, so this gated coverage is
+  unavailable on those releases.
+
   creative_policy carries three load-bearing fields for provenance enforcement:
   provenance_required (some provenance must be attached), provenance_requirements
   (which fields must be present), and accepted_verifiers (which governance agents
