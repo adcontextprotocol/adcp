@@ -225,6 +225,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # Same partial checkout as build-worker. Full history, refs and tags
+          # stay; only the committed release tarballs under dist/protocol/
+          # (~1.1 GiB) are left unmaterialized. Integration setup builds
+          # schemas/latest from source, and the one /protocol assertion
+          # (schema-routing.test.ts) builds and mounts its own temp tarball.
+          filter: blob:none
+          sparse-checkout: |
+            /*
+            !/dist/protocol/
+          sparse-checkout-cone-mode: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
