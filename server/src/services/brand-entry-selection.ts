@@ -37,7 +37,10 @@ function matchesDomain(brand: Record<string, unknown>, domain: string): boolean 
     isRecord(property) && property.type === 'website'
     && typeof property.identifier === 'string'
     && property.identifier.toLowerCase() === domain
-    && (property.relationship === undefined || property.relationship === 'owned'),
+    && (property.relationship === undefined || property.relationship === 'owned')
+    // Raw/cached documents may use the adagents.json compatibility field.
+    // A supplied delegation marker cannot establish owned brand identity.
+    && property.delegation_type === undefined,
   );
 }
 

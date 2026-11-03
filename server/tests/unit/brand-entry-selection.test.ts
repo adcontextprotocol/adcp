@@ -44,6 +44,16 @@ describe('selectBrandEntry', () => {
     })).toBeUndefined();
   });
 
+  it('does not infer ownership from a property carrying a compatibility delegation marker', () => {
+    for (const delegation_type of ['direct', 'delegated', 'ad_network', 'unknown', null]) {
+      for (const relationship of [undefined, 'owned']) {
+        const property = { type: 'website', identifier: 'spark.example', relationship, delegation_type };
+        const entry = { ...spark, url: undefined, properties: [property] };
+        expect(selectBrandEntry({ ...portfolio, brands: [entry] }, { domain: 'spark.example' })).toBeUndefined();
+      }
+    }
+  });
+
   it('requires a unique match even if the brands have different matching fields', () => {
     const other = { ...glow, properties: spark.properties };
     expect(selectBrandEntry({ ...portfolio, brands: [spark, other] }, { domain: 'spark.example' })).toBeUndefined();
