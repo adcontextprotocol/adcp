@@ -582,11 +582,16 @@ test("whole collection witness substitutions satisfy minItems and composed requi
 // discriminated oneOf) must produce a shape-valid placeholder or ajv will
 // reject every branch. Regression guard against refactors of `placeholderFor`
 // / `synthesizeObject` / `firstObjectBranch`.
+// The filter's items reference the named currency code, which Ajv must be able to resolve.
+function currencyCodeSchema() {
+  return JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/currency-code.json'), 'utf8'));
+}
+
 test('dynamic currency filters receive non-empty schema-valid array placeholders', () => {
   const Ajv = require('ajv');
   const filterSchema = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/product-filters.json'), 'utf8'));
   const currencies = filterSchema.properties.pricing_currencies;
-  const validate = new Ajv({ strict: false }).compile(currencies);
+  const validate = new Ajv({ strict: false }).addSchema(currencyCodeSchema()).compile(currencies);
   for (const value of ['$context.accepted_pricing_currencies', ['$context.pricing_currency']]) {
     const normalized = normalizeSubstitutions(value, currencies);
     assert.equal(validate(normalized), true, JSON.stringify(validate.errors));
@@ -598,7 +603,7 @@ test('literal malformed currency filters remain invalid after substitution norma
   const Ajv = require('ajv');
   const filterSchema = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/product-filters.json'), 'utf8'));
   const currencies = filterSchema.properties.pricing_currencies;
-  const validate = new Ajv({ strict: false }).compile(currencies);
+  const validate = new Ajv({ strict: false }).addSchema(currencyCodeSchema()).compile(currencies);
   assert.equal(validate(normalizeSubstitutions(['not-a-currency'], currencies)), false);
   assert.equal(validate(normalizeSubstitutions([], currencies)), false);
 });

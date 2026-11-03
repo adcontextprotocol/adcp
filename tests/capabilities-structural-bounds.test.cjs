@@ -151,7 +151,7 @@ describe('exemptions', () => {
     const reasons = new Set(rows.filter((r) => r.exempt).map((r) => r.exempt));
     assert.deepEqual([...reasons].sort(), ['closed-enum', 'pattern']);
     for (const r of rows.filter((x) => x.exempt)) {
-      const node = nodeAt(r.file, r.pointer);
+      const node = bounds.overlayScalarRef(nodeAt(r.file, r.pointer), r.file);
       if (r.exempt === 'closed-enum') assert.equal(node.uniqueItems, true, r.key);
       if (r.exempt === 'pattern') assert.ok(Number.isFinite(bounds.patternMaxLength(node.pattern)), r.key);
     }
