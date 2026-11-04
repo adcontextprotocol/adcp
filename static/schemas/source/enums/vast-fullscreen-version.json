@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/vast-fullscreen-version.json",
+  "title": "VAST Fullscreen Version",
+  "description": "VAST versions that define the fullscreen tracking event: 2.0 or 3.0.",
+  "type": "string",
+  "enum": [
+    "2.0",
+    "3.0"
+  ]
+}

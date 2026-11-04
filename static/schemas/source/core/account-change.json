@@ -32,11 +32,8 @@
           "description": "Open resource-type name such as account, media_buy, package, creative, creative_assignment, delivery_report, audience, event_source, catalog, account_financials, or invoice."
         },
         "account_id": {
-          "type": "string",
-          "description": "Seller-assigned account containing the resource.",
-          "minLength": 1,
-          "maxLength": 255,
-          "x-entity": "account"
+          "$ref": "/schemas/core/account-id.json",
+          "description": "Seller-assigned account containing the resource."
         },
         "resource_id": {
           "$ref": "/schemas/core/account-change-resource-id.json",

@@ -1,8 +1,0 @@
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/mraid-version.json",
-  "title": "MRAID Version",
-  "description": "IAB MRAID version in MAJOR.MINOR form, such as 3.0.",
-  "type": "string",
-  "pattern": "^[0-9]+\\.[0-9]+$"
-}

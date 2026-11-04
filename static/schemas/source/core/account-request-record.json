@@ -8,10 +8,7 @@
   "type": "object",
   "properties": {
     "request_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
-      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+      "$ref": "/schemas/core/account-request-id.json",
       "description": "Seller-assigned identifier for this request. Stable for the life of the request. It is not an account_id and is never accepted as an AccountRef."
     },
     "state": {

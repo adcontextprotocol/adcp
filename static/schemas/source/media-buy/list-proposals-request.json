@@ -24,7 +24,7 @@
       "allOf": [{ "$ref": "/schemas/core/context.json" }],
       "x-adcp-schema-uri": "/schemas/core/context.json"
     },
-    "governance_context": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "governance_context": { "$ref": "/schemas/core/governance-context.json" },
     "push_notification_config": {
       "allOf": [{ "$ref": "/schemas/core/push-notification-config.json" }],
       "x-adcp-schema-uri": "/schemas/core/push-notification-config.json",

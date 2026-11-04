@@ -794,6 +794,1170 @@
         "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
       },
       "reason": "Correction (d) of DR-0036: the response wrapper's message refers to core/task-message.json, so the wrapper carries the same 2,000-character bound as the envelope."
+    },
+    {
+      "file": "aao/agent-publishers.json",
+      "pointer": "/definitions/PublisherEntry/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "account/sync-accounts-request.json",
+      "pointer": "/properties/accounts/items/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "account/sync-accounts-request.json",
+      "pointer": "/properties/accounts/items/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "account/sync-accounts-response.json",
+      "pointer": "/oneOf/0/properties/accounts/items/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "adagents.json",
+      "pointer": "/oneOf/1/properties/contact/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "adagents.json",
+      "pointer": "/oneOf/1/properties/revoked_publisher_domains/items/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "collection/base-collection-source.json",
+      "pointer": "/oneOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "collection/base-collection-source.json",
+      "pointer": "/oneOf/2/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "compliance/comply-test-controller-request.json",
+      "pointer": "/properties/params/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "core/account-ref.json",
+      "pointer": "/oneOf/1/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/account-ref.json",
+      "pointer": "/oneOf/1/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/account-timezone-capability.json",
+      "pointer": "/properties/fixed_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/account.json",
+      "pointer": "/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/account.json",
+      "pointer": "/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/brand-key.json",
+      "pointer": "/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/brand-ref.json",
+      "pointer": "/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/canonical-account-ref.json",
+      "pointer": "/anyOf/1/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/canonical-account-ref.json",
+      "pointer": "/anyOf/1/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/canonical-format-option.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/canonical-placement.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection-property-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection-ref.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection-selector.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/creative-operation-format-declaration.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/data-provider-signal-selector.json",
+      "pointer": "/oneOf/0/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/data-provider-signal-selector.json",
+      "pointer": "/oneOf/1/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/data-provider-signal-selector.json",
+      "pointer": "/oneOf/2/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/format-option-ref.json",
+      "pointer": "/oneOf/0/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/indicator-scope.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/installment-property-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/operator-identity.json",
+      "pointer": "/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement-identity.json",
+      "pointer": "/oneOf/0/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement-property-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement-ref.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/product-format-declaration.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/property-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/property-ref.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/0/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/0/properties/publisher_domains/items",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/2/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/2/properties/publisher_domains/items",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/registry-event.json",
+      "pointer": "/$defs/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/reporting-webhook.json",
+      "pointer": "/properties/token",
+      "bound": "maxLength",
+      "value": 4096,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/push-notification-config.json",
+        "quote": "both checks remain independent obligations.\", \"minLength\": 16, \"maxLength\": 4096 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A webhook token, which core/webhook-token.json bounds."
+    },
+    {
+      "file": "core/response-payload-jws-envelope.json",
+      "pointer": "/definitions/response_payload/properties/brand_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/signal-id.json",
+      "pointer": "/oneOf/0/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/signal-ref.json",
+      "pointer": "/oneOf/1/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/$defs/signal/properties/description",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed description of what this signal represents and how it's derived\", \"maxLength\": 2000 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A signal description, which core/signal-description.json bounds."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/$defs/signal/properties/name",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1, \"maxLength\": 255 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A signal name, which core/signal-name.json bounds."
+    },
+    {
+      "file": "media-buy/accept-proposal-request.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/accept-proposal-request.json",
+      "pointer": "/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/buy-products-request.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/commercial-terms.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-request.json",
+      "pointer": "/properties/artifact_webhook/properties/token",
+      "bound": "maxLength",
+      "value": 4096,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/push-notification-config.json",
+        "quote": "both checks remain independent obligations.\", \"minLength\": 16, \"maxLength\": 4096 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A webhook token, which core/webhook-token.json bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-request.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/decline-proposals-response.json",
+      "pointer": "/properties/results/items/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/reporting_period/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/get-products-request.json",
+      "pointer": "/properties/refine/items/oneOf/2/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/list-creative-formats-request.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/reporting_period/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/package-control.json",
+      "pointer": "/properties/catalog_ids/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/catalog-item-availability-ref.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned catalog ID.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "media-buy/product-purchase.json",
+      "pointer": "/properties/catalog_ids/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/catalog-item-availability-ref.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned catalog ID.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "media-buy/product-refinement.json",
+      "pointer": "/items/oneOf/2/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/proposal-refinement.json",
+      "pointer": "/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "/properties/results/items/properties/suggestions/items",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/get-products-response.json",
+        "quote": "\"items\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 1000 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A seller suggestion, which core/seller-suggestion.json bounds."
+    },
+    {
+      "file": "media-buy/request-proposals-response.json",
+      "pointer": "/properties/reason",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/get-products-response.json",
+        "quote": "\"reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 2000, \"description\": \"Buyer-facing market explanation required only on the GetProductsRejected arm."
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A rejection reason, which core/brief-rejection-reason.json bounds."
+    },
+    {
+      "file": "media-buy/request-proposals-response.json",
+      "pointer": "/properties/suggestions/items",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/get-products-response.json",
+        "quote": "\"items\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 1000 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A seller suggestion, which core/seller-suggestion.json bounds."
+    },
+    {
+      "file": "property/base-property-source.json",
+      "pointer": "/oneOf/0/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "property/base-property-source.json",
+      "pointer": "/oneOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "protocol/get-adcp-capabilities-response.json",
+      "pointer": "/properties/media_buy/properties/budget_capping/properties/fixed_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "protocol/get-adcp-capabilities-response.json",
+      "pointer": "/properties/media_buy/properties/portfolio/properties/publisher_domains/items",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "protocol/get-adcp-capabilities-response.json",
+      "pointer": "/properties/signals/properties/data_provider_domains/items",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "compliance/get-creative-features-completion.json",
+      "pointer": "/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "core/canonical-account-ref.json",
+      "pointer": "/anyOf/0/properties/account_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/account-change.json",
+        "quote": "\"description\": \"Seller-assigned account containing the resource.\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the account ID in core/account-change.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "core/canonical-proposal.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Correction (g) of DR-0036: No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "core/media-buy.json",
+      "pointer": "/properties/cancellation/properties/reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "core/package.json",
+      "pointer": "/properties/cancellation/properties/reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "core/planned-delivery.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Correction (g) of DR-0036: No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "core/signal-definition.json",
+      "pointer": "/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/wholesale-feed-event.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed signal description\", \"minLength\": 1 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the signal description in core/wholesale-feed-event.json. A signal description, which core/signal-description.json keeps non-empty."
+    },
+    {
+      "file": "creative/get-creative-features-async-response-submitted.json",
+      "pointer": "/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "creative/get-creative-features-response.json",
+      "pointer": "/oneOf/1/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "creative/get-creative-features-response.json",
+      "pointer": "/oneOf/2/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "creative/get-creative-features-terminal-success.json",
+      "pointer": "/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "media-buy/control-media-buy-request.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Correction (g) of DR-0036: No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/control-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Correction (g) of DR-0036: No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/accepted_proposal/allOf/1/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Correction (g) of DR-0036: No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/cancellation/properties/reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/packages/items/properties/cancellation/properties/reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "/oneOf/0/properties/accepted_proposal/allOf/1/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Correction (g) of DR-0036: No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "/oneOf/0/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Correction (g) of DR-0036: No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/package-update.json",
+      "pointer": "/properties/cancellation_reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/update-media-buy-request.json",
+      "pointer": "/properties/cancellation_reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
     }
   ]
 }

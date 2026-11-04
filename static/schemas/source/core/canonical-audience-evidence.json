@@ -10,7 +10,7 @@
     "version": { "$ref": "/schemas/core/audience-evidence-version.json" },
     "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
     "audience": { "$ref": "/schemas/core/audience-characteristic.json" },
-    "relationship": { "type": "string", "enum": ["composition", "index", "reach_estimate"] },
+    "relationship": { "$ref": "/schemas/enums/audience-evidence-relationship.json" },
     "value": { "type": "number", "minimum": 0 },
     "unit": { "$ref": "/schemas/enums/audience-evidence-unit.json" },
     "baseline": {

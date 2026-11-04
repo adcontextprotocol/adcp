@@ -9,10 +9,10 @@
   ],
   "properties": {
     "outcome": { "type": "string", "enum": ["proposed", "products_available", "rejected"] },
-    "reason": { "type": "string", "minLength": 1 },
+    "reason": { "$ref": "/schemas/core/brief-rejection-reason.json" },
     "suggestions": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": { "$ref": "/schemas/core/seller-suggestion.json" },
       "minItems": 1
     },
     "proposals": {
@@ -51,7 +51,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "scope": { "type": "string", "enum": ["products", "pricing", "forecast", "proposals", "wholesale_feed"] },
+          "scope": { "$ref": "/schemas/enums/incomplete-scope.json" },
           "description": { "$ref": "/schemas/core/incomplete-scope-description.json" },
           "estimated_wait": { "$ref": "/schemas/core/duration.json" }
         },

@@ -5,5 +5,6 @@
   "description": "Seller-issued identifier of an account.",
   "type": "string",
   "minLength": 1,
+  "maxLength": 255,
   "x-entity": "account"
 }

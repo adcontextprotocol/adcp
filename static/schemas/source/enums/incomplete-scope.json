@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/incomplete-scope.json",
+  "title": "Incomplete Scope",
+  "description": "Part of a discovery response that a seller could not complete.",
+  "type": "string",
+  "enum": [
+    "products",
+    "pricing",
+    "forecast",
+    "proposals",
+    "wholesale_feed"
+  ]
+}

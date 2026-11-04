@@ -6,9 +6,7 @@
   "type": "object",
   "properties": {
     "proposal_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "proposal"
+      "$ref": "/schemas/core/proposal-id.json"
     },
     "action": {
       "type": "string",

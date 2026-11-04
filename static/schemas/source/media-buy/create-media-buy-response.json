@@ -16,9 +16,7 @@
       "type": "object",
       "properties": {
         "proposal_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "proposal",
+          "$ref": "/schemas/core/proposal-id.json",
           "description": "The immutable committed proposal executed by this media buy, echoed when proposal_id was supplied in the request."
         },
         "media_buy_id": {

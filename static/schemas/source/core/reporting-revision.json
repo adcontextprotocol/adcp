@@ -11,7 +11,7 @@
     "report_definition_id": { "$ref": "/schemas/core/report-definition-id.json", "x-entity": "reporting_definition", "description": "Identity or canonical fingerprint of immutable metric, grain, attribution, breakdown, action-definition, profile, and calendar/timezone semantics." },
     "report_definition_uri": { "$ref": "/schemas/core/public-https-url.json" },
     "report_definition_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" },
-    "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "reporting_profile": { "$ref": "/schemas/core/reporting-profile-id.json" },
     "schema_version": { "type": "string", "minLength": 1, "maxLength": 64 },
     "schema_uri": { "$ref": "/schemas/core/public-https-url.json", "description": "Machine-readable schema on the authenticated seller/provider or AdCP-registry origin." },
     "schema_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "Digest of the exact schema bytes used to validate this immutable revision." },

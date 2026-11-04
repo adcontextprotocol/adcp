@@ -667,14 +667,12 @@
           "minLength": 1
         },
         "name": {
-          "type": "string",
-          "description": "Human-readable signal name",
-          "minLength": 1
+          "$ref": "/schemas/core/signal-name.json",
+          "description": "Human-readable signal name"
         },
         "description": {
-          "type": "string",
-          "description": "Detailed signal description",
-          "minLength": 1
+          "$ref": "/schemas/core/signal-description.json",
+          "description": "Detailed signal description"
         },
         "value_type": {
           "$ref": "/schemas/enums/signal-value-type.json"

@@ -4,5 +4,6 @@
   "title": "Cancellation Reason",
   "description": "Free-text reason recorded when a media buy or package is canceled. Sellers store it and return it on later reads.",
   "type": "string",
+  "minLength": 1,
   "maxLength": 500
 }

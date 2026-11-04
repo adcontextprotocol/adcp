@@ -1159,10 +1159,8 @@
           "description": "Open opportunity with later_proposals consent for which simulate_later_proposal makes the seller create one later proposal now, as it would after the creating task completed, including the proposal.created notification and any change-feed record. Experimental (media_buy.open_opportunities). The seller still enforces the consent window, max_count, and min_interval and fails the scenario when they forbid a proposal."
         },
         "proposal_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, the holdable draft proposal whose next finalize force_hold_unavailable fails with hold_unavailable.",
-          "x-entity": "proposal"
+          "$ref": "/schemas/core/proposal-id.json",
+          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, the holdable draft proposal whose next finalize force_hold_unavailable fails with hold_unavailable."
         },
         "pricing_option_id": {
           "type": "string",
@@ -1517,11 +1515,8 @@
           "maxLength": 128
         },
         "evaluation_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Deterministic provider evaluation identity the seller MUST emit on the next forced get_creative_features submitted acknowledgement and preserve on its terminal completion result.",
-          "x-entity": "creative_evaluation"
+          "$ref": "/schemas/core/creative-evaluation-id.json",
+          "description": "Deterministic provider evaluation identity the seller MUST emit on the next forced get_creative_features submitted acknowledgement and preserve on its terminal completion result."
         },
         "message": {
           "$ref": "/schemas/core/task-message.json",

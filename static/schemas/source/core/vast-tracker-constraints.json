@@ -161,7 +161,7 @@
       },
       "then": {
         "properties": {
-          "vast_versions": { "items": { "enum": ["2.0", "3.0"] } }
+          "vast_versions": { "items": { "$ref": "/schemas/enums/vast-fullscreen-version.json" } }
         }
       }
     },

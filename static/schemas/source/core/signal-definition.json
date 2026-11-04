@@ -326,9 +326,7 @@
       "description": "Per-signal data-subject-rights routing. Inline on the signal because upstream source, rights routing, and response commitments can differ by segment or may be unavailable from a public provider document for custom/private signals. This is a contact/routing reference, not a machine-callable AdCP API.",
       "properties": {
         "upstream_source_domain": {
-          "type": "string",
-          "format": "hostname",
-          "maxLength": 253,
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Domain of the upstream data source whose rights process these channels reach, when different from the publishing domain."
         },
         "channels": {

@@ -156,7 +156,7 @@
                 },
                 "countries": {
                   "type": "array",
-                  "items": { "type": "string", "minLength": 2, "maxLength": 2 }
+                  "items": { "$ref": "/schemas/core/country-code.json" }
                 },
                 "use_case": {
                   "$ref": "/schemas/core/brand-claim-use-case.json"

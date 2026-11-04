@@ -87,14 +87,14 @@
         "transport": { "$ref": "/schemas/core/reporting-transport.json" },
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": false },
         "format": { "$ref": "/schemas/enums/reporting-file-format.json" },
         "access_mode": { "$ref": "/schemas/core/reporting-access-mode.json" },
         "producer_identity": {
           "type": "object",
           "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
           "properties": {
-            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
+            "provider": { "type": "object", "properties": { "domain": { "$ref": "/schemas/core/domain-name.json" } }, "required": ["domain"], "additionalProperties": false },
             "identity": { "$ref": "/schemas/core/sharing-principal-identity.json" },
             "cloud": { "$ref": "/schemas/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud" },
             "region": { "$ref": "/schemas/core/cloud-region.json" }

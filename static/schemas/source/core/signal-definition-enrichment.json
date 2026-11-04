@@ -220,9 +220,7 @@
       "description": "Per-signal data-subject-rights routing. This is a contact/routing reference, not a machine-callable AdCP API.",
       "properties": {
         "upstream_source_domain": {
-          "type": "string",
-          "format": "hostname",
-          "maxLength": 253
+          "$ref": "/schemas/core/domain-name.json"
         },
         "channels": {
           "type": "array",

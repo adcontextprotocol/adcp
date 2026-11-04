@@ -60,7 +60,7 @@
           "items": {
             "type": "object",
             "properties": {
-              "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_delivery_config" },
+              "delivery_config_id": { "$ref": "/schemas/core/reporting-delivery-config-id.json" },
               "delivery_config_version": { "type": "integer", "minimum": 1 },
               "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" },
               "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }

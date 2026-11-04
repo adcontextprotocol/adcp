@@ -293,11 +293,8 @@
               "maxLength": 128
             },
             "evaluation_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
-              "description": "Echo of the provider evaluation identity registered by force_get_creative_features_arm.",
-              "x-entity": "creative_evaluation"
+              "$ref": "/schemas/core/creative-evaluation-id.json",
+              "description": "Echo of the provider evaluation identity registered by force_get_creative_features_arm."
             },
             "reason": {
               "$ref": "/schemas/core/brief-rejection-reason.json",
@@ -313,10 +310,8 @@
               }
             },
             "proposal_id": {
-              "type": "string",
-              "minLength": 1,
+              "$ref": "/schemas/core/proposal-id.json",
               "description": "Echo of the draft proposal whose next finalize will fail with hold_unavailable. Present only when arm is 'unable'.",
-              "x-entity": "proposal",
               "x-status": "experimental",
               "x-added-in": "3.3.0"
             }

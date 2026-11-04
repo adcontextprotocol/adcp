@@ -4,5 +4,6 @@
   "title": "Signal Description",
   "description": "What a signal represents and how it is derived.",
   "type": "string",
+  "minLength": 1,
   "maxLength": 2000
 }

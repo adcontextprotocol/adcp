@@ -52,7 +52,7 @@
         },
         "countries": {
           "type": "array",
-          "items": { "type": "string", "minLength": 2, "maxLength": 2 },
+          "items": { "$ref": "/schemas/core/country-code.json" },
           "description": "ISO 3166-1 alpha-2 country codes where this registration applies. Omit for global or where the registry's jurisdiction is implicit."
         },
         "nice_classes": {
@@ -969,8 +969,7 @@
         "preferred_aspect_ratios": {
           "type": "array",
           "items": {
-            "type": "string",
-            "pattern": "^\\d+:\\d+$"
+            "$ref": "/schemas/core/aspect-ratio.json"
           },
           "description": "Preferred aspect ratios for brand photography (e.g., '16:9', '4:5', '1:1')"
         },

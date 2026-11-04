@@ -2157,7 +2157,7 @@
                   "type": "array",
                   "description": "MRAID versions supported for rich media mobile creatives",
                   "items": {
-                    "$ref": "/schemas/core/mraid-version.json",
+                    "$ref": "/schemas/enums/mraid-version.json",
                     "x-max-length-4.0": 32
                   },
                   "x-max-items-4.0": 32

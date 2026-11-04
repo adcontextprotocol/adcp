@@ -56,7 +56,7 @@
           "description": "Stable identity of exactly one postal-area group in the requested array. Required only for postal-area paths. Zero or multiple matches make the modification invalid.",
           "properties": {
             "country": { "$ref": "/schemas/core/country-code.json" },
-            "system": { "type": "string", "minLength": 1 }
+            "system": { "$ref": "/schemas/enums/postal-system.json" }
           },
           "required": ["country", "system"],
           "additionalProperties": false

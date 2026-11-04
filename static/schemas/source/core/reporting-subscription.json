@@ -52,7 +52,7 @@
     },
     "operator_domains": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253, "x-entity": "operator" },
+      "items": { "$ref": "/schemas/core/domain-name.json", "x-entity": "operator" },
       "minItems": 1,
       "maxItems": 64,
       "uniqueItems": true,
@@ -127,8 +127,8 @@
       "items": {
         "type": "object",
         "properties": {
-          "account_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "account" }, "minItems": 1, "maxItems": 1000, "uniqueItems": true },
-          "operator_domains": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253, "x-entity": "operator" }, "minItems": 1, "maxItems": 64, "uniqueItems": true },
+          "account_ids": { "type": "array", "items": { "$ref": "/schemas/core/account-id.json" }, "minItems": 1, "maxItems": 1000, "uniqueItems": true },
+          "operator_domains": { "type": "array", "items": { "$ref": "/schemas/core/domain-name.json", "x-entity": "operator" }, "minItems": 1, "maxItems": 64, "uniqueItems": true },
           "destination_id": { "$ref": "/schemas/core/reporting-destination-id.json", "description": "A destination_id in the caller's principal reporting_destinations." },
           "path_template": { "$ref": "#/definitions/path_template", "description": "As destination.path_template, for the accounts this entry routes. MUST contain {account_id} when the entry can select more than one account. Omitted: destination.path_template applies." }
         },

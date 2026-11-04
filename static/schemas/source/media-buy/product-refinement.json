@@ -58,8 +58,7 @@
             "description": "Change scoped to a specific proposal."
           },
           "proposal_id": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/proposal-id.json",
             "description": "Proposal ID from a previous product-discovery response."
           },
           "action": {

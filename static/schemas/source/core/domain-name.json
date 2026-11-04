@@ -4,5 +4,7 @@
   "title": "Domain Name",
   "description": "Lowercase DNS domain name without a scheme, path, or trailing dot, such as example.com.",
   "type": "string",
+  "maxLength": 253,
+  "maxLength": 253,
   "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
 }

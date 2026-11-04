@@ -278,11 +278,7 @@
       "description": "Whether MRAID compatibility is required (mobile in-app)."
     },
     "mraid_version": {
-      "type": "string",
-      "enum": [
-        "2.0",
-        "3.0"
-      ],
+      "$ref": "/schemas/enums/mraid-version.json",
       "description": "Required MRAID version when mraid_required is true."
     },
     "om_sdk_required": {

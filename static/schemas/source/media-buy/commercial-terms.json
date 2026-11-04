@@ -108,7 +108,7 @@
           "required": ["amount", "currency"],
           "additionalProperties": false
         },
-        "reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+        "reason": { "$ref": "/schemas/core/cancellation-reason.json" }
       },
       "required": ["effective_at"],
       "additionalProperties": false

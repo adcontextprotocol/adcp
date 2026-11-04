@@ -2276,10 +2276,6 @@
           "$ref": "/schemas/core/bulk-page-size.json",
           "description": "Maximum number of items one page of a bulk list read returns. Bulk reads default to 1000 items per page, which core/page-size.json does not allow."
         },
-        "mraid-version": {
-          "$ref": "/schemas/core/mraid-version.json",
-          "description": "IAB MRAID version in MAJOR.MINOR form, such as 3.0."
-        },
         "acceptance-rule-id": {
           "$ref": "/schemas/core/acceptance-rule-id.json",
           "description": "Identifier of one seller acceptance-policy rule."
@@ -2292,9 +2288,17 @@
           "$ref": "/schemas/core/macro-declaration-id.json",
           "description": "Identifier of a macro declaration, unique within the containing asset."
         },
+        "audience-description": {
+          "$ref": "/schemas/core/audience-description.json",
+          "description": "Natural language description of an audience."
+        },
         "control-total-name": {
           "$ref": "/schemas/core/control-total-name.json",
           "description": "Name of a reporting control total."
+        },
+        "tool-name": {
+          "$ref": "/schemas/core/tool-name.json",
+          "description": "Name of a tool in the protocol manifest, including tools that are not AdCP tasks."
         }
       },
       "requirements": {
@@ -3311,6 +3315,14 @@
           "$ref": "/schemas/enums/transition-mode.json",
           "description": "How a stateful display moves between states: instant or animated."
         },
+        "mraid-version": {
+          "$ref": "/schemas/enums/mraid-version.json",
+          "description": "IAB MRAID version of a rich media creative or a seller's support: 2.0 or 3.0."
+        },
+        "vast-fullscreen-version": {
+          "$ref": "/schemas/enums/vast-fullscreen-version.json",
+          "description": "VAST versions that define the fullscreen tracking event: 2.0 or 3.0."
+        },
         "us-postal-system": {
           "$ref": "/schemas/enums/us-postal-system.json",
           "description": "Postal code system for the United States: zip or zip_plus_four."
@@ -3462,6 +3474,10 @@
         "canonical-optimization-metric": {
           "$ref": "/schemas/enums/canonical-optimization-metric.json",
           "description": "Metric a canonical optimization goal can target. Unbound attention metrics are excluded on purpose."
+        },
+        "incomplete-scope": {
+          "$ref": "/schemas/enums/incomplete-scope.json",
+          "description": "Part of a discovery response that a seller could not complete."
         }
       }
     },

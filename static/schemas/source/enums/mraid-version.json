@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/mraid-version.json",
+  "title": "MRAID Version",
+  "description": "IAB MRAID version of a rich media creative or a seller's support: 2.0 or 3.0.",
+  "type": "string",
+  "enum": [
+    "2.0",
+    "3.0"
+  ]
+}

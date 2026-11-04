@@ -272,14 +272,7 @@
         "type": "object",
         "properties": {
           "scope": {
-            "type": "string",
-            "enum": [
-              "products",
-              "pricing",
-              "forecast",
-              "proposals",
-              "wholesale_feed"
-            ],
+            "$ref": "/schemas/enums/incomplete-scope.json",
             "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete. 'wholesale_feed': in wholesale mode, full feed enumeration could not complete in the time budget — symmetric with get_signals' 'wholesale_feed' scope so sellers have a precise way to declare wholesale-incomplete on the products surface."
           },
           "description": {

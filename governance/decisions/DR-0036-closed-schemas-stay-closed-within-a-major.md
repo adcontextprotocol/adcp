@@ -5,7 +5,7 @@ class: normative
 status: proposed
 date: 2026-10-27
 decided_by: pending WG ratification
-refs: ["#8501", "PR #8502", "#8518", "PR #8531", "PR #8547", "DR-0009", "DR-0019", "DR-0024", "DR-0034"]
+refs: ["#8501", "PR #8502", "#8518", "#8525", "PR #8531", "PR #8536", "PR #8547", "DR-0009", "DR-0019", "DR-0024", "DR-0034"]
 supersedes: DR-0019  # in part: "adding an optional field to a closed schema is a minor change"
 dissent: none recorded
 ---
@@ -77,7 +77,7 @@ location it changes. The additive-minor check reads the same locations from
 additions, and it fails on an entry that this section doesn't list. So a new
 correction needs a change to this record.
 
-Four corrections are recorded:
+Seven corrections are recorded:
 
 | Correction | Source text | Ships in | Check entries |
 |---|---|---|---|
@@ -85,6 +85,9 @@ Four corrections are recorded:
 | (b) Compose the protocol envelope on every task response | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | The table under (b): `status` newly required |
 | (c) `task_id` identifies a task | `core/protocol-envelope.json`, `core/tasks-get-request.json`, 3.2.7 `core/compact-task-submitted.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (c) |
 | (d) `message` is bounded | 3.2.7 `core/compact-task-submitted.json`, `core/compact-task-input-required.json` and the compact and submitted responses; `core/protocol-envelope.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (d) |
+| (e) A domain name is at most 253 characters | RFC 1035; 3.2.8 `core/signal-definition.json` | 3.3.0 (#8536) | The table under (e) |
+| (f) A timezone identifier is at most 255 characters | 3.2.8 `core/iana-timezone.json` | 3.3.0 (#8536) | The table under (f) |
+| (g) One bound for each concept that was published with a bound in some places | 3.2.8 `core/proposal.json`, `core/catalog-item-availability-ref.json`, `core/signal-definition.json`, `core/push-notification-config.json`, `media-buy/get-products-response.json`, `core/account-change.json`, `compliance/comply-test-controller-request.json`, `media-buy/package-control.json`, `core/wholesale-feed-event.json`; 3.3.0-beta.4 `media-buy/create-media-buy-request.json` | 3.3.0 (#8536) | The table under (g) |
 
 #### (a) Reopen the 3.2 proposal flow
 
@@ -305,6 +308,153 @@ The check accepts `maxLength: 2000` at these locations:
 | `core/protocol-envelope.json` | `/properties/message` | `maxLength: 2000` | The envelope's `message`, on every task response. |
 | `core/mcp-webhook-payload.json` | `/properties/message` | `maxLength: 2000` | The `message` of a webhook notification. |
 | `core/response.json` | `/properties/message` | `maxLength: 2000` | The response wrapper's `message`. |
+
+#### (e) A domain name is at most 253 characters
+
+RFC 1035 limits a domain name to 255 octets on the wire, which is 253 characters
+as text. 3.2.8 published that limit on `upstream_source_domain` in
+`core/signal-definition.json` (`"format": "hostname", "maxLength": 253`). Other
+domain name sites stated no length, though no DNS name is longer. This correction
+gives a domain name one definition, `core/domain-name.json`, with
+`maxLength: 253`. No conforming peer sends a longer one, because it wouldn't be a
+domain name. 3.3.0 ships it (#8536).
+
+The check accepts `maxLength: 253` at these locations:
+
+| Schema | Pointer | Bound | Reason |
+|---|---|---|---|
+| `aao/agent-publishers.json` | `/definitions/PublisherEntry/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `account/sync-accounts-request.json` | `/properties/accounts/items/properties/operator` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `adagents.json` | `/oneOf/1/properties/contact/properties/domain`, `/oneOf/1/properties/revoked_publisher_domains/items/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `brand.json` | `/definitions/domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `collection/base-collection-source.json` | `/oneOf/1/properties/publisher_domain`, `/oneOf/2/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/account-ref.json` | `/oneOf/1/properties/operator` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/account.json` | `/properties/operator` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/brand-key.json` | `/properties/domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/brand-ref.json` | `/properties/domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/canonical-account-ref.json` | `/anyOf/1/properties/operator` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/canonical-format-option.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/canonical-placement.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/collection-property-delivery-metrics.json` | `/allOf/1/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/collection-ref.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/collection-selector.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/collection.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/creative-operation-format-declaration.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/data-provider-signal-selector.json` | `/oneOf/0/properties/data_provider_domain`, `/oneOf/1/properties/data_provider_domain`, `/oneOf/2/properties/data_provider_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/format-option-ref.json` | `/oneOf/0/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/indicator-scope.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/installment-property-delivery-metrics.json` | `/allOf/1/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/operator-identity.json` | `/properties/operator` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/placement-delivery-metrics.json` | `/allOf/1/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/placement-identity.json` | `/oneOf/0/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/placement-property-delivery-metrics.json` | `/allOf/1/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/placement-ref.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/placement.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/product-format-declaration.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/property-delivery-metrics.json` | `/allOf/1/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/property-ref.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/publisher-property-selector.json` | `/oneOf/0/properties/publisher_domain`, `/oneOf/0/properties/publisher_domains/items`, `/oneOf/1/properties/publisher_domain`, `/oneOf/2/properties/publisher_domain`, `/oneOf/2/properties/publisher_domains/items` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/registry-event.json` | `/$defs/domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/response-payload-jws-envelope.json` | `/definitions/response_payload/properties/brand_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/signal-id.json` | `/oneOf/0/properties/data_provider_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `core/signal-ref.json` | `/oneOf/1/properties/data_provider_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `media-buy/list-creative-formats-request.json` | `/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `property/base-property-source.json` | `/oneOf/0/properties/publisher_domain`, `/oneOf/1/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+| `protocol/get-adcp-capabilities-response.json` | `/properties/media_buy/properties/portfolio/properties/publisher_domains/items`, `/properties/signals/properties/data_provider_domains/items` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
+
+#### (f) A timezone identifier is at most 255 characters
+
+These sites describe a timezone as UTC or an IANA identifier, and 3.2.8 published
+`core/iana-timezone.json` for that value with `maxLength: 255`. They stated no
+length of their own. Each now references that schema, so a timezone validates the
+same everywhere. No IANA identifier comes near the limit. 3.3.0 ships it (#8536).
+
+`core/iana-timezone.json` also adds its identifier pattern and rejects
+`inventory_local` at these sites. The check compares length bounds only, so these
+rows record the length.
+
+The check accepts `maxLength: 255` at these locations:
+
+| Schema | Pointer | Bound | Reason |
+|---|---|---|---|
+| `account/sync-accounts-request.json` | `/properties/accounts/items/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `account/sync-accounts-response.json` | `/oneOf/0/properties/accounts/items/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/account-ref.json` | `/oneOf/1/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/account-timezone-capability.json` | `/properties/fixed_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/account.json` | `/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/canonical-account-ref.json` | `/anyOf/1/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/accept-proposal-request.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/buy-products-request.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/commercial-terms.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/create-media-buy-request.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/get-media-buy-delivery-response.json` | `/properties/reporting_period/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/media-buy-delivery-webhook-result.json` | `/properties/reporting_period/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `protocol/get-adcp-capabilities-response.json` | `/properties/media_buy/properties/budget_capping/properties/fixed_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+
+#### (g) One bound for each concept that was published with a bound in some places
+
+3.2.8 published these concepts with a bound at some sites and without one at
+others:
+
+- `proposal_id`: `maxLength: 255` on `core/proposal.json`.
+- `catalog_id`: `maxLength: 255` on `core/catalog-item-availability-ref.json`.
+- Signal `name` and `description`: `maxLength: 255` and `maxLength: 2000` on
+  `core/signal-definition.json`.
+- Webhook `token`: `maxLength: 4096` on `core/push-notification-config.json`.
+- Seller `suggestions` and rejection `reason`: `maxLength: 1000` and
+  `maxLength: 2000` on `media-buy/get-products-response.json`.
+- `account_id`: `maxLength: 255` on `core/account-change.json`.
+- `evaluation_id`: `maxLength: 255` on
+  `compliance/comply-test-controller-request.json`.
+- `cancellation_reason`: `minLength: 1` on `media-buy/package-control.json`.
+- Signal `description`: `minLength: 1` on `core/wholesale-feed-event.json`.
+
+3.2.8 bounds no media buy ID. 3.3.0-beta.2 through beta.4 published `maxLength: 255`
+on `predecessor_media_buy_id`, which has `x-entity: media_buy`, so `media_buy_id`
+takes that bound from those prereleases rather than from a stable release.
+
+Each concept now has one definition that carries the stricter rule, and these
+sites refer to it. Like (d), this is not a value the published text excluded on every path: the
+sites below accepted a longer value. It tightens them to the bound 3.2.8 already
+published for the same concept. 3.3.0 ships it (#8536).
+
+The check accepts these bounds at these locations:
+
+| Schema | Pointer | Bound | Reason |
+|---|---|---|---|
+| `media-buy/package-control.json` | `/properties/catalog_ids/items` | `maxLength: 255` | A catalog ID, which core/catalog-id.json bounds. |
+| `media-buy/product-purchase.json` | `/properties/catalog_ids/items` | `maxLength: 255` | A catalog ID, which core/catalog-id.json bounds. |
+| `compliance/comply-test-controller-request.json` | `/properties/params/properties/proposal_id` | `maxLength: 255` | A proposal ID, which core/proposal-id.json bounds. |
+| `media-buy/accept-proposal-request.json` | `/properties/proposal_id` | `maxLength: 255` | A proposal ID, which core/proposal-id.json bounds. |
+| `media-buy/create-media-buy-response.json` | `/oneOf/0/properties/proposal_id` | `maxLength: 255` | A proposal ID, which core/proposal-id.json bounds. |
+| `media-buy/decline-proposals-response.json` | `/properties/results/items/properties/proposal_id` | `maxLength: 255` | A proposal ID, which core/proposal-id.json bounds. |
+| `media-buy/get-products-request.json` | `/properties/refine/items/oneOf/2/properties/proposal_id` | `maxLength: 255` | A proposal ID, which core/proposal-id.json bounds. |
+| `media-buy/product-refinement.json` | `/items/oneOf/2/properties/proposal_id` | `maxLength: 255` | A proposal ID, which core/proposal-id.json bounds. |
+| `media-buy/proposal-refinement.json` | `/properties/proposal_id` | `maxLength: 255` | A proposal ID, which core/proposal-id.json bounds. |
+| `media-buy/request-proposals-response.json` | `/properties/reason` | `maxLength: 2000` | A rejection reason, which core/brief-rejection-reason.json bounds. |
+| `core/wholesale-feed-event.json` | `/$defs/signal/properties/description` | `maxLength: 2000` | A signal description, which core/signal-description.json bounds. |
+| `core/wholesale-feed-event.json` | `/$defs/signal/properties/name` | `maxLength: 255` | A signal name, which core/signal-name.json bounds. |
+| `media-buy/refine-proposals-response.json` | `/properties/results/items/properties/suggestions/items` | `maxLength: 1000` | A seller suggestion, which core/seller-suggestion.json bounds. |
+| `media-buy/request-proposals-response.json` | `/properties/suggestions/items` | `maxLength: 1000` | A seller suggestion, which core/seller-suggestion.json bounds. |
+| `core/reporting-webhook.json` | `/properties/token` | `maxLength: 4096` | A webhook token, which core/webhook-token.json bounds. |
+| `media-buy/create-media-buy-request.json` | `/properties/artifact_webhook/properties/token` | `maxLength: 4096` | A webhook token, which core/webhook-token.json bounds. |
+| `core/canonical-account-ref.json` | `/anyOf/0/properties/account_id` | `maxLength: 255` | An account ID, which core/account-id.json bounds. |
+| `core/media-buy.json` | `/properties/cancellation/properties/reason` | `minLength: 1` | A cancellation reason, which core/cancellation-reason.json keeps non-empty. |
+| `core/package.json` | `/properties/cancellation/properties/reason` | `minLength: 1` | A cancellation reason, which core/cancellation-reason.json keeps non-empty. |
+| `media-buy/get-media-buys-response.json` | `/properties/media_buys/items/properties/cancellation/properties/reason`, `/properties/media_buys/items/properties/packages/items/properties/cancellation/properties/reason` | `minLength: 1` | A cancellation reason, which core/cancellation-reason.json keeps non-empty. |
+| `media-buy/package-update.json` | `/properties/cancellation_reason` | `minLength: 1` | A cancellation reason, which core/cancellation-reason.json keeps non-empty. |
+| `media-buy/update-media-buy-request.json` | `/properties/cancellation_reason` | `minLength: 1` | A cancellation reason, which core/cancellation-reason.json keeps non-empty. |
+| `compliance/get-creative-features-completion.json` | `/properties/evaluation_id` | `maxLength: 255` | A creative evaluation ID, which core/creative-evaluation-id.json bounds. |
+| `creative/get-creative-features-async-response-submitted.json` | `/properties/evaluation_id` | `maxLength: 255` | A creative evaluation ID, which core/creative-evaluation-id.json bounds. |
+| `creative/get-creative-features-response.json` | `/oneOf/1/properties/evaluation_id`, `/oneOf/2/properties/evaluation_id` | `maxLength: 255` | A creative evaluation ID, which core/creative-evaluation-id.json bounds. |
+| `creative/get-creative-features-terminal-success.json` | `/properties/evaluation_id` | `maxLength: 255` | A creative evaluation ID, which core/creative-evaluation-id.json bounds. |
+| `core/canonical-proposal.json` | `/properties/media_buy_id` | `maxLength: 255` | A media buy ID, which core/media-buy-id.json bounds. |
+| `core/planned-delivery.json` | `/properties/media_buy_id` | `maxLength: 255` | A media buy ID, which core/media-buy-id.json bounds. |
+| `media-buy/control-media-buy-request.json` | `/properties/media_buy_id` | `maxLength: 255` | A media buy ID, which core/media-buy-id.json bounds. |
+| `media-buy/control-media-buy-response.json` | `/oneOf/0/properties/media_buy_id` | `maxLength: 255` | A media buy ID, which core/media-buy-id.json bounds. |
+| `media-buy/get-media-buys-response.json` | `/properties/media_buys/items/properties/accepted_proposal/allOf/1/properties/media_buy_id` | `maxLength: 255` | A media buy ID, which core/media-buy-id.json bounds. |
+| `media-buy/media-buy-commitment-response.json` | `/oneOf/0/properties/accepted_proposal/allOf/1/properties/media_buy_id`, `/oneOf/0/properties/media_buy_id` | `maxLength: 255` | A media buy ID, which core/media-buy-id.json bounds. |
+| `core/signal-definition.json` | `/properties/description` | `minLength: 1` | A signal description, which core/signal-description.json keeps non-empty. |
 
 ## Rationale
 
