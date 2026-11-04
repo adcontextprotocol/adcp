@@ -40,7 +40,7 @@ The 3.2 profile is deprecated now because `versioning.mdx` requires 6 months' no
 
 ## Implications
 
-The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R0–R8), the threat-model deltas, and the P1–P9 implementation plan. The WG approved it at the working session on 2026-10-12 (decision brief on #7878); PR #8119 records it.
+The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R0–R8), the threat-model deltas, and the P1–P9 implementation plan. The WG approved it at the working session on 2026-10-12 (decision brief on #7878); PR #8119 records it. *Amended by DR-0037: R3a step 1 uses a Public Suffix List bundled with the verifier and refreshed through dependency updates; AdCP names no snapshot.*
 
 **This record settles:**
 - origin identity;

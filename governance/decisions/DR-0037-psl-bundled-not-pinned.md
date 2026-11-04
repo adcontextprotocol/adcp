@@ -21,14 +21,16 @@ This amends the "pinned, dated snapshot" wording in spec R3a step 1, which DR-00
 
 ## Rationale
 
-Two lists disagree only on suffixes added to, or removed from, the PRIVATE section between them. For an added suffix, the verifier with the older list derives the platform's trust record instead of the tenant's, and the platform's record doesn't list the tenant, so the claim fails closed. A grantee that list doesn't treat as a registrable domain covers no claim, which also fails closed.
+Two lists disagree only on suffixes added or removed between them, mostly in the PRIVATE section. The ICANN section changes too, through second-level suffixes under country-code TLDs; a new TLD changes nothing, because the PSL default rule already treats an unlisted TLD as a suffix. For an added suffix, the verifier with the older list derives the platform's trust record instead of the tenant's, and the platform's record doesn't list the tenant, so the claim fails closed. A grantee that list doesn't treat as a registrable domain covers no claim, which also fails closed.
+
+The `brand_json_url` origin binding goes the other way. An older list gives two tenants of a newly listed platform one eTLD+1, so the binding passes for them without `authorized_operators[]` until the verifier updates. Every verifier behaved that way before the listing, and a pinned snapshot would keep the gap open until the next release.
 
 A shared pinned snapshot wouldn't reduce the risk. The tenant-collapse risk comes from a stale list, and one snapshot per release makes every verifier equally stale for a release cycle. Naming one would cost a vendored list per release, a change in each SDK (Go would replace `golang.org/x/net/publicsuffix`), vectors, and upkeep, all to make verifiers agree on old data.
 
 ## Implications
 
 **This record settles:**
-- that AdCP publishes no PSL snapshot and has no PSL conformance vectors;
+- that AdCP publishes no PSL snapshot and no snapshot-specific vectors; the PSL vectors in `static/test-vectors/adagents-discovery-redirects.json` use suffixes every list agrees on;
 - that a verifier keeps its list current through dependency updates, and the runtime-fetch ban stays;
 - that the SDK tracking issues for a pinned snapshot (adcp-client#3379, adcp-client-python#1562, adcp-go#590) close without code changes.
 
