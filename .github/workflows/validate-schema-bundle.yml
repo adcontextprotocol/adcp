@@ -31,7 +31,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24'
           cache: npm
@@ -88,7 +88,7 @@ jobs:
           cmp "${RUNNER_TEMP}/first.tgz.provenance.json" dist/protocol/latest.tgz.provenance.json
 
       - name: Upload protocol PR bundle
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
           path: |
@@ -104,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
           path: bundle
@@ -126,7 +126,7 @@ jobs:
           path: sdk
           fetch-depth: 1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24'
           cache: npm
@@ -187,7 +187,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
           path: bundle
@@ -203,7 +203,7 @@ jobs:
           path: sdk
           fetch-depth: 1
 
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
           cache: pip

@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0  # Need full history for diff
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: '24'
 
@@ -46,7 +46,7 @@ jobs:
 
       - name: Upload docs example coverage artifact
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: docs-example-coverage
           path: |
