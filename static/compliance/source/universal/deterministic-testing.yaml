@@ -52,6 +52,14 @@ prerequisites:
   test_kit: 'test-kits/acme-outdoor.yaml'
   controller_seeding: true
 
+# Bind pre-flight product and pricing-option seeds to the fixture-consuming account.
+context:
+  account:
+    brand:
+      domain: "acmeoutdoor.example"
+    operator: "pinnacle-agency.example"
+    sandbox: true
+
 fixtures:
   products:
     - product_id: 'test-product'
@@ -361,6 +369,7 @@ phases:
           Return at least one account with an account_id.
 
         sample_request:
+          account: '$context.account'
           context:
             correlation_id: "deterministic_testing--list_accounts_for_state"
 
@@ -611,6 +620,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -693,6 +705,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -740,6 +755,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -850,6 +868,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -892,6 +913,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -932,6 +956,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -1025,6 +1052,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -1257,6 +1287,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -1401,6 +1434,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -1439,6 +1475,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
