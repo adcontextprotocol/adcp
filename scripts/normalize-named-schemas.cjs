@@ -14,8 +14,7 @@
  * To name a new concept, add its titled document under core/ or enums/ and
  * register it in index.json, or add a definitions entry when every site is in
  * one document, then run this with --doc. Sites come from the same rules as
- * scripts/lint-schema-named-constraints.cjs, and sites held apart there are
- * left alone.
+ * scripts/lint-schema-named-constraints.cjs.
  *
  * A site changes only when it has one target and the resolved document stays
  * identical, so a target annotation the site doesn't state blocks the edit
@@ -45,7 +44,6 @@ const {
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SCHEMAS_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
-const LIST_PATH = path.join(REPO_ROOT, 'scripts', 'schema-named-constraints.json');
 const DOCUMENT_METADATA = new Set(['$schema', '$id', 'title', 'description']);
 
 /** A JSON parser that records where each object member sits in the text. */
@@ -168,12 +166,11 @@ function main() {
     if (!chosenEntry) throw new Error(`${options.doc} is not a named scalar schema`);
     for (const property of options.properties) chosenEntry.properties.add(property);
   }
-  const held = new Set(JSON.parse(fs.readFileSync(LIST_PATH, 'utf8')).held_apart.map((entry) => entry.path));
   const edits = new Map();
   const blocked = [];
   for (const { site, targets } of findInlineCopies(sites, named)) {
     const key = siteKey(site);
-    if (held.has(key) || (options.sites.size > 0 && !options.sites.has(key))) continue;
+    if (options.sites.size > 0 && !options.sites.has(key)) continue;
     const chosen = chosenEntry ? targets.filter((doc) => doc === chosenEntry) : targets;
     if (chosenEntry && chosen.length === 0) continue;
     if (chosen.length !== 1) {

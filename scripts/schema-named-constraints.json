@@ -1,5 +1,0 @@
-{
-  "$comment": "Reviewed exceptions for scripts/lint-schema-named-constraints.cjs. Each entry is a site that keeps an inline constraint, with what it means that the named schema or the other sites with the same constraint don't. Entries that no longer need an exception fail the lint, so this file shrinks as sites get fixed. An addition needs a reason, and a reviewer sees it in the diff.",
-  "min_repeat_sites": 2,
-  "held_apart": []
-}

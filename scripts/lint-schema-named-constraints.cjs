@@ -10,14 +10,11 @@
  *   - an inline subschema states a named schema's constraints instead of
  *     referencing it. The message gives the file, the JSON pointer, and the
  *     $ref to use;
- *   - the same unnamed constraint repeats at min_repeat_sites or more sites,
- *     in one document or across documents. A weak string constraint must also
- *     repeat on the same property name;
+ *   - the same unnamed constraint repeats at 2 or more sites, in one document
+ *     or across documents. A weak string constraint must also repeat on the
+ *     same property name;
  *   - a document that another document composes uses a local definition, which
- *     only resolves inside its own document;
- *   - scripts/schema-named-constraints.json is malformed, lists a site that no
- *     longer needs an exception, or has grown against its base copy without a
- *     reason.
+ *     only resolves inside its own document.
  *
  * How constraints compare. Annotations don't count, enum values compare as a
  * set, equivalent pattern spellings compare equal, and a `type` that the constraint already implies doesn't count either:
@@ -49,27 +46,18 @@
  * Any other reference stays a reference, and resolves in its own document, so
  * it can use local definitions freely.
  *
- * Exceptions. scripts/schema-named-constraints.json lists each site that keeps
- * an inline constraint, with the reason it is not the named schema or one
- * concept with the other sites. A repeat fails while min_repeat_sites or more
- * of its sites are not listed. An entry that no longer needs to be there fails,
- * so the list shrinks as sites get fixed. With --base-ref (or
- * $ADCP_NAMED_CONSTRAINTS_BASE_REF), the lint compares the list with that ref's
- * copy: a raised threshold fails, and each added entry is printed with its
- * reason for the reviewer.
+ * There are no exceptions. A site that means the same thing references the
+ * named schema. A site that means something else gets a named schema of its own.
  */
 
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_SCHEMAS_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
-const DEFAULT_LIST_PATH = path.join(REPO_ROOT, 'scripts', 'schema-named-constraints.json');
-const LIST_PATH_IN_REPO = 'scripts/schema-named-constraints.json';
-const BASE_REF_ENV = 'ADCP_NAMED_CONSTRAINTS_BASE_REF';
+const MIN_REPEAT_SITES = 2;
 
 const SCALAR_TYPES = new Set(['string', 'number', 'integer']);
 const CONSTRAINT_KEYS = new Set([
@@ -421,45 +409,18 @@ function findComposedLocalRefs(documents, sites) {
   return [...findings.values()];
 }
 
-/** The list's own structure: every entry states its reason. */
-function checkList(list) {
-  const errors = [];
-  if (!Number.isInteger(list.min_repeat_sites) || list.min_repeat_sites < 2) {
-    errors.push('min_repeat_sites must be an integer of at least 2');
-  }
-  if (list.unnamed_repeats !== undefined) {
-    errors.push('unnamed_repeats is no longer read: list each site that stays inline in held_apart, with its reason');
-  }
-  const seen = new Set();
-  for (const entry of Array.isArray(list.held_apart) ? list.held_apart : []) {
-    if (typeof entry.path !== 'string' || !entry.path.includes('#')) {
-      errors.push(`held_apart entry ${JSON.stringify(entry)}: path must be file#pointer`);
-      continue;
-    }
-    if (seen.has(entry.path)) errors.push(`held_apart: ${entry.path} is listed twice`);
-    seen.add(entry.path);
-    if (typeof entry.reason !== 'string' || !entry.reason.trim()) {
-      errors.push(`held_apart: ${entry.path} has no reason; state what this site means that the named schema or the other sites don't`);
-    }
-  }
-  return errors;
-}
-
 const groupLabel = (group) => `${JSON.stringify(group.constraints)}${group.property ? ` on ${group.property}` : ''}`;
 
-/** Holds the tree to the named schemas and the checked-in exceptions. */
-function checkTree(documents, list) {
-  const errors = checkList(list);
+/** Holds the tree to the named schemas. Nothing opts a site out. */
+function checkTree(documents) {
+  const errors = [];
   const sites = collectSites(documents);
   const named = indexNamedSchemas(documents, sites);
   const copies = findInlineCopies(sites, named);
-  const held = new Set((list.held_apart || []).map((entry) => entry.path));
   const copyKeys = new Set(copies.map(({ site }) => siteKey(site)));
-  const needed = new Set(copyKeys);
 
   for (const { site, targets } of copies) {
     const key = siteKey(site);
-    if (held.has(key)) continue;
     const refs = targets.map((doc) => doc.ref);
     const removed = targets.length === 1
       ? [...targets[0].constraintKeys, ...(targets[0].xEntity ? ['x-entity'] : [])].filter((k) => k in site.node)
@@ -469,26 +430,22 @@ function checkTree(documents, list) {
       targets.length === 1
         ? `  Fix: replace ${removed.map((k) => `"${k}"`).join(', ')} with "$ref": "${refs[0]}" and keep the site's description and other annotations.`
         : `  Fix: replace ${removed.map((k) => `"${k}"`).join(', ')} with a "$ref" to the schema that means the same thing: ${refs.join(', ')}. Or name a new schema if none does.`,
-      `  If it means something else, add {"path": "${key}", "reason": "..."} to held_apart in ${LIST_PATH_IN_REPO}.`,
+      '  If it means something else, name it with a titled document of its own under core/ or enums/ and reference that.',
     ].join('\n'));
   }
 
   const groups = findRepeats(sites, copyKeys);
-  const threshold = list.min_repeat_sites;
   for (const group of groups.values()) {
-    if (group.sites.length < 2) continue;
-    for (const site of group.sites) needed.add(siteKey(site));
-    const open = group.sites.filter((site) => !held.has(siteKey(site)));
-    if (open.length < threshold) continue;
-    const files = new Set(open.map((site) => site.file));
+    if (group.sites.length < MIN_REPEAT_SITES) continue;
+    const files = new Set(group.sites.map((site) => site.file));
     const where = files.size === 1
       ? `a definitions entry in ${[...files][0]}`
       : 'a titled document under core/ or enums/';
     errors.push([
-      `Repeated unnamed constraint ${groupLabel(group)} at ${open.length} sites:`,
-      ...open.map((site) => `    ${siteKey(site)}`),
+      `Repeated unnamed constraint ${groupLabel(group)} at ${group.sites.length} sites:`,
+      ...group.sites.map((site) => `    ${siteKey(site)}`),
       `  Fix: name it with ${where}, then run npm run schemas:normalize -- --doc <its file or file#pointer> --write.`,
-      `  If the sites mean different things, add each one that stays inline to held_apart in ${LIST_PATH_IN_REPO}, with the meaning that differs.`,
+      '  If the sites mean different things, give each one a titled document of its own under core/ or enums/.',
     ].join('\n'));
   }
 
@@ -500,28 +457,7 @@ function checkTree(documents, list) {
     ].join('\n'));
   }
 
-  for (const key of held) {
-    if (!needed.has(key)) {
-      errors.push(`stale held_apart: ${key} no longer copies a named schema or repeats another site; remove it from ${LIST_PATH_IN_REPO}`);
-    }
-  }
   return { errors, copies, groups };
-}
-
-/** Compares the list with its copy on the base ref. Returns errors and the additions to show. */
-function compareToBase(base, head) {
-  const errors = [];
-  const additions = [];
-  if (head.min_repeat_sites > base.min_repeat_sites) {
-    errors.push(`min_repeat_sites rose from ${base.min_repeat_sites} to ${head.min_repeat_sites}; the threshold may only fall`);
-  }
-  const baseHeld = new Set((base.held_apart || []).map((entry) => entry.path));
-  for (const entry of head.held_apart || []) {
-    if (baseHeld.has(entry.path)) continue;
-    if (typeof entry.reason === 'string' && entry.reason.trim()) additions.push(`held_apart ${entry.path}: ${entry.reason}`);
-    else errors.push(`held_apart ${entry.path} was added without a reason; the list only grows with one`);
-  }
-  return { errors, additions };
 }
 
 function readArg(args, name, fallback) {
@@ -532,40 +468,19 @@ function readArg(args, name, fallback) {
 function main() {
   const args = process.argv.slice(2);
   const schemasDir = path.resolve(readArg(args, '--schemas-dir', DEFAULT_SCHEMAS_DIR));
-  const listPath = path.resolve(readArg(args, '--list', DEFAULT_LIST_PATH));
-  const baseRef = readArg(args, '--base-ref', process.env[BASE_REF_ENV] || '');
-  const list = JSON.parse(fs.readFileSync(listPath, 'utf8'));
-  const { errors, copies } = checkTree(loadDocuments(schemasDir), list);
-  if (baseRef) {
-    let baseText = null;
-    try {
-      baseText = execFileSync('git', ['show', `${baseRef}:${LIST_PATH_IN_REPO}`], {
-        cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-      });
-    } catch {
-      console.log(`No list at ${baseRef}; skipping the shrink-only check.`);
-    }
-    if (baseText) {
-      const comparison = compareToBase(JSON.parse(baseText), list);
-      errors.push(...comparison.errors);
-      for (const addition of comparison.additions) console.log(`Added since ${baseRef}: ${addition}`);
-    }
-  }
+  const { errors } = checkTree(loadDocuments(schemasDir));
   if (errors.length > 0) {
     console.error(`Schema named-constraints lint: ${errors.length} problem(s)\n\n${errors.join('\n\n')}`);
     process.exit(1);
   }
-  const heldCount = (list.held_apart || []).length;
-  console.log(`✓ schema named-constraints lint: ${copies.length} inline copies and repeats all named or held apart, ${heldCount} held apart, threshold ${list.min_repeat_sites}`);
+  console.log('✓ schema named-constraints lint: no inline copies, no repeated constraints, no exceptions');
 }
 
 if (require.main === module) main();
 
 module.exports = {
-  checkList,
   checkTree,
   collectSites,
-  compareToBase,
   constraintsOf,
   findComposedLocalRefs,
   findInlineCopies,

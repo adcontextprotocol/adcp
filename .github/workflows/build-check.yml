@@ -87,11 +87,7 @@ jobs:
       - name: Language-tag schema reference guard
         run: npm run test:language-tag-refs
 
-      - name: Named-constraints schema guard (no new inline copies or unnamed repeats)
-        # On pull requests the exception list may only shrink relative to the
-        # target branch's copy, unless an addition states its reason.
-        env:
-          ADCP_NAMED_CONSTRAINTS_BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+      - name: Named-constraints schema guard (no inline copies or unnamed repeats)
         run: npm run test:schema-named-constraints
 
       - name: Additive-minor schema guard (no new non-additive changes)

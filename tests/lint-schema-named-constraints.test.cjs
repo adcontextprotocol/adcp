@@ -8,11 +8,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const {
   checkTree,
-  compareToBase,
   loadDocuments,
 } = require('../scripts/lint-schema-named-constraints.cjs');
 const { parseWithPositions, rewriteSite } = require('../scripts/normalize-named-schemas.cjs');
@@ -26,18 +26,16 @@ const named = {
 };
 const objectWith = (properties) => ({ type: 'object', properties });
 const inlineCurrency = { type: 'string', pattern: PATTERN, description: 'A local description.' };
-const emptyList = (extra = {}) => ({ min_repeat_sites: 2, held_apart: [], ...extra });
-const errorsFor = (documents, list = emptyList()) => checkTree(documents, list).errors;
+const errorsFor = (documents) => checkTree(documents).errors;
 
 function assertOneError(errors, pattern) {
   assert.equal(errors.length, 1, errors.join('\n'));
   assert.match(errors[0], pattern);
 }
 
-test('the source tree passes against the checked-in list', () => {
+test('the source tree passes', () => {
   const documents = loadDocuments(path.join(REPO_ROOT, 'static', 'schemas', 'source'));
-  const list = require('../scripts/schema-named-constraints.json');
-  assert.deepEqual(checkTree(documents, list).errors, []);
+  assert.deepEqual(checkTree(documents).errors, []);
 });
 
 test('a $ref to the named schema passes', () => {
@@ -109,23 +107,6 @@ test('sites inside if and not are conditions, not declarations', () => {
   assert.deepEqual(errorsFor(documents), []);
 });
 
-test('a held-apart site with a reason passes', () => {
-  const documents = [named, { file: 'a.json', schema: objectWith({ airport: inlineCurrency }) }];
-  const list = emptyList({ held_apart: [{ path: 'a.json#/properties/airport', reason: 'An IATA airport code.' }] });
-  assert.deepEqual(errorsFor(documents, list), []);
-});
-
-test('a held-apart entry without a reason fails', () => {
-  const documents = [named, { file: 'a.json', schema: objectWith({ airport: inlineCurrency }) }];
-  const list = emptyList({ held_apart: [{ path: 'a.json#/properties/airport', reason: ' ' }] });
-  assertOneError(errorsFor(documents, list), /has no reason/);
-});
-
-test('a held-apart entry that no longer occurs fails', () => {
-  const list = emptyList({ held_apart: [{ path: 'a.json#/properties/gone', reason: 'Was an airport code.' }] });
-  assertOneError(errorsFor([named], list), /stale held_apart/);
-});
-
 const sitesIn = (files, schema = { type: 'string', pattern: '^x-' }) => files.map((file) => ({
   file,
   schema: objectWith({ code: { ...schema } }),
@@ -155,11 +136,6 @@ test('a constraint at one site passes', () => {
 test('a free-text length bound repeats only on one property name', () => {
   const documents = ['a', 'b'].map((name) => ({ file: `${name}.json`, schema: objectWith({ [name]: { type: 'string', maxLength: 500 } }) }));
   assert.deepEqual(errorsFor(documents), []);
-});
-
-test('a repeat passes once all but one of its sites are held apart', () => {
-  const list = emptyList({ held_apart: [{ path: 'a.json#/properties/code', reason: 'A different code.' }] });
-  assert.deepEqual(errorsFor(sitesIn(['a.json', 'b.json']), list), []);
 });
 
 test('an inline copy of a local definition fails with the local $ref', () => {
@@ -209,11 +185,6 @@ test('an untyped pattern elsewhere is not a string schema', () => {
   // Without a type, a pattern accepts non-strings, so it is not the named string schema.
   const documents = [named, { file: 'a.json', schema: { type: 'object', then: objectWith({ code: { pattern: PATTERN } }) } }];
   assert.deepEqual(errorsFor(documents), []);
-});
-
-test('a held-apart entry for a site that no longer repeats fails', () => {
-  const list = emptyList({ held_apart: [{ path: 'a.json#/properties/code', reason: 'A different code.' }] });
-  assertOneError(errorsFor(sitesIn(['a.json']), list), /stale held_apart/);
 });
 
 const composedBase = {
@@ -307,29 +278,17 @@ test('a reference with only annotations beside it passes', () => {
   assert.deepEqual(errorsFor(composedBy(objectWith({ params: { ...baseRef, description: 'Kept.' } }))), []);
 });
 
-test('the removed unnamed_repeats key fails', () => {
-  assertOneError(errorsFor([named], emptyList({ unnamed_repeats: [] })), /unnamed_repeats is no longer read/);
+test('a repeated constraint fails, and no list can opt a site out', () => {
+  const list = { min_repeat_sites: 3, held_apart: [{ path: 'a.json#/properties/code', reason: 'A different code.' }] };
+  const documents = sitesIn(['a.json', 'b.json']);
+  assertOneError(checkTree(documents, list).errors, /Repeated unnamed constraint/);
+  assert.equal(fs.existsSync(path.join(REPO_ROOT, 'scripts', 'schema-named-constraints.json')), false);
 });
 
-test('a grown baseline without a reason fails against the base copy', () => {
-  const head = emptyList({ held_apart: [{ path: 'a.json#/properties/x', reason: '' }] });
-  assertOneError(compareToBase(emptyList(), head).errors, /added without a reason/);
-});
-
-test('a raised threshold fails against the base copy', () => {
-  assertOneError(compareToBase(emptyList(), emptyList({ min_repeat_sites: 3 })).errors, /may only fall/);
-});
-
-test('a new held-apart entry is shown to the reviewer with its reason', () => {
-  const head = emptyList({ held_apart: [{ path: 'a.json#/properties/x', reason: 'Means something else.' }] });
-  const { errors, additions } = compareToBase(emptyList(), head);
-  assert.deepEqual(errors, []);
-  assert.match(additions[0], /a\.json#\/properties\/x: Means something else/);
-});
-
-test('a shrunken list passes against the base copy', () => {
-  const base = emptyList({ held_apart: [{ path: 'a.json#/properties/x', reason: 'Means something else.' }] });
-  assert.deepEqual(compareToBase(base, emptyList()), { errors: [], additions: [] });
+test('an inline copy fails, and no list can opt it out', () => {
+  const list = { held_apart: [{ path: 'a.json#/properties/airport', reason: 'An IATA airport code.' }] };
+  const documents = [named, { file: 'a.json', schema: objectWith({ airport: inlineCurrency }) }];
+  assertOneError(checkTree(documents, list).errors, /inline copy of a named schema/);
 });
 
 test('the normalizer edits a site in place and keeps its formatting', () => {
