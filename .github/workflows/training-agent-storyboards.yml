@@ -198,7 +198,7 @@ jobs:
           filter: blob:none
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -370,7 +370,7 @@ jobs:
 
       - name: Upload storyboards log on failure
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: storyboards-log-${{ matrix.surface }}-${{ matrix.tenant }}
           path: /tmp/storyboards.log
@@ -587,7 +587,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -624,7 +624,7 @@ jobs:
 
       - name: Upload /sales orchestrator artifacts
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: storyboards-current-sales-orchestrator-${{ matrix.orchestrator }}
           path: |
@@ -642,7 +642,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Download /sales orchestrator artifacts
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: storyboards-current-sales-orchestrator-*
           path: /tmp/storyboards-sales-orchestrators
@@ -733,7 +733,7 @@ jobs:
 
       - name: Upload aggregate /sales log on failure
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: storyboards-log-current-sales
           path: /tmp/storyboards.log
