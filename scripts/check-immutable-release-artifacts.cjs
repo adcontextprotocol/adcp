@@ -87,13 +87,13 @@ function git(args) {
   return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
-function pathExistsAtRef(ref, repoPath) {
-  try {
-    execFileSync('git', ['cat-file', '-e', `${ref}:${repoPath}`], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+// Reads trees only, so it never materializes a blob in a blobless clone. Any git
+// failure (missing object, failed lazy fetch, bad ref) throws: an unreadable
+// base must never pass as "absent" and skip immutable-artifact protection.
+function pathExistsAtRef(ref, repoPath, runGit = git) {
+  const target = repoPath.replace(/\/+$/, '');
+  const listed = runGit(['ls-tree', '-z', '--name-only', ref, '--', target]);
+  return listed.split('\0').includes(target);
 }
 
 function versionHasGitTag(version) {
@@ -149,6 +149,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  pathExistsAtRef,
   findImmutableArtifactViolations,
   formatViolationMessage,
   parseImmutableArtifactPath,
