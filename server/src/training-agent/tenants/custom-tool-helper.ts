@@ -52,7 +52,20 @@ interface IdempotencyClaim {
   payloadHash: string;
 }
 
-function toAdaptedResponse(result: unknown, callerContext: unknown, options: CustomToolOptions): AdaptedResponse {
+/** Response roots that carry no envelope `status` (the SDK's own list). */
+const STATUS_FREE_RESPONSE_TOOLS: ReadonlySet<string> = new Set([
+  'list_products',
+  'decline_proposals',
+  'list_collections',
+  'list_proposals',
+]);
+
+function toAdaptedResponse(
+  toolName: string,
+  result: unknown,
+  callerContext: unknown,
+  options: CustomToolOptions,
+): AdaptedResponse {
   const errsField = (result as { errors?: unknown[] } | null | undefined)?.errors;
   const servedAdcpVersion = typeof (result as { adcp_version?: unknown } | null | undefined)?.adcp_version === 'string'
     ? (result as { adcp_version: string }).adcp_version
@@ -75,7 +88,14 @@ function toAdaptedResponse(result: unknown, callerContext: unknown, options: Cus
     };
   }
   const inner = (result ?? {}) as Record<string, unknown>;
-  const withEnvelope = wrapEnvelope(inner, {
+  // Custom tools bypass the SDK response pipeline that stamps the envelope
+  // `status` on framework tools. Every task response envelope requires it
+  // (core/protocol-envelope.json); a synchronous success is `completed`, and a
+  // handler that reports another task status (an async `submitted`) keeps it.
+  const withStatus = STATUS_FREE_RESPONSE_TOOLS.has(toolName) || inner.status !== undefined
+    ? inner
+    : { ...inner, status: 'completed' };
+  const withEnvelope = wrapEnvelope(withStatus, {
     ...(callerContext !== undefined && typeof callerContext === 'object' && callerContext !== null
       ? { context: callerContext }
       : {}),
@@ -228,7 +248,7 @@ export function customToolFor(
           if (outcome.kind === 'replay') {
             const replayed: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
             if (replayed.status === undefined) replayed.status = 'completed';
-            return toAdaptedResponse(replayed, callerContext, options);
+            return toAdaptedResponse(name, replayed, callerContext, options);
           }
           claim = {
             principal,
@@ -251,7 +271,7 @@ export function customToolFor(
           logger.error({ err, tool: name }, 'custom-tool flushDirtySessions threw');
           return serviceUnavailable(err, callerContext);
         }
-        const response = toAdaptedResponse(result, callerContext, options);
+        const response = toAdaptedResponse(name, result, callerContext, options);
         if (claim) {
           const hasPayloadErrors = Array.isArray((result as { errors?: unknown[] } | null | undefined)?.errors)
             && ((result as { errors?: unknown[] }).errors ?? []).length > 0;

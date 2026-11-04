@@ -7,8 +7,8 @@
     "./testing": "./testing.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "17.0.0-beta.15",
     "@a2a-js/sdk": "1.0.1",
+    "@adcp/sdk": "17.0.0-beta.17",
     "@modelcontextprotocol/sdk": "^1.31.0"
   }
 }
