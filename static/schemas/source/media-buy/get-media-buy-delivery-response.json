@@ -82,8 +82,7 @@
           "description": "Exclusive RFC 3339 end instant. For a date-bounded request, the start of end_date in the reporting timezone (e.g., 2026-04-16T00:00:00-04:00 for a report covering 2026-04-15 in America/New_York)."
         },
         "timezone": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Reporting timezone applied to this report, as 'UTC' or an IANA timezone identifier. It equals the in-scope products' reporting_capabilities.timezone. start_date, end_date, the reporting_period boundaries, daily_breakdown[].date, and daily, weekly, or monthly windows[] all use it, so a stored report stays interpretable if the product's capability later changes. Sellers SHOULD return it on reads without reporting_revision_id whenever every in-scope media buy shares one reporting timezone. Exact reporting_revision_id reads return the revision period, which carries source_timezone instead.",
           "examples": [
             "UTC",

@@ -74,8 +74,7 @@
           "format": "date-time"
         },
         "source_timezone": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "/schemas/core/iana-timezone.json"
         }
       },
       "required": [

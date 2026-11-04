@@ -1225,11 +1225,9 @@
           "description": "reporting_subscription_probe reduce_grant: the complete allowed_tasks the caller's grant on account_id keeps, for example only get_reporting_status, sync_reporting_receipts, and sync_reporting_status to model a wind-down."
         },
         "timezone": {
-          "type": "string",
+          "$ref": "/schemas/core/iana-timezone.json",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "minLength": 1,
-          "maxLength": 255,
           "description": "reporting_subscription_probe set_account_timezone: the account's new IANA timezone."
         },
         "target_time": {

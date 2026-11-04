@@ -51,8 +51,7 @@
       "description": "ISO 4217 currency for a currency-bound advertiser object, as in sync_accounts. An account attribute set when the account opens."
     },
     "timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Buyer-selected timezone when the seller declares account_fixed, buyer_selected timezones, as in sync_accounts. An account attribute set when the account opens."
     },
     "sandbox": {

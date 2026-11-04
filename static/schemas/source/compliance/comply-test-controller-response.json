@@ -26,15 +26,11 @@
           "description": "The account whose timezone the call set, as params.account_id named it."
         },
         "previous_timezone": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "The account's IANA timezone before the change. list_accounts shows only the new zone, so this is the only place a caller recovers the old one before reading coverage. Equal to timezone when the call changed nothing."
         },
         "timezone": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "The account's IANA timezone after the call, as list_accounts shows it: params.timezone."
         },
         "changed_at": {

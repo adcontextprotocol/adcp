@@ -2687,10 +2687,8 @@
               "description": "Source of the default cap-day boundary. account uses the selected Account.timezone and therefore supports different boundaries for different accounts. fixed uses fixed_timezone for every media buy regardless of account timezone."
             },
             "fixed_timezone": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Feature-specific default cap-day timezone used when timezone_basis is fixed. Use UTC or an IANA timezone identifier.",
-              "x-max-length-4.0": 64
+              "$ref": "/schemas/core/iana-timezone.json",
+              "description": "Feature-specific default cap-day timezone used when timezone_basis is fixed. Use UTC or an IANA timezone identifier."
             },
             "buyer_timezone_override": {
               "type": "boolean",

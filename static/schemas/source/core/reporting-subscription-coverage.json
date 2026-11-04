@@ -85,9 +85,9 @@
         "type": "object",
         "properties": {
           "offering_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The offering whose account_timezone periods this cutover applies to, when covered offerings have different boundaries. Absent: every account_timezone offering on the account." },
-          "previous_timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The IANA timezone in effect before the change. Sellers MUST include it: the account's current timezone already shows the new zone, so a buyer cannot otherwise recover the old schedule." },
+          "previous_timezone": { "$ref": "/schemas/core/iana-timezone.json", "description": "The IANA timezone in effect before the change. Sellers MUST include it: the account's current timezone already shows the new zone, so a buyer cannot otherwise recover the old schedule." },
           "effective_at": { "type": "string", "format": "date-time", "description": "End of the last old-timezone period that started before the change." },
-          "timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The account's new IANA timezone, as list_accounts shows it." }
+          "timezone": { "$ref": "/schemas/core/iana-timezone.json", "description": "The account's new IANA timezone, as list_accounts shows it." }
         },
         "required": ["effective_at", "timezone"],
         "additionalProperties": false

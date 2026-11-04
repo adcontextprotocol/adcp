@@ -80,8 +80,7 @@
                 "description": "Account currency, echoed when the advertiser object is currency-bound."
               },
               "timezone": {
-                "type": "string",
-                "minLength": 1,
+                "$ref": "/schemas/core/iana-timezone.json",
                 "description": "Operational timezone for this account. AdCP 3.2 sellers echo it on created, updated, and unchanged results."
               },
               "name": {

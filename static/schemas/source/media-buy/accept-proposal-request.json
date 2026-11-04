@@ -58,8 +58,7 @@
       "description": "Optional hard aggregate daily spend ceiling applied when the committed proposal is accepted. It constrains execution without changing the proposal's negotiated pricing."
     },
     "budget_cap_timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Optional shared IANA cap-day timezone override. Requires buyer_timezone_override support. When omitted, budget_capping.timezone_basis selects Account.timezone or fixed_timezone."
     },
     "io_acceptance": {

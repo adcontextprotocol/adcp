@@ -3,18 +3,6 @@
   "min_repeat_sites": 2,
   "held_apart": [
     {
-      "path": "account/request-account-request.json#/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
-      "path": "account/sync-accounts-request.json#/properties/accounts/items/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
-      "path": "account/sync-accounts-response.json#/oneOf/0/properties/accounts/items/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
       "path": "brand.json#/definitions/photography_style/properties/preferred_aspect_ratios/items",
       "reason": "Aspect ratio with whole numbers only. core/aspect-ratio.json also accepts decimals, so referencing it would loosen this site; see the decision list."
     },
@@ -39,18 +27,6 @@
       "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
     },
     {
-      "path": "compliance/comply-test-controller-request.json#/properties/params/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
-    },
-    {
-      "path": "compliance/comply-test-controller-response.json#/definitions/SetAccountTimezoneResult/properties/previous_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
-    },
-    {
-      "path": "compliance/comply-test-controller-response.json#/definitions/SetAccountTimezoneResult/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
-    },
-    {
       "path": "compliance/comply-test-controller-response.json#/oneOf/3/properties/forced/properties/evaluation_id",
       "reason": "Same concept as core/creative-evaluation-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
     },
@@ -67,32 +43,12 @@
       "reason": "Same concept as core/account-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
     },
     {
-      "path": "core/account-ref.json#/oneOf/1/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
       "path": "core/account-request-record.json#/properties/request_id",
       "reason": "Seller-assigned account request ID. core/account-request-id.json states no pattern, so referencing it would loosen this site; see the decision list."
     },
     {
-      "path": "core/account-request-record.json#/properties/requested/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
-      "path": "core/account-timezone-capability.json#/properties/fixed_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Fixed seller or feature timezone, UTC or IANA. Referencing adds maxLength 255 (these sites declare x-max-length-4.0 64), the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
-      "path": "core/account.json#/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
       "path": "core/audience-evidence.json#/properties/relationship",
       "reason": "Stable since 3.2, while enums/audience-evidence-relationship.json carries x-added-in 3.3.0; see the decision list."
-    },
-    {
-      "path": "core/canonical-account-ref.json#/anyOf/1/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
       "path": "core/canonical-audience-evidence.json#/properties/relationship",
@@ -115,10 +71,6 @@
       "reason": "Same concept as core/account-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
     },
     {
-      "path": "core/reporting-consumer-status.json#/properties/period/properties/source_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Reporting period source_timezone is the IANA zone of the upstream reporting clock. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
       "path": "core/reporting-delivery-offering.json#/properties/method/properties/producer_identity/properties/provider/properties/domain",
       "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
     },
@@ -127,40 +79,16 @@
       "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
     },
     {
-      "path": "core/reporting-file-manifest.json#/properties/period/properties/source_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Reporting period source_timezone is the IANA zone of the upstream reporting clock. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
-      "path": "core/reporting-obligation.json#/properties/period/properties/source_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Reporting period source_timezone is the IANA zone of the upstream reporting clock. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
       "path": "core/reporting-obligation.json#/properties/reporting_profile",
       "reason": "Same concept as core/reporting-profile-id.json with a different constraint; see the decision list. Same length bounds. Referencing adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
-    },
-    {
-      "path": "core/reporting-report-definition.json#/properties/calendar/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
     },
     {
       "path": "core/reporting-report-definition.json#/properties/reporting_profile",
       "reason": "Same concept as core/reporting-profile-id.json with a different constraint; see the decision list. Same length bounds. Referencing adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
     },
     {
-      "path": "core/reporting-revision.json#/properties/period/properties/source_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Reporting period source_timezone is the IANA zone of the upstream reporting clock. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
       "path": "core/reporting-revision.json#/properties/reporting_profile",
       "reason": "Same concept as core/reporting-profile-id.json with a different constraint; see the decision list. Same length bounds. Referencing adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
-    },
-    {
-      "path": "core/reporting-schedule-offering.json#/properties/period_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
-    },
-    {
-      "path": "core/reporting-schedule.json#/properties/period_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
     },
     {
       "path": "core/reporting-subscription-coverage.json#/properties/excluded/items/properties/offering_id",
@@ -179,24 +107,12 @@
       "reason": "Same concept as core/reporting-delivery-offering-id.json with a different constraint; see the decision list. Referencing lowers maxLength from 255 to 128 and adds the pattern ^[A-Za-z0-9_.:-]{1,128}$."
     },
     {
-      "path": "core/reporting-subscription-coverage.json#/properties/timezone_cutovers/items/properties/previous_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
-    },
-    {
-      "path": "core/reporting-subscription-coverage.json#/properties/timezone_cutovers/items/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
-    },
-    {
       "path": "core/reporting-subscription.json#/properties/destination_overrides/items/properties/operator_domains/items",
       "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
     },
     {
       "path": "core/reporting-subscription.json#/properties/operator_domains/items",
       "reason": "Domain name with a 253-character bound. core/domain-name.json states no length, so referencing it would loosen this site; see the decision list."
-    },
-    {
-      "path": "core/reporting-subscription.json#/properties/selector/properties/period_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA timezones with the same length bounds. Referencing adds the IANA identifier pattern and the inventory_local exclusion."
     },
     {
       "path": "core/reporting-verification-profile-set.json#/items",
@@ -243,10 +159,6 @@
       "reason": "manifest.schema.json is standalone, and a tool name also covers tools that are not AdCP tasks."
     },
     {
-      "path": "media-buy/accept-proposal-request.json#/properties/budget_cap_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA cap-day timezone override. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
       "path": "media-buy/accept-proposal-request.json#/properties/governance_context",
       "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
     },
@@ -259,20 +171,12 @@
       "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
     },
     {
-      "path": "media-buy/buy-products-request.json#/properties/budget_cap_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA cap-day timezone override. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
-    },
-    {
       "path": "media-buy/buy-products-request.json#/properties/governance_context",
       "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
     },
     {
       "path": "media-buy/buy-products-request.json#/properties/predecessor_media_buy_id",
       "reason": "Same concept as core/media-buy-id.json with a different constraint; see the decision list. Referencing drops maxLength 255."
-    },
-    {
-      "path": "media-buy/commercial-terms.json#/properties/budget_cap_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA cap-day timezone override. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
       "path": "media-buy/control-media-buy-request.json#/properties/cancellation_reason",
@@ -285,10 +189,6 @@
     {
       "path": "media-buy/create-media-buy-request.json#/properties/artifact_webhook/properties/token",
       "reason": "Same concept as core/webhook-token.json with a different constraint; see the decision list. Referencing adds maxLength 4096."
-    },
-    {
-      "path": "media-buy/create-media-buy-request.json#/properties/budget_cap_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. IANA cap-day timezone override. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
       "path": "media-buy/create-media-buy-request.json#/properties/predecessor_media_buy_id",
@@ -305,10 +205,6 @@
     {
       "path": "media-buy/decline-proposals-response.json#/properties/results/items/properties/proposal_id",
       "reason": "Same concept as core/proposal-id.json with a different constraint; see the decision list. Referencing adds maxLength 255."
-    },
-    {
-      "path": "media-buy/get-media-buy-delivery-response.json#/properties/reporting_period/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
       "path": "media-buy/get-media-buy-issue-request.json#/properties/governance_context",
@@ -337,10 +233,6 @@
     {
       "path": "media-buy/list-proposals-request.json#/properties/governance_context",
       "reason": "Same concept as core/governance-context.json with a different constraint; see the decision list. Same concept and length bounds. Referencing adds the printable-ASCII pattern ^[\\x20-\\x7E]+$, which rejects control and non-ASCII characters these sites now accept."
-    },
-    {
-      "path": "media-buy/media-buy-delivery-webhook-result.json#/properties/reporting_period/properties/timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Account and reporting timezones described as UTC or an IANA identifier. Referencing adds maxLength 255, the IANA identifier pattern, and the inventory_local exclusion."
     },
     {
       "path": "media-buy/package-control.json#/properties/cancellation_reason",
@@ -389,10 +281,6 @@
     {
       "path": "media-buy/request-proposals-response.json#/properties/suggestions/items",
       "reason": "Same concept as core/seller-suggestion.json with a different constraint; see the decision list. Proposed above with maxLength 1000. These suggestions have minLength 1 only; referencing adds maxLength 1000."
-    },
-    {
-      "path": "protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/budget_capping/properties/fixed_timezone",
-      "reason": "Same concept as core/iana-timezone.json with a different constraint; see the decision list. Fixed seller or feature timezone, UTC or IANA. Referencing adds maxLength 255 (these sites declare x-max-length-4.0 64), the IANA identifier pattern, and the inventory_local exclusion."
     }
   ]
 }

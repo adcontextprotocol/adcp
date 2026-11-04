@@ -109,8 +109,7 @@
       "description": "Optional max-impression cap using one counter across explicit packages. Requires advertised aggregate_frequency_capping and compatible media_buy_support on every product; otherwise sellers MUST reject with UNSUPPORTED_FEATURE before any mutation and MUST NOT silently drop, soften, or clamp the cap. Omit when executing proposal_id because accepted terms are authoritative."
     },
     "budget_cap_timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Optional shared IANA day boundary override for all caps. Requires buyer_timezone_override; otherwise rejected with UNSUPPORTED_FEATURE. When omitted, budget_capping.timezone_basis selects Account.timezone or the advertised fixed_timezone."
     },
     "budget_allocation": {

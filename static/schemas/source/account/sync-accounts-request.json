@@ -61,8 +61,7 @@
             "description": "Optional ISO 4217 transaction currency for a currency-bound advertiser object. Consult `account.supported_account_currency_modes` before provisioning. An account attribute: all media buys on the account use it. Omit for per-media-buy currency selection. Set when the account opens: a seller MAY refuse a change with UNSUPPORTED_FEATURE."
           },
           "timezone": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/iana-timezone.json",
             "description": "Operational timezone selected for an account_fixed advertiser object. Required in provisioning mode when get_adcp_capabilities.account.timezone declares account_selection: buyer_selected, and the value MUST be one of supported_timezones. Omit for seller_fixed or seller_assigned modes. An account attribute set when the account opens: a seller MAY refuse a change with UNSUPPORTED_FEATURE."
           },
           "billing": {

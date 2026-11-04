@@ -50,8 +50,7 @@
           "format": "date-time"
         },
         "timezone": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Reporting timezone applied to this report, as 'UTC' or an IANA timezone identifier. Same meaning as get_media_buy_delivery reporting_period.timezone. Sellers SHOULD return it whenever every reported media buy shares one reporting timezone.",
           "examples": [
             "UTC",

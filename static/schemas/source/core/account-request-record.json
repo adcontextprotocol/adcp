@@ -28,7 +28,7 @@
         "operator": { "type": "string" },
         "operator_unit": { "$ref": "/schemas/core/operator-unit.json" },
         "currency": { "$ref": "/schemas/core/currency-code.json" },
-        "timezone": { "type": "string", "minLength": 1 },
+        "timezone": { "$ref": "/schemas/core/iana-timezone.json" },
         "sandbox": { "type": "boolean" },
         "billing": { "$ref": "/schemas/enums/billing-party.json" },
         "payment_terms": { "$ref": "/schemas/enums/payment-terms.json" }

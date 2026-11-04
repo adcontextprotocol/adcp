@@ -36,8 +36,7 @@
           "description": "ISO 4217 transaction currency when the seller's advertiser object is currency-bound. An account attribute that acts as a lookup filter; media buys on the account MUST use it. Omit when currency is selected independently per media buy."
         },
         "timezone": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Account timezone. An account attribute that acts as a lookup filter when get_adcp_capabilities.account.timezone declares account_fixed with buyer_selected; omit it for seller_fixed or seller_assigned accounts."
         },
         "sandbox": {

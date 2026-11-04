@@ -65,8 +65,7 @@
       "description": "Hard MediaBuy-level cap accepted as part of these terms. One counter aggregates exposures across every purchase; purchase targeting caps remain independently binding."
     },
     "budget_cap_timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Shared IANA calendar-day boundary for aggregate and purchase daily caps in these terms."
     },
     "budget_allocation": { "$ref": "/schemas/core/canonical-budget-allocation.json" },

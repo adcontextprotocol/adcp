@@ -55,8 +55,7 @@
       "description": "Transaction currency when the seller's advertiser object is currency-bound. An account attribute set when the account opens. Media buys on this account MUST use this currency. Omit when the account selects currency independently per media buy."
     },
     "timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Operational timezone for this account, expressed as UTC or an IANA timezone identifier. An account attribute set when the account opens. AdCP 3.2 sellers return it on every account. It is the default calendar-day boundary for account-scoped behavior unless a feature explicitly declares another timezone basis."
     },
     "billing": {

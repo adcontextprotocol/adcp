@@ -36,7 +36,7 @@
       "type": "object",
       "properties": {
         "timezone_basis": { "$ref": "#/definitions/ReportCalendarTimezoneBasis" },
-        "timezone": { "type": "string", "minLength": 1, "maxLength": 255 }
+        "timezone": { "$ref": "/schemas/core/iana-timezone.json" }
       },
       "required": ["timezone_basis"],
       "allOf": [

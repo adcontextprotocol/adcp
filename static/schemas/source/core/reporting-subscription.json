@@ -86,9 +86,7 @@
           "description": "exact selects the offering whose dimension set equals dimensions; native dimensions that do not map to the vocabulary count as distinct, so package by device does not equal package. finest selects the single offering with the most mapped dimensions among those including every selector dimension. Ties under exact and finest go to the lowest offering_id in byte order. all selects every offering including every selector dimension, each with its own obligations. Defaults to exact when dimensions is present and finest when it is absent. With match exact and no dimensions, every candidate qualifies and the lowest offering_id wins. Matching reads each offering's standard_dimensions and unmapped_dimensions. Billing subscriptions MUST use exact with dimensions, so a billing feed's breakdown never depends on which offerings happen to exist."
         },
         "period_timezone": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "IANA timezone override for period boundaries. Only valid when scope.account_ids names exactly one account. An account_timezone offering matches and uses this zone in place of the account's. A utc offering matches only when this is exactly UTC or Etc/UTC; other names that tzdata links to UTC, such as Etc/GMT, GMT, Etc/Universal, or Zulu, do not match. A source_timezone or fixed billing_cycle offering matches only when its published period_timezone equals this one. A billing_cycle offering whose anchor the buyer configures never matches a subscription, which has no way to supply the anchor."
         }
       },
