@@ -278,6 +278,51 @@
           "type": "string",
           "description": "Per-row supplementary methodology notes for DOOH impression calculation (e.g., 'rotation-based; 6-second slot weighted by 70% audience overlap'). Free-form prose for context that doesn't fit the structured measurement-vendor surface. Canonical methodology declarations belong on the measurement vendor's `get_adcp_capabilities.measurement.metrics[]` block where they're discoverable once and inherited across delivery rows; this field is for row-specific context (a particular daypart's calculation, a venue-mix exception) rather than the seller's general methodology."
         },
+        "impression_basis": {
+          "$ref": "/schemas/enums/impression-estimation-basis.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.dooh_impression_basis). Methodology tier of the row's `impressions` when every play in the row was estimated on that tier. SHOULD be present whenever a DOOH row reports `impressions`. When the row aggregates plays estimated on different tiers, omit it and report `impression_basis_breakdown`. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`."
+        },
+        "audience_multiplier": {
+          "type": "number",
+          "minimum": 0,
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.dooh_impression_basis). The row's effective `impressions / plays`, declared rather than inferred, so a verifier can check `impressions ≈ plays × audience_multiplier` and a buyer can compare rows. On `sensor_measured` and `hybrid` rows sellers SHOULD include it, and it is the realised ratio for the period, which varies by row. On `currency_measured` rows it is optional, for currencies whose terms prohibit disclosing it."
+        },
+        "basis_metric": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.dooh_impression_basis). On rows whose impressions are, wholly or through an `impression_basis_breakdown` entry, `sensor_measured` or `hybrid`, the `vendor_metric_values[]` row of the same object the sensor audience derives from, joined on `(vendor, metric_id, qualifier)`. That row carries the coverage (`measurable_plays`) and the seller–vendor relationship, and the vendor catalog the methodology. When `basis_metric` is present, a matching `vendor_metric_values[]` row MUST be present in the same object.",
+          "properties": {
+            "vendor": {
+              "$ref": "/schemas/core/vendor-metric-value.json#/properties/vendor",
+              "description": "Vendor of the `vendor_metric_values[]` row. Matches the row's `vendor`."
+            },
+            "metric_id": {
+              "$ref": "/schemas/core/vendor-metric-value.json#/properties/metric_id",
+              "description": "Metric of the `vendor_metric_values[]` row. Matches the row's `metric_id`."
+            },
+            "qualifier": {
+              "$ref": "/schemas/core/vendor-metric-value.json#/properties/qualifier",
+              "description": "The row's `qualifier`, repeated verbatim when the row carries one. Omit when the row has none."
+            }
+          },
+          "required": ["vendor", "metric_id"],
+          "additionalProperties": true
+        },
+        "impression_basis_breakdown": {
+          "type": "array",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (media_buy.dooh_impression_basis). For a row that aggregates plays estimated on different tiers — a product mixing sensor-equipped screens and screens without a sensor, or a screen that fell back to the seller's model while its sensor was not reporting — one entry per tier, whose `plays` and `impressions` sum to the row's. A row reports either `impression_basis` or this breakdown. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`.",
+          "items": {
+            "$ref": "/schemas/core/impression-basis-breakdown-entry.json"
+          },
+          "minItems": 1
+        },
         "venue_breakdown": {
           "type": "array",
           "description": "Per-venue performance breakdown",
@@ -310,6 +355,19 @@
                 "type": "integer",
                 "description": "Number of screens used at this venue",
                 "minimum": 0
+              },
+              "impression_basis": {
+                "$ref": "/schemas/enums/impression-estimation-basis.json",
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "description": "Experimental (media_buy.dooh_impression_basis). Methodology tier of this venue's impressions, when it differs across venues of the row."
+              },
+              "audience_multiplier": {
+                "type": "number",
+                "minimum": 0,
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "description": "Experimental (media_buy.dooh_impression_basis). This venue's effective `impressions / loop_plays`, declared rather than inferred."
               }
             },
             "required": [

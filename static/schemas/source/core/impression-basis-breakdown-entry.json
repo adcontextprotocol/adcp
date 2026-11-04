@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/impression-basis-breakdown-entry.json",
+  "title": "Impression Basis Breakdown Entry",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Experimental (media_buy.dooh_impression_basis). The plays of a DOOH row, or of a forecast point, whose audience was estimated on one tier, and the impressions they produced. A row that aggregates plays estimated on different tiers (sensor-equipped screens and screens without a sensor, or one screen whose sensor stopped reporting for part of the flight) lists one entry per tier instead of a row-level `impression_basis`. At most one entry per tier. In a delivery row the entries' `plays` and `impressions` sum to the row's `plays` and `impressions`; in a forecast point they are the expected values behind the point's midpoints.",
+  "type": "object",
+  "properties": {
+    "impression_basis": {
+      "$ref": "/schemas/enums/impression-estimation-basis.json",
+      "description": "Tier the audience of these plays was estimated on."
+    },
+    "plays": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Plays whose audience was estimated on this tier."
+    },
+    "impressions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Impressions those plays produced: their plays × their audience multiplier."
+    },
+    "audience_multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Effective `impressions / plays` of these plays, declared rather than inferred. Optional on `currency_measured` entries when the currency's terms prohibit disclosing it."
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["impression_basis", "plays", "impressions"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "impression_basis": "sensor_measured",
+      "plays": 21340,
+      "impressions": 397808,
+      "audience_multiplier": 18.64
+    },
+    {
+      "impression_basis": "seller_modeled",
+      "plays": 64732,
+      "impressions": 951545,
+      "audience_multiplier": 14.7
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "points": [{
+    "label": "Available from 2026-11-09 to 2026-11-15",
+    "metrics": {
+      "plays": { "mid": 86100 },
+      "impressions": { "mid": 1356600 },
+      "spend": { "mid": 10852.8 }
+    },
+    "audience_multiplier": 15.76,
+    "impression_basis_breakdown": [
+      { "impression_basis": "sensor_measured", "plays": 27800, "impressions": 517080, "audience_multiplier": 18.6 },
+      { "impression_basis": "seller_modeled", "plays": 58300, "impressions": 839520, "audience_multiplier": 14.4 }
+    ]
+  }],
+  "forecast_range_unit": "availability",
+  "method": "modeled",
+  "currency": "USD",
+  "generated_at": "2026-11-04T08:00:00Z",
+  "valid_until": "2026-11-04T20:00:00Z"
+}
