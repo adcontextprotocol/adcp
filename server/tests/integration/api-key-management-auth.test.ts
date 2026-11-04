@@ -9,11 +9,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { WorkOSUser } from '../../src/types.js';
 
 const mocks = vi.hoisted(() => ({
-  authenticate: vi.fn(), loadSealedSession: vi.fn(), memberships: vi.fn(),
+  createToken: vi.fn(), authenticate: vi.fn(), loadSealedSession: vi.fn(), memberships: vi.fn(),
   verifyWorkOSJWT: vi.fn(), fetch: vi.fn(), checkPlatformBan: vi.fn(), createValidation: vi.fn(),
 }));
 vi.mock('@workos-inc/node', () => ({
   WorkOS: class WorkOS {
+    widgets = { createToken: mocks.createToken };
     userManagement = {
       loadSealedSession: mocks.loadSealedSession,
       listOrganizationMemberships: mocks.memberships,
@@ -46,6 +47,14 @@ const PROVIDER_USER = {
 };
 
 let sequence = 0;
+
+function providerResponse(_url: string, options: RequestInit) {
+  const body = options.body ? JSON.parse(String(options.body)) : null;
+  return { ok: true, status: 200, json: async () => body?.query?.includes('CreateOrganizationApiKey')
+    ? { data: { createOrganizationApiKey: { __typename: 'OrganizationApiKeyCreated', value: 'secret', apiKey: { id: 'key_created' } } } }
+    : body?.query?.includes('DeleteOrganizationApiKey')
+      ? { data: { deleteOrganizationApiKey: { id: body.variables.apiKeyId } } } : { data: [] } };
+}
 
 describe('API key management mounted authentication without grant storage', () => {
   let pool: Pool;
@@ -144,10 +153,8 @@ describe('API key management mounted authentication without grant storage', () =
     mocks.memberships.mockImplementation(async ({ userId, organizationId }) => ({
       data: [{ id: `mem_${userId}`, createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString(), userId, organizationId, status: 'active', role: { slug: 'admin' } }],
     }));
-    mocks.fetch.mockImplementation(async (_url, options: RequestInit) => ({
-      ok: true, status: options.method === 'DELETE' ? 204 : 200,
-      json: async () => ({ data: [] }),
-    }));
+    mocks.createToken.mockReset().mockResolvedValue({ token: 'widget_exact_credential' });
+    mocks.fetch.mockImplementation(providerResponse);
     await pool.query(
       'INSERT INTO organizations (workos_organization_id, name) VALUES ($1, $2)',
       [ORGANIZATION, 'Pinnacle Agency'],
@@ -233,7 +240,7 @@ describe('API key management mounted authentication without grant storage', () =
     },
   );
 
-  it.each(['cookie', 'JWT'] as const)('permits cold and warm %s listing and contains mutations while grant storage is inaccessible', async (kind) => {
+  it.each(['cookie', 'JWT'] as const)('permits cold and warm %s operations while grant storage is inaccessible', async (kind) => {
     const token = kind === 'cookie' ? `sealed-management-${++sequence}` : `header.management${++sequence}.signature`;
     const authenticate = (req: request.Test) => kind === 'cookie'
       ? req.set('Cookie', `wos-session=${token}`) : req.set('Authorization', `Bearer ${token}`);
@@ -245,9 +252,9 @@ describe('API key management mounted authentication without grant storage', () =
         const listed = await authenticate(request(app).get(`/api/me/api-keys?org=${ORGANIZATION}`));
         const created = await authenticate(request(app).post(`/api/me/api-keys?org=${ORGANIZATION}`)).send({ name: 'Scoped key' });
         const revoked = await authenticate(request(app).delete(`/api/me/api-keys/key_exact?org=${ORGANIZATION}`));
-        expect([listed.status, created.status, revoked.status]).toEqual([200, 503, 503]);
+        expect([listed.status, created.status, revoked.status]).toEqual([200, 201, 204]);
       }
-      expect(mocks.fetch).toHaveBeenCalledTimes(2);
+      expect(mocks.fetch).toHaveBeenCalledTimes(6);
       expect(mocks.memberships.mock.calls.every(([selection]) =>
         selection.userId === CREDENTIAL && selection.organizationId === ORGANIZATION,
       )).toBe(true);
@@ -377,7 +384,7 @@ describe('API key management mounted authentication without grant storage', () =
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
-  it.each(['cookie', 'JWT'] as const)('lists the fixed organization subresource for %s but never dispatches accepted mutations', async (kind) => {
+  it.each(['cookie', 'JWT'] as const)('lists the fixed organization subresource and uses user-scoped mutations for %s', async (kind) => {
     const token = kind === 'cookie' ? `sealed-path-control-${++sequence}` : `header.pathcontrol${++sequence}.signature`;
     const headers = credentialHeaders(kind, token);
     const listed = await request(app).get(`/api/me/api-keys?org=${ORGANIZATION}`).set(headers);
@@ -390,12 +397,16 @@ describe('API key management mounted authentication without grant storage', () =
     mocks.fetch.mockClear();
     const created = await request(app).post(`/api/me/api-keys?org=${ORGANIZATION}`)
       .set(headers).send({ name: 'Scoped key' });
-    expect(created.status).toBe(503);
+    expect(created.status).toBe(201);
     for (const keyPath of ['api_key_01AZaz09_-', '%6bey_valid/']) {
-      expect(await rawDelete(`/api/me/api-keys/${keyPath}?org=${ORGANIZATION}`, headers)).toBe(503);
+      expect(await rawDelete(`/api/me/api-keys/${keyPath}?org=${ORGANIZATION}`, headers)).toBe(204);
     }
-    expectExactMembershipLookups(9);
-    expect(mocks.fetch).not.toHaveBeenCalled();
+    expectExactMembershipLookups(13);
+    expect(mocks.fetch).toHaveBeenCalledTimes(3);
+    expect(mocks.createToken).toHaveBeenCalledTimes(3);
+    expect(mocks.createToken).toHaveBeenLastCalledWith({ userId: CREDENTIAL, organizationId: ORGANIZATION, scopes: ['widgets:api-keys:manage'] });
+    expect(mocks.fetch.mock.calls.every(([url, options]) => url === 'https://api.workos.com/client/graphql'
+      && options.headers.Authorization === 'Bearer widget_exact_credential')).toBe(true);
   });
 
   it('keeps grant-bearing default authentication separate from the management route policy', async () => {
