@@ -160,8 +160,7 @@
         "type": "object",
         "properties": {
           "transition_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/display-transition-id.json",
             "description": "Stable transition identifier for preview and reporting."
           },
           "from_state_id": {
@@ -287,8 +286,7 @@
       }
     },
     "clickthrough": {
-      "type": "string",
-      "enum": ["required", "optional", "none"],
+      "$ref": "/schemas/enums/clickthrough-policy.json",
       "default": "required",
       "description": "Destination policy. `required` (default): manifest MUST supply `landing_page_url`. `optional`: click-optional units (in-feed brand units) may omit it. `none`: unit is non-clickable; manifests MUST NOT supply `landing_page_url` or `state_click_urls`. Per-state overrides via `state_click_urls` entries carrying `state_id`; `landing_page_url` is the fallback for unlisted states."
     },

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-region-catalog-version.json",
+  "title": "Geo Region Catalog Version",
+  "description": "Opaque version of the ISO subdivision catalog or seller mapping behind a region support snapshot.",
+  "type": "string",
+  "minLength": 1
+}

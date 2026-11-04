@@ -71,9 +71,7 @@
           ]
         },
         "message": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
+          "$ref": "/schemas/core/reporting-setup-message.json",
           "description": "Untrusted display text only. SDKs and agents dispatch only on the closed action value and never execute embedded links or instructions."
         },
         "url": {

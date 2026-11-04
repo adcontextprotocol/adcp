@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/uncovered-property-action.json",
+  "title": "Uncovered Property Action",
+  "description": "What to do with a property whose feature is not covered.",
+  "type": "string",
+  "enum": [
+    "exclude",
+    "include"
+  ]
+}

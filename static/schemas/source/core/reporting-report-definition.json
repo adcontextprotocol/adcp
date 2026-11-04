@@ -15,7 +15,7 @@
     }
   },
   "properties": {
-    "contract_version": { "type": "string", "enum": ["1.0", "1.1"], "description": "1.1 adds immutable official closes with adjustments_only correction semantics for Reliable Reporting 1.0. Version 1.0 remains accepted for compatibility with the preceding experimental managed-reporting contract." },
+    "contract_version": { "$ref": "/schemas/enums/canonicalization-contract-version.json", "description": "1.1 adds immutable official closes with adjustments_only correction semantics for Reliable Reporting 1.0. Version 1.0 remains accepted for compatibility with the preceding experimental managed-reporting contract." },
     "media_type": { "type": "string", "const": "application/vnd.adcp.reporting-definition+json" },
     "report_definition_id": { "$ref": "/schemas/core/report-definition-id.json" },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },

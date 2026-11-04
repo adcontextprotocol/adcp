@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/identity-change-rejection-reason.json",
+  "title": "Identity Change Rejection Reason",
+  "description": "Seller reason for rejecting a requested operator-identity change.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 1000
+}

@@ -105,9 +105,7 @@
       "additionalProperties": false
     },
     "reason": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 1000,
+      "$ref": "/schemas/core/plan-adjustment-reason.json",
       "description": "Human-readable reason retained in the audit trail."
     },
     "effective_at": {

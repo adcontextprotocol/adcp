@@ -704,9 +704,8 @@
           "description": "The house's domain where brand.json is hosted"
         },
         "name": {
-          "type": "string",
-          "description": "Primary display name of the house",
-          "minLength": 1
+          "$ref": "/schemas/core/parent-organization-name.json",
+          "description": "Primary display name of the house"
         },
         "names": {
           "type": "array",
@@ -748,7 +747,7 @@
           "description": "Brand agent MCP endpoint URL. Callers comparing this URL against another value (e.g., resolving 'is this the brand's declared agent?' against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
         },
         "id": {
-          "$ref": "#/definitions/agent_id",
+          "$ref": "/schemas/core/brand-agent-id.json",
           "description": "Agent identifier (useful for logging, multi-tenant DAMs)"
         }
       },
@@ -764,7 +763,7 @@
           "description": "Rights agent MCP endpoint URL. Callers comparing this URL against another value (e.g., matching against a brand's declared rights endpoint) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
         },
         "id": {
-          "$ref": "#/definitions/agent_id",
+          "$ref": "/schemas/core/brand-agent-id.json",
           "description": "Agent identifier"
         },
         "available_uses": {
@@ -809,9 +808,8 @@
           "maxLength": 100
         },
         "description": {
-          "type": "string",
-          "description": "Human-readable description of this agent's capabilities or scope",
-          "maxLength": 500
+          "$ref": "/schemas/core/brand-agent-description.json",
+          "description": "Human-readable description of this agent's capabilities or scope"
         },
         "jwks_uri": {
           "$ref": "/schemas/core/https-url.json",
@@ -1687,12 +1685,6 @@
       },
       "required": ["name"],
       "additionalProperties": true
-    },
-    "agent_id": {
-      "title": "Brand Agent ID",
-      "description": "Identifier of an agent entry in a brand.json, used in logs and multi-tenant routing. It is not a brand ID.",
-      "type": "string",
-      "pattern": "^[a-z0-9_]+$"
     },
     "color_surface": {
       "title": "Color Surface",

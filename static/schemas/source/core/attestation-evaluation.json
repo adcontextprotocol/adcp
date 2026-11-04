@@ -52,8 +52,7 @@
       "type": "array",
       "description": "Open, machine-readable reason identifiers supplied by the evaluator. Consumers MUST branch on outcome, not on free-form or evaluator-specific reason codes.",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Za-z0-9._:-]+$"
+        "$ref": "/schemas/core/attestation-reason-code.json"
       },
       "minItems": 1,
       "uniqueItems": true

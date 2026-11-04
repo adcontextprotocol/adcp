@@ -14,7 +14,7 @@
       "description": "Departure airport or city.",
       "properties": {
         "airport_code": {
-          "$ref": "#/definitions/airport_code",
+          "$ref": "/schemas/core/airport-code.json",
           "description": "IATA airport code (e.g., 'AMS', 'JFK', 'LHR')."
         },
         "city": {
@@ -30,7 +30,7 @@
       "description": "Arrival airport or city.",
       "properties": {
         "airport_code": {
-          "$ref": "#/definitions/airport_code",
+          "$ref": "/schemas/core/airport-code.json",
           "description": "IATA airport code."
         },
         "city": {
@@ -121,13 +121,5 @@
         "tags": ["budget", "short-haul"]
       }
     }
-  ],
-  "definitions": {
-    "airport_code": {
-      "title": "Airport Code",
-      "description": "IATA three-letter airport code, such as AMS or JFK.",
-      "type": "string",
-      "pattern": "^[A-Z]{3}$"
-    }
-  }
+  ]
 }

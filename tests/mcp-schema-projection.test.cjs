@@ -12,6 +12,7 @@ const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
 const yaml = require('js-yaml');
 const semver = require('semver');
+const { addNamedScalarSchemas } = require('./helpers/named-scalar-schemas.cjs');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
   normalizeStoryboardSampleRequests,
@@ -1012,7 +1013,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
   const projectionManifest = readJson(path.join(PROJECTION_DIR, 'manifest.json'));
   const storyboardFixtures = collectStoryboardRequestFixtures();
-  const validateCanonicalManifest = createValidator(AjvDraft07).compile(
+  const validateCanonicalManifest = addNamedScalarSchemas(createValidator(AjvDraft07)).compile(
     readJson(path.join(SOURCE_DIR, 'manifest.schema.json'))
   );
   assert.equal(

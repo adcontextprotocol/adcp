@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/cpu-load-percent.json",
+  "title": "CPU Load Percent",
+  "description": "Ceiling on the CPU load an HTML5 creative may cause while it renders, as an integer percentage.",
+  "type": "integer",
+  "minimum": 1,
+  "maximum": 100
+}

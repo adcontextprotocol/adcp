@@ -27,12 +27,7 @@
             "description": "Current plan version."
           },
           "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "suspended",
-              "completed"
-            ],
+            "$ref": "/schemas/enums/governance-plan-status.json",
             "description": "Plan lifecycle status."
           },
           "budget": {
@@ -619,12 +614,7 @@
                   "description": "Type of financial commitment."
                 },
                 "status": {
-                  "type": "string",
-                  "enum": [
-                    "active",
-                    "suspended",
-                    "completed"
-                  ],
+                  "$ref": "/schemas/enums/governed-action-status.json",
                   "description": "Action status."
                 },
                 "committed": {

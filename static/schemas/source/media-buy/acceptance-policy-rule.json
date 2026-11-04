@@ -5,7 +5,7 @@
   "description": "A coarse, discoverable seller rule for one policy subject. Discovery is advisory; the seller response to an exact request remains authoritative.",
   "type": "object",
   "properties": {
-    "rule_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "acceptance_policy_rule" },
+    "rule_id": { "$ref": "/schemas/core/acceptance-rule-id.json" },
     "subject_category": {
       "$ref": "/schemas/core/policy-category-id.json",
       "description": "Registry policy-category-definition category_id. Named subject_category to avoid collision with PolicyEntry.category, whose values are regulation and standard."
@@ -62,7 +62,7 @@
       "uniqueItems": true,
       "description": "Registry policies that define the exact obligations behind this coarse rule."
     },
-    "description": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Display-only explanation. Matchers MUST NOT interpret this text as executable instructions or use it to override typed fields." },
+    "description": { "$ref": "/schemas/core/acceptance-rule-description.json", "description": "Display-only explanation. Matchers MUST NOT interpret this text as executable instructions or use it to override typed fields." },
     "effective_at": { "type": "string", "format": "date-time" },
     "expires_at": { "type": "string", "format": "date-time" },
     "ext": { "$ref": "/schemas/core/ext.json" }

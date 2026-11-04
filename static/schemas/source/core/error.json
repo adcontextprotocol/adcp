@@ -23,8 +23,7 @@
           "description": "Machine-readable buyer-actionable reason from the standard `enums/error-code.json` vocabulary or a producer-specific extension. Extensions MUST follow the standard `X_{VENDOR}_{CODE}` naming rule. The wire field is open for forward compatibility. Receivers MUST accept unknown values and use the enclosing `error.recovery` plus this object's `message` as the fallback."
         },
         "message": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/buyer-reason-message.json",
           "description": "Buyer-safe explanation of the actionable failure. MUST NOT expose vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details.",
           "x-max-length-4.0": 1024
         }

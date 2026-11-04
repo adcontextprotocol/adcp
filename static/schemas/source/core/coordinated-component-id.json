@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/coordinated-component-id.json",
+  "title": "Coordinated Component ID",
+  "description": "Component identifier unique within the components of one coordinated placement.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*$"
+}

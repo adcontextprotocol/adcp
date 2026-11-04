@@ -48,8 +48,7 @@
       "x-max-properties-4.0": 256
     },
     "catalog_version": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/geo-region-catalog-version.json",
       "description": "Optional opaque ISO subdivision catalog or seller-mapping version that identifies the support snapshot. It is provenance, not part of subdivision identity.",
       "x-max-length-4.0": 32
     },

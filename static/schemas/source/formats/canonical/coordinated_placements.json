@@ -27,8 +27,7 @@
         "type": "object",
         "properties": {
           "component_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/coordinated-component-id.json",
             "description": "Stable coordination-local component identifier. Values MUST be unique within `components[]`."
           },
           "placement_ref": {

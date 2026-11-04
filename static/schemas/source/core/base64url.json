@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/base64url.json",
+  "title": "Base64url Value",
+  "description": "Value encoded with the URL-safe base64 alphabet and no padding.",
+  "type": "string",
+  "pattern": "^[A-Za-z0-9_-]+$"
+}

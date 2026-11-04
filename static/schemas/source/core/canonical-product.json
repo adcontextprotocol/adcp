@@ -11,7 +11,7 @@
       "description": "Product creative requirements, including optional review_sla."
     },
     "product_id": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" },
-    "name": { "type": "string", "minLength": 1 },
+    "name": { "$ref": "/schemas/core/product-name.json" },
     "description": { "type": "string" },
     "publisher_properties": {
       "type": "array",

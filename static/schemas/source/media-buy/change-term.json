@@ -48,7 +48,7 @@
       "description": "Portable bounds that buyer and seller SDKs can preflight. Omission means no machine-readable bound was promised; opaque conditions remain unevaluated."
     },
     "terms_ref": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Stable contract reference. Resolving it cannot expand the typed right and MUST use the caller's normal authenticated contract-document path, never ambient seller credentials." },
-    "description": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Display-only summary; it cannot grant authority, add an action, or override typed fields." },
+    "description": { "$ref": "/schemas/core/change-term-description.json", "description": "Display-only summary; it cannot grant authority, add an action, or override typed fields." },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["term_id", "action", "service_mode"],

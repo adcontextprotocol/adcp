@@ -10,15 +10,12 @@
       "description": "Signal identifier within the publishing domain's adagents.json signals[]"
     },
     "name": {
-      "type": "string",
-      "description": "Human-readable signal name",
-      "minLength": 1,
-      "maxLength": 255
+      "$ref": "/schemas/core/signal-name.json",
+      "description": "Human-readable signal name"
     },
     "description": {
-      "type": "string",
-      "description": "Detailed description of what this signal represents and how it's derived",
-      "maxLength": 2000
+      "$ref": "/schemas/core/signal-description.json",
+      "description": "Detailed description of what this signal represents and how it's derived"
     },
     "value_type": {
       "$ref": "/schemas/enums/signal-value-type.json",

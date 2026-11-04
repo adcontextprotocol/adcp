@@ -42,14 +42,7 @@
                 "deprecated": true
               },
               "action": {
-                "type": "string",
-                "enum": [
-                  "created",
-                  "updated",
-                  "unchanged",
-                  "deleted",
-                  "failed"
-                ],
+                "$ref": "/schemas/enums/audience-sync-action.json",
                 "description": "Action taken for this audience. 'status' is present when action is created, updated, or unchanged. 'status' is absent when action is deleted or failed."
               },
               "status": {

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/product-name.json",
+  "title": "Product Name",
+  "description": "Display name of a product.",
+  "type": "string",
+  "minLength": 1
+}

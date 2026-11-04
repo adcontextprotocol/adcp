@@ -19,7 +19,7 @@
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
-          "$ref": "#/definitions/operator_id",
+          "$ref": "/schemas/core/agent-operator-id.json",
           "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
         },
         "active": {
@@ -76,7 +76,7 @@
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
-          "$ref": "#/definitions/operator_id",
+          "$ref": "/schemas/core/agent-operator-id.json",
           "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
         },
         "active": {
@@ -123,7 +123,7 @@
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
         "operator_id": {
-          "$ref": "#/definitions/operator_id",
+          "$ref": "/schemas/core/agent-operator-id.json",
           "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
         },
         "active": {
@@ -173,14 +173,6 @@
     "operator_scope": "operator_id scopes resources within one principal only. Suspension, revocation, and audit enumeration MAY be applied per operator_id, and consolidated delivery for one operator SHOULD use that operator's own destinations when contracted. Matching operator_id values or operator domains across different principals MUST NOT be linked, deduped, or granted shared authority; bridging principals requires the explicitly authorized administrative delegation surface."
   },
   "definitions": {
-    "operator_id": {
-      "title": "Operator Label",
-      "description": "Agent-scoped label naming the operator that a reporting destination serves, for per-operator isolation, audit, and offboarding.",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
-    },
     "destination_locator": {
       "title": "Destination Locator",
       "description": "Provider-native locator of a reporting destination, such as a bucket prefix or a dataset, in printable ASCII without whitespace.",

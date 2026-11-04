@@ -54,7 +54,7 @@
             "$ref": "/schemas/enums/proposal-refinement-reason.json",
             "description": "Single most-significant code for this result. constraint_unsatisfiable takes precedence over every other code; an alternatives shortfall alongside an unsatisfied constraint remains visible through proposals.length."
           },
-          "reason": { "type": "string", "minLength": 1 },
+          "reason": { "$ref": "/schemas/core/refinement-result-reason.json" },
           "unsatisfied_constraints": {
             "type": "array",
             "description": "Stable keys from the request constraints object that were not satisfied by every returned draft. A result carrying any key here MUST use outcome partial or unable, never revised.",

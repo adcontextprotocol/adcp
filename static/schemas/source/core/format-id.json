@@ -13,8 +13,7 @@
       "description": "URL of the agent that defines this format (e.g., 'https://creative.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats). Callers comparing two `format-id` values MUST canonicalize `agent_url` per the AdCP URL canonicalization rules before treating two formats as the same. See docs/reference/url-canonicalization."
     },
     "id": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_-]+$",
+      "$ref": "/schemas/core/format-local-id.json",
       "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant.",
       "x-max-length-4.0": 128
     },

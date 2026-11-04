@@ -10,7 +10,7 @@
       "type": "object",
       "properties": {
         "name": {
-          "$ref": "#/definitions/control_total_name"
+          "$ref": "/schemas/core/control-total-name.json"
         },
         "value": {
           "type": "string",
@@ -31,7 +31,7 @@
       "type": "object",
       "properties": {
         "name": {
-          "$ref": "#/definitions/control_total_name"
+          "$ref": "/schemas/core/control-total-name.json"
         },
         "value": {
           "type": "string",
@@ -47,15 +47,5 @@
       "required": ["name", "value", "value_type"],
       "additionalProperties": false
     }
-  ],
-  "definitions": {
-    "control_total_name": {
-      "title": "Control Total Name",
-      "description": "Name of a reporting control total.",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
-      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
-    }
-  }
+  ]
 }

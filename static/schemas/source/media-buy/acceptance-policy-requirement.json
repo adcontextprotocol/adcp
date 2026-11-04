@@ -29,7 +29,7 @@
         "kind": { "type": "string", "const": "advertiser_eligibility" },
         "criteria": {
           "type": "array",
-          "items": { "$ref": "#/definitions/criterion_id" },
+          "items": { "$ref": "/schemas/core/acceptance-criterion-id.json" },
           "minItems": 1,
           "uniqueItems": true,
           "description": "Stable criteria such as domestic_entity, citizen_or_resident, official_election_authority, or eligible_agency."
@@ -44,7 +44,7 @@
         "kind": { "type": "string", "const": "funding_restriction" },
         "criteria": {
           "type": "array",
-          "items": { "$ref": "#/definitions/criterion_id" },
+          "items": { "$ref": "/schemas/core/acceptance-criterion-id.json" },
           "minItems": 1,
           "uniqueItems": true,
           "description": "Stable restrictions such as no_foreign_funding or sponsor_identity_required."
@@ -175,7 +175,7 @@
     {
       "properties": {
         "kind": { "type": "string", "const": "custom" },
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$" },
+        "id": { "$ref": "/schemas/core/custom-acceptance-requirement-id.json" },
         "description": { "$ref": "#/definitions/requirement_description" },
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
@@ -184,12 +184,6 @@
     }
   ],
   "definitions": {
-    "criterion_id": {
-      "title": "Acceptance Criterion ID",
-      "description": "Stable identifier of an acceptance criterion, such as domestic_entity or eligible_agency.",
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_.:-]*$"
-    },
     "requirement_description": {
       "title": "Requirement Description",
       "description": "Human-readable description of one acceptance-policy requirement.",

@@ -77,9 +77,7 @@
       "description": "Controls nested assigned_packages projection when assignments are included. all returns up to assignment_limit active assignments per creative. matching returns only assignments matching filters.indicator_types and requires that filter. Use matching for compact indicator discovery; get_media_buys remains the complete authoritative repair path when assignments_truncated is true."
     },
     "assignment_limit": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 200,
+      "$ref": "/schemas/core/assignment-limit.json",
       "default": 50,
       "description": "Maximum assigned_packages rows returned per creative. Sellers MUST set assignments.assignments_truncated when additional qualifying rows exist."
     },

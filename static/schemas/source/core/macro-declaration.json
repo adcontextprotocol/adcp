@@ -17,10 +17,7 @@
   "type": "object",
   "properties": {
     "declaration_id": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$",
-      "minLength": 1,
-      "x-entity": "macro_declaration",
+      "$ref": "/schemas/core/macro-declaration-id.json",
       "description": "Identifier unique within the enclosing asset, used to correlate validation results."
     },
     "token": {

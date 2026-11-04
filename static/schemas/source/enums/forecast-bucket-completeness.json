@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/forecast-bucket-completeness.json",
+  "title": "Forecast Bucket Completeness",
+  "description": "Whether forecast buckets cover the declared denominator.",
+  "type": "string",
+  "enum": [
+    "complete",
+    "partial"
+  ]
+}

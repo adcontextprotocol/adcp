@@ -20,11 +20,8 @@
       "description": "Upstream business time when the change occurred, only when the seller can establish it reliably."
     },
     "batch_id": {
-      "type": "string",
-      "description": "Optional stable identifier grouping records produced by one committed operation or one external-source ingestion batch. Each independently repairable authoritative identity still receives its own record; batch_id does not change cursor ordering or notification identity.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/account-change-batch-id.json",
+      "description": "Optional stable identifier grouping records produced by one committed operation or one external-source ingestion batch. Each independently repairable authoritative identity still receives its own record; batch_id does not change cursor ordering or notification identity."
     },
     "resource": {
       "type": "object",
@@ -59,11 +56,8 @@
       "additionalProperties": true
     },
     "action": {
-      "type": "string",
-      "description": "Material change action. Standard values are created, discovered, updated, status_changed, linked, unlinked, deleted, and purged. Future standard or vendor-namespaced values are allowed; receivers MUST treat unknown values as generic invalidations.",
-      "minLength": 1,
-      "maxLength": 100,
-      "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+      "$ref": "/schemas/core/account-change-action.json",
+      "description": "Material change action. Standard values are created, discovered, updated, status_changed, linked, unlinked, deleted, and purged. Future standard or vendor-namespaced values are allowed; receivers MUST treat unknown values as generic invalidations."
     },
     "origin": {
       "type": "object",

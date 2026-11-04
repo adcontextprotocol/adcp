@@ -10,8 +10,7 @@
       "properties": {
         "kind": { "type": "string", "const": "metric" },
         "metric": {
-          "type": "string",
-          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "viewable_rate", "engagements", "follows", "saves", "profile_visits", "reach"]
+          "$ref": "/schemas/enums/canonical-optimization-metric.json"
         },
         "standard": { "$ref": "/schemas/enums/viewability-standard.json" },
         "vendor": { "$ref": "/schemas/core/brand-key.json" },

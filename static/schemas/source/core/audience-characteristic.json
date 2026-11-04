@@ -48,7 +48,7 @@
       "description": "External system that defines the dimension or value. Taxonomy metadata is descriptive and does not create exact demographic targeting semantics.",
       "properties": {
         "system": { "$ref": "/schemas/core/https-url.json" },
-        "version": { "type": "string", "minLength": 1 },
+        "version": { "$ref": "/schemas/core/audience-taxonomy-version.json" },
         "value_id": { "type": "string", "minLength": 1 }
       },
       "required": ["system"],

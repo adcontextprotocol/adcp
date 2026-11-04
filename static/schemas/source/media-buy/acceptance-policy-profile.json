@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "profile_id": { "$ref": "/schemas/core/acceptance-policy-profile-id.json" },
-    "version": { "type": "string", "minLength": 1 },
+    "version": { "$ref": "/schemas/core/acceptance-policy-profile-version.json" },
     "content_digest": {
       "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 digest of the RFC 8785 JCS serialization of this profile with content_digest omitted. A profile_id/version pair is immutable; consumers reject a resolved profile whose digest differs."
@@ -17,7 +17,7 @@
         "type": "object",
         "properties": {
           "policy_id": { "$ref": "/schemas/core/governance-policy-id.json", "x-entity": "governance_registry_policy" },
-          "version": { "type": "string", "minLength": 1 },
+          "version": { "$ref": "/schemas/core/registry-policy-version.json" },
           "content_digest": {
             "$ref": "/schemas/core/sha256-digest.json",
             "description": "SHA-256 digest of the referenced policy entry's RFC 8785 JCS serialization with acceptance_profile omitted."
@@ -30,8 +30,7 @@
       "description": "Exact registry policy versions from which this profile was derived. Consumers MUST NOT silently substitute a different version."
     },
     "coverage": {
-      "type": "string",
-      "enum": ["partial", "complete"],
+      "$ref": "/schemas/enums/acceptance-policy-coverage.json",
       "description": "partial means additional unpublished rules may apply and omission is unknown. complete means this profile is exhaustive only for its declared scope and version."
     },
     "scope": {
@@ -88,7 +87,7 @@
         "uniqueItems": true
       }
     },
-    "description": { "type": "string", "minLength": 1 },
+    "description": { "$ref": "/schemas/core/acceptance-policy-profile-description.json" },
     "rules": {
       "type": "array",
       "items": { "$ref": "/schemas/media-buy/acceptance-policy-rule.json" },

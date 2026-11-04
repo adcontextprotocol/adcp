@@ -93,9 +93,7 @@
             "lower": { "type": "number" },
             "upper": { "type": "number" },
             "level": {
-              "type": "number",
-              "exclusiveMinimum": 0,
-              "exclusiveMaximum": 1
+              "$ref": "/schemas/core/confidence-level.json"
             }
           },
           "required": ["lower", "upper", "level"],

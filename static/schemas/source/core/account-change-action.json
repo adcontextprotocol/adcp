@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-change-action.json",
+  "title": "Account Change Action",
+  "description": "A material change to an account resource, such as created or linked.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 100,
+  "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+}

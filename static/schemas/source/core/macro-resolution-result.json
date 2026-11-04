@@ -41,7 +41,7 @@
       "items": { "$ref": "/schemas/core/macro-encoding.json" },
       "description": "Exact advertised profiles considered for this match, when relevant."
     },
-    "message": { "type": "string", "minLength": 1 }
+    "message": { "$ref": "/schemas/core/macro-resolution-message.json" }
   },
   "required": [
     "declaration_id",

@@ -15,7 +15,7 @@
     }
   },
   "properties": {
-    "resource_ref": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_resource", "description": "Seller-issued opaque reference to this exact authenticated resource descriptor." },
+    "resource_ref": { "$ref": "/schemas/core/reporting-resource-ref.json", "description": "Seller-issued opaque reference to this exact authenticated resource descriptor." },
     "kind": { "type": "string", "enum": ["manifest", "dataset", "warehouse_relation"], "description": "Shape through which the durable revision is consumed." },
     "location": { "$ref": "/schemas/core/provider-storage-locator.json", "description": "Non-secret provider-native object, relation, or share identifier. MUST NOT contain an activation URL, signed URL, bearer token, password, private key, or embedded credential." },
     "native_version_ref": { "$ref": "/schemas/core/reporting-native-version-ref.json" },

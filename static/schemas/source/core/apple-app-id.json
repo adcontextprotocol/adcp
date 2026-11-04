@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/apple-app-id.json",
+  "title": "Apple App ID",
+  "description": "Numeric Apple App Store identifier.",
+  "type": "string",
+  "pattern": "^[0-9]+$"
+}

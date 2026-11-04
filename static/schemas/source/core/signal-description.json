@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-description.json",
+  "title": "Signal Description",
+  "description": "What a signal represents and how it is derived.",
+  "type": "string",
+  "maxLength": 2000
+}

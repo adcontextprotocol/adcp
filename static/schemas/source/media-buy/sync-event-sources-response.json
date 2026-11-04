@@ -66,11 +66,7 @@
                 "description": "Optional structured surface this source represents, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store. Complements `action_source`; use it when optimization-relevant source meaning would otherwise live only in platform-specific `ext` metadata."
               },
               "managed_by": {
-                "type": "string",
-                "enum": [
-                  "buyer",
-                  "seller"
-                ],
+                "$ref": "/schemas/enums/event-source-manager.json",
                 "description": "Who manages this event source. 'buyer' = configured via this sync. 'seller' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
               },
               "setup": {

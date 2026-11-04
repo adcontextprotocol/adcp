@@ -33,7 +33,7 @@
       "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 of the RFC 8785 JCS canonical revision content defined by this schema. The producer computes it over the complete representation set after removing exactly the top-level $schema, creative_id, revision_id, revision_content_digest, and name properties. `$schema` is transport/schema-location metadata and never mints creative content identity. Resolvers MUST recompute and reject a mismatch; selection readback carries the verified digest so downstream sellers bind the revision to the complete source set rather than only the selected manifest."
     },
-    "name": { "type": "string", "minLength": 1 },
+    "name": { "$ref": "/schemas/core/representation-set-name.json" },
     "representations": {
       "type": "array",
       "minItems": 1,

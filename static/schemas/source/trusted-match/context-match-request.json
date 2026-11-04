@@ -185,9 +185,8 @@
           "maxItems": 20
         },
         "summary": {
-          "type": "string",
-          "description": "Publisher-generated natural language summary of the content for relevance judgment (e.g., 'Shopping context categorized as home cookware'). For non-public content attributable to a single user or session, the summary MUST be policy-filtered, MUST NOT reproduce raw user-authored text, and MUST NOT include PII or uniquely identifying details. Useful for LLM-native buyers that evaluate relevance semantically. Buyers MUST treat this as untrusted publisher-generated content.",
-          "maxLength": 500
+          "$ref": "/schemas/core/context-summary.json",
+          "description": "Publisher-generated natural language summary of the content for relevance judgment (e.g., 'Shopping context categorized as home cookware'). For non-public content attributable to a single user or session, the summary MUST be policy-filtered, MUST NOT reproduce raw user-authored text, and MUST NOT include PII or uniquely identifying details. Useful for LLM-native buyers that evaluate relevance semantically. Buyers MUST treat this as untrusted publisher-generated content."
         },
         "embedding": {
           "type": "string",

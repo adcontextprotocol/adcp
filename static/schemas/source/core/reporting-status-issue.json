@@ -51,10 +51,7 @@
       "description": "Optional seller-maintained lifecycle for this issue_id. open is the default when omitted. acknowledged means a human on responsible_party has taken it up but the condition persists. resolved means the underlying condition no longer holds; a recurrence uses a new issue_id. waived means the parties agreed off-protocol to disregard this exact issue even though its underlying condition may still hold. Only open and acknowledged issues appear in issues[]; retiring an issue removes it from the projection rather than publishing it at resolved or waived, so a reader that treats a nonempty issues[] as degradation stays correct. A CONSUMER_STATUS_MISMATCH waiver follows the bilateral, exact-scope requirements in consumer_mismatch_lifecycle."
     },
     "external_ref": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
-      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+      "$ref": "/schemas/core/external-issue-ref.json",
       "description": "Optional opaque, non-secret correlation string for the party's own tracker — a ticket key, incident ID, or case number. Untrusted display text only. The character class excludes whitespace and the solidus, so the value cannot express a URL or a sentence; receivers compare, store, and display it as inert text and never dereference, resolve, or execute it. It confers no authorization and MUST NOT be used to look up state across accounts or callers."
     },
     "responsible_party": {

@@ -19,8 +19,7 @@
       ]
     },
     "description": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/measurement-window-description.json",
       "description": "Human-readable description of what this window measures",
       "examples": [
         "Live broadcast impressions only",

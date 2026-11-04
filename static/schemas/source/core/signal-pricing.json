@@ -131,9 +131,8 @@
           "const": "custom"
         },
         "description": {
-          "type": "string",
-          "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval.",
-          "minLength": 1
+          "$ref": "/schemas/core/custom-pricing-description.json",
+          "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval."
         },
         "metadata": {
           "type": "object",

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/registry-policy-version.json",
+  "title": "Registry Policy Version",
+  "description": "Version of a governance registry policy.",
+  "type": "string",
+  "minLength": 1
+}

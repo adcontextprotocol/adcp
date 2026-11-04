@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/format-local-id.json",
+  "title": "Format Local ID",
+  "description": "Format identifier within an agent namespace.",
+  "type": "string",
+  "pattern": "^[a-zA-Z0-9_-]+$"
+}

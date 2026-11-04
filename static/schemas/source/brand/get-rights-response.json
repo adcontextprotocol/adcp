@@ -42,9 +42,7 @@
                 "$ref": "/schemas/enums/right-type.json"
               },
               "match_score": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 1,
+                "$ref": "/schemas/core/rights-match-score.json",
                 "description": "Relevance score from 0 to 1"
               },
               "match_reasons": {
