@@ -1360,6 +1360,11 @@ export class BrandDatabase {
       paramIndex++;
     }
 
+    if (options.house_domain) {
+      conditions.push(`brands.house_domain = $${paramIndex++}`);
+      params.push(options.house_domain.toLowerCase());
+    }
+
     if (options.source) {
       if (options.source === 'hosted') {
         conditions.push(OWNER_HOSTED_SQL);
@@ -1437,9 +1442,10 @@ export class BrandDatabase {
   /**
    * Get aggregate counts for the brand registry, always unfiltered by source.
    * Used alongside getAllBrandsForRegistry so stats remain global even when
-   * a source filter narrows the brands list.
+   * a source filter narrows the brands list. `search` and `houseDomain`
+   * narrow the counts the same way they narrow the list.
    */
-  async getBrandRegistryStats(search?: string): Promise<{
+  async getBrandRegistryStats(search?: string, houseDomain?: string): Promise<{
     total: number;
     hosted: number;
     brand_json: number;
@@ -1465,6 +1471,11 @@ export class BrandDatabase {
       );
       params.push(p);
       paramIndex++;
+    }
+
+    if (houseDomain) {
+      conditions.push(`house_domain = $${paramIndex++}`);
+      params.push(houseDomain.toLowerCase());
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
