@@ -380,6 +380,66 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     });
   });
 
+  describe('house_domain filter', () => {
+    async function seedHouse() {
+      await insertBrand({ domain: 'house.example.com', brand_name: 'House', source_type: 'enriched' });
+      await insertBrand({
+        domain: 'sub-a.example.com',
+        brand_name: 'Sub A',
+        source_type: 'enriched',
+        house_domain: 'house.example.com',
+      });
+      await insertBrand({
+        domain: 'sub-b.example.com',
+        brand_name: 'Sub B',
+        source_type: 'community',
+        house_domain: 'house.example.com',
+      });
+      await insertBrand({
+        domain: 'other-sub.example.com',
+        brand_name: 'Other Sub',
+        source_type: 'enriched',
+        house_domain: 'other-house.example.com',
+      });
+    }
+
+    it('returns only the brands recorded under that house', async () => {
+      await seedHouse();
+      const result = await brandDb.getAllBrandsForRegistry({ house_domain: 'house.example.com' });
+      expect(result.map((b) => b.domain).sort()).toEqual(['sub-a.example.com', 'sub-b.example.com']);
+      result.forEach((b) => expect(b.house_domain).toBe('house.example.com'));
+    });
+
+    it('matches the house domain case-insensitively', async () => {
+      await seedHouse();
+      const result = await brandDb.getAllBrandsForRegistry({ house_domain: 'House.Example.com' });
+      expect(result.length).toBe(2);
+    });
+
+    it('combines with the source filter', async () => {
+      await seedHouse();
+      const result = await brandDb.getAllBrandsForRegistry({
+        house_domain: 'house.example.com',
+        source: 'community',
+      });
+      expect(result.map((b) => b.domain)).toEqual(['sub-b.example.com']);
+    });
+
+    it('returns nothing for a house with no recorded brands', async () => {
+      await seedHouse();
+      const result = await brandDb.getAllBrandsForRegistry({ house_domain: 'sub-a.example.com' });
+      expect(result).toEqual([]);
+    });
+
+    it('narrows the stats the same way', async () => {
+      await seedHouse();
+      const stats = await brandDb.getBrandRegistryStats(undefined, 'house.example.com');
+      expect(stats.total).toBe(2);
+      expect(stats.enriched).toBe(1);
+      expect(stats.community).toBe(1);
+    });
+  });
+
   describe('relationship trust fields', () => {
     it('returns relationship_trust when set', async () => {
       await insertBrand({

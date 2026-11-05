@@ -1221,11 +1221,15 @@ registry.registerPath({
   path: "/api/brands/registry",
   operationId: "listBrands",
   summary: "List brands",
-  description: "List all brands in the registry with optional search, pagination, and source filter.",
+  description: "List all brands in the registry with optional search, pagination, source and house filters.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
       search: z.string().optional(),
+      house_domain: z.string().optional().openapi({
+        example: 'pg.com',
+        description: 'Return only brands whose `house_domain` is this domain, so a client can list the brands recorded under a house. `stats` honours the filter. A brand\'s `house_domain` is a claim unless its `relationship_trust` is `inline` or `mutual`.',
+      }),
       limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
       offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
       source: z.enum(['hosted', 'brand_json', 'enriched', 'community', 'stub']).optional().openapi({
@@ -5456,9 +5460,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       const source = sourceParam as BrandSourceParam | undefined;
 
+      const houseDomainParam = req.query.house_domain as string | undefined;
+      const house_domain = houseDomainParam !== undefined ? extractDomain(houseDomainParam) : undefined;
+      if (house_domain !== undefined && !isValidDomain(house_domain)) {
+        return res.status(400).json({ error: "house_domain must be a bare domain such as pg.com" });
+      }
+
       const [brands, stats] = await Promise.all([
-        brandDb.getAllBrandsForRegistry({ search, limit, offset, source }),
-        brandDb.getBrandRegistryStats(search),
+        brandDb.getAllBrandsForRegistry({ search, limit, offset, source, house_domain }),
+        brandDb.getBrandRegistryStats(search, house_domain),
       ]);
 
       return res.json({ brands, stats });

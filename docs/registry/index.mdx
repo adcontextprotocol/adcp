@@ -198,12 +198,14 @@ Pre-v3 documents are promoted to canonical v3 identity for the response, flagged
 
 An absent `relationship_trust` in a list result means trust has not yet been computed for that brand — it MUST NOT be interpreted as `standalone`. For an authoritative, real-time verdict use `/api/brands/resolve`.
 
+`/api/brands/registry?house_domain=pg.com` returns the brands whose `house_domain` is `pg.com`. Each row's `house_domain` comes from the brand's own record, so it is a claim unless `relationship_trust` is `inline` or `mutual`. Treat the list as suggestions, not as brands the house has confirmed.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
 | POST | `/api/brands/resolve/bulk` | Resolve up to 25 domains at once |
 | GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
-| GET | `/api/brands/registry` | List all brands (search, pagination) with cached trust state |
+| GET | `/api/brands/registry` | List all brands (search, pagination, source, house) with cached trust state |
 | GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |
 | GET | `/api/brands/history` | Edit history for a brand |
 | POST | `/api/brands/save` | Save or update a community brand (auth required) |
