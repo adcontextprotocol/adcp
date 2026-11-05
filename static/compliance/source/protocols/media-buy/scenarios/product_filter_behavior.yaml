@@ -95,6 +95,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: "brief"
+          brand:
+            domain: "acmeoutdoor.example"
           brief: "Curate premium inventory for outdoor enthusiasts."
           filters: &matching_filters
             channels: ["olv"]
@@ -147,6 +149,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: "brief"
+          brand:
+            domain: "acmeoutdoor.example"
           brief: "Curate premium inventory for outdoor enthusiasts."
           filters: &guaranteed_filters
             channels: ["olv"]
@@ -186,6 +190,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: "wholesale"
+          brand:
+            domain: "acmeoutdoor.example"
           filters: *matching_filters
           account: *buyer_account
           context:
@@ -230,6 +236,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: "wholesale"
+          brand:
+            domain: "acmeoutdoor.example"
           filters: *guaranteed_filters
           account: *buyer_account
           context:
@@ -265,6 +273,8 @@ phases:
         stateful: true
         sample_request:
           buying_mode: "refine"
+          brand:
+            domain: "acmeoutdoor.example"
           refine:
             - scope: "product"
               product_id: "$context.filter_behavior_product_id"

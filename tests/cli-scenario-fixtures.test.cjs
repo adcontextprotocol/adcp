@@ -99,6 +99,41 @@ for (const name of ['provenance_enforcement', 'provenance_audit_observation', 'p
   });
 }
 
+test('canonical product probes bind their fixtures to the complete product-target sandbox account', () => {
+  const storyboard = YAML.parse(fs.readFileSync(path.join(
+    __dirname, '../static/compliance/source/universal/canonical-format-validate-input.yaml'
+  ), 'utf8'));
+  const account = storyboard.context.account;
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  assert.equal(validateAccountRef(account), true, ajv.errorsText(validateAccountRef.errors));
+  assert.equal(account.sandbox, true);
+  const productIds = new Set(storyboard.fixtures.products.map(product => product.product_id));
+  const probes = storyboard.phases.flatMap(phase => phase.steps)
+    .filter(step => step.sample_request?.targets?.some(target => target.kind === 'product' && productIds.has(target.id)));
+  assert.equal(probes.length, 2, 'both missing-slot and nondeterministic probes must read the seeded product');
+  for (const step of probes) assert.deepEqual(step.sample_request.account, account, step.id);
+});
+
+test('vendor-metric catalog setup and both compatibility branches share the fixture sandbox account', () => {
+  const storyboard = YAML.parse(fs.readFileSync(path.join(SCENARIOS, 'vendor_metric_catalog_precondition.yaml'), 'utf8'));
+  const account = storyboard.context.account;
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  assert.equal(validateAccountRef(account), true, ajv.errorsText(validateAccountRef.errors));
+  assert.equal(account.sandbox, true);
+  const steps = storyboard.phases.flatMap(phase => phase.steps);
+  const provision = steps.find(step => step.task === 'sync_accounts').sample_request.accounts[0];
+  const identity = {
+    brand: provision.brand,
+    operator: provision.operator,
+    ...(Object.hasOwn(provision, 'operator_unit') ? { operator_unit: provision.operator_unit } : {}),
+    sandbox: provision.sandbox,
+  };
+  assert.deepEqual(identity, account);
+  const uses = steps.filter(step => ['comply_test_controller', 'create_media_buy'].includes(step.task));
+  assert.equal(uses.length, 3, 'catalog seed and both accept/reject branches must share scope');
+  for (const step of uses) assert.deepEqual(step.sample_request.account, account, step.id);
+});
+
 // One canonical discovery now decides between all three canonical shapes, so the gate
 // and the buy are always the same observation. Only the legacy path reads separately.
 function discoveryKey(request) {
