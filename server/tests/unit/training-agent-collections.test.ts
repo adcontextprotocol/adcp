@@ -219,7 +219,7 @@ describe('experimental 3.3 collections on the training agent', () => {
     expect(creators.filter(card => card.distribution.length > 1).length).toBe(2);
   }, 60_000);
 
-  it('answers include_collections on all four product and proposal reads with the referenced cards only', async () => {
+  it('answers include_collections on list_products, request_proposals and refine_proposals with the referenced cards only, and never on get_products (adcp#8501)', async () => {
     const catalog = new Map((await listAll()).cards.map(card => [keyOf(card), card]));
     const checkCards = (label: string, result: Structured) => {
       expect(result.adcp_error, `${label}: ${JSON.stringify(result).slice(0, 400)}`).toBeUndefined();
@@ -239,8 +239,10 @@ describe('experimental 3.3 collections on the training agent', () => {
     };
 
     const brief = 'Creator sponsored video integrations for an everyday lifestyle audience';
+    // get_products no longer returns collections, even when asked, but keeps the sample_content projection.
     const gp = await preview('get_products', { buying_mode: 'brief', brief, include_collections: true });
-    checkCards('get_products', gp);
+    expect(gp.adcp_error, JSON.stringify(gp).slice(0, 400)).toBeUndefined();
+    expect(gp.collections).toBeUndefined();
     const creatorProduct = (gp.products as Array<Record<string, any>>).find(product => (product.collections ?? [])
       .some((selector: { publisher_domain: string }) => selector.publisher_domain === CREATORS));
     expect(creatorProduct).toBeDefined();
@@ -249,7 +251,7 @@ describe('experimental 3.3 collections on the training agent', () => {
       .filter((asset: { role: string }) => asset.role === 'sample_content');
     expect(samples.length).toBeGreaterThan(0);
     expect(samples[0].asset).toMatchObject({ asset_type: 'url' });
-    const card = (gp.collections as Card[]).find(entry => entry.collection_id === creatorProduct!.collections[0].collection_ids[0]);
+    const card = catalog.get(`${CREATORS}/${creatorProduct!.collections[0].collection_ids[0]}`);
     expect(card!.sample_content.map((post: { post_url: string }) => post.post_url)).toContain(samples[0].asset.url);
 
     const lp = await preview('list_products', { include_collections: true });
@@ -276,7 +278,7 @@ describe('experimental 3.3 collections on the training agent', () => {
     for (const [name, args] of [
       ['get_products', { buying_mode: 'brief', brief }],
       ['list_products', {}],
-      ['get_products', { buying_mode: 'brief', brief, include_collections: false }],
+      ['list_products', { include_collections: false }],
     ] as const) {
       const plain = await preview(name, args);
       expect(plain.collections, name).toBeUndefined();
@@ -301,11 +303,7 @@ describe('experimental 3.3 collections on the training agent', () => {
       .flatMap(entry => entry.collections);
     expect(sellerAuthorized.length).toBeGreaterThan(0);
 
-    const gp = await preview('get_products', {
-      buying_mode: 'brief',
-      brief: 'Creator sponsored video integrations for an everyday lifestyle audience',
-      include_collections: true,
-    });
+    const gp = await preview('list_products', { include_collections: true });
     const keys = [...referencedKeys(gp.products)].map(key => {
       const [publisher_domain, collection_id] = key.split('/');
       return { publisher_domain, collection_id };
@@ -408,10 +406,13 @@ describe('experimental 3.3 collections on the training agent', () => {
     expect((await preview('list_products', { include_collections: true, if_feed_version: plain.feed_version })).outcome).toBe('listed');
     expect((await preview('list_products', { if_feed_version: withCards.feed_version })).outcome).toBe('listed');
 
+    // get_products ignores include_collections (adcp#8501): same scope, same unsuffixed version.
     const gpPlain = await preview('get_products', { buying_mode: 'wholesale' });
     const gpCards = await preview('get_products', { buying_mode: 'wholesale', include_collections: true });
-    expect(gpCards.wholesale_feed_version).not.toBe(gpPlain.wholesale_feed_version);
-    expect((await preview('get_products', { buying_mode: 'wholesale', include_collections: true, if_wholesale_feed_version: gpCards.wholesale_feed_version })).unchanged).toBe(true);
+    expect(gpCards.wholesale_feed_version).toBe(gpPlain.wholesale_feed_version);
+    expect(gpCards.wholesale_feed_version).not.toMatch(/cards/);
+    expect(gpCards.collections).toBeUndefined();
+    expect((await preview('get_products', { buying_mode: 'wholesale', include_collections: true, if_wholesale_feed_version: gpPlain.wholesale_feed_version })).unchanged).toBe(true);
 
     // A card change moves the card scope only.
     const changed = await seed({

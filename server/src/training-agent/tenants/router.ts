@@ -1069,13 +1069,15 @@ function projectTenantToolDiscovery(
       // Experimental 3.3 include_collections (#8181): only a listing served
       // at 3.3 or later advertises the flag. The SDK stamps the listing's
       // release on the result; under the `all` tool profile it does not shape
-      // input schemas to it.
+      // input schemas to it. get_products never advertises it: the flag was
+      // withdrawn from the deprecated task in 3.3 (adcp#8501).
       const listingMeta = (parsed.result as { _meta?: { adcp_version?: unknown } } | undefined)?._meta;
       for (const tool of tools) {
         const listedAt = listingMeta?.adcp_version ?? (tool as { _meta?: { adcp_version?: unknown } })._meta?.adcp_version;
         const properties = tool.inputSchema?.properties;
         if (!properties || !('include_collections' in properties)) continue;
-        if (supportsCollections33(typeof listedAt === 'string' ? listedAt : undefined)) continue;
+        if (tool.name !== 'get_products'
+          && supportsCollections33(typeof listedAt === 'string' ? listedAt : undefined)) continue;
         const { include_collections: _flag, ...rest } = properties;
         tool.inputSchema = { ...tool.inputSchema, properties: rest };
       }

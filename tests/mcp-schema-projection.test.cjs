@@ -1665,7 +1665,6 @@ test('rewriteEmbeddedResourceRefs unit: root-$id collision causes projection to 
 
 for (const [relativePath, expectedDefinition] of [
   ['compliance/comply-test-controller-request.json', 'external:core/product.json'],
-  ['media-buy/get-products-request.json', 'external:media-buy/package-forecast-input.json'],
   ['media-buy/get-products-response.json', 'external:core/product.json'],
 ]) {
   test(`${relativePath} uses embedded-resource refs without long root-anchored pointers`, () => {

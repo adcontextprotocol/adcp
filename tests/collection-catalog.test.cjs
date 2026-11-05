@@ -206,7 +206,7 @@ test('docs carry the task page, the registry row, and no stale future-work note'
   for (const type of CARD_EVENTS) assert.ok(row.includes(type), `registry row names ${type}`);
   const guide = readText('docs/media-buy/product-discovery/collections-and-installments.mdx');
   assert.doesNotMatch(guide, /is future work/);
-  for (const doc of ['docs/media-buy/task-reference/get_products.mdx', 'docs/media-buy/task-reference/list_products.mdx', 'docs/media-buy/product-discovery/collections-and-installments.mdx']) {
+  for (const doc of ['docs/media-buy/task-reference/list_products.mdx', 'docs/media-buy/product-discovery/collections-and-installments.mdx']) {
     assert.match(readText(doc), /collection_card\.\*/, `${doc} points webhook-fed mirrors at the card events`);
   }
 });

@@ -41,11 +41,6 @@ const cases = [
   },
   {
     schema: 'creative/sync-creatives-request.json', write: true,
-    data: { ...requestBase, assignments: [{ ...assignment }] },
-    row: data => data.assignments[0]
-  },
-  {
-    schema: 'creative/sync-creatives-request.json', write: true,
     data: { ...requestBase, assignment_operations: [{ operation: 'assign', ...assignment }] },
     row: data => data.assignment_operations[0]
   },
@@ -132,6 +127,19 @@ test('sync supports multi-package assignment-only trafficking and atomic reset, 
     if (operation === 'replace') op.replaces_creative_id = 'old_hero';
     assert.equal(validate({ ...requestBase, assignment_operations: [op] }), false, operation);
   }
+});
+
+test('deprecated assignments[] rows do not carry trackers (withdrawn from 3.3, adcp#8501)', async () => {
+  const validate = await compile('creative/sync-creatives-request.json');
+  assert.equal(validate({ ...requestBase, assignments: [{ ...assignment }] }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...requestBase, assignments: [{ ...assignment, trackers: [impression] }] }), false,
+    'the assignments[] row rejects trackers by name; use assignment_operations assign');
+  assert.equal(validate({ ...requestBase, assignments: [{ ...assignment, unrelated_extension: 'x' }] }), true,
+    'the row is open: unrelated unknown keys are accepted');
+  const row = readSchema('creative/sync-creatives-request.json').properties.assignments.items;
+  assert.equal(row.properties.trackers, undefined);
+  assert.notEqual(row.additionalProperties, false);
+  assert.ok(row.not.anyOf.some(branch => branch.required?.includes('trackers')), 'the row not names trackers');
 });
 
 test('unreleased assignment tracker documentation request validates against the source schema', async () => {
