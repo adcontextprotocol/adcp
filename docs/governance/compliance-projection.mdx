@@ -1,0 +1,496 @@
+---
+title: Compliance framework projection
+sidebarTitle: Compliance projection
+description: "Draft mapping of EU AI Act and GDPR requirements onto AdCP governance audit-log evidence, with explicit gap rows and a sample report shape."
+"og:title": "AdCP — Compliance framework projection"
+---
+
+A privacy or compliance reviewer already works from frameworks like the EU AI Act and GDPR. [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) gives them raw governance entries. This page defines the missing step: a **projection** that joins those entries to a framework's requirements and says, per requirement, what the protocol evidences, what it only partly evidences, and what it does not carry at all.
+
+<Warning>
+**Experimental draft, tracked in [#3959](https://github.com/adcontextprotocol/adcp/issues/3959).** The registry entry format, the evidence vocabulary, and the report shape on this page may change, and the linking direction between frameworks and policies is still an open WG question (see [Open question](#open-question-how-frameworks-link-to-policies)). Nothing here changes a task, schema, or capability. Any MUST on this page binds a projection helper that claims to follow it, not governance agents or sellers.
+
+**A status is not a compliance conclusion.** The protocol evidences inputs to a deployer's compliance work, not compliance itself. `satisfied` means every protocol-evidence predicate for the row held; legal classification, conformity assessment, DPIAs, and the workflows behind human oversight and contestation stay with the deployer. See [Annex III & Article 22 obligations](/docs/governance/annex-iii-obligations).
+</Warning>
+
+## Shape of the projection
+
+The projection is a **local computation**, not a protocol task. The buyer already holds the audit log and the framework entry is a static file, so nothing needs to ship to a governance agent and a framework revision does not force a redeploy. A reference helper is expected to live in the SDKs; this page defines only the inputs and outputs so independent implementations agree.
+
+"Track 2" below means the plan-field and agent self-declaration work proposed in #3959 (`lawful_basis`, `consent_context`, `data_transfers[]`, agent self-declaration). None of it is schema yet.
+
+| Input | Required | Purpose |
+|---|---|---|
+| `audit_log` | yes | One [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) response, requested with `include_entries: true`. The projection runs per `plan_id`. |
+| `supplements.plan` | no | The retained plan revision, exactly as supplied on `sync_plans` and hashed by the governance agent. See [Plan revisions](#plan-revisions). |
+| `supplements.brand` | no | The `brand.json` fields a framework cites, such as `data_subject_contestation`, resolved from the plan's `brand.domain` at projection time. The report records the source URL and fetch time. |
+| `supplements.operator` | no | Facts the exporting operator asserts, such as a retention statement. Never protocol evidence. |
+| framework entry | yes | A file from [`static/registry/frameworks/`](https://github.com/adcontextprotocol/adcp/tree/main/static/registry/frameworks). |
+
+Some evidence lives outside the audit response by design. `human_review_required` is a plan field, so it arrives through `supplements.plan`. `plan_hash` is per entry, not per plan. `escalations[]` and `drift_metrics` sit under `summary`. A projector that reads only the audit response can reach `partial` on human oversight at best.
+
+### Status vocabulary
+
+| Status | Meaning |
+|---|---|
+| `satisfied` | Every protocol-evidence predicate for the row holds. |
+| `partial` | Some evidence is present, or the row's ceiling is partial because the protocol cannot carry the rest. |
+| `gap` | The row could be evidenced from the protocol but is not in this input. Either the field does not exist yet, or the input lacks a supplement the row needs. The row's `gap_closure` names the addition that would close it. |
+| `not_applicable` | The framework's `applies_when` predicate is false for this plan. |
+| `out_of_protocol_scope` | The evidence is not something an advertising protocol should carry (for example bias-testing artifacts). No predicate is evaluated. |
+
+### Evaluating a row
+
+1. If the framework's `applies_when` is false, the row is `not_applicable`.
+2. If the row's `protocol_scope` is `out`, the row is `out_of_protocol_scope`.
+3. Collect each evidence source, then evaluate the classifier: all `satisfied_when` predicates hold → `satisfied`; otherwise all `partial_when` predicates hold → `partial`; otherwise `gap`.
+4. A row with `protocol_scope: "partial"` omits `satisfied_when`, so it can never exceed `partial`. A row that depends on `operator_attestation` evidence appears only in `partial_when` for the same reason.
+
+### Plan revisions
+
+Plan-field evidence is only as good as the revision it came from. `plan_hash` is [recomputed over the plan as supplied on `sync_plans`](/docs/governance/campaign/specification#plan-binding-and-audit) (RFC 8785 JCS, SHA-256, minus the [closed list of bookkeeping fields](/docs/governance/campaign/specification#excluded-fields)). A projector MUST compare the recomputed digest to each entry's `plan_hash` by base64url-decoding both to 32 raw bytes, as the specification requires, and MUST use plan-field evidence only against entries whose `plan_hash` matches the supplied revision. When entries carry more than one `plan_hash`, the plan was re-synced mid-flight: supply one revision per hash and project each set of entries against its own revision, otherwise plan-field evidence is treated as absent.
+
+The governance agent sets or overrides `human_review_required` from resolved policies. If the buyer's retained copy lacks the value the agent hashed, the hashes will not match and the row falls back to `partial`; use the revision the agent attested to.
+
+## Registry entry format (prototype)
+
+Each framework is one JSON file under `static/registry/frameworks/`, marked `"x-status": "experimental"`. Frameworks reference policies; policies do not reference frameworks. The excerpt below is a registry-file fragment, not a protocol payload, so it has no `$schema` and is marked `test=false`.
+
+```json test=false
+{
+  "requirement_id": "art_14_human_oversight",
+  "framework_section": "Art. 14",
+  "protocol_scope": "in",
+  "evidence_sources": [
+    { "evidence_id": "plan_human_review", "kind": "plan_field", "selector": "$.human_review_required" },
+    { "evidence_id": "check_entries", "kind": "audit_field", "selector": "$.entries[?@.type == 'check']" },
+    { "evidence_id": "human_reviewed_count", "kind": "audit_field", "selector": "$.summary.statuses.human_reviewed" },
+    { "evidence_id": "escalations", "kind": "audit_field", "selector": "$.summary.escalations[*]" }
+  ],
+  "classifier": {
+    "satisfied_when": [
+      { "evidence": "plan_human_review", "op": "eq", "value": true },
+      { "evidence": "check_entries", "op": "all_have_fields", "value": ["reviewed_by", "reviewed_at"] },
+      { "evidence": "check_entries", "op": "all_field_eq", "field": "mode", "value": "enforce" },
+      { "evidence": "escalations", "op": "all_have_fields", "value": ["resolution", "resolved_at"] }
+    ],
+    "partial_when": [{ "evidence": "human_reviewed_count", "op": "gt", "value": 0 }]
+  },
+  "gap_closure": "..."
+}
+```
+
+| Element | Notes |
+|---|---|
+| `kind` | `audit_field` (selector against the plan's audit object), `policy_evaluated` (a `policy_id` found in any `entries[].policies_evaluated`), `plan_field`, `brand_field`, or `operator_attestation` (selectors against the matching supplement). `policy_evaluated` ignores verdict and mode; a classifier that cares tests them on the entries. |
+| `selector` | [RFC 9535](https://www.rfc-editor.org/rfc/rfc9535) JSONPath. `audit_field` selectors are rooted at the one `plans[]` member being projected. |
+| `field_status: "proposed"` | The selector targets a field not in any released schema. It resolves to nothing, so the row cannot pass until the field exists. |
+| `shared_evidence` | Evidence sources any requirement in the file may reference by `evidence_id`. |
+| `applies_when` | Optional file-level predicates. When false, every row is `not_applicable`. `applies_when_note` states how reliable the test is; `jurisdictions` is informational and is not evaluated. |
+| `gap_closure` | One line on what addition would close or raise the row. It feeds the report `narrative` for `gap` and `partial` rows. |
+
+Predicates have no expression language. Each names an evidence source and one operator, and runs over the nodes the selector matched. Every operator is false when the selector matched no nodes.
+
+| `op` | True when |
+|---|---|
+| `present` | At least one node matched. |
+| `non_empty` | At least one node matched, and a lone matched array, object, or string is not empty. |
+| `eq`, `gt`, `gte` | The first matched node compares true against `value` (a literal) or against the first node of the source named by `value_ref`. |
+| `all_have_fields` | At least one node matched, and every node has every field named in `value`, non-null. |
+| `all_field_eq` | At least one node matched, and every node's `field` equals `value`. |
+
+`policy_evaluated` sources name registry policies such as `eu_ai_act_annex_iii` and `eu_gdpr_special_category_targeting`. There is no CI cross-validation in this draft.
+
+## EU AI Act (Regulation (EU) 2024/1689)
+
+Obligations for Annex III high-risk ad-targeting decisions. Arts. 10, 12, and 14 are provider design obligations: a deployer's governance stack can surface evidence for them but does not discharge them. Art. 26 is deployer-side. Rows are `not_applicable` unless the `eu_ai_act_annex_iii` registry policy was evaluated on the plan; that match is a heuristic and can over-include (the policy also covers `pharmaceutical_advertising`, which is not an Annex III category). Entry: [`eu_ai_act.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/registry/frameworks/eu_ai_act.json).
+
+| Requirement | Evidence | Status (best case today) | What closes the gap |
+|---|---|---|---|
+| Art. 10 data governance | `entries[].policies_evaluated` includes `eu_gdpr_special_category_targeting` | `partial` | Restricted-attribute screening is evidenced; dataset provenance and quality need agent self-declaration (Track 2). |
+| Art. 10(2)(f)-(g) bias examination | none | `out_of_protocol_scope` | Provider-side model lifecycle artifacts. A declarative pointer could ride on agent self-declaration. |
+| Art. 12 record-keeping | check `entries[]` with `timestamp`, `caller`, `verdict`, `plan_hash` | `satisfied` | Evidences the governance decision log, not the underlying system's logs. Needs `include_entries: true`. |
+| Art. 14 human oversight | plan `human_review_required`; every check entry has `reviewed_by`, `reviewed_at`, and `mode: enforce`; `summary.escalations[]` resolved | `satisfied` with the matched plan revision; `partial` otherwise, including when any check was unreviewed or ran in `audit` mode | Reviewer competence and the review workflow are outside the protocol. |
+| Art. 14(4)(b) automation bias | `summary.drift_metrics.escalation_rate` against `thresholds.escalation_rate_min` | `partial` | The rate is a proxy and the threshold is operator-configured. Awareness of automation bias needs an attestation outside the protocol. |
+| Art. 26(6) log retention | operator retention statement | `partial` | `get_plan_audit_logs` carries no retention period or chain-of-custody guarantee. |
+
+## GDPR (Regulation (EU) 2016/679)
+
+Controller-side evidence for ad targeting. No row reaches `satisfied` today: the protocol evidences inputs, and the rest is deployer workflow or a field that does not exist yet. GDPR scope turns on establishment, target audience, and processing location, which `plan.countries` does not reliably capture, so every row is evaluated and the deployer decides which apply. Entry: [`gdpr.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/registry/frameworks/gdpr.json).
+
+| Requirement | Evidence | Status (best case today) | What closes the gap |
+|---|---|---|---|
+| Art. 6 lawful basis | plan `lawful_basis` (proposed) | `gap`; `partial` once declared | Add a `lawful_basis` enum to `sync_plans` (Track 2). A declaration states the basis relied on, not that it is valid. |
+| Art. 9 special categories | `policies_evaluated` includes `eu_gdpr_special_category_targeting` | `partial` | The Art. 9(2) condition needs a `consent_context` block (Track 2). |
+| Art. 12 modalities | `brand.data_subject_contestation` | `partial` | Request intake and the one-month clock are deployer workflow. |
+| Art. 13 information at collection | `brand.privacy_policy_url` | `partial` | A URL is weak evidence of a notice. `lawful_basis` and `data_transfers[]` (Track 2) would let its statements be checked. |
+| Art. 14 information not from the subject | `brand.privacy_policy_url` | `partial` | As Art. 13, plus a per-check signal-source record for the Art. 14(2)(f) source of data. |
+| Art. 22 automated decisions | `summary.statuses.human_reviewed`; `brand.data_subject_contestation` | `partial` | Human review of campaign checks is not meaningful involvement in decisions about data subjects. Art. 22(3) contestation is a deployer workflow; "solely automated" is a legal call. |
+| Art. 30 records of processing | check `entries[]` with `timestamp`, `caller`, `policies_evaluated` | `partial` | The audit log is an input to the record, not the record. Purposes, transfers, and retention are absent. |
+| Ch. V international transfers (Arts. 44-50) | plan `data_transfers` (proposed) | `gap` | Add `data_transfers[]` (Track 2). A plan declaration states intent only; proof needs location evidence from each provider. |
+
+Residency evidence deserves care. Where a governance vendor stores its own control-plane data is deployment compliance and stays out of protocol. Where a seller, signal, or measurement provider processes or stores governed campaign data is a cross-party fact a buyer agent may need before committing spend, and a plan declaration cannot prove it.
+
+## Worked example
+
+Nova Brands runs a consumer-credit campaign in Germany. The plan declares `fair_lending`, so the governance agent resolved `eu_ai_act_annex_iii`, set `human_review_required`, and escalated both checks to a human. The audit log below is the projection's `audit_log` input.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/get-plan-audit-logs-response.json",
+  "status": "completed",
+  "plans": [
+    {
+      "plan_id": "plan_nova_credit_de_q4",
+      "plan_version": 1,
+      "status": "active",
+      "budget": {
+        "authorized": 120000,
+        "committed": 45000,
+        "remaining": 75000,
+        "utilization_pct": 37.5
+      },
+      "governed_actions": [
+        {
+          "governance_context": "gc_mb_pinnacle_de_001",
+          "purchase_type": "media_buy",
+          "status": "active",
+          "committed": 45000,
+          "check_count": 2
+        }
+      ],
+      "summary": {
+        "checks_performed": 2,
+        "outcomes_reported": 0,
+        "statuses": {
+          "approved": 2,
+          "denied": 0,
+          "conditions": 0,
+          "human_reviewed": 2
+        },
+        "findings_count": 0,
+        "escalations": [
+          {
+            "check_id": "chk_0001",
+            "reason": "Plan declares fair_lending; human review is required before every action.",
+            "resolution": "approved_by_human",
+            "resolved_at": "2026-10-01T09:05:00Z"
+          },
+          {
+            "check_id": "chk_0002",
+            "reason": "Plan declares fair_lending; human review is required before every action.",
+            "resolution": "approved_by_human",
+            "resolved_at": "2026-10-02T09:14:00Z"
+          }
+        ],
+        "drift_metrics": {
+          "escalation_rate": 1,
+          "escalation_rate_trend": "stable",
+          "auto_approval_rate": 0,
+          "human_override_rate": 0,
+          "thresholds": {
+            "escalation_rate_min": 0.1
+          }
+        }
+      },
+      "entries": [
+        {
+          "id": "chk_0001",
+          "type": "check",
+          "timestamp": "2026-10-01T08:30:00Z",
+          "plan_id": "plan_nova_credit_de_q4",
+          "caller": "https://buyer.novabrands.example/agent",
+          "tool": "create_media_buy",
+          "verdict": "approved",
+          "check_type": "intent",
+          "mode": "enforce",
+          "policies_evaluated": ["eu_ai_act_annex_iii", "eu_gdpr_special_category_targeting"],
+          "categories_evaluated": ["fair_lending", "regulatory_compliance"],
+          "governance_context": "gc_mb_pinnacle_de_001",
+          "plan_hash": "RDX2lAKICK49KUz35r1iLpEaLqSQcE8d3gquuPBgjP4",
+          "reviewed_by": "https://novabrands.example/people/compliance-officer",
+          "reviewed_at": "2026-10-01T09:05:00Z",
+          "review_reason": "Contextual placement only; no special-category segments."
+        },
+        {
+          "id": "chk_0002",
+          "type": "check",
+          "timestamp": "2026-10-02T09:02:00Z",
+          "plan_id": "plan_nova_credit_de_q4",
+          "caller": "https://sales.pinnaclemedia.example/agent",
+          "tool": "create_media_buy",
+          "verdict": "approved",
+          "check_type": "execution",
+          "mode": "enforce",
+          "policies_evaluated": ["eu_ai_act_annex_iii", "eu_gdpr_special_category_targeting"],
+          "categories_evaluated": ["fair_lending", "regulatory_compliance"],
+          "governance_context": "gc_mb_pinnacle_de_001",
+          "plan_hash": "RDX2lAKICK49KUz35r1iLpEaLqSQcE8d3gquuPBgjP4",
+          "reviewed_by": "https://novabrands.example/people/compliance-officer",
+          "reviewed_at": "2026-10-02T09:14:00Z",
+          "review_reason": "Contextual placement only; no special-category segments."
+        }
+      ]
+    }
+  ]
+}
+```
+
+The retained plan revision, hashed with RFC 8785 JCS and SHA-256, produces the `plan_hash` on both entries. This is `supplements.plan` (a projection input, not a protocol payload, so `test=false`):
+
+```json test=false
+{
+  "plan_id": "plan_nova_credit_de_q4",
+  "brand": {
+    "domain": "novabrands.example"
+  },
+  "objectives": "Acquire new credit-card applicants in Germany with contextual and first-party targeting.",
+  "budget": {
+    "total": 120000,
+    "currency": "EUR",
+    "reallocation_threshold": 12000
+  },
+  "flight": {
+    "start": "2026-10-01T00:00:00Z",
+    "end": "2026-12-31T23:59:59Z"
+  },
+  "countries": ["DE"],
+  "policy_categories": ["fair_lending"],
+  "restricted_attributes": ["health_data", "racial_ethnic_origin"],
+  "human_review_required": true
+}
+```
+
+The remaining supplements (also projection inputs, not protocol payloads, so `test=false`) are the brand's published contact points and a retention statement the operator supplied. The operator value is an assertion, not protocol evidence.
+
+```json test=false
+{
+  "brand": {
+    "privacy_policy_url": "https://novabrands.example/privacy",
+    "data_subject_contestation": {
+      "url": "https://novabrands.example/privacy/contest",
+      "email": "privacy@novabrands.example",
+      "languages": ["de", "en"]
+    }
+  },
+  "operator": {
+    "retention_statement": "Audit log retained for 24 months in the operator archive."
+  }
+}
+```
+
+### Projected output: EU AI Act
+
+`plan_hashes` is an array because entries carry `plan_hash` per plan revision, so a plan re-synced mid-flight yields more than one. `plan_hash_matches_retained_revision` records only that the retained revision hashes to the entries' value; it does not verify the signed `governance_context` tokens. `evidence[].refs` are RFC 6901 JSON Pointers into the input. Art. 10(2) is the `out_of_protocol_scope` row, and this report holds no `gap` rows because every in-scope requirement has at least partial evidence. The output is a projection result, not a protocol payload, so its fence is `test=false`.
+
+```json test=false
+{
+  "framework": "eu_ai_act",
+  "framework_version": "0.1.0",
+  "plan_id": "plan_nova_credit_de_q4",
+  "plan_hashes": ["RDX2lAKICK49KUz35r1iLpEaLqSQcE8d3gquuPBgjP4"],
+  "supplements": {
+    "plan": {
+      "plan_hash_matches_retained_revision": true
+    },
+    "brand": {
+      "source": "https://novabrands.example/.well-known/brand.json",
+      "fetched_at": "2026-10-08T10:00:00Z"
+    },
+    "operator": {
+      "attested": true
+    }
+  },
+  "coverage": {
+    "satisfied": 2,
+    "partial": 3,
+    "gap": 0,
+    "not_applicable": 0,
+    "out_of_protocol_scope": 1
+  },
+  "results": [
+    {
+      "requirement_id": "art_10_data_governance",
+      "framework_section": "Art. 10",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "special_category_policy", "refs": ["/audit_log/plans/0/entries/0", "/audit_log/plans/0/entries/1"] }
+      ],
+      "narrative": "Restricted-attribute screening policy was evaluated on both checks. Dataset provenance and representativeness are not carried; closing that needs agent self-declaration (Track 2)."
+    },
+    {
+      "requirement_id": "art_10_2_bias_examination",
+      "framework_section": "Art. 10(2)(f)-(g)",
+      "status": "out_of_protocol_scope",
+      "evidence": [],
+      "narrative": "Bias-testing artifacts come from the provider's model lifecycle and are out of protocol scope."
+    },
+    {
+      "requirement_id": "art_12_record_keeping",
+      "framework_section": "Art. 12",
+      "status": "satisfied",
+      "evidence": [
+        { "evidence_id": "check_entries", "refs": ["/audit_log/plans/0/entries/0", "/audit_log/plans/0/entries/1"] }
+      ],
+      "narrative": "Two check entries, each with timestamp, caller, verdict, and plan_hash."
+    },
+    {
+      "requirement_id": "art_14_human_oversight",
+      "framework_section": "Art. 14",
+      "status": "satisfied",
+      "evidence": [
+        { "evidence_id": "plan_human_review", "refs": ["/supplements/plan/human_review_required"] },
+        { "evidence_id": "check_entries", "refs": ["/audit_log/plans/0/entries/0", "/audit_log/plans/0/entries/1"] },
+        { "evidence_id": "escalations", "refs": ["/audit_log/plans/0/summary/escalations/0", "/audit_log/plans/0/summary/escalations/1"] },
+        { "evidence_id": "human_reviewed_count", "refs": ["/audit_log/plans/0/summary/statuses/human_reviewed"] }
+      ],
+      "narrative": "Plan requires human review (revision matched by plan_hash); both check entries carry a reviewer, ran in enforce mode, and both escalations were resolved by a human."
+    },
+    {
+      "requirement_id": "art_14_4_automation_bias_monitoring",
+      "framework_section": "Art. 14(4)(b)",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "escalation_rate", "refs": ["/audit_log/plans/0/summary/drift_metrics/escalation_rate"] },
+        { "evidence_id": "escalation_rate_min", "refs": ["/audit_log/plans/0/summary/drift_metrics/thresholds/escalation_rate_min"] }
+      ],
+      "narrative": "Escalation rate 1.0 meets the configured minimum of 0.1. That is a proxy: overseers' awareness of automation bias is not evidenced."
+    },
+    {
+      "requirement_id": "art_26_6_log_retention",
+      "framework_section": "Art. 26(6)",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "retention_statement", "refs": ["/supplements/operator/retention_statement"] }
+      ],
+      "narrative": "Retention (24 months) is asserted by the exporting operator, not evidenced on the wire."
+    }
+  ]
+}
+```
+
+### Projected output: GDPR
+
+`art_6_lawful_basis` and `ch_v_international_transfers` are `gap` rows: the protocol carries no field for either, and the `narrative` names the field that would close each. As above, the fence is `test=false`.
+
+```json test=false
+{
+  "framework": "gdpr",
+  "framework_version": "0.1.0",
+  "plan_id": "plan_nova_credit_de_q4",
+  "plan_hashes": ["RDX2lAKICK49KUz35r1iLpEaLqSQcE8d3gquuPBgjP4"],
+  "supplements": {
+    "plan": {
+      "plan_hash_matches_retained_revision": true
+    },
+    "brand": {
+      "source": "https://novabrands.example/.well-known/brand.json",
+      "fetched_at": "2026-10-08T10:00:00Z"
+    },
+    "operator": {
+      "attested": true
+    }
+  },
+  "coverage": {
+    "satisfied": 0,
+    "partial": 6,
+    "gap": 2,
+    "not_applicable": 0,
+    "out_of_protocol_scope": 0
+  },
+  "results": [
+    {
+      "requirement_id": "art_6_lawful_basis",
+      "framework_section": "Art. 6",
+      "status": "gap",
+      "evidence": [],
+      "narrative": "No lawful basis is declared anywhere in the plan or audit log. A lawful_basis field on sync_plans would move this row to partial."
+    },
+    {
+      "requirement_id": "art_9_special_category",
+      "framework_section": "Art. 9",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "special_category_policy", "refs": ["/audit_log/plans/0/entries/0", "/audit_log/plans/0/entries/1"] }
+      ],
+      "narrative": "Restricted-attribute screening was evaluated; the Art. 9(2) condition is not evidenced. A consent_context field would close this row."
+    },
+    {
+      "requirement_id": "art_12_transparent_modalities",
+      "framework_section": "Art. 12",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "brand_contestation", "refs": ["/supplements/brand/data_subject_contestation"] }
+      ],
+      "narrative": "A data subject contact point is discoverable on the brand. Intake and the one-month response clock are deployer workflow."
+    },
+    {
+      "requirement_id": "art_13_information_collected_from_subject",
+      "framework_section": "Art. 13",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "brand_privacy_policy", "refs": ["/supplements/brand/privacy_policy_url"] }
+      ],
+      "narrative": "A privacy policy URL is published on the brand. Notice content cannot be checked until lawful_basis and data_transfers[] exist."
+    },
+    {
+      "requirement_id": "art_14_information_not_from_subject",
+      "framework_section": "Art. 14",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "brand_privacy_policy", "refs": ["/supplements/brand/privacy_policy_url"] }
+      ],
+      "narrative": "A privacy policy URL is published on the brand. The per-segment data source (Art. 14(2)(f)) is not carried on the audit log."
+    },
+    {
+      "requirement_id": "art_22_automated_decisions",
+      "framework_section": "Art. 22",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "human_reviewed_count", "refs": ["/audit_log/plans/0/summary/statuses/human_reviewed"] },
+        { "evidence_id": "brand_contestation", "refs": ["/supplements/brand/data_subject_contestation"] }
+      ],
+      "narrative": "Both checks were human-reviewed and a contestation contact is discoverable. That evidences humans in the loop on campaign actions, not meaningful involvement in decisions about data subjects; whether a decision is solely automated is a legal call."
+    },
+    {
+      "requirement_id": "art_30_records_of_processing",
+      "framework_section": "Art. 30",
+      "status": "partial",
+      "evidence": [
+        { "evidence_id": "check_entries", "refs": ["/audit_log/plans/0/entries/0", "/audit_log/plans/0/entries/1"] }
+      ],
+      "narrative": "Check entries are an input to the record of processing. Purposes, lawful basis, transfers, and retention are absent."
+    },
+    {
+      "requirement_id": "ch_v_international_transfers",
+      "framework_section": "Ch. V (Arts. 44-50)",
+      "status": "gap",
+      "evidence": [],
+      "narrative": "No transfer declaration exists. A plan-level data_transfers[] would state intent; proof needs location evidence from each provider."
+    }
+  ]
+}
+```
+
+## Open question: how frameworks link to policies
+
+[#3959](https://github.com/adcontextprotocol/adcp/issues/3959) asks whether the link between frameworks and policies is:
+
+- **Option A, bidirectional.** `PolicyEntry` grows an optional `framework_references[]`, and CI checks both directions.
+- **Option B, unidirectional.** Frameworks name policies in `evidence_sources`; `PolicyEntry` is unchanged.
+
+This draft uses the Option B shape because it needs no schema change and leaves every existing policy file untouched. It is not a decision. The recommendation is in the WG decision brief on the issue.
+
+## Not covered
+
+- **SDK helper.** Reference projection code is out of this repository.
+- **Track 2 fields.** `lawful_basis`, `consent_context`, and `data_transfers[]` are proposals, not schema.
+- **Other frameworks.** AIGP, NIST AI RMF, ISO/IEC 42001, Colorado AI Act, MRC, TAG, and DBCFM mappings wait on the linking decision.
+- **Export envelope.** A regulator-facing export would also want an export-level digest or signature, retention statement, issuer identity, and per-action `governance_context` verification. That is a follow-on to the projection shape here, and standardizing the bundle becomes protocol work only if heterogeneous parties need to exchange and verify it.
+
+## See also
+
+- [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs)
+- [Audit trail: internal vs shareable views](/docs/governance/campaign/audit-trail)
+- [Annex III & Article 22 obligations](/docs/governance/annex-iii-obligations)
+- [Policy registry](/docs/governance/policy-registry)
