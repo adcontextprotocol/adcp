@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/execution-requirement-readiness.json",
   "title": "Execution Requirement Readiness",
-  "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy one entry of a product's `execution_requirements[]`. Account-scoped; appears only in the `get_products` `execution_readiness` map and MUST NOT be disclosed across accounts. Advisory: `create_media_buy` revalidates.",
+  "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy one entry of a product's `execution_requirements[]`. Account-scoped; appears only in the `list_products` `execution_readiness` map and MUST NOT be disclosed across accounts. Advisory: the purchase task revalidates.",
   "type": "object",
   "properties": {
     "requirement": {

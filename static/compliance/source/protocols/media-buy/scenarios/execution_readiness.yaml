@@ -15,7 +15,7 @@ requires_capability:
 
 required_tools:
   - get_adcp_capabilities
-  - get_products
+  - list_products
   - sync_accounts
   - sync_event_sources
   - comply_test_controller
@@ -23,11 +23,11 @@ required_tools:
 narrative: |
   A wholesale catalogue is the same for every buyer, but whether an account can
   run a product depends on what that account has: a conversion product needs an
-  event source, and the buyer needs to know before calling create_media_buy
-  whether the account has none, one, or several to choose from.
+  event source, and the buyer needs to know before buying whether the account
+  has none, one, or several to choose from.
 
   The seller reports this in a response-level `execution_readiness` map keyed by
-  product_id. This scenario exercises the four states a buyer agent has to tell
+  product_id on list_products. This scenario exercises the four states a buyer agent has to tell
   apart: ready by a unique candidate, setup required when the account has none,
   selection required when it has several, and unknown when the seller cannot
   read the account. Unknown MUST NOT be reported as setup_required, because the
@@ -156,19 +156,18 @@ phases:
 
       - id: read_ready
         title: "Read readiness for the account with one event source"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
         stateful: false
         expected: |
           Return the product with execution_readiness.products status ready and
           the requirement resolved to the registered event source.
         sample_request:
-          buying_mode: "wholesale"
           include_execution_readiness: true
-          filters:
-            pricing_currencies: ["USD"]
+          criteria:
+            product_ids: ["execution_readiness_conversions"]
           account:
             brand:
               domain: "readiness-ready.example"
@@ -176,7 +175,7 @@ phases:
             sandbox: true
         validations:
           - check: response_schema
-            description: "Response matches get-products-response.json schema"
+            description: "Response matches list-products-response.json schema"
           - check: field_value
             path: "cache_scope"
             value: "public"
@@ -198,17 +197,16 @@ phases:
 
       - id: omit_without_opt_in
         title: "Omit the map unless the buyer opts in"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
         stateful: false
         expected: |
           Return products without an execution_readiness map.
         sample_request:
-          buying_mode: "wholesale"
-          filters:
-            pricing_currencies: ["USD"]
+          criteria:
+            product_ids: ["execution_readiness_conversions"]
           account:
             brand:
               domain: "readiness-ready.example"
@@ -216,7 +214,7 @@ phases:
             sandbox: true
         validations:
           - check: response_schema
-            description: "Response matches get-products-response.json schema"
+            description: "Response matches list-products-response.json schema"
           - check: field_absent
             path: "execution_readiness"
             description: "Readiness is opt-in"
@@ -226,18 +224,17 @@ phases:
     steps:
       - id: read_setup_required
         title: "Read readiness for the account with no event source"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
         stateful: false
         expected: |
           Return the product, annotated setup_required rather than omitted.
         sample_request:
-          buying_mode: "wholesale"
           include_execution_readiness: true
-          filters:
-            pricing_currencies: ["USD"]
+          criteria:
+            product_ids: ["execution_readiness_conversions"]
           account:
             brand:
               domain: "readiness-setup.example"
@@ -245,7 +242,7 @@ phases:
             sandbox: true
         validations:
           - check: response_schema
-            description: "Response matches get-products-response.json schema"
+            description: "Response matches list-products-response.json schema"
           - check: field_contains
             path: "products[*].product_id"
             value: "execution_readiness_conversions"
@@ -294,19 +291,18 @@ phases:
 
       - id: read_selection_required
         title: "Read readiness for the account with two event sources"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
         stateful: false
         expected: |
           Return the product as selection_required with both event sources as
           candidates the buyer can bind directly.
         sample_request:
-          buying_mode: "wholesale"
           include_execution_readiness: true
-          filters:
-            pricing_currencies: ["USD"]
+          criteria:
+            product_ids: ["execution_readiness_conversions"]
           account:
             brand:
               domain: "readiness-select.example"
@@ -314,7 +310,7 @@ phases:
             sandbox: true
         validations:
           - check: response_schema
-            description: "Response matches get-products-response.json schema"
+            description: "Response matches list-products-response.json schema"
           - check: field_value
             path: "execution_readiness.products.execution_readiness_conversions.readiness_status"
             value: "selection_required"
@@ -340,19 +336,18 @@ phases:
     steps:
       - id: read_unknown
         title: "Read readiness for the unreadable account"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
         stateful: false
         expected: |
           Return the product, annotated unknown with unknown_reason
           permission_denied and no resolved resource or candidates.
         sample_request:
-          buying_mode: "wholesale"
           include_execution_readiness: true
-          filters:
-            pricing_currencies: ["USD"]
+          criteria:
+            product_ids: ["execution_readiness_conversions"]
           account:
             brand:
               domain: "readiness-unreadable.example"
@@ -360,7 +355,7 @@ phases:
             sandbox: true
         validations:
           - check: response_schema
-            description: "Response matches get-products-response.json schema"
+            description: "Response matches list-products-response.json schema"
           - check: field_contains
             path: "products[*].product_id"
             value: "execution_readiness_conversions"

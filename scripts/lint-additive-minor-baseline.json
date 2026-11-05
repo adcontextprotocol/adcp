@@ -220,48 +220,6 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "creative/sync-creatives-request.json",
-      "pointer": "/properties/assignments/items",
-      "kind": "property-added-to-closed",
-      "detail": "property landing_page_url added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "creative/sync-creatives-request.json",
-      "pointer": "/properties/assignments/items",
-      "kind": "property-added-to-closed",
-      "detail": "property trackers added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/get-products-request.json",
-      "pointer": "/properties/refine/items/oneOf/1",
-      "kind": "property-added-to-closed",
-      "detail": "property package added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/get-products-response.json",
-      "pointer": "/properties/refinement_applied/items/oneOf/1",
-      "kind": "property-added-to-closed",
-      "detail": "property resolved_end_time added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/get-products-response.json",
-      "pointer": "/properties/refinement_applied/items/oneOf/1",
-      "kind": "property-added-to-closed",
-      "detail": "property resolved_start_time added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/get-products-response.json",
-      "pointer": "/properties/refinement_applied/items/oneOf/1",
-      "kind": "property-added-to-closed",
-      "detail": "property result_product_id added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "protocol/get-adcp-capabilities-response.json",
       "pointer": "/properties/identity",
       "kind": "property-added-to-closed",

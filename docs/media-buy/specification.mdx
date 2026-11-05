@@ -111,9 +111,8 @@ boolean and array subset. Unrequested fields and numeric seller limits do not
 participate. Forecasts without concrete values describe the product's
 discovery/default scope; buyers rediscover with concrete `targeting_overlay`
 values for value-specific forecasts. Fixed prices and floors remain binding
-uniformly for supported selections, except for adjustments the selected fixed-price
-option declares in `price_adjustments`; price guidance remains non-binding.
-Sellers with other value-dependent rates return a concretely targeted configured
+uniformly for supported selections, while price guidance remains non-binding.
+Sellers with value-dependent rates return a concretely targeted configured
 product, split rate tiers into products, or withhold binding prices until
 concrete rediscovery; they never reuse a selected `pricing_option_id` at new
 terms.
@@ -384,14 +383,18 @@ seller using this experimental surface lists `media_buy.execution_readiness` in
 `experimental_features` on `get_adcp_capabilities`, and also lists
 `media_buy.execution_requirements`.
 
-A buyer sets `include_execution_readiness: true` on `get_products` together with
-an `account`. A seller that supports it returns a response-level
-`execution_readiness` map keyed by `product_id`:
+A buyer sets `include_execution_readiness: true` on
+[`list_products`](/docs/media-buy/task-reference/list_products#per-account-execution-readiness-experimental)
+together with an `account`. A seller that supports it returns a response-level
+`execution_readiness` map keyed by `product_id`. The 3.3 betas carried the map
+on the deprecated `get_products`; it moved to `list_products` before 3.3 GA
+([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).
 
 ```json
 {
+  "outcome": "listed",
   "cache_scope": "public",
-  "wholesale_feed_version": "wf_2026_10_06",
+  "feed_version": "feed_2026_10_06",
   "execution_readiness": {
     "version": "er_7f3a",
     "evaluated_at": "2026-10-06T12:00:00Z",
@@ -445,7 +448,7 @@ Statuses, per requirement and rolled up per product:
 | `setup_required` | The account has none, or the connection is `missing`, `pending`, `expired`, or `revoked` | Create or restore it, for example with `sync_event_sources`, `sync_catalogs`, or `connection_state.authorization_url` |
 | `selection_required` | The account has several suitable resources | Choose one from `candidates[]` and bind it |
 | `input_required` | The seller cannot discover a suitable resource from the account | Supply one on the request, such as an inline catalog |
-| `unknown` | The seller could not read the account's resources | Depends on `unknown_reason`: `permission_denied` needs a human to fix the seller's grant on the account, `platform_unavailable` is worth retrying, `not_evaluated` means refetch fewer products. Meanwhile `create_media_buy` decides |
+| `unknown` | The seller could not read the account's resources | Depends on `unknown_reason`: `permission_denied` needs a human to fix the seller's grant on the account, `platform_unavailable` is worth retrying, `not_evaluated` means refetch fewer products. Meanwhile the purchase task decides |
 
 Rules:
 
@@ -491,7 +494,7 @@ Rules:
   `include_execution_readiness: true` and carried an `account` the caller is
   authorized for; otherwise the seller omits it (an `account` that does not
   resolve still returns `ACCOUNT_NOT_FOUND`). It covers only the products on the
-  response. `create_media_buy` still revalidates and rejects per
+  page. The purchase task (`buy_products`, or `create_media_buy`) still revalidates and rejects per
   `execution-requirement-unmet.json` or `AUTHORIZATION_REQUIRED`, which echo the
   same requirement.
 - **Seller cost.** Whether an account has a pixel, catalog, or connection is the
@@ -499,13 +502,13 @@ Rules:
   account and requirement kind and stamp every product on the page.
 
 **Caching.** The map is not part of the `cache_scope` layer. It does not change
-`cache_scope`, `wholesale_feed_version`, or `pricing_version`, so a public
+`cache_scope`, `feed_version`, or `pricing_version`, so a public
 wholesale catalog stays `cache_scope: "public"` when readiness is added.
 `execution_readiness.version` is an opaque token for the account's readiness,
 independent of both feed tokens. Buyers MUST NOT dedupe or cache the map under
 the public key; they key it by `(account, execution_readiness.version)`. Sellers
-MUST NOT put it in wholesale feed webhooks. It is omitted on `unchanged: true`
-responses, which carry no products, so refreshing readiness means refetching the
+MUST NOT put it in wholesale feed webhooks. It is omitted on an `unchanged`
+outcome, which carries no products, so refreshing readiness means refetching the
 page; conditional fetch of the map is not specified. `version` identifies the
 account's readiness state, not the page: equal versions MUST imply identical
 entries for any product present in both responses, and buyers merge pages by
@@ -945,7 +948,6 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 - Sales agents SHOULD fulfill the `ask` on proposal entries with `action: "include"`
 - Sales agents SHOULD include `refinement_applied` in the response, with one entry per change request matched by position
 - Sales agents that return `refinement_applied` MUST echo `scope` on each entry and MUST echo `product_id` / `proposal_id` for product and proposal scopes, so orchestrators can cross-validate alignment
-- In AdCP 3.3, product-scoped `include` entries MAY carry `package` with create-package field types, required `pricing_option_id` and numeric `budget`, and `product_id` supplied by the enclosing entry. Other scopes and actions MUST NOT carry `package`. Sales agents MUST follow the [exact-package forecast contract](/docs/media-buy/product-discovery/refinement#check-an-exact-package-before-booking): resolve the goal, flight, and targeting without guessing; return a complete `refinement_applied` array and either `applied` with an exact availability forecast, `result_product_id` referencing exactly one returned Product with unchanged selected pricing terms, and `resolved_start_time`/`resolved_end_time` to copy to the package at create, or `unable` with non-empty explanatory notes and no substitute forecast; forecast entries independently without subtracting other proposed packages; and perform no booking, hold, reservation, creative upload, or assignment. Insufficient inventory is an `applied` forecast with `availability_status: "unavailable"`. No separate capability flag is defined, and omitted outcomes do not confirm support.
 - Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
 
 ### Canonical creative-format discovery

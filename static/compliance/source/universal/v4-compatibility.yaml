@@ -224,9 +224,10 @@ checks:
       Accept the experimental target_audiences sibling of
       audience_evidence_requirements on buy_products purchases and
       list_products offer_filters, and record it in the accepted purchase
-      snapshot. 3.3 carries it only on get_products filters and
-      create_media_buy packages, because the purchase and offer-filter
-      schemas are closed and a minor release does not change a closed schema.
+      snapshot. 3.3 carries it only on create_media_buy packages. It was
+      withdrawn from the deprecated get_products filters after
+      3.3.0-beta.4 (adcp#8501), and the purchase and offer-filter schemas are closed and a
+      minor release does not change a closed schema.
     observed_by:
       none:
         reason: >-
@@ -323,6 +324,27 @@ checks:
           The canonical schema is closed in 3.x and does not carry the field, so
           a 3.x seller run cannot send or observe it.
 
+  - id: canonical_price_adjustments_required_in_4_0
+    issue: 7659
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "A seller that prices format option or placement selections and dated windows from a published rate table cannot carry that table as price_adjustments on a canonical pricing option."
+    fix: >-
+      Nothing in 3.3. The experimental price_adjustments table
+      (media_buy.price_adjustments) shipped in 3.3.0-beta.1 through
+      3.3.0-beta.4 on the pricing options of the deprecated get_products and
+      is withdrawn after beta.4 (adcp#8501): 3.3 adds no field that exists only on a deprecated task,
+      and canonical-pricing-option.json is closed in 3.x. Do not return a
+      table or emit error-details/price-adjustments-mismatch.json. Until 4.0,
+      return a priced option per configured product. 4.0 adds the table to
+      the canonical pricing option.
+    observed_by:
+      none:
+        reason: >-
+          A seller-authored field on the canonical pricing option, which is
+          closed in 3.x, and 3.3 has no wire form for it after beta.4. A 3.x
+          run cannot observe it.
+
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
 # why a 3.x agent is not graded on it.
@@ -339,7 +361,6 @@ schema_removals_not_checked:
       - "creative/list-creative-formats-request.json#/properties/format_ids"
       - "media-buy/list-creative-formats-request.json#/properties/format_ids"
       - "media-buy/package-request.json#/properties/format_ids"
-      - "media-buy/package-forecast-input.json#/properties/format_ids"
 
   - change: "Exact plural format_ids projections outside the product"
     issue: 7629

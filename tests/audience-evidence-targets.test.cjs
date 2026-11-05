@@ -117,14 +117,16 @@ describe('audience evidence target audiences (#8125)', () => {
   });
 
   describe('schema', () => {
-    it('accepts target_audiences as a sibling of audience_evidence_requirements on discovery filters', () => {
+    it('no longer declares target_audiences on get_products discovery filters (withdrawn, adcp#8501)', () => {
+      const filters = readSchema('/schemas/core/product-filters.json');
+      assert.equal(filters.properties.target_audiences, undefined);
+      assert.equal(filters.dependencies?.target_audiences, undefined);
+      assert.ok(filters.properties.audience_evidence_requirements, 'audience_evidence_requirements stays');
       const requirements = { ...base, accepted_evidence_types: ['measured'], minimum_confidence: 0.8 };
-      const filters = { audience_evidence_requirements: requirements, target_audiences: [target] };
-      assert.equal(validateFilters(filters), true, JSON.stringify(validateFilters.errors));
+      assert.equal(validateFilters({ audience_evidence_requirements: requirements }), true, JSON.stringify(validateFilters.errors));
     });
 
     it('requires the sibling audience_evidence_requirements', () => {
-      assert.equal(validateFilters({ target_audiences: [target] }), false);
       const packageRequest = clone(fixture.package_request);
       delete packageRequest.audience_evidence_requirements;
       packageRequest.target_audiences = [target];
@@ -162,7 +164,8 @@ describe('audience evidence target audiences (#8125)', () => {
     });
 
     it('bounds the list and reuses the audience characteristic constraints', () => {
-      const filtersWith = target_audiences => validateFilters({ audience_evidence_requirements: base, target_audiences });
+      // The discovery-filter copy is withdrawn; the bounds live on the package-level list.
+      const filtersWith = target_audiences => validatePackageRequest({ ...clone(fixture.package_request), audience_evidence_requirements: base, target_audiences });
       assert.equal(filtersWith([]), false);
       assert.equal(filtersWith([target, target]), false);
       assert.equal(filtersWith(Array.from({ length: 11 }, (_, index) => ({ ...target, minimum_value: index / 10 }))), false);
@@ -199,7 +202,7 @@ describe('audience evidence target audiences (#8125)', () => {
       const targetSchema = readSchema('/schemas/core/audience-evidence-target.json');
       assert.equal(targetSchema['x-status'], 'experimental');
       assert.equal(targetSchema['x-added-in'], '3.3.0');
-      for (const uri of ['/schemas/core/product-filters.json', '/schemas/media-buy/package-request.json']) {
+      for (const uri of ['/schemas/media-buy/package-request.json']) {
         const property = readSchema(uri).properties.target_audiences;
         assert.equal(property['x-status'], 'experimental', uri);
         assert.equal(property['x-added-in'], '3.3.0', uri);
@@ -225,9 +228,17 @@ describe('audience evidence target audiences (#8125)', () => {
 
     it('documents the surface under the heading the other pages link to', () => {
       const doc = fs.readFileSync(path.join(ROOT, 'docs/media-buy/task-reference/get_products.mdx'), 'utf8');
-      assert.match(doc, /^#### Target audiences \(experimental\)$/m);
-      for (const page of ['docs/media-buy/product-discovery/media-products.mdx', 'docs/media-buy/task-reference/create_media_buy.mdx']) {
-        assert.match(fs.readFileSync(path.join(ROOT, page), 'utf8'), /get_products#target-audiences-experimental/, page);
+      assert.match(doc, /^#### Target audiences \(withdrawn\)$/m);
+      // Every link into the get_products target-audiences section resolves to an anchor on the page.
+      const anchors = new Set(['target-audiences-withdrawn']);
+      for (const match of doc.matchAll(/<a id="([^"]+)"><\/a>/g)) anchors.add(match[1]);
+      const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => (entry.isDirectory()
+        ? walk(path.join(dir, entry.name))
+        : /\.mdx?$/.test(entry.name) ? [path.join(dir, entry.name)] : []));
+      for (const file of walk(path.join(ROOT, 'docs'))) {
+        for (const match of fs.readFileSync(file, 'utf8').matchAll(/get_products#(target-audiences-[a-z-]+)/g)) {
+          assert.ok(anchors.has(match[1]), `${path.relative(ROOT, file)} links to missing anchor ${match[1]}`);
+        }
       }
     });
   });

@@ -148,9 +148,9 @@ function argsFor(tool: string, label: string, version: string, state: FlowState)
   const image = { asset_type: 'image', url: 'https://cdn.example.com/served-release.png', width: 300, height: 250 };
   switch (tool) {
     case 'get_products':
-      // Every release is asked for collection cards (experimental 3.3,
-      // #8181): get_products accepts unknown fields, so a stable caller's
-      // flag is ignored and only the preview answers with `collections`.
+      // Every release still sends include_collections: get_products accepts
+      // unknown fields and the flag was withdrawn from it (adcp#8501), so no
+      // release answers with `collections`; list_products carries them.
       return { buying_mode: 'brief', brief: 'Display and video for sports fans in the US', include_collections: true };
     case 'create_media_buy': {
       const product = state.products?.find(candidate => {
@@ -406,14 +406,8 @@ describe('served-release response shape below 3.3 (#8487)', () => {
             )))}`);
           }
           if (tool === 'get_products') {
-            const isPreview = version === TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
-            const referencesCollections = (structured.products as Array<Record<string, unknown>>)
-              .some(product => Array.isArray(product.collections) && product.collections.length > 0);
-            if (!isPreview && structured.collections !== undefined) {
-              failures.push(`${label} get_products @${version}: collection cards served to a stable caller`);
-            }
-            if (isPreview && referencesCollections && !Array.isArray(structured.collections)) {
-              failures.push(`${label} get_products @${version}: include_collections answered without collections`);
+            if (structured.collections !== undefined) {
+              failures.push(`${label} get_products @${version}: served collection cards (withdrawn from get_products, adcp#8501)`);
             }
           }
           // A 3.0 product card is a format reference plus its manifest; the
@@ -462,8 +456,10 @@ describe('served-release response shape below 3.3 (#8487)', () => {
     const failures: string[] = [];
     // Preview reads first: they must not leave anything behind that a later
     // stable read of the shared catalog could see.
+    // get_products no longer returns cards even at the preview, but keeps the
+    // sample_content card projection (adcp#8501).
     const previewProducts = await call(sales, 'get_products', { adcp_version: preview, ...brief });
-    expect(Array.isArray(previewProducts.structured?.collections), JSON.stringify(previewProducts.raw).slice(0, 300)).toBe(true);
+    expect(previewProducts.structured?.collections, JSON.stringify(previewProducts.raw).slice(0, 300)).toBeUndefined();
     expect(JSON.stringify(previewProducts.structured)).toContain('"sample_content"');
     await call(`${baseUrl}/mcp`, 'get_products', { adcp_version: preview, ...brief });
     for (const pin of [{ adcp_version: '3.2' }, { adcp_version: '3.1' }, { adcp_version: '3.0' }, { adcp_major_version: 3 }, {}]) {
@@ -497,7 +493,9 @@ describe('served-release response shape below 3.3 (#8487)', () => {
     const previewListing = await rpc(sales, rpcId += 1, 'tools/list', { _meta: { adcp_version: preview } });
     const previewTools = (previewListing.result as { tools: Array<{ name: string; inputSchema?: { properties?: Record<string, unknown> } }> }).tools;
     expect(previewTools.map(tool => tool.name)).toContain('list_collections');
-    expect(previewTools.find(tool => tool.name === 'get_products')?.inputSchema?.properties).toHaveProperty('include_collections');
+    // include_collections is withdrawn from get_products at every release and stays on list_products.
+    expect(previewTools.find(tool => tool.name === 'get_products')?.inputSchema?.properties).not.toHaveProperty('include_collections');
+    expect(previewTools.find(tool => tool.name === 'list_products')?.inputSchema?.properties).toHaveProperty('include_collections');
   }, 120_000);
 
   it('answers /mcp search_brands without a query with the correctable error the request schema requires', async () => {
