@@ -7116,7 +7116,7 @@ paths:
     get:
       operationId: listBrands
       summary: List brands
-      description: List all brands in the registry with optional search, pagination, and source filter.
+      description: List all brands in the registry with optional search, pagination, source and house filters.
       tags:
         - Brand Resolution
       parameters:
@@ -7124,6 +7124,14 @@ paths:
             type: string
           required: false
           name: search
+          in: query
+        - schema:
+            type: string
+            example: pg.com
+            description: Return only brands whose `house_domain` is this domain, so a client can list the brands recorded under a house. `stats` honours the filter. A brand's `house_domain` is a claim unless its `relationship_trust` is `inline` or `mutual`.
+          required: false
+          description: Return only brands whose `house_domain` is this domain, so a client can list the brands recorded under a house. `stats` honours the filter. A brand's `house_domain` is a claim unless its `relationship_trust` is `inline` or `mutual`.
+          name: house_domain
           in: query
         - schema:
             type: integer
