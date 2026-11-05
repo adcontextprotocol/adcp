@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/runtime-default-image.yml'
+      - 'Dockerfile'
+      - 'scripts/prune-runtime-artifacts.cjs'
   workflow_dispatch:
     inputs:
       expected_sha:
