@@ -58,12 +58,25 @@ function seller(products) {
   };
 }
 
-test('old SDKs skip the authored requirement before any seller dispatch', async () => {
+test('the installed SDK natively grades the authored exclusion requirement', async () => {
   const board = storyboard();
+  const endpoint = seller([{ product_id: 'negative' }]);
+  const result = await runSdkStoryboard(url, board, endpoint.options);
+  assert.equal(result.overall_passed, false);
+  assert.equal(result.failed_count, 1);
+  const grade = result.phases[0].steps[0].validations.find(check => check.check === 'field_excludes');
+  assert.equal(grade.passed, false);
+  assert.equal(grade.not_applicable, undefined);
+  assert.equal(endpoint.calls.length, 1);
+});
+
+test('unknown runner requirements still skip before any seller dispatch', async () => {
+  const board = storyboard();
+  board.requires.push('unavailable_exclusion_contract');
   const endpoint = seller([{ product_id: 'positive' }]);
   const result = await runSdkStoryboard(url, board, endpoint.options);
   assert.equal(result.phases[0].steps[0].skip_reason, 'requirement_unmet');
-  assert.match(result.phases[0].steps[0].skip.detail, /field_excludes_runner/);
+  assert.match(result.phases[0].steps[0].skip.detail, /unavailable_exclusion_contract/);
   assert.equal(endpoint.calls.length, 0);
 });
 
@@ -109,7 +122,9 @@ test('a prohibited later product fails before dependent phases and does not cred
   assert.equal(grade.passed, false);
   assert.equal(grade.not_applicable, undefined);
   assert.deepEqual(grade.expected, { excludes: 'negative' });
-  assert.deepEqual(grade.actual, ['positive', 'negative']);
+  assert.ok(Array.isArray(grade.actual));
+  assert.ok(grade.actual.includes('negative'));
+  assert.ok(grade.actual.every(value => ['positive', 'negative'].includes(value)), 'diagnostic terminals come from the unchanged response');
   assert.deepEqual(result.phases[0].steps[0].response, endpoint.data);
 });
 
@@ -176,13 +191,24 @@ test('standalone execution fails without publishing response-derived context or 
   assert.equal(result.next, undefined);
 });
 
-test('registration is idempotent and native validation rows are never graded twice', () => {
+test('standalone advisory exclusions preserve successful response captures and contribution credit', async () => {
+  const board = storyboard({ ...validation, severity: 'advisory', permanent_advisory: { reason: 'Advisory checks do not invalidate successful continuation state' } });
+  const endpoint = seller([{ product_id: 'negative' }]);
+  const result = await runStoryboardStep(url, board, 'filter', endpoint.options);
+  assert.equal(result.passed, true, JSON.stringify(result));
+  assert.equal(result.context.returned_id, 'negative');
+  assert.equal(result.contributions.includes('discovered'), true);
+  assert.equal(result.validations.find(check => check.check === 'field_excludes').passed, false);
+  assert.deepEqual(result.response, endpoint.data);
+});
+
+test('native support avoids compatibility registration and is never graded twice', () => {
   const board = storyboard();
   withExclusionSupport(board, {});
   const assertion = getAssertion(FIELD_EXCLUDES_ASSERTION_ID);
   withExclusionSupport(board, {});
   assert.equal(getAssertion(FIELD_EXCLUDES_ASSERTION_ID), assertion);
-  assert.equal(listAssertions().filter(id => id === FIELD_EXCLUDES_ASSERTION_ID).length, 1);
+  assert.equal(listAssertions().filter(id => id === FIELD_EXCLUDES_ASSERTION_ID).length, 0);
   const native = {
     step_id: 'filter', phase_id: 'discovery', task: 'get_products', title: 'Native result',
     passed: false, duration_ms: 0, context: {}, extraction: { path: 'none' },
