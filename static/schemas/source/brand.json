@@ -457,6 +457,7 @@
       "additionalProperties": true
     },
     "data_subject_contestation": {
+      "title": "Data Subject Contestation",
       "type": "object",
       "description": "Contact point where a data subject can request human intervention, express their view, or contest an automated decision — satisfying GDPR Article 22(3) and EU AI Act Article 26(11) transparency obligations. This is a contact reference (URL, email, or both), not a machine-callable API. AdCP surfaces the pointer; the deployer runs the contestation workflow.",
       "properties": {
