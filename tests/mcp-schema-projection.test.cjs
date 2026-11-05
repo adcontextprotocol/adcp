@@ -212,9 +212,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_376_000. Naming five repeated scalar subschemas (#8525) brings the
 // controller to 1_378_383 bytes, and the further repeated
 // scalar concepts to 1_401_918, repeated enums to 1_412_332, and every remaining
-// repeat to 1_442_008, and pointing every site at one definition to 1_452_778;
-// bound it at 1_453_000.
-const PARITY_COMPILE_LIMIT = 1_453_000;
+// repeat to 1_442_008, pointing every site at one definition to 1_452_778,
+// and building the incomplete scope from the product incomplete scope to
+// 1_453_708; bound it at 1_454_000.
+const PARITY_COMPILE_LIMIT = 1_454_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

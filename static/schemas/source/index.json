@@ -3477,7 +3477,11 @@
         },
         "incomplete-scope": {
           "$ref": "/schemas/enums/incomplete-scope.json",
-          "description": "Part of a discovery response that a seller could not complete."
+          "description": "Part of a discovery response that a seller could not complete, for discovery responses that can also return proposals. It is the product incomplete scope plus proposals."
+        },
+        "product-incomplete-scope": {
+          "$ref": "/schemas/enums/product-incomplete-scope.json",
+          "description": "Part of a product discovery response that a seller could not complete. A product list never contains proposals."
         }
       }
     },

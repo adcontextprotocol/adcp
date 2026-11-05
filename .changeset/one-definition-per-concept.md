@@ -19,4 +19,3 @@ Sites that meant the same thing as a named schema, and stated a different constr
 **Looser, where the stricter copy rejected a published value:**
 
 - 2 whole-number aspect ratios accept decimals, because `core/format.json` published `1.91:1`.
-- `list_products` `incomplete` scope accepts `proposals`, which `get_products` and `request_proposals` publish in the same enum.

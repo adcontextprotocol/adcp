@@ -916,7 +916,11 @@ async function runTests() {
   // Test 5: Validate enum schemas
   await test('All vocabulary schemas have finite values or constrained parameterized names', () => {
     const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
-    const isFiniteEnum = branch => Array.isArray(branch.enum) && branch.enum.length > 0;
+    // A branch that references another vocabulary is finite: this test checks
+    // that vocabulary as its own document.
+    const isFiniteEnum = branch => (Array.isArray(branch.enum) && branch.enum.length > 0) ||
+      'const' in branch ||
+      (typeof branch.$ref === 'string' && branch.$ref.startsWith('/schemas/enums/'));
     const isParameterizedName = branch => typeof branch.pattern === 'string' &&
       branch.pattern.startsWith('^') && branch.pattern.endsWith('$');
 

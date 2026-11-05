@@ -41,7 +41,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "scope": { "$ref": "/schemas/enums/incomplete-scope.json" },
+          "scope": { "$ref": "/schemas/enums/product-incomplete-scope.json" },
           "description": { "$ref": "/schemas/core/incomplete-scope-description.json" },
           "estimated_wait": { "$ref": "/schemas/core/duration.json" }
         },
