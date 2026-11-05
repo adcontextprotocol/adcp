@@ -86,7 +86,7 @@ Seven corrections are recorded:
 | (c) `task_id` identifies a task | `core/protocol-envelope.json`, `core/tasks-get-request.json`, 3.2.7 `core/compact-task-submitted.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (c) |
 | (d) `message` is bounded | 3.2.7 `core/compact-task-submitted.json`, `core/compact-task-input-required.json` and the compact and submitted responses; `core/protocol-envelope.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (d) |
 | (e) A domain name is at most 253 characters | RFC 1035; 3.2.8 `core/signal-definition.json` | 3.3.0 (#8536) | The table under (e) |
-| (f) A timezone identifier is at most 255 characters | 3.2.8 `core/iana-timezone.json` | 3.3.0 (#8536) | The table under (f) |
+| (f) A timezone identifier is 1 to 255 characters | 3.2.8 `core/iana-timezone.json` | 3.3.0 (#8536) | The table under (f) |
 | (g) One bound for each concept that was published with a bound in some places | 3.2.8 `core/proposal.json`, `core/catalog-item-availability-ref.json`, `core/signal-definition.json`, `core/push-notification-config.json`, `media-buy/get-products-response.json`, `core/account-change.json`, `compliance/comply-test-controller-request.json`, `media-buy/package-control.json`, `core/wholesale-feed-event.json`; 3.3.0-beta.4 `media-buy/create-media-buy-request.json` | 3.3.0 (#8536) | The table under (g) |
 
 #### (a) Reopen the 3.2 proposal flow
@@ -362,7 +362,7 @@ The check accepts `maxLength: 253` at these locations:
 | `property/base-property-source.json` | `/oneOf/0/properties/publisher_domain`, `/oneOf/1/properties/publisher_domain` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
 | `protocol/get-adcp-capabilities-response.json` | `/properties/media_buy/properties/portfolio/properties/publisher_domains/items`, `/properties/signals/properties/data_provider_domains/items` | `maxLength: 253` | A domain name, which core/domain-name.json now bounds. |
 
-#### (f) A timezone identifier is at most 255 characters
+#### (f) A timezone identifier is 1 to 255 characters
 
 These sites describe a timezone as UTC or an IANA identifier, and 3.2.8 published
 `core/iana-timezone.json` for that value with `minLength: 1` and `maxLength: 255`.
