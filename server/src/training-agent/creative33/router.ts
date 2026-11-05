@@ -168,7 +168,9 @@ export function mountCreative33Sandbox(parent: Router, options: {
     ? new PostgresStateStore(database) : new InMemoryStateStore());
   const domainStore = prefixedStore(rawStore, 'creative33_domain_');
   const sdkStore = prefixedStore(rawStore, 'creative33_sdk_');
-  const sandbox = createCreative33Sandbox(domainStore);
+  // Loading the retained bundle is expensive; unrelated tenant and fixture
+  // requests must not initialize the frozen lab's platform or validators.
+  let sandbox: ReturnType<typeof createCreative33Sandbox> | undefined;
   const taskRegistry = process.env.NODE_ENV === 'production'
     ? createPostgresTaskRegistry({ pool: database, namespace: NAMESPACE, tableName: 'adcp_decisioning_tasks_v2' })
     : createInMemoryTaskRegistry();
@@ -255,17 +257,18 @@ export function mountCreative33Sandbox(parent: Router, options: {
       if (req.rawHeaders[index].toLowerCase() === 'accept') req.rawHeaders[index + 1] = req.headers.accept;
     }
     try {
-      server = createAdcpServerFromPlatform(sandbox.platform, {
+      const activeSandbox = sandbox ??= createCreative33Sandbox(domainStore);
+      server = createAdcpServerFromPlatform(activeSandbox.platform, {
       name: 'adcp-creative-33-sandbox', version: '1.0.0',
       adcpVersion: CREATIVE33_WIRE_VERSION, defaultAdcpVersion: CREATIVE33_WIRE_VERSION,
-      complyTest: sandbox.complyTest,
+      complyTest: activeSandbox.complyTest,
       customTools: {
         validate_input: {
           description: 'Validate an inline creative against the explicitly advertised beta fixture contracts.',
           inputSchema: ValidateInputRequestSchema,
           annotations: { readOnlyHint: true, idempotentHint: true },
           handler: async (input: unknown) => {
-            const result = { ...await sandbox.validateInput(input as Record<string, unknown>), adcp_version: CREATIVE33_WIRE_VERSION };
+            const result = { ...await activeSandbox.validateInput(input as Record<string, unknown>), adcp_version: CREATIVE33_WIRE_VERSION };
             const validate = getCanonicalToolValidator('validate_input', 'sync', { adcpVersion: CREATIVE33_BUNDLE_VERSION });
             if (!validate || !validate(result)) {
               throw new AdcpError('CONFIGURATION_ERROR', { message: 'The sandbox validation response does not satisfy the frozen beta contract.', recovery: 'terminal' });

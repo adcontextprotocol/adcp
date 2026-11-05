@@ -23,6 +23,8 @@ dist/docs/*
 !dist/docs/3.1.31/**
 !dist/docs/3.3.0-beta.3
 !dist/docs/3.3.0-beta.3/**
+!dist/docs/3.1.32
+!dist/docs/3.1.32/**
 !dist/docs/3.3.0-beta.4
 !dist/docs/3.3.0-beta.4/**
 !dist/schemas
