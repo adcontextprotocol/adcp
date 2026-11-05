@@ -122,7 +122,7 @@
       "description": "Current hard MediaBuy-level cap. Sellers MUST echo it whenever set. Its counter aggregates exposures across all participating packages; each package targeting_overlay.frequency_cap remains independently binding."
     },
     "budget_cap_timezone": {
-      "type": "string",
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "IANA timezone defining the shared calendar-day boundary for every aggregate and package daily cap on this media buy. Sellers MUST echo it whenever any daily cap is set."
     },
     "currency": {

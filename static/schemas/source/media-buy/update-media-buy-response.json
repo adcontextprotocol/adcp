@@ -52,7 +52,7 @@
           "description": "Post-update shared MediaBuy frequency cap. Echoed when the update sets or changes it; omitted after removal."
         },
         "budget_cap_timezone": {
-          "type": "string",
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Post-update IANA timezone shared by every aggregate and package daily cap. Echoed whenever the update affects daily caps or their timezone."
         },
         "budget_allocation": {

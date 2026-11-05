@@ -365,30 +365,51 @@ The check accepts `maxLength: 253` at these locations:
 #### (f) A timezone identifier is at most 255 characters
 
 These sites describe a timezone as UTC or an IANA identifier, and 3.2.8 published
-`core/iana-timezone.json` for that value with `maxLength: 255`. They stated no
-length of their own. Each now references that schema, so a timezone validates the
-same everywhere. No IANA identifier comes near the limit. 3.3.0 ships it (#8536).
+`core/iana-timezone.json` for that value with `minLength: 1` and `maxLength: 255`.
+They stated no maximum length, and some stated no minimum either. Each now
+references that schema, so a timezone validates the same everywhere. No IANA
+identifier is empty or comes near the limit. 3.3.0 ships it (#8536).
 
 `core/iana-timezone.json` also adds its identifier pattern and rejects
 `inventory_local` at these sites. The check compares length bounds only, so these
-rows record the length.
+rows record the lengths.
 
-The check accepts `maxLength: 255` at these locations:
+The check accepts these bounds at these locations:
 
 | Schema | Pointer | Bound | Reason |
 |---|---|---|---|
+| `account/get-account-financials-response.json` | `/oneOf/0/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `account/get-account-financials-response.json` | `/oneOf/0/properties/timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
 | `account/sync-accounts-request.json` | `/properties/accounts/items/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
 | `account/sync-accounts-response.json` | `/oneOf/0/properties/accounts/items/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
 | `core/account-ref.json` | `/oneOf/1/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
-| `core/account-timezone-capability.json` | `/properties/fixed_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/account-timezone-capability.json` | `/properties/fixed_timezone`, `/properties/supported_timezones/items` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
 | `core/account.json` | `/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
 | `core/canonical-account-ref.json` | `/anyOf/1/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/canonical-reporting-capabilities.json` | `/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/canonical-reporting-capabilities.json` | `/properties/timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
+| `core/catalog-field-mapping.json` | `/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/catalog-field-mapping.json` | `/properties/timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
+| `core/media-buy.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/media-buy.json` | `/properties/budget_cap_timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
+| `core/planned-delivery.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/planned-delivery.json` | `/properties/budget_cap_timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
+| `core/reporting-capabilities.json` | `/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `core/reporting-capabilities.json` | `/properties/timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
+| `creative/get-creative-delivery-response.json` | `/properties/reporting_period/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `creative/get-creative-delivery-response.json` | `/properties/reporting_period/properties/timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
 | `media-buy/accept-proposal-request.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
 | `media-buy/buy-products-request.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
 | `media-buy/commercial-terms.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
 | `media-buy/create-media-buy-request.json` | `/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/create-media-buy-response.json` | `/oneOf/0/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/create-media-buy-response.json` | `/oneOf/0/properties/budget_cap_timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
 | `media-buy/get-media-buy-delivery-response.json` | `/properties/reporting_period/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/get-media-buys-response.json` | `/properties/media_buys/items/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/get-media-buys-response.json` | `/properties/media_buys/items/properties/budget_cap_timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
 | `media-buy/media-buy-delivery-webhook-result.json` | `/properties/reporting_period/properties/timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/update-media-buy-response.json` | `/oneOf/0/properties/budget_cap_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
+| `media-buy/update-media-buy-response.json` | `/oneOf/0/properties/budget_cap_timezone` | `minLength: 1` | A timezone identifier, which core/iana-timezone.json keeps non-empty. |
 | `protocol/get-adcp-capabilities-response.json` | `/properties/media_buy/properties/budget_capping/properties/fixed_timezone` | `maxLength: 255` | A timezone identifier, which core/iana-timezone.json bounds. |
 
 #### (g) One bound for each concept that was published with a bound in some places

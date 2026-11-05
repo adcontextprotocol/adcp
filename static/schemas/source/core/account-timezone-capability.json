@@ -22,11 +22,7 @@
     "supported_timezones": {
       "type": "array",
       "description": "Exact timezone values accepted during buyer-selected account provisioning. Required when account_selection is buyer_selected so buyers can validate the choice before sync_accounts.",
-      "items": {
-        "type": "string",
-        "minLength": 1,
-        "x-max-length-4.0": 64
-      },
+      "items": { "$ref": "/schemas/core/iana-timezone.json" },
       "minItems": 1,
       "uniqueItems": true,
       "x-max-items-4.0": 1024

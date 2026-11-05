@@ -808,6 +808,30 @@
       "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
     },
     {
+      "file": "account/get-account-financials-response.json",
+      "pointer": "/oneOf/0/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "account/get-account-financials-response.json",
+      "pointer": "/oneOf/0/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
       "file": "account/sync-accounts-request.json",
       "pointer": "/properties/accounts/items/properties/operator",
       "bound": "maxLength",
@@ -952,6 +976,18 @@
       "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
     },
     {
+      "file": "core/account-timezone-capability.json",
+      "pointer": "/properties/supported_timezones/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
       "file": "core/account.json",
       "pointer": "/properties/operator",
       "bound": "maxLength",
@@ -1046,6 +1082,54 @@
         "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
       },
       "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/canonical-reporting-capabilities.json",
+      "pointer": "/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/canonical-reporting-capabilities.json",
+      "pointer": "/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "core/catalog-field-mapping.json",
+      "pointer": "/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/catalog-field-mapping.json",
+      "pointer": "/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
     },
     {
       "file": "core/collection-property-delivery-metrics.json",
@@ -1180,6 +1264,30 @@
       "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
     },
     {
+      "file": "core/media-buy.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/media-buy.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
       "file": "core/operator-identity.json",
       "pointer": "/properties/operator",
       "bound": "maxLength",
@@ -1250,6 +1358,30 @@
         "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
       },
       "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/planned-delivery.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/planned-delivery.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
     },
     {
       "file": "core/product-format-declaration.json",
@@ -1360,6 +1492,30 @@
       "reason": "Correction (e) of DR-0036: a domain name is a DNS name, and 3.2.8 published the 253-character limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
     },
     {
+      "file": "core/reporting-capabilities.json",
+      "pointer": "/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/reporting-capabilities.json",
+      "pointer": "/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
       "file": "core/reporting-webhook.json",
       "pointer": "/properties/token",
       "bound": "maxLength",
@@ -1430,6 +1586,30 @@
         "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1, \"maxLength\": 255 }"
       },
       "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A signal name, which core/signal-name.json bounds."
+    },
+    {
+      "file": "creative/get-creative-delivery-response.json",
+      "pointer": "/properties/reporting_period/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "creative/get-creative-delivery-response.json",
+      "pointer": "/properties/reporting_period/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
     },
     {
       "file": "media-buy/accept-proposal-request.json",
@@ -1505,6 +1685,30 @@
     },
     {
       "file": "media-buy/create-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/create-media-buy-response.json",
       "pointer": "/oneOf/0/properties/proposal_id",
       "bound": "maxLength",
       "value": 255,
@@ -1538,6 +1742,30 @@
         "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
       },
       "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
     },
     {
       "file": "media-buy/get-products-request.json",
@@ -1658,6 +1886,30 @@
         "quote": "\"items\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 1000 }"
       },
       "reason": "Correction (g) of DR-0036: 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A seller suggestion, which core/seller-suggestion.json bounds."
+    },
+    {
+      "file": "media-buy/update-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/update-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Correction (f) of DR-0036: the site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
     },
     {
       "file": "property/base-property-source.json",

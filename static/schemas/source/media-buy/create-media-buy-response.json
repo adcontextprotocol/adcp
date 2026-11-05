@@ -74,7 +74,7 @@
           "description": "Accepted shared MediaBuy frequency cap. Sellers MUST echo it whenever the request or executed proposal set one."
         },
         "budget_cap_timezone": {
-          "type": "string",
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Accepted IANA timezone shared by every aggregate and package daily cap. Sellers MUST echo it whenever any daily cap is set on the media buy."
         },
         "budget_allocation": {

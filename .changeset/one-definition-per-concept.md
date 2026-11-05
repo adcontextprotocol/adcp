@@ -6,9 +6,9 @@ Sites that meant the same thing as a named schema, and stated a different constr
 
 **Tighter:**
 
-- 28 timezone sites reference `core/iana-timezone.json`. They reject a value longer than 255 characters, a value outside the IANA identifier pattern, and `inventory_local`.
+- 41 timezone sites reference `core/iana-timezone.json`, including every `budget_cap_timezone`, the reporting `timezone` in `reporting_capabilities` and `get_account_financials`, and `supported_timezones`. They reject a value longer than 255 characters, a value outside the IANA identifier pattern, and `inventory_local`. The 10 that accepted an empty string no longer do.
 - 10 `governance_context` request fields reference `core/governance-context.json` and reject non-printable characters.
-- 8 `proposal_id` sites, 2 `catalog_ids` lists, and `core/signal-name.json` on wholesale feed signals gain a length limit. `core/reporting-delivery-offering-id.json` lowers 3 `offering_id` limits from 255 to 128 and adds a pattern.
+- 8 `proposal_id` sites, 2 `catalog_ids` lists, and the wholesale feed signal `name` and `description` gain a length limit: 255 characters through `core/signal-name.json` and 2,000 through `core/signal-description.json`. `core/reporting-delivery-offering-id.json` lowers 3 `offering_id` limits from 255 to 128 and adds a pattern.
 - `core/media-buy-id.json`, `core/account-id.json`, and `core/creative-evaluation-id.json` state `maxLength: 255`, so every site that references them gains it.
 - `core/cancellation-reason.json` and `core/signal-description.json` state `minLength: 1`, so these values can't be empty anywhere. `core/account-request-id.json` states the ID pattern.
 - `mraid_versions` in `get_adcp_capabilities` accepts `2.0` or `3.0`, the values of `enums/mraid-version.json`, instead of any MAJOR.MINOR.

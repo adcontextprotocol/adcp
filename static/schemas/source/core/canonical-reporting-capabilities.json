@@ -8,7 +8,7 @@
     "available_reporting_frequencies": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-frequency.json" }, "minItems": 1, "uniqueItems": true },
     "expected_delay_minutes": { "type": "integer", "minimum": 0 },
     "timezone": {
-      "type": "string",
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Explicit reporting-period timezone for this product. It may equal Account.timezone or differ when the upstream platform reports on a separate boundary."
     },
     "supports_webhooks": { "type": "boolean" },

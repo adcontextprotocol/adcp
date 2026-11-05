@@ -76,7 +76,7 @@
       "minimum": 0
     },
     "budget_cap_timezone": {
-      "type": "string",
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "IANA timezone defining the calendar-day boundary for every daily cap on the planned media buy."
     },
     "currency": {

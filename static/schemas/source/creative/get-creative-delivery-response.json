@@ -39,7 +39,7 @@
           "description": "ISO 8601 end timestamp"
         },
         "timezone": {
-          "type": "string",
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "IANA timezone identifier for the reporting period (e.g., 'America/New_York', 'UTC'). Platforms report in their native timezone."
         }
       },

@@ -9,6 +9,5 @@
     "composition": "Population share, as a fraction in [0,1].",
     "index": "Ratio to a baseline population; 1.0 matches the baseline.",
     "reach_estimate": "Estimated reachable count of people."
-  },
-  "x-added-in": "3.2.0"
+  }
 }
