@@ -123,7 +123,9 @@ beforeAll(() => {
     writeFileSync(indexPath, JSON.stringify({ ...index, adcp_version: version }));
     registerExternalSchemaRoot(version, schemaRoot);
   }
-});
+  // Two full copies and rewrites of the schema tree; the default 10 s hook
+  // budget is too tight for that much synchronous I/O on a busy machine.
+}, 60_000);
 afterAll(() => {
   for (const version of ['3.2.4', '3.3.0']) unregisterExternalSchemaRoot(version);
   for (const schemaRoot of schemaRoots) rmSync(schemaRoot, { recursive: true, force: true });
