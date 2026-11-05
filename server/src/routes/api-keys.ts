@@ -510,6 +510,8 @@ export function createApiKeysRouter(): Router {
         } catch (error) {
           const status = error instanceof KeyManagementAuthorizationError ? error.status
             : error instanceof ApiKeyManagementStateChangedError ? 403 : 503;
+          logger.warn({ ...membership.actor, organizationId: membership.organizationId, apiKeyId: result.id, status },
+            "API key created but secret withheld; reconciliation required");
           throw new KeyMutationError(status,
             "API key was created, but its value could not be returned. Check the key list before trying again.");
         }

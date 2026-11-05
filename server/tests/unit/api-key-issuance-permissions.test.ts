@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
   fetch: vi.fn(),
   info: vi.fn(),
+  warn: vi.fn(),
   request: null as express.Request | null,
   previousSnapshot: undefined as AuthorizationSnapshot | undefined,
 }));
@@ -43,7 +44,7 @@ vi.mock('../../src/db/client.js', () => ({
   getPool: () => ({ connect: mocks.connect }),
 }));
 vi.mock('../../src/logger.js', () => ({
-  createLogger: () => ({ info: mocks.info, warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: mocks.info, warn: mocks.warn, error: vi.fn() }),
 }));
 
 vi.mock('../../src/middleware/auth.js', () => ({
@@ -1050,6 +1051,11 @@ describe('exact credential API key authorization', () => {
     expect(response.body.error).toContain('Check the key list before trying again');
     expect(response.text).not.toContain('secret');
     expect(mocks.info).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({
+      userId: 'user_caller', authWorkosUserId: 'user_caller', identityId: undefined,
+      organizationId: 'org_target', apiKeyId: 'key_created', status: response.status,
+    }, 'API key created but secret withheld; reconciliation required');
+    expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain('"secret"');
     expect(mocks.fetch).toHaveBeenCalledOnce();
   });
 
