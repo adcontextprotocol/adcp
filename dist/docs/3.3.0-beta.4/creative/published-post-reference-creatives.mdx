@@ -1,0 +1,168 @@
+---
+title: Published Post Reference Creatives
+description: "Use canonical formats with a published_post reference asset when a product boosts or sponsors an existing post."
+"og:title": "AdCP — Published Post Reference Creatives"
+---
+
+# Published Post Reference Creatives
+
+Published-post reference creatives are existing posts that a seller resolves and serves after platform authorization and review. They do not need a new `format_kind`: the creative shape is still `video_hosted`, `image`, or `native_in_feed`; the difference is that the buyer ships a `published_post` reference instead of uploaded media bytes.
+
+Use this pattern for boosted/sponsored post products where the source object already exists on a publisher, creator, or social platform. Do not use it for catalog-driven retail media; retail media remains `sponsored_placement` with a `source_catalog` slot.
+
+## Product declaration
+
+The product declares the canonical format, sets `asset_source: "publisher_owned_reference"`, rejects uploaded bytes when appropriate, and uses a `published_post` slot.
+
+```json
+{
+  "format_kind": "video_hosted",
+  "format_option_id": "shortloop_reference_video",
+  "canonical_formats_only": true,
+  "params": {
+    "asset_source": "publisher_owned_reference",
+    "buyer_asset_acceptance": "rejected",
+    "reference_mutability": "mutable_requires_reapproval",
+    "required_connections": [
+      {
+        "provider": "social.example",
+        "connection_type": "advertiser_account",
+        "required_for": ["sync_creatives", "create_media_buy"],
+        "scope": "account"
+      },
+      {
+        "provider": "social.example",
+        "connection_type": "publisher_identity",
+        "required_for": ["list_creatives", "sync_creatives", "create_media_buy"],
+        "scope": "identity",
+        "authorization_instructions": "Connect the creator or page that owns the source post."
+      }
+    ],
+    "orientation": "vertical",
+    "slots": [
+      {
+        "asset_group_id": "published_post",
+        "asset_type": "published_post",
+        "required": true
+      },
+      {
+        "asset_group_id": "primary_text",
+        "asset_type": "text",
+        "required": false,
+        "max_chars": 150
+      },
+      {
+        "asset_group_id": "landing_page_url",
+        "asset_type": "url",
+        "required": false
+      }
+    ]
+  }
+}
+```
+
+`asset_source` is informational. The binding contract is still `params.slots[]`: buyers know they must submit a `published_post` asset, not a `video` upload.
+
+## Downstream connections
+
+Published-post products often need more than one downstream platform grant. A short-video platform, for example, may require an advertiser account connection to buy ads and a separate publisher identity connection for the creator, page, or profile that owns the source post.
+
+AdCP does not model those as multiple AdCP authentications. The caller authenticates to the seller once. The seller stores and uses downstream connections to call the platform on the buyer's behalf, and declares those requirements with `params.required_connections[]`.
+
+Use `connection_type` to distinguish the platform grants:
+
+| Connection type | Meaning |
+|---|---|
+| `advertiser_account` | Platform account used to buy, manage, or report on ads. |
+| `publisher_identity` | Creator, page, channel, organization, or profile that owns published posts. |
+| `post_authorization` | Post-scoped grant when the platform authorizes individual posts instead of, or in addition to, the owning identity. |
+
+If a call cannot proceed because one of those downstream grants is missing, expired, or revoked, return `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`. Each blocked entry must include either `provider` or `authorization_url` so a buyer can route the human to the correct provider-specific connection flow. Entries can also carry `authorization_instructions` and a safe `resource_ref` hint such as the post URL or profile URL.
+
+`required_for` carries concrete AdCP operation names, not broad categories. Prefer values such as `list_creatives`, `sync_creatives`, `create_media_buy`, `get_media_buy_delivery`, or `get_creative_delivery` so buyer agents can route connection prompts to the operation they are about to perform.
+
+When a manifest uses `platform_post_id` without `post_url`, include `platform` unless the selected product or format option already narrows the platform. A bare platform-native id is otherwise ambiguous across provider namespaces.
+
+## Creative manifest
+
+The creative manifest uses the same canonical path as any other 3.1 creative. The only new part is the asset payload.
+
+```json
+{
+  "format_kind": "video_hosted",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "shortloop_reference_video"
+  },
+  "assets": {
+    "published_post": {
+      "asset_type": "published_post",
+      "post_url": "https://social.example/@acme/post/12345"
+    },
+    "primary_text": {
+      "asset_type": "text",
+      "content": "New seasonal styles are available now."
+    },
+    "landing_page_url": {
+      "asset_type": "url",
+      "url_type": "clickthrough",
+      "url": "https://acme.example/summer"
+    }
+  }
+}
+```
+
+If the seller can resolve the post but needs creator/page authorization before paid serving, it returns `AUTHORIZATION_REQUIRED` with recovery details in `error.details`, preferably `missing_connections[]`.
+
+`reference_authorization` on a `published_post` asset is server-emitted authorization state. Sellers may return it on read surfaces, but must ignore buyer-supplied authorization-state claims on write requests unless a platform extension defines a signed proof and the seller verifies that proof.
+
+```json
+{
+  "errors": [
+    {
+      "code": "AUTHORIZATION_REQUIRED",
+      "message": "Connect the publisher identity that owns this post before paid serving.",
+      "field": "creatives[0].assets.published_post",
+      "details": {
+        "missing_connections": [
+          {
+            "provider": "social.example",
+            "connection_type": "publisher_identity",
+            "required_for": ["sync_creatives"],
+            "scope": "identity",
+            "status": "missing",
+            "resource_ref": {
+              "post_url": "https://social.example/@acme/post/12345"
+            },
+            "authorization_url": "https://seller.example/connections/social/authorize?post=12345",
+            "authorization_instructions": "Connect the creator or page that owns the source post."
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+## Lifecycle
+
+Published-post references can become unavailable after approval. Use `suspended` when the issue is recoverable:
+
+| Condition | Lifecycle result | Reason code |
+|---|---|---|
+| Authorization revoked | `suspended` | `identity_authorization_revoked` |
+| Authorization expired | `suspended` | `identity_authorization_expired` |
+| Source post becomes private | `suspended` | `source_private` |
+| Source post deleted | status `archived`/`rejected`, or `creative.purged` event | `source_deleted` |
+
+For active buys, a suspended creative also creates a media-buy impairment with `resource_type: "creative"` and `transition.to: "suspended"`. Buyers reconcile the creative snapshot via `list_creatives` and the buy snapshot via `get_media_buys`; webhook ordering is not guaranteed.
+
+If the seller later determines the dependency cannot be restored for that creative, it may transition `suspended → rejected` with the same reason family, such as `identity_authorization_revoked`. The buyer then needs to replace the referenced post or resubmit a different creative.
+
+## Discovery boundary
+
+`list_creatives` is a library/read surface, not a post search API. Sellers MAY expose already-authorized or previously-synced post references as virtual creatives in `list_creatives`, but AdCP does not require sellers to enumerate every native platform post.
+
+For platforms that require publisher identity authorization, `list_creatives` can only enumerate posts the seller is allowed to see through connected identities. If the buyer asks for a published-post library view and the required publisher identity connection is missing, the seller should return `AUTHORIZATION_REQUIRED` with `missing_connections[]` rather than silently implying there are no posts.
+
+When the buyer already knows the post URL or platform post ID, `sync_creatives` is the canonical write path. If the seller cannot serve it yet because authorization is missing, the correct response is `AUTHORIZATION_REQUIRED`, not a new identity-discovery task.
