@@ -1228,7 +1228,7 @@ registry.registerPath({
       search: z.string().optional(),
       house_domain: z.string().optional().openapi({
         example: 'pg.com',
-        description: 'Return only brands whose `house_domain` is this domain, so a client can list the brands recorded under a house. `stats` honours the filter. A brand\'s `house_domain` is a claim unless its `relationship_trust` is `inline` or `mutual`.',
+        description: 'Return only brands recorded under this house: a `house_domain` or a `claimed_house_domain` equal to this domain. `stats` honours the filter. Use each row\'s `relationship_trust` to tell a confirmed relationship (`inline`, `mutual`) from a claim; an absent value means trust has not been computed yet.',
       }),
       limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
       offset: z.string().optional().openapi({ type: 'integer', example: 0 }),

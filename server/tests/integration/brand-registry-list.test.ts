@@ -431,6 +431,28 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       expect(result).toEqual([]);
     });
 
+    it('includes a brand whose claim to the house is unconfirmed', async () => {
+      await seedHouse();
+      // After a crawl computes trust, a one-sided claim moves from house_domain
+      // to claimed_house_domain. The house's list must still include it.
+      await insertBrand({ domain: 'sub-claim.example.com', brand_name: 'Sub Claim', source_type: 'brand_json' });
+      await pool.query(
+        `UPDATE brands
+         SET relationship_trust = 'leaf_only',
+             claimed_house_domain = 'house.example.com',
+             house_domain = NULL
+         WHERE domain = 'sub-claim.example.com'`
+      );
+      const result = await brandDb.getAllBrandsForRegistry({ house_domain: 'house.example.com' });
+      const claim = result.find((b) => b.domain === 'sub-claim.example.com');
+      expect(claim).toBeDefined();
+      expect(claim!.relationship_trust).toBe('leaf_only');
+      expect(claim!.claimed_house_domain).toBe('house.example.com');
+      expect(result.length).toBe(3);
+      const stats = await brandDb.getBrandRegistryStats(undefined, 'house.example.com');
+      expect(stats.total).toBe(3);
+    });
+
     it('narrows the stats the same way', async () => {
       await seedHouse();
       const stats = await brandDb.getBrandRegistryStats(undefined, 'house.example.com');

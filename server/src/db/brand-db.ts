@@ -1360,9 +1360,15 @@ export class BrandDatabase {
       paramIndex++;
     }
 
+    // A brand under a house is either a confirmed edge (house_domain) or the
+    // brand's own unconfirmed claim (claimed_house_domain); relationship_trust
+    // on each row says which.
     if (options.house_domain) {
-      conditions.push(`brands.house_domain = $${paramIndex++}`);
+      conditions.push(
+        `(brands.house_domain = $${paramIndex} OR brands.claimed_house_domain = $${paramIndex})`
+      );
       params.push(options.house_domain.toLowerCase());
+      paramIndex++;
     }
 
     if (options.source) {
@@ -1474,8 +1480,9 @@ export class BrandDatabase {
     }
 
     if (houseDomain) {
-      conditions.push(`house_domain = $${paramIndex++}`);
+      conditions.push(`(house_domain = $${paramIndex} OR claimed_house_domain = $${paramIndex})`);
       params.push(houseDomain.toLowerCase());
+      paramIndex++;
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
