@@ -16,7 +16,10 @@
  *   - a 4.0 annotation (`x-max-items-4.0`, `x-max-length-4.0`,
  *     `x-max-properties-4.0`), used on a field that was stable before 3.3.
  *     Adding a bound there is a tightening, which a minor release may not
- *     make, so 3.x states it as a SHOULD and 4.0 enforces it.
+ *     make, so 3.x states it as a SHOULD and 4.0 enforces it. A position can
+ *     carry both, when 4.0 plans a lower limit than the keyword a 3.x release
+ *     published, such as the 64-character IANA timezone identifier that 3.x
+ *     enforces at 255.
  *
  * Exempt from a keyword, because the schema already bounds them:
  *   - a string with `enum`, `const`, or `format` (a format is priced with the
@@ -278,7 +281,8 @@ function describe(node, keyword, exempt) {
  *
  * mode `enforced`  counts the keywords the schema validates today; a position
  *                  with only a 4.0 annotation is unbounded (Infinity).
- * mode `4.0`       also counts the 4.0 annotations.
+ * mode `4.0`       also counts the 4.0 annotations. A position with both takes
+ *                  the lower of the two.
  *
  * Every declared member is assumed present, every array and map full, and
  * every string at its maximum length. A union takes its widest branch. Members
@@ -291,10 +295,14 @@ function worstCase(mode, rootFile = ROOT_FILE) {
   const unbounded = new Set();
   const memo = new Map();
 
+  // In 4.0 mode a position takes the tighter of its keyword and its 4.0
+  // annotation: an annotation below the keyword is the limit 4.0 plans.
   const bound = (node, keyword) => {
-    if (node[keyword] !== undefined) return node[keyword];
-    if (mode === '4.0' && node[ANNOTATION[keyword]] !== undefined) return node[ANNOTATION[keyword]];
-    return undefined;
+    const enforced = node[keyword];
+    const planned = mode === '4.0' ? node[ANNOTATION[keyword]] : undefined;
+    if (enforced === undefined) return planned;
+    if (planned === undefined) return enforced;
+    return Math.min(enforced, planned);
   };
 
   function stringBytes(node, key) {

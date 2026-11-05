@@ -10,5 +10,6 @@
   "not": { "const": "inventory_local" },
   "x-adcp-validation": {
     "iana_timezone": "value_must_resolve_in_the_implementations_supported_IANA_TZDB"
-  }
+  },
+  "x-max-length-4.0": 64
 }
