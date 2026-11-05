@@ -22,10 +22,13 @@ function processClient(options: { principal?: string; context?: Record<string, u
   const program = `
     import { createInterface } from 'node:readline';
     import { initializeDatabase, closeDatabase } from ${JSON.stringify(new URL('../../src/db/client.ts', import.meta.url).href)};
-    import { seedAccountFixture, isNaturalAccountRefProvisioned, clearAccountStoreForSession,
+    // Initialize shared tool schemas through the production router bootstrap
+    // before loading its private account helpers in this fresh ESM process.
+    await import(${JSON.stringify(new URL('../../src/training-agent/index.ts', import.meta.url).href)});
+    const { seedAccountFixture, isNaturalAccountRefProvisioned, clearAccountStoreForSession,
       rehydrateAccountById, accountRefForId, handleListAccounts, handleSyncAccounts
-    } from ${JSON.stringify(new URL('../../src/training-agent/account-handlers.ts', import.meta.url).href)};
-    import { sessionKeyFromArgs } from ${JSON.stringify(new URL('../../src/training-agent/state.ts', import.meta.url).href)};
+    } = await import(${JSON.stringify(new URL('../../src/training-agent/account-handlers.ts', import.meta.url).href)});
+    const { sessionKeyFromArgs } = await import(${JSON.stringify(new URL('../../src/training-agent/state.ts', import.meta.url).href)});
     const { principal, fixture, context } = JSON.parse(process.env.SEED_ACCOUNT_TEST_INPUT);
     const ctx = { mode: 'open', ...context, principal };
     initializeDatabase({ connectionString: process.env.DATABASE_URL });
