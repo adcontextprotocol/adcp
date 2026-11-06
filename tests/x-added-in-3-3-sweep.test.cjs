@@ -98,7 +98,6 @@ const PROPERTIES_3_3 = [
   ['core/notification-config.json', ['properties', 'signing_profile']],
   ['core/push-notification-config.json', ['properties', 'signing_profile']],
   ['core/reporting-webhook.json', ['properties', 'signing_profile']],
-  ['media-buy/create-media-buy-request.json', ['properties', 'artifact_webhook', 'properties', 'signing_profile']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'profiles']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'webhook_signing', 'properties', 'profiles']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'event_source_archive']],

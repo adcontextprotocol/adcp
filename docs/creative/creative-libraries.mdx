@@ -159,8 +159,9 @@ After upload, the creative enters the library's review process. Check `list_crea
 In AdCP 3.3, a buyer can book first and assign a library creative while it is
 `pending_review` or `rejected`. The assignment persists through correction and
 review under the same ID. Eligible approved assignments serve by default;
-`start_requires_all_creatives_approved: true` on a package holds its first
-delivery until every assignment has package approval. See the [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review).
+`start_requires_all_creatives_approved: true`, set on a package through
+`control_media_buy`, holds its first delivery until every assignment has
+package approval. See the [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review).
 
 ### Prepare creatives before a time-sensitive launch
 

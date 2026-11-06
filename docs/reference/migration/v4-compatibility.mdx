@@ -127,17 +127,6 @@ No storyboard step inspects every annotated field, so the suite reports this che
 
 **4.0 follow-up:** the structural bounds are the protocol's limit on the capabilities document. `MAX_CAPABILITIES_BYTES` (64 KiB) stays only as a receiver backstop against runaway or hostile documents, and 4.0 does not lean on it. With the current bounds, the largest schema-valid document is 87 MiB. The way to lower that ceiling is to tighten the nested object lists that multiply it before the annotations become keywords: the brand reference (`brand_kit_override`, `provenance`), the creative format declaration (`macro_resolution_capabilities`), the attestation issuer entry, the audience activation method, and the geographic place system.
 
-<a id="purchase_target_audiences_required_in_4_0"></a>
-### Purchases carry target audiences
-
-**Check id:** `purchase_target_audiences_required_in_4_0` · **Change:** new requirement
-
-**Detects:** a seller that lists `media_buy.audience_evidence_targets` in `experimental_features` does not accept `target_audiences` on `buy_products` purchases and `list_products` `offer_filters`.
-
-In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `create_media_buy` packages. It was also on `get_products` filters through `3.3.0-beta.5` and is withdrawn from that deprecated task ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). A purchase records its terms in `product-purchase.json`, which is held closed with the commercial terms until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so `buy_products` purchases gain the field in 4.0, and `list_products` `offer_filters` gains it with them.
-
-**Fix:** accept the sibling on those surfaces and record it in the accepted purchase snapshot. Until 4.0, a buyer that needs an audit record keeps its own copy of the requirements and targets it sent. A 3.x run cannot observe this check, so it reports as not observable.
-
 ## Planned for 4.0: withdrawn from 3.3
 
 The three checks below record 3.3 features that are withdrawn and planned for 4.0. All three add terms to `commercial_terms`. The `commercial-terms` schema is held closed until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so these features wait for 4.0, where `commercial_terms` gets a declared extension point with must-understand. The decision and its reasoning are in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501). The [3.3 migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) says what changed between `3.3.0-beta.0` and `3.3.0-beta.1`.
@@ -210,16 +199,49 @@ In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/doc
 
 **Fix:** until 4.0, send a seller offer for every seller-initiated change to a signed buy. A 3.x run cannot observe this check, so it reports as not observable.
 
+<a id="purchase_target_audiences_required_in_4_0"></a>
+### Purchases carry target audiences
+
+**Check id:** `purchase_target_audiences_required_in_4_0` · **Change:** new requirement · **Issue:** [#8125](https://github.com/adcontextprotocol/adcp/issues/8125)
+
+**Detects:** a seller does not accept `target_audiences` beside `audience_evidence_requirements` on `buy_products` purchases and `list_products` `offer_filters`, or does not record it in the accepted purchase snapshot.
+
+**What it was:** experimental `media_buy.audience_evidence_targets` ([#8215](https://github.com/adcontextprotocol/adcp/pull/8215), from `3.3.0-beta.1`), a `target_audiences[]` sibling of `audience_evidence_requirements` that names the audience a buyer wants evidence for. It shipped only on the deprecated `get_products` filters and `create_media_buy` and `update_media_buy` packages, and is withdrawn from both, because 3.3 adds nothing to deprecated tasks ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). No 3.3 wire form remains, and the feature id is not registered. The `buy_products` purchase input (`product-purchase-input.json`) and the `list_products` `offer_filters` are open in 3.3 but do not define it, and the accepted purchase snapshot (`product-purchase.json`) is held closed with the commercial terms until 4.0, so all three gain the field in 4.0.
+
+**Design to keep:**
+
+- Each target has an `audience` (`audience-characteristic`), a `relationship` (`composition`, `index`, or `reach_estimate`, the values of `audience_evidence[].relationship`), and a `minimum_value` in the unit the relationship implies: a fraction in [0,1] for `composition`, a ratio for `index`, an integer count for `reach_estimate`. The list held 1 to 10 unique targets and required the sibling `audience_evidence_requirements`.
+- A product satisfies a target only through an admissible `audience_evidence` item: one that passes every other constraint in the sibling requirements, whose `audience` matches the target exactly, whose `relationship` equals the target's, and whose `value` is at least `minimum_value`.
+- Audience match is exact. `dimension`, `value` or `range`, and `taxonomy` form a canonical key, and `label` is never compared. A range matches only the same range, set values compare as unordered sets, a scalar never matches a set or a range, and `taxonomy` (`system`, `version`, `value_id`) is compared as a whole. There is no superset, subset, or adjusted-share matching.
+- Several targets combine with AND, and different evidence items may satisfy different targets.
+- `requirement_mode: "required"` excludes a product that publishes evidence but misses a target, and `evidence_presence` decides a product that publishes none. `preferred` never excludes: a product that satisfies more targets never ranks below one that satisfies fewer when the seller's other inputs are equal, and every satisfying snapshot is returned in `audience_evidence_selections[]`. On a purchase, where there is no product to exclude, an unsatisfied required target is rejected rather than dropped.
+- A target is never a targeting predicate, impression-level proof, or legal-age verification. `index` targets carry no baseline.
+
+**Where it is preserved:** commit `d9b5417bc` (#8215) carries `core/audience-evidence-target.json`, `enums/audience-evidence-relationship.json`, the normative text in `docs/media-buy/task-reference/get_products.mdx#target-audiences-experimental`, and `tests/audience-evidence-targets.test.cjs`, whose semantics block is a reference model of these rules with worked cases. The released `3.3.0-beta.1` through `3.3.0-beta.5` bundles under `dist/` keep the schemas.
+
+**What 4.0 needs:** the field on the purchase and offer-filter schemas, its echo in the accepted purchase snapshot, and a decision on whether per-target satisfaction is reported. Until then, a buyer that needs an audit record keeps its own copy of the requirements and targets it sent. A 3.x run cannot observe this check, so it reports as not observable.
+
 <a id="canonical_counting_mechanisms_required_in_4_0"></a>
 ### Canonical terms carry counting mechanisms
 
 **Check id:** `canonical_counting_mechanisms_required_in_4_0` · **Change:** new requirement
 
-**Detects:** a seller that lists `media_buy.measurement_provenance` in `experimental_features` declares `counting_mechanisms` on `measurement_terms.billing_measurement` but not on the canonical commercial terms.
+**Detects:** a seller that lists `media_buy.measurement_provenance` in `experimental_features` cannot declare `counting_mechanisms` on the canonical commercial terms' `billing_measurement`.
 
-In 3.3 the experimental `billing_measurement.counting_mechanisms[]` is carried on `core/measurement-terms.json` only. `core/canonical-measurement-terms.json` holds terms the buyer is bound by and is held closed until 4.0, so the canonical terms gain the field in 4.0.
+**What it was:** the experimental `billing_measurement.counting_mechanisms[]` on `core/measurement-terms.json` ([#7940](https://github.com/adcontextprotocol/adcp/pull/7940), published from `3.3.0-beta.2`). That schema is used only by the deprecated `get_products`, `create_media_buy`, and `update_media_buy` tasks, so the field is withdrawn from 3.3: 3.3 adds nothing to deprecated tasks ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). `core/canonical-measurement-terms.json` holds terms the buyer is bound by and is held closed until 4.0, so the declaration waits for 4.0.
 
-**Fix:** declare `counting_mechanisms` on the canonical terms as well. A 3.x run cannot observe this check, so it reports as not observable.
+**What stays in 3.3:** `enums/collection-mechanism.json` and `vendor_metric_provenance[].mechanisms[]` on delivery rows, under the same `media_buy.measurement_provenance` feature id.
+
+**Design to keep:**
+
+- `vendor` says who counts the billing metric; `counting_mechanisms` says what it is counted from, as a set of `collection-mechanism` values (`minItems: 1`, unique, order carries no meaning). It is not `measurement_source`, which names the provider.
+- Only mechanisms whose events enter the billed count are listed. Cross-check mechanisms are not, and the merge rule for several mechanisms is in the seller's methodology.
+- It is a claim enforced through the contract (`vendor`, `max_variance_percent`, `makegood_policy`), not a conformance probe. Absence means undeclared, never a default source.
+- On a product it is the seller's default; on a package request, the buyer's proposed term (the seller may accept, adjust, or reject with `TERMS_REJECTED`); on a confirmed package, the agreed term. A seller, or its ad server, that is itself the named `vendor` should declare it.
+
+**Where it is preserved:** commit `709aa5f01` (#7940) carries the `measurement-terms.json` field and `tests/collection-mechanism.test.cjs`.
+
+**What 4.0 needs:** the field on `core/canonical-measurement-terms.json`. A 3.x run cannot observe this check, so it reports as not observable.
 
 <a id="canonical_price_adjustments_required_in_4_0"></a>
 ### Canonical pricing options carry price adjustments
