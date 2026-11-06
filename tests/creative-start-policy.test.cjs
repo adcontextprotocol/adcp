@@ -19,7 +19,6 @@ const withdrawnSurfaces = [
   'media-buy/package-request.json',
   'media-buy/package-update.json',
   'core/package.json',
-  'media-buy/package-forecast-input.json',
 ];
 
 // True when any object in the schema declares FIELD as a property (prose mentions don't count).
@@ -54,6 +53,8 @@ test('the deprecated create/update package schemas no longer carry the creative 
   for (const name of withdrawnSurfaces) {
     assert.equal(declaresField(readSchema(name)), false, name);
   }
+  // The get_products exact-package forecast input that mirrored the package row is withdrawn too.
+  assert.equal(fs.existsSync(path.join(SCHEMA_ROOT, 'media-buy/package-forecast-input.json')), false);
 });
 
 test('control and the get_media_buys readback carry the same initial-start contract', () => {
