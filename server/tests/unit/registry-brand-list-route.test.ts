@@ -25,10 +25,17 @@ const EMPTY_STATS = {
   with_manifest: 0,
 };
 
+const PG_HOUSE = {
+  domain: 'pg.com',
+  record: { brand_name: 'Procter & Gamble', verified: true },
+  declared_brand_domains: ['tide.com'],
+};
+
 function buildApp() {
   const brandDb = {
     getAllBrandsForRegistry: vi.fn().mockResolvedValue([]),
     getBrandRegistryStats: vi.fn().mockResolvedValue(EMPTY_STATS),
+    getRegistryHouse: vi.fn().mockResolvedValue(PG_HOUSE),
   };
   const app = express();
   const passAuth: express.RequestHandler = (_req, _res, next) => next();
@@ -51,24 +58,37 @@ function buildApp() {
 }
 
 describe('GET /api/brands/registry house_domain filter', () => {
-  it('passes the normalised house domain to the list and the stats', async () => {
+  it('reads the normalised house once and scopes the list and the stats to it', async () => {
     const { app, brandDb } = buildApp();
-    const res = await request(app).get('/api/brands/registry?house_domain=https://PG.com/');
+    const res = await request(app).get('/api/brands/registry?house_domain=https://www.PG.com/');
     expect(res.status).toBe(200);
+    expect(brandDb.getRegistryHouse).toHaveBeenCalledTimes(1);
+    expect(brandDb.getRegistryHouse).toHaveBeenCalledWith('pg.com');
     expect(brandDb.getAllBrandsForRegistry).toHaveBeenCalledWith(
-      expect.objectContaining({ house_domain: 'pg.com' }),
+      expect.objectContaining({ house: PG_HOUSE }),
     );
-    expect(brandDb.getBrandRegistryStats).toHaveBeenCalledWith(undefined, 'pg.com');
+    expect(brandDb.getBrandRegistryStats).toHaveBeenCalledWith(undefined, PG_HOUSE);
+    expect(res.body.house).toEqual({ domain: 'pg.com', brand_name: 'Procter & Gamble', verified: true });
+  });
+
+  it('returns house as null when the registry has no record for it', async () => {
+    const { app, brandDb } = buildApp();
+    brandDb.getRegistryHouse.mockResolvedValue({ domain: 'unknown.com', record: null, declared_brand_domains: [] });
+    const res = await request(app).get('/api/brands/registry?house_domain=unknown.com');
+    expect(res.status).toBe(200);
+    expect(res.body.house).toBeNull();
   });
 
   it('leaves the filter off when the parameter is absent', async () => {
     const { app, brandDb } = buildApp();
     const res = await request(app).get('/api/brands/registry?search=tide');
     expect(res.status).toBe(200);
+    expect(brandDb.getRegistryHouse).not.toHaveBeenCalled();
     expect(brandDb.getAllBrandsForRegistry).toHaveBeenCalledWith(
-      expect.objectContaining({ search: 'tide', house_domain: undefined }),
+      expect.objectContaining({ search: 'tide', house: undefined }),
     );
     expect(brandDb.getBrandRegistryStats).toHaveBeenCalledWith('tide', undefined);
+    expect(res.body).not.toHaveProperty('house');
   });
 
   it('refuses a value that is not a domain', async () => {
@@ -84,4 +104,15 @@ describe('GET /api/brands/registry house_domain filter', () => {
     expect(res.status).toBe(400);
     expect(brandDb.getAllBrandsForRegistry).not.toHaveBeenCalled();
   });
+
+  it.each(['house_domain=pg.com&house_domain=unilever.com', 'search=a&search=b', 'source=hosted&source=community'])(
+    'refuses a parameter given twice (%s)',
+    async (queryString) => {
+      const { app, brandDb } = buildApp();
+      const res = await request(app).get(`/api/brands/registry?${queryString}`);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/must be provided only once/);
+      expect(brandDb.getAllBrandsForRegistry).not.toHaveBeenCalled();
+    },
+  );
 });

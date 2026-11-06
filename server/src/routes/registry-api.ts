@@ -183,6 +183,7 @@ import {
 import type { BrandManager } from "../brand-manager.js";
 import { resolveBrandFromJson, type BrandDatabase } from "../db/brand-db.js";
 import { selectBrandEntry } from "../services/brand-entry-selection.js";
+import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
 import type { PropertyDatabase } from "../db/property-db.js";
 import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
@@ -949,6 +950,17 @@ function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
 }
 
+function getSingleQueryParam(value: unknown, name: string): { value?: string; error?: string } {
+  if (value == null) return {};
+  if (Array.isArray(value)) {
+    return { error: `${name} must be provided only once` };
+  }
+  if (typeof value !== "string") {
+    return { error: `${name} must be a string` };
+  }
+  return { value };
+}
+
 // ── Config ──────────────────────────────────────────────────────
 
 export interface RegistryApiConfig {
@@ -1228,7 +1240,7 @@ registry.registerPath({
       search: z.string().optional(),
       house_domain: z.string().optional().openapi({
         example: 'pg.com',
-        description: 'Return only brands recorded under this house: a `house_domain` or a `claimed_house_domain` equal to this domain. `stats` honours the filter. Use each row\'s `relationship_trust` to tell a confirmed relationship (`inline`, `mutual`) from a claim; an absent value means trust has not been computed yet.',
+        description: 'List the brands linked to this house by any evidence, each with a `house_link` saying how the link is known: `confirmed` (both sides, or the brand redirects to the house), `house_declared` (the house lists the brand in its own manifest and has shown it controls its domain), `brand_declared` (the brand names the house in its own brand.json) or `inferred` (an enrichment or community record). Only `confirmed` extends trust. `stats` honours the filter, and the response adds the house\'s own record as `house`.',
       }),
       limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
       offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
@@ -1255,12 +1267,21 @@ registry.registerPath({
               sub_brands: z.number().int(),
               with_manifest: z.number().int(),
             }),
+            house: z.object({
+              domain: z.string().openapi({ example: 'pg.com' }),
+              brand_name: z.string().openapi({ example: 'Procter & Gamble' }),
+              verified: z.boolean().openapi({
+                description: 'The house has shown it controls its domain. Only a verified house\'s manifest produces `house_declared` links.',
+              }),
+            }).nullable().optional().openapi({
+              description: 'Present when `house_domain` is set: the house\'s own registry record, or null when the registry has no public record for it.',
+            }),
           }),
         },
       },
     },
     400: {
-      description: "Invalid source filter value",
+      description: "Invalid source filter, a house_domain that is not a domain, or a parameter given more than once",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -5449,29 +5470,43 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/brands/registry", async (req, res) => {
     try {
-      const search = req.query.search as string | undefined;
+      const searchParam = getSingleQueryParam(req.query.search, "search");
+      const sourceParam = getSingleQueryParam(req.query.source, "source");
+      const houseDomainParam = getSingleQueryParam(req.query.house_domain, "house_domain");
+      const paramError = searchParam.error ?? sourceParam.error ?? houseDomainParam.error;
+      if (paramError) {
+        return res.status(400).json({ error: paramError });
+      }
+
+      const search = searchParam.value;
       const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 5000) : undefined;
       const offset = parseInt(req.query.offset as string) || 0;
-      const sourceParam = req.query.source as string | undefined;
 
-      if (sourceParam && !(BRAND_SOURCE_VALUES as readonly string[]).includes(sourceParam)) {
+      if (sourceParam.value && !(BRAND_SOURCE_VALUES as readonly string[]).includes(sourceParam.value)) {
         return res.status(400).json({ error: `Invalid source filter. Valid values: ${BRAND_SOURCE_VALUES.join(', ')}` });
       }
 
-      const source = sourceParam as BrandSourceParam | undefined;
+      const source = sourceParam.value as BrandSourceParam | undefined;
 
-      const houseDomainParam = req.query.house_domain as string | undefined;
-      const house_domain = houseDomainParam !== undefined ? extractDomain(houseDomainParam) : undefined;
+      const house_domain = houseDomainParam.value !== undefined
+        ? canonicalizeBrandDomain(houseDomainParam.value)
+        : undefined;
       if (house_domain !== undefined && !isValidDomain(house_domain)) {
         return res.status(400).json({ error: "house_domain must be a bare domain such as pg.com" });
       }
 
+      const house = house_domain !== undefined ? await brandDb.getRegistryHouse(house_domain) : undefined;
       const [brands, stats] = await Promise.all([
-        brandDb.getAllBrandsForRegistry({ search, limit, offset, source, house_domain }),
-        brandDb.getBrandRegistryStats(search, house_domain),
+        brandDb.getAllBrandsForRegistry({ search, limit, offset, source, house }),
+        brandDb.getBrandRegistryStats(search, house),
       ]);
 
-      return res.json({ brands, stats });
+      if (!house) return res.json({ brands, stats });
+      return res.json({
+        brands,
+        stats,
+        house: house.record ? { domain: house.domain, ...house.record } : null,
+      });
     } catch (error) {
       logger.error({ error }, "Failed to list brands");
       return res.status(500).json({ error: "Failed to list brands" });
@@ -12790,17 +12825,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     const MAX_BACKLOG_PAGES_PER_TICK = 10;
     const BACKLOG_YIELD_MS = 100;
     let activeFeedStreams = 0;
-
-    function getSingleQueryParam(value: unknown, name: string): { value?: string; error?: string } {
-      if (value == null) return {};
-      if (Array.isArray(value)) {
-        return { error: `${name} must be provided only once` };
-      }
-      if (typeof value !== "string") {
-        return { error: `${name} must be a string` };
-      }
-      return { value };
-    }
 
     function parseIntegerQueryParam(
       value: unknown,

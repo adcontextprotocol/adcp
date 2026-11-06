@@ -266,6 +266,14 @@ components:
         claimed_house_domain:
           type: string
           description: Unilateral parent claim from the brand's own document. Not trust-extending. Present for `leaf_only` and `unverifiable`.
+        house_link:
+          type: string
+          enum:
+            - confirmed
+            - house_declared
+            - brand_declared
+            - inferred
+          description: "Present when the list is filtered by `house_domain`: how this brand is known to belong to that house. `confirmed` means both sides publish the link or the brand redirects to the house, and is the only value that extends trust. `house_declared` means the house's own manifest lists the brand and the house has shown it controls its domain. `brand_declared` means the brand's own brand.json names the house. `inferred` means an enrichment or community record links them."
       required:
         - domain
         - source
@@ -7128,9 +7136,9 @@ paths:
         - schema:
             type: string
             example: pg.com
-            description: "Return only brands recorded under this house: a `house_domain` or a `claimed_house_domain` equal to this domain. `stats` honours the filter. Use each row's `relationship_trust` to tell a confirmed relationship (`inline`, `mutual`) from a claim; an absent value means trust has not been computed yet."
+            description: "List the brands linked to this house by any evidence, each with a `house_link` saying how the link is known: `confirmed` (both sides, or the brand redirects to the house), `house_declared` (the house lists the brand in its own manifest and has shown it controls its domain), `brand_declared` (the brand names the house in its own brand.json) or `inferred` (an enrichment or community record). Only `confirmed` extends trust. `stats` honours the filter, and the response adds the house's own record as `house`."
           required: false
-          description: "Return only brands recorded under this house: a `house_domain` or a `claimed_house_domain` equal to this domain. `stats` honours the filter. Use each row's `relationship_trust` to tell a confirmed relationship (`inline`, `mutual`) from a claim; an absent value means trust has not been computed yet."
+          description: "List the brands linked to this house by any evidence, each with a `house_link` saying how the link is known: `confirmed` (both sides, or the brand redirects to the house), `house_declared` (the house lists the brand in its own manifest and has shown it controls its domain), `brand_declared` (the brand names the house in its own brand.json) or `inferred` (an enrichment or community record). Only `confirmed` extends trust. `stats` honours the filter, and the response adds the house's own record as `house`."
           name: house_domain
           in: query
         - schema:
@@ -7201,11 +7209,30 @@ paths:
                       - houses
                       - sub_brands
                       - with_manifest
+                  house:
+                    type:
+                      - object
+                      - "null"
+                    properties:
+                      domain:
+                        type: string
+                        example: pg.com
+                      brand_name:
+                        type: string
+                        example: Procter & Gamble
+                      verified:
+                        type: boolean
+                        description: The house has shown it controls its domain. Only a verified house's manifest produces `house_declared` links.
+                    required:
+                      - domain
+                      - brand_name
+                      - verified
+                    description: "Present when `house_domain` is set: the house's own registry record, or null when the registry has no public record for it."
                 required:
                   - brands
                   - stats
         "400":
-          description: Invalid source filter value
+          description: Invalid source filter, a house_domain that is not a domain, or a parameter given more than once
           content:
             application/json:
               schema:

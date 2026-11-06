@@ -380,20 +380,63 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     });
   });
 
-  describe('house_domain filter', () => {
-    async function seedHouse() {
-      await insertBrand({ domain: 'house.example.com', brand_name: 'House', source_type: 'enriched' });
+  describe('house filter', () => {
+    const HOUSE = 'house.example.com';
+
+    async function setTrust(domain: string, trust: string, fields: { house_domain?: string; claimed_house_domain?: string }) {
+      await pool.query(
+        `UPDATE brands
+         SET relationship_trust = $2,
+             house_domain = $3,
+             claimed_house_domain = $4,
+             relationship_trust_computed_at = NOW()
+         WHERE domain = $1`,
+        [domain, trust, fields.house_domain ?? null, fields.claimed_house_domain ?? null],
+      );
+    }
+
+    /**
+     * One brand per kind of evidence, plus brands the house lists that
+     * belong elsewhere by their own account.
+     */
+    async function seedHouse(houseSource: { source_type: string; owner_verified?: boolean }) {
       await insertBrand({
-        domain: 'sub-a.example.com',
-        brand_name: 'Sub A',
-        source_type: 'enriched',
-        house_domain: 'house.example.com',
+        domain: HOUSE,
+        brand_name: 'House',
+        ...houseSource,
+        has_brand_manifest: true,
+        brand_manifest: {
+          house: { domain: HOUSE, name: 'House' },
+          brands: [{ id: 'inline', names: [{ en: 'Inline' }], url: 'https://www.inline-site.example.com' }],
+          brand_refs: [
+            { domain: 'declared.example.com', brand_id: 'declared' },
+            { domain: 'contested.example.com', brand_id: 'contested' },
+            { domain: 'elsewhere.example.com', brand_id: 'elsewhere' },
+            { domain: 'guessed-elsewhere.example.com', brand_id: 'guessed' },
+          ],
+        },
       });
+      await insertBrand({ domain: 'confirmed.example.com', brand_name: 'Confirmed', source_type: 'brand_json' });
+      await setTrust('confirmed.example.com', 'mutual', { house_domain: HOUSE });
+      await insertBrand({ domain: 'declared.example.com', brand_name: 'Declared', source_type: 'enriched' });
+      await insertBrand({ domain: 'inline-site.example.com', brand_name: 'Inline Site', source_type: 'enriched' });
+      await insertBrand({ domain: 'claimant.example.com', brand_name: 'Claimant', source_type: 'brand_json' });
+      await setTrust('claimant.example.com', 'leaf_only', { claimed_house_domain: HOUSE });
       await insertBrand({
-        domain: 'sub-b.example.com',
-        brand_name: 'Sub B',
+        domain: 'inferred.example.com',
+        brand_name: 'Inferred',
         source_type: 'community',
-        house_domain: 'house.example.com',
+        house_domain: HOUSE,
+      });
+      await insertBrand({ domain: 'contested.example.com', brand_name: 'Contested', source_type: 'brand_json' });
+      await setTrust('contested.example.com', 'leaf_only', { claimed_house_domain: 'other-house.example.com' });
+      await insertBrand({ domain: 'elsewhere.example.com', brand_name: 'Elsewhere', source_type: 'brand_json' });
+      await setTrust('elsewhere.example.com', 'mutual', { house_domain: 'other-house.example.com' });
+      await insertBrand({
+        domain: 'guessed-elsewhere.example.com',
+        brand_name: 'Guessed Elsewhere',
+        source_type: 'enriched',
+        house_domain: 'other-house.example.com',
       });
       await insertBrand({
         domain: 'other-sub.example.com',
@@ -403,62 +446,101 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       });
     }
 
-    it('returns only the brands recorded under that house', async () => {
-      await seedHouse();
-      const result = await brandDb.getAllBrandsForRegistry({ house_domain: 'house.example.com' });
-      expect(result.map((b) => b.domain).sort()).toEqual(['sub-a.example.com', 'sub-b.example.com']);
-      result.forEach((b) => expect(b.house_domain).toBe('house.example.com'));
+    async function listLinks(options: { source?: 'community' } = {}) {
+      const house = await brandDb.getRegistryHouse(HOUSE);
+      const brands = await brandDb.getAllBrandsForRegistry({ house, ...options });
+      return Object.fromEntries(brands.map((b) => [b.domain, b.house_link]));
+    }
+
+    it('lists every brand linked to a verified house, labelled by how the link is known', async () => {
+      await seedHouse({ source_type: 'brand_json' });
+      expect(await listLinks()).toEqual({
+        'confirmed.example.com': 'confirmed',
+        'declared.example.com': 'house_declared',
+        'inline-site.example.com': 'house_declared',
+        'guessed-elsewhere.example.com': 'house_declared',
+        'claimant.example.com': 'brand_declared',
+        'inferred.example.com': 'inferred',
+      });
     });
 
-    it('matches the house domain case-insensitively', async () => {
-      await seedHouse();
-      const result = await brandDb.getAllBrandsForRegistry({ house_domain: 'House.Example.com' });
-      expect(result.length).toBe(2);
+    it('keeps the labels once verdicts are computed from stored records', async () => {
+      await seedHouse({ source_type: 'brand_json' });
+      // The stored-record pass copies an enrichment guess into
+      // claimed_house_domain. That is not the brand's own claim, so it must not
+      // read as brand_declared, nor veto the verified house's declaration.
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+      expect(await listLinks()).toEqual({
+        'confirmed.example.com': 'confirmed',
+        'declared.example.com': 'house_declared',
+        'inline-site.example.com': 'house_declared',
+        'guessed-elsewhere.example.com': 'house_declared',
+        'claimant.example.com': 'brand_declared',
+        'inferred.example.com': 'inferred',
+      });
+    });
+
+    it('reads the manifest of an owner-verified hosted house', async () => {
+      await seedHouse({ source_type: 'community', owner_verified: true });
+      const links = await listLinks();
+      expect(links['declared.example.com']).toBe('house_declared');
+      expect(links['inline-site.example.com']).toBe('house_declared');
+    });
+
+    it('ignores the manifest of a house that has not shown it controls its domain', async () => {
+      await seedHouse({ source_type: 'community' });
+      expect(await listLinks()).toEqual({
+        'confirmed.example.com': 'confirmed',
+        'claimant.example.com': 'brand_declared',
+        'inferred.example.com': 'inferred',
+      });
+    });
+
+    it('lists brands that name the house even when the house has no record', async () => {
+      await insertBrand({
+        domain: 'orphan-sub.example.com',
+        brand_name: 'Orphan Sub',
+        source_type: 'enriched',
+        house_domain: 'no-record-house.example.com',
+      });
+      const house = await brandDb.getRegistryHouse('no-record-house.example.com');
+      expect(house).toEqual({ domain: 'no-record-house.example.com', record: null, declared_brand_domains: [] });
+      const brands = await brandDb.getAllBrandsForRegistry({ house });
+      expect(brands.map((b) => [b.domain, b.house_link])).toEqual([['orphan-sub.example.com', 'inferred']]);
+    });
+
+    it('describes the house itself', async () => {
+      await seedHouse({ source_type: 'brand_json' });
+      const house = await brandDb.getRegistryHouse('HOUSE.example.com');
+      expect(house.domain).toBe(HOUSE);
+      expect(house.record).toEqual({ brand_name: 'House', verified: true });
+      expect(house.declared_brand_domains.sort()).toEqual([
+        'contested.example.com',
+        'declared.example.com',
+        'elsewhere.example.com',
+        'guessed-elsewhere.example.com',
+        'inline-site.example.com',
+      ]);
     });
 
     it('combines with the source filter', async () => {
-      await seedHouse();
-      const result = await brandDb.getAllBrandsForRegistry({
-        house_domain: 'house.example.com',
-        source: 'community',
-      });
-      expect(result.map((b) => b.domain)).toEqual(['sub-b.example.com']);
-    });
-
-    it('returns nothing for a house with no recorded brands', async () => {
-      await seedHouse();
-      const result = await brandDb.getAllBrandsForRegistry({ house_domain: 'sub-a.example.com' });
-      expect(result).toEqual([]);
-    });
-
-    it('includes a brand whose claim to the house is unconfirmed', async () => {
-      await seedHouse();
-      // After a crawl computes trust, a one-sided claim moves from house_domain
-      // to claimed_house_domain. The house's list must still include it.
-      await insertBrand({ domain: 'sub-claim.example.com', brand_name: 'Sub Claim', source_type: 'brand_json' });
-      await pool.query(
-        `UPDATE brands
-         SET relationship_trust = 'leaf_only',
-             claimed_house_domain = 'house.example.com',
-             house_domain = NULL
-         WHERE domain = 'sub-claim.example.com'`
-      );
-      const result = await brandDb.getAllBrandsForRegistry({ house_domain: 'house.example.com' });
-      const claim = result.find((b) => b.domain === 'sub-claim.example.com');
-      expect(claim).toBeDefined();
-      expect(claim!.relationship_trust).toBe('leaf_only');
-      expect(claim!.claimed_house_domain).toBe('house.example.com');
-      expect(result.length).toBe(3);
-      const stats = await brandDb.getBrandRegistryStats(undefined, 'house.example.com');
-      expect(stats.total).toBe(3);
+      await seedHouse({ source_type: 'brand_json' });
+      expect(await listLinks({ source: 'community' })).toEqual({ 'inferred.example.com': 'inferred' });
     });
 
     it('narrows the stats the same way', async () => {
-      await seedHouse();
-      const stats = await brandDb.getBrandRegistryStats(undefined, 'house.example.com');
-      expect(stats.total).toBe(2);
-      expect(stats.enriched).toBe(1);
+      await seedHouse({ source_type: 'brand_json' });
+      const stats = await brandDb.getBrandRegistryStats(undefined, await brandDb.getRegistryHouse(HOUSE));
+      expect(stats.total).toBe(6);
+      expect(stats.enriched).toBe(3);
+      expect(stats.brand_json).toBe(2);
       expect(stats.community).toBe(1);
+    });
+
+    it('leaves house_link off an unfiltered list', async () => {
+      await seedHouse({ source_type: 'brand_json' });
+      const brands = await brandDb.getAllBrandsForRegistry({ search: 'confirmed' });
+      expect(brands[0]).not.toHaveProperty('house_link');
     });
   });
 

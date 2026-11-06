@@ -200,7 +200,16 @@ An absent `relationship_trust` in a list result means trust has not yet been com
 
 A brand that names a house but publishes no brand.json of its own (an enriched, community or hosted record) gets its verdict from stored records after each crawl: `house_only` when the house's record lists it in `brand_refs[]`, and `unverifiable` otherwise, with the house copied to `claimed_house_domain`. Neither verdict extends trust. `mutual` still requires both published documents.
 
-`/api/brands/registry?house_domain=pg.com` returns the brands recorded under `pg.com`: rows whose `house_domain` or `claimed_house_domain` is `pg.com`. Use each row's `relationship_trust` to tell a confirmed relationship (`inline` or `mutual`) from a claim. An absent value means trust has not been computed yet, so treat the row as a claim, not as a brand the house has confirmed.
+`/api/brands/registry?house_domain=pg.com` lists every brand the registry links to `pg.com`, and adds the house's own record as `house`. Each row's `house_link` says how the link is known:
+
+| `house_link` | Meaning | Extends trust |
+|---|---|---|
+| `confirmed` | Both sides publish the link, or the brand redirects to the house (`relationship_trust` is `mutual` or `inline`) | Yes |
+| `house_declared` | The house's own manifest lists the brand, and the house has shown it controls its domain | No |
+| `brand_declared` | The brand's own brand.json names the house; the house does not list it | No |
+| `inferred` | An enrichment or community record links them | No |
+
+A verdict computed from stored records does not make a row `brand_declared`: the brand published nothing. A house's declaration does not list a brand whose own brand.json names a different house, or that is confirmed under a different house. Offer anything other than `confirmed` as a suggestion, under the brand's own domain, never as authority from the house.
 
 | Method | Path | Description |
 |--------|------|-------------|
