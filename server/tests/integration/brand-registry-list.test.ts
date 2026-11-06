@@ -462,6 +462,117 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     });
   });
 
+  describe('computeUnpublishedHouseRelationshipTrust', () => {
+    async function trustRow(domain: string) {
+      const result = await pool.query<{
+        house_domain: string | null;
+        claimed_house_domain: string | null;
+        relationship_trust: string | null;
+        relationship_trust_computed_at: Date | null;
+      }>(
+        `SELECT house_domain, claimed_house_domain, relationship_trust, relationship_trust_computed_at
+         FROM brands WHERE domain = $1`,
+        [domain]
+      );
+      return result.rows[0];
+    }
+
+    it('marks an inferred link unverifiable, copies it to claimed_house_domain and keeps house_domain', async () => {
+      await insertBrand({ domain: 'trust-house.example.com', brand_name: 'House', is_public: true, owner_verified: true, brand_manifest: { name: 'House' } });
+      await insertBrand({ domain: 'trust-leaf.example.com', brand_name: 'Leaf', source_type: 'enriched', house_domain: 'trust-house.example.com' });
+
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+
+      const row = await trustRow('trust-leaf.example.com');
+      expect(row.relationship_trust).toBe('unverifiable');
+      expect(row.claimed_house_domain).toBe('trust-house.example.com');
+      expect(row.house_domain).toBe('trust-house.example.com');
+      expect(row.relationship_trust_computed_at).not.toBeNull();
+    });
+
+    it('marks a link the house lists in brand_refs as house_only', async () => {
+      await insertBrand({
+        domain: 'trust-house.example.com',
+        brand_name: 'House',
+        is_public: true,
+        owner_verified: true,
+        brand_manifest: { name: 'House', brand_refs: [{ domain: 'Trust-Leaf.example.com', brand_id: 'leaf' }] },
+      });
+      await insertBrand({ domain: 'trust-leaf.example.com', brand_name: 'Leaf', source_type: 'community', house_domain: 'trust-house.example.com' });
+
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+
+      const row = await trustRow('trust-leaf.example.com');
+      expect(row.relationship_trust).toBe('house_only');
+      expect(row.claimed_house_domain).toBeNull();
+      expect(row.house_domain).toBe('trust-house.example.com');
+    });
+
+    it('upgrades an unverifiable link once the house lists the brand', async () => {
+      await insertBrand({ domain: 'trust-house.example.com', brand_name: 'House', is_public: true, owner_verified: true, brand_manifest: { name: 'House' } });
+      await insertBrand({ domain: 'trust-leaf.example.com', brand_name: 'Leaf', source_type: 'enriched', house_domain: 'trust-house.example.com' });
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+      expect((await trustRow('trust-leaf.example.com')).relationship_trust).toBe('unverifiable');
+
+      await pool.query(
+        `UPDATE brands SET brand_manifest = $2 WHERE domain = $1`,
+        ['trust-house.example.com', JSON.stringify({ name: 'House', brand_refs: [{ domain: 'trust-leaf.example.com' }] })]
+      );
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+
+      const row = await trustRow('trust-leaf.example.com');
+      expect(row.relationship_trust).toBe('house_only');
+      expect(row.claimed_house_domain).toBeNull();
+    });
+
+    it('leaves a link the crawler verified as mutual unchanged', async () => {
+      await insertBrand({ domain: 'trust-house.example.com', brand_name: 'House', source_type: 'brand_json', brand_manifest: { name: 'House' } });
+      await insertBrand({ domain: 'trust-leaf.example.com', brand_name: 'Leaf', source_type: 'brand_json', house_domain: 'trust-house.example.com' });
+      await pool.query(
+        `UPDATE brands SET relationship_trust = 'mutual', relationship_verified_at = NOW() WHERE domain = 'trust-leaf.example.com'`
+      );
+
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+
+      const row = await trustRow('trust-leaf.example.com');
+      expect(row.relationship_trust).toBe('mutual');
+      expect(row.claimed_house_domain).toBeNull();
+    });
+
+    it('leaves a crawler leaf_only claim unchanged', async () => {
+      await insertBrand({ domain: 'trust-leaf.example.com', brand_name: 'Leaf', source_type: 'brand_json' });
+      await pool.query(
+        `UPDATE brands SET relationship_trust = 'leaf_only', claimed_house_domain = 'trust-house.example.com' WHERE domain = 'trust-leaf.example.com'`
+      );
+
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+
+      const row = await trustRow('trust-leaf.example.com');
+      expect(row.relationship_trust).toBe('leaf_only');
+      expect(row.claimed_house_domain).toBe('trust-house.example.com');
+    });
+
+    it('skips a row that names itself as its house', async () => {
+      await insertBrand({ domain: 'trust-self.example.com', brand_name: 'Self', source_type: 'enriched', house_domain: 'trust-self.example.com' });
+
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+
+      expect((await trustRow('trust-self.example.com')).relationship_trust).toBeNull();
+    });
+
+    it('does not rewrite a verdict that has not changed', async () => {
+      await insertBrand({ domain: 'trust-house.example.com', brand_name: 'House', is_public: true, owner_verified: true, brand_manifest: { name: 'House' } });
+      await insertBrand({ domain: 'trust-leaf.example.com', brand_name: 'Leaf', source_type: 'enriched', house_domain: 'trust-house.example.com' });
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+      const first = await trustRow('trust-leaf.example.com');
+
+      await brandDb.computeUnpublishedHouseRelationshipTrust();
+
+      const second = await trustRow('trust-leaf.example.com');
+      expect(second.relationship_trust_computed_at).toEqual(first.relationship_trust_computed_at);
+    });
+  });
+
   describe('relationship trust fields', () => {
     it('returns relationship_trust when set', async () => {
       await insertBrand({

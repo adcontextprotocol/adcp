@@ -1001,6 +1001,62 @@ export class BrandDatabase {
   }
 
   /**
+   * Give a relationship_trust verdict to every brand that names a house but
+   * has no verdict from a published brand.json. These links come from
+   * enrichment, community records or hosted profiles, so the brand has
+   * published no claim the crawler could check.
+   *
+   * The verdict is `house_only` when the house's own stored record lists the
+   * brand in `brand_refs[]`, and `unverifiable` otherwise, with the link
+   * copied to `claimed_house_domain`. Neither verdict extends trust: `mutual`
+   * still needs the crawler's check of both published documents.
+   *
+   * `house_domain` is left as it is, because membership inheritance, domain
+   * resolution and hierarchical auto-provisioning read it. Rows the crawler
+   * has verified are skipped: it keeps `house_domain` only for `mutual` and
+   * `inline` and clears it otherwise. Earlier verdicts from this pass are
+   * recomputed, so a house that later lists the brand upgrades it.
+   *
+   * Returns the number of rows whose verdict changed.
+   */
+  async computeUnpublishedHouseRelationshipTrust(): Promise<number> {
+    const result = await query(
+      `WITH verdicts AS (
+         SELECT leaf.domain,
+                CASE WHEN EXISTS (
+                  SELECT 1
+                  FROM brands house,
+                       jsonb_array_elements(
+                         CASE WHEN jsonb_typeof(house.brand_manifest->'brand_refs') = 'array'
+                              THEN house.brand_manifest->'brand_refs'
+                              ELSE '[]'::jsonb END
+                       ) AS ref
+                  WHERE house.domain = leaf.house_domain
+                    AND lower(ref->>'domain') = leaf.domain
+                ) THEN 'house_only' ELSE 'unverifiable' END AS relationship_trust,
+                leaf.house_domain
+         FROM brands leaf
+         WHERE leaf.house_domain IS NOT NULL
+           AND leaf.house_domain <> leaf.domain
+           AND (leaf.relationship_trust IS NULL
+                OR leaf.relationship_trust IN ('house_only', 'unverifiable'))
+       )
+       UPDATE brands b
+       SET relationship_trust = v.relationship_trust,
+           claimed_house_domain = CASE WHEN v.relationship_trust = 'unverifiable'
+                                       THEN v.house_domain ELSE NULL END,
+           relationship_verified_at = NULL,
+           relationship_trust_computed_at = NOW()
+       FROM verdicts v
+       WHERE b.domain = v.domain
+         AND (b.relationship_trust IS DISTINCT FROM v.relationship_trust
+              OR b.claimed_house_domain IS DISTINCT FROM
+                 CASE WHEN v.relationship_trust = 'unverifiable' THEN v.house_domain ELSE NULL END)`
+    );
+    return result.rowCount ?? 0;
+  }
+
+  /**
    * Persist relationship trust fields computed by BrandManager.resolveBrand().
    * Called by the crawler after each brand.json resolution cycle so that
    * list endpoints can return trust without a per-row resolveBrand() call.
