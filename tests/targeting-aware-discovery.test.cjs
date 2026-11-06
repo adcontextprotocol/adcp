@@ -2119,6 +2119,36 @@ test("required overlay requirements exclude seller limit fields", async () => {
   }
 });
 
+test("boolean demographics is the deprecated 3.2 shorthand for { age: true }", async () => {
+  for (const name of ["targeting-overlay-support", "targeting-overlay-requirements"]) {
+    const uri = `/schemas/core/${name}.json`;
+    const validate = await compile(uri);
+    for (const demographics of [true, { age: true }, { gender: true }, { age: true, gender: true }]) {
+      assert.equal(
+        validate({ demographics }),
+        true,
+        `${name} accepts demographics ${JSON.stringify(demographics)}: ${errors(validate)}`
+      );
+    }
+    assert.equal(validate({ demographics: false }), false, `${name} rejects demographics false`);
+
+    const source = JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core", `${name}.json`), "utf8")
+    );
+    for (const schema of [source, readBuiltSchema(uri)]) {
+      const [booleanBranch, objectBranch] = schema.properties.demographics.anyOf;
+      assert.equal(booleanBranch.deprecated, true, `${name} marks the boolean branch deprecated`);
+      assert.equal(booleanBranch["x-deprecated-in"], "3.3.0");
+      assert.equal(booleanBranch["x-removed-in"], "4.0.0");
+      assert.match(booleanBranch.description, /^Deprecated in 3\.3\./);
+      assert.match(booleanBranch.description, /The 3\.2 shorthand for \{ age: true \}\./);
+      assert.match(booleanBranch.description, /Senders MUST send the object; receivers MUST accept true\./);
+      assert.equal(objectBranch.type, "object");
+      assert.equal(objectBranch.deprecated, undefined, `${name} keeps the object branch current`);
+    }
+  }
+});
+
 test("product identity and forecast semantics distinguish wholesale from custom offers", () => {
   const product = JSON.parse(
     fs.readFileSync(path.join(SCHEMA_ROOT, "core", "product.json"), "utf8")

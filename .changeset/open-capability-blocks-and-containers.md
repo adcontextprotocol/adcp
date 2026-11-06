@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Open the 3.2 capability blocks and containers that 3.3 extends, as corrections under DR-0036.
@@ -13,5 +13,6 @@ Open the 3.2 capability blocks and containers that 3.3 extends, as corrections u
 
 Every payload that was valid stays valid. The 3.3 fields on these schemas go only to 3.3 peers, because a strict 3.2 validator still rejects them. No 3.2.x patch opens them.
 
+The boolean form of `demographics` is deprecated on both `core/targeting-overlay-support.json` and `core/targeting-overlay-requirements.json`, and removed in 4.0 (#8778). `demographics: true` is the 3.2 shorthand for `{ "age": true }`, and every 3.2 release accepts the object form. Senders MUST send the object form. Receivers MUST accept `true` and read it as `{ "age": true }`, so it satisfies an age requirement and never a `gender` requirement.
 
 The `assign` branch of `sync_creatives` `assignment_operations[]` stays closed. A named exception under DR-0036 lets it take `trackers` and `landing_page_url`, which require `creative.supports_assignment_trackers` and `creative.supports_assignment_landing_page`. It still rejects any other property.
