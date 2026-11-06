@@ -243,25 +243,6 @@ const responseCollection = {
 };
 const selector = [{ publisher_domain: 'acmestreaming.example.com', collection_ids: ['pinnacle_challenge'] }];
 const canonicalProduct = { product_id: 'pinnacle_video', name: 'Pinnacle Challenge video', collections: selector };
-const legacyProduct = {
-  product_id: 'pinnacle_video',
-  name: 'Pinnacle Challenge video',
-  description: 'Pre-roll on The Pinnacle Challenge',
-  publisher_properties: [{ publisher_domain: 'acmestreaming.example.com', selection_type: 'all' }],
-  format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
-  delivery_type: 'guaranteed',
-  delivery_measurement: { provider: 'Test' },
-  pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
-  reporting_capabilities: {
-    available_reporting_frequencies: ['daily'],
-    expected_delay_minutes: 240,
-    timezone: 'UTC',
-    supports_webhooks: false,
-    available_metrics: ['impressions'],
-    date_range_support: 'date_range',
-  },
-  collections: selector,
-};
 const draftProposal = {
   proposal_id: 'proposal-1',
   name: 'Draft Pinnacle Challenge plan',
@@ -283,7 +264,6 @@ const draftProposal = {
   terms_digest: `sha256:${'A'.repeat(43)}`,
 };
 const responseCases = [
-  ['/schemas/media-buy/get-products-response.json', { status: 'completed', products: [legacyProduct], cache_scope: 'public' }],
   ['/schemas/media-buy/list-products-response.json', { status: 'completed', outcome: 'listed', products: [canonicalProduct], feed_version: 'feed-v1', cache_scope: 'public' }],
   ['/schemas/media-buy/request-proposals-response.json', { status: 'completed', outcome: 'proposed', proposals: [draftProposal], products: [canonicalProduct] }],
   ['/schemas/media-buy/refine-proposals-response.json', {
@@ -311,10 +291,6 @@ test('collections are forbidden on rejected and unchanged outcomes', async () =>
   const rejected = { status: 'completed', outcome: 'rejected', reason: 'No available offer satisfies the campaign constraints.' };
   assert.equal(proposals(rejected), true, JSON.stringify(proposals.errors, null, 2));
   assert.equal(proposals({ ...rejected, collections: [responseCollection] }), false);
-  const products = await compile('/schemas/media-buy/get-products-response.json');
-  const declined = { status: 'rejected', reason: 'Budget is below the minimum for this inventory.' };
-  assert.equal(products(declined), true, JSON.stringify(products.errors, null, 2));
-  assert.equal(products({ ...declined, collections: [responseCollection] }), false);
   const listed = await compile('/schemas/media-buy/list-products-response.json');
   const unchanged = { status: 'completed', outcome: 'unchanged', feed_version: 'feed-v1', cache_scope: 'public' };
   assert.equal(listed(unchanged), true, JSON.stringify(listed.errors, null, 2));
@@ -361,7 +337,6 @@ test('response collection fields are experimental and added in 3.3.0', () => {
   const fields = [
     read('core/collection.json').properties.url,
     read('core/response-collection.json'),
-    read('media-buy/get-products-response.json').properties.collections,
     read('media-buy/list-products-response.json').properties.collections,
     read('media-buy/request-proposals-response.json').properties.collections,
     read('media-buy/refine-proposals-response.json').properties.collections,
@@ -372,7 +347,7 @@ test('response collection fields are experimental and added in 3.3.0', () => {
     assert.equal(field['x-status'], 'experimental');
     assert.equal(field['x-added-in'], '3.3.0');
   }
-  for (const file of ['get-products', 'list-products', 'request-proposals', 'refine-proposals']) {
+  for (const file of ['list-products', 'request-proposals', 'refine-proposals']) {
     const schema = read(`media-buy/${file}-response.json`);
     assert.equal(schema.properties.collections.items.$ref, '/schemas/core/response-collection.json');
     assert.deepEqual(schema.dependencies.collections, ['products']);
@@ -386,7 +361,6 @@ test('response collection fields are experimental and added in 3.3.0', () => {
 const ACCEPTS_UNKNOWN_FIELDS = /This request accepts unknown fields/;
 const CLOSED_IN_3_2 = /The 3\.2 schema of this request rejects unknown fields/;
 const requestCases = [
-  ['/schemas/media-buy/get-products-request.json', { buying_mode: 'brief', brief: 'Creator video for a running shoe launch' }, ACCEPTS_UNKNOWN_FIELDS],
   ['/schemas/media-buy/list-products-request.json', { brand: { domain: 'nova-brands.example' } }, CLOSED_IN_3_2],
   ['/schemas/media-buy/request-proposals-request.json', {
     idempotency_key: 'req-proposals-0001',
@@ -419,7 +393,7 @@ for (const [schemaId, base, unknownFieldPhrasing] of requestCases) {
 
 test('response collections descriptions carry the opt-in and the closed freshness list', () => {
   const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
-  for (const file of ['get-products', 'list-products', 'request-proposals', 'refine-proposals']) {
+  for (const file of ['list-products', 'request-proposals', 'refine-proposals']) {
     const desc = read(`media-buy/${file}-response.json`).properties.collections.description;
     assert.match(desc, /unless the request set include_collections to true/, file);
     assert.match(desc, /only on images, sample_content, url, description, season, cadence and distribution\[\]\.followers/, file);
@@ -485,16 +459,33 @@ test('brand-side collection links use their own experimental feature id', () => 
   assert.match(row('brand.collection_links'), /get_brand_identity/);
 });
 
-test('include_collections is part of the feed version scope', () => {
+test('get_products no longer declares include_collections or collections (adcp#8501)', async () => {
   const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
-  const tuple = /deprecated property_list, catalog, include_collections\) for cache_scope: 'public'/;
-  assert.match(read('media-buy/get-products-request.json').properties.if_wholesale_feed_version.description, tuple);
-  assert.match(read('media-buy/get-products-response.json').properties.wholesale_feed_version.description, tuple);
+  const request = read('media-buy/get-products-request.json');
+  const response = read('media-buy/get-products-response.json');
+  assert.equal(request.properties.include_collections, undefined);
+  assert.equal(response.properties.collections, undefined);
+  assert.equal(response.dependencies?.collections, undefined);
+  const rejected = read('media-buy/get-products-rejected.json');
+  assert.equal(rejected.properties.collections, undefined);
+  const tuple = /include_collections/;
+  assert.doesNotMatch(request.properties.if_wholesale_feed_version.description, tuple);
+  assert.doesNotMatch(response.properties.wholesale_feed_version.description, tuple);
+  // The flag stays advertised on every other discovery surface.
+  for (const file of ['list-products-request', 'request-proposals-request', 'refine-proposals-request']) {
+    assert.ok(read(`media-buy/${file}.json`).properties.include_collections, `${file} keeps include_collections`);
+  }
+  // A caller that still sends the flag is not rejected by the schema: the request accepts unknown fields.
+  const validate = await compile('/schemas/media-buy/get-products-request.json');
+  assert.equal(validate({ buying_mode: 'brief', brief: 'Creator video', include_collections: true }), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('include_collections is part of the feed version scope on list_products', () => {
+  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
   assert.match(read('media-buy/list-products-request.json').properties.if_feed_version.description, /include_collections is part of the selection/);
   assert.match(read('media-buy/list-products-response.json').properties.feed_version.description, /including include_collections/);
   const doc = fs.readFileSync(path.join(__dirname, '../docs/media-buy/task-reference/get_products.mdx'), 'utf8');
-  assert.ok(doc.includes('| Public | `(agent, buying_mode, filters, targeting_overlay, media_buy_frequency_cap, required_overlay_support, required_media_buy_support, deprecated property_list, catalog, include_collections)` |'));
-  assert.ok(doc.includes('deprecated property_list, catalog, include_collections, account_id)` |'));
+  assert.doesNotMatch(doc, /include_collections/, 'get_products reference no longer documents include_collections');
   const guide = fs.readFileSync(path.join(__dirname, '../docs/media-buy/product-discovery/collections-and-installments.mdx'), 'utf8');
   assert.doesNotMatch(guide, /does not grow a new key/);
   assert.match(guide, /`include_collections` is part of the version scope/);

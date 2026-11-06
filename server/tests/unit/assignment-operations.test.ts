@@ -107,6 +107,23 @@ describe('sync_creatives assignment_operations', () => {
     });
   });
 
+  it.each([
+    ['trackers', { trackers: [tracker] }],
+    ['landing_page_url', { landing_page_url: 'https://assign-ops.example/spring' }],
+  ])('rejects %s on a deprecated assignments[] row with INVALID_REQUEST (adcp#8501)', async (field, extra) => {
+    const server = createTrainingAgentServer(CTX);
+    const { mediaBuyId, packageId } = await buyWithPackage(server);
+    const result = await call(server, 'sync_creatives', {
+      account: ACCOUNT,
+      creatives: [creative('hero_v1')],
+      assignments: [{ creative_id: 'hero_v1', package_id: packageId, ...extra }],
+    });
+    const error = result.errors?.[0] ?? result;
+    expect(error, JSON.stringify(result)).toMatchObject({ code: 'INVALID_REQUEST', field: `assignments[0].${field}` });
+    // Nothing was assigned.
+    expect(await approvals(server, mediaBuyId)).toEqual([]);
+  });
+
   it('replace transfers trackers and the landing page, and advances the buy revision once', async () => {
     const server = createTrainingAgentServer(CTX);
     const { mediaBuyId, packageId } = await buyWithPackage(server);

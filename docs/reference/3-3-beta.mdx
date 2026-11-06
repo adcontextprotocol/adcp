@@ -93,7 +93,7 @@ At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the traini
 - the caller's `authorization`, with `authorized_at` and `regranted_at`, and `revision` on each `list_accounts` account;
 - principal-level reporting subscriptions (`media_buy.reporting_subscriptions`): the `reporting_subscriptions` section of `sync_principal` and `get_principal`, and `subscription_coverage` on `get_reporting_status`;
 - the `reporting_subscription_probe` controller scenario, which revokes, reduces, and restores grants and advances a per-caller sandbox clock;
-- collection cards (`media_buy.collection_cards`): `include_collections` on `get_products`, `list_products`, `request_proposals` and `refine_proposals`, with images, samples, links, talent `brand_ref` and follower counts on the CreatorLoop creator channels;
+- collection cards (`media_buy.collection_cards`): `include_collections` on `list_products`, `request_proposals` and `refine_proposals`, with images, samples, links, talent `brand_ref` and follower counts on the CreatorLoop creator channels;
 - the collection catalog (`media_buy.collection_catalog`): `list_collections`, and the `collection_card.*` and `collection_catalog.bulk_change` webhooks registered through `sync_accounts`;
 - the `seed_collection` controller scenario, which changes the caller's cards (a sample, a removal, a follower sweep) so the card webhooks fire;
 - inventory holds ([Hold policy](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental)): `hold_policy` on products and drafts (`media_buy.hold_policy`), committed proposals with `hold_placed_at`, ranked holds with `hold_rank` (`media_buy.hold_ranking`), per-installment `holds` (`media_buy.installment_holds`), `extend_hold` (`media_buy.hold_extension`), and the `force_hold_unavailable` controller scenario.
@@ -171,6 +171,21 @@ Three features shipped in `3.3.0-beta.1` and are not part of 3.3. They leave the
 | Installment selection (`media_buy.installment_selection`): `purchases[].installments[]` and `refine_proposals` `installment_changes` ([#8246](https://github.com/adcontextprotocol/adcp/pull/8246)) | beta.1 | Stop listing the feature id and emitting or accepting the fields. Installments on the canonical product and `holds[]` stay. |
 
 The [migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) lists every surface removed, and [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) keeps the designs.
+
+## Withdrawn from the deprecated tasks
+
+3.3 adds no field that exists only on a deprecated task ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). These fields shipped in 3.3 betas on `get_products` or the deprecated `sync_creatives` `assignments[]` row and leave after beta.4.
+
+| Field | Shipped in | Action |
+|---|---|---|
+| `get_products` `refine[].package` and `refinement_applied[]` `result_product_id`, `resolved_start_time`, `resolved_end_time` ([#8468](https://github.com/adcontextprotocol/adcp/pull/8468)) | beta.1 to beta.4 | Stop sending and returning them. The exact-package forecast has no 3.3 home yet. |
+| `get_products` `filters.target_audiences` ([#8215](https://github.com/adcontextprotocol/adcp/pull/8215)) | beta.1 to beta.4 | Stop sending it. Planned for 4.0. |
+| `get_products` `include_collections` and `collections` ([#8141](https://github.com/adcontextprotocol/adcp/pull/8141)) | beta.0 to beta.4 | Use `list_products`, `request_proposals` or `refine_proposals`. |
+| `get_products` `include_execution_readiness` and `execution_readiness` ([#7934](https://github.com/adcontextprotocol/adcp/pull/7934)) | beta.1 to beta.4 | Send and read them on `list_products`. |
+| `price_adjustments` on `get_products` pricing options, `media_buy.price_adjustments` ([#7955](https://github.com/adcontextprotocol/adcp/pull/7955)) | beta.1 to beta.4 | Stop listing the feature id and returning tables. Planned for 4.0. |
+| `sync_creatives` `assignments[]` `landing_page_url` and `trackers` ([#8180](https://github.com/adcontextprotocol/adcp/pull/8180), [#8220](https://github.com/adcontextprotocol/adcp/pull/8220)) | beta.0 to beta.4 | Send them on an `assign` operation. |
+
+The [migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-the-deprecated-tasks) lists every surface removed.
 
 ## Required integration evidence
 
