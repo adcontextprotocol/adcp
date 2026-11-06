@@ -278,8 +278,9 @@ Many products need account resources that live outside the media buy: a
 conversion product needs a pixel or dataset, an app-promotion product needs a
 registered app, a catalog-sales product needs a product catalog, and a product
 that runs as a page or profile needs that identity connected.
-`Product.execution_requirements` lists these needs so a buyer knows, before
-`create_media_buy`, what it must supply and where it goes on the request. A
+`Product.execution_requirements` lists these needs so a buyer knows, before it
+buys (`buy_products`, or the legacy `create_media_buy`), what it must supply and
+where it goes on the request. A
 seller using this experimental surface lists `media_buy.execution_requirements`
 in `experimental_features` on `get_adcp_capabilities`.
 
@@ -287,8 +288,8 @@ Each entry's `kind` determines where the resource is bound:
 
 | `kind` | Satisfied by | Established through |
 |---|---|---|
-| `event_source` | A package `optimization_goals[]` entry of `kind: "event"` that the seller will use (within `max_optimization_goals`, by priority) with a used `event_sources[]` entry (only the first one when the seller does not support `multi_source_event_dedup`) whose `event_source_id` names an event source available to the account and whose `event_type` is in `event_types` when that list is present | [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources). When `conversion_tracking.platform_managed` is `true`, the seller-managed source's ID is the `sync_event_sources` response entry with `managed_by: "seller"` |
-| `catalog` | A `packages[].catalogs[]` entry whose `type` is in `catalog_types` | [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs), an inline catalog, or a selector (`ids`, `gtins`) over the seller's own catalog |
+| `event_source` | A purchase or package `optimization_goals[]` entry (`purchases[].optimization_goals[]` on `buy_products`; `packages[].optimization_goals[]` on the legacy `create_media_buy`) of `kind: "event"` that the seller will use (within `max_optimization_goals`, by priority) with a used `event_sources[]` entry (only the first one when the seller does not support `multi_source_event_dedup`) whose `event_source_id` names an event source available to the account and whose `event_type` is in `event_types` when that list is present | [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources). When `conversion_tracking.platform_managed` is `true`, the seller-managed source's ID is the `sync_event_sources` response entry with `managed_by: "seller"` |
+| `catalog` | On `buy_products`, a `purchases[].catalog_ids[]` entry naming a synced catalog whose `type` is in `catalog_types`. On the legacy `create_media_buy`, a `packages[].catalogs[]` entry whose `type` is in `catalog_types` | [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs). The legacy package form also accepts an inline catalog or a selector (`ids`, `gtins`) over the seller's own catalog |
 | `downstream_connection` | A completed seller-side connection or grant of the declared `connection.connection_type` — not a request field | The seller's connection flow, as described for `AUTHORIZATION_REQUIRED` |
 
 ```json
@@ -388,7 +389,11 @@ A buyer sets `include_execution_readiness: true` on
 together with an `account`. A seller that supports it returns a response-level
 `execution_readiness` map keyed by `product_id`. The 3.3 betas carried the map
 on the deprecated `get_products`; it moved to `list_products` before 3.3 GA
-([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).
+([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). Because
+the next step from `list_products` is `buy_products`, `binding_field` names the
+`buy_products` path: `purchases[].optimization_goals[].event_sources[].event_source_id`
+for an event source and `purchases[].catalog_ids[]` for a catalog. The
+`packages[]` paths of the legacy `create_media_buy` are not used here.
 
 ```json
 {
@@ -405,7 +410,7 @@ on the deprecated `get_products`; it moved to `list_products` before 3.3 GA
           {
             "requirement": { "kind": "event_source", "event_types": ["app_install"] },
             "readiness_status": "selection_required",
-            "binding_field": "packages[].optimization_goals[].event_sources[].event_source_id",
+            "binding_field": "purchases[].optimization_goals[].event_sources[].event_source_id",
             "candidates": [
               { "resource_id": "es_app_main", "name": "Main app SDK" },
               { "resource_id": "es_app_beta", "name": "Beta app SDK" }
@@ -414,7 +419,7 @@ on the deprecated `get_products`; it moved to `list_products` before 3.3 GA
           {
             "requirement": { "kind": "catalog", "catalog_types": ["app"] },
             "readiness_status": "ready",
-            "binding_field": "packages[].catalogs[]",
+            "binding_field": "purchases[].catalog_ids[]",
             "resolved": { "resource_id": "cat_app_1", "name": "Acme app" }
           },
           {
@@ -469,8 +474,8 @@ Rules:
   that is `unknown`. A seller MAY report products beyond its evaluation budget
   as `unknown` with `not_evaluated`.
 - **`ready` does not waive binding.** For `event_source` and `catalog`, the
-  buyer still passes `resolved.resource_id` in `binding_field`; an unbound
-  requirement is `not_bound` per
+  buyer still passes `resolved.resource_id` in `binding_field`; on the legacy
+  `create_media_buy`, an unbound requirement is `not_bound` per
   [`execution-requirement-unmet.json`](https://adcontextprotocol.org/schemas/v3/error-details/execution-requirement-unmet.json).
   `resolved` is required when such a requirement is `ready`.
 - **Candidates are directly usable.** A `resource_id` MUST be a value the
@@ -494,9 +499,11 @@ Rules:
   `include_execution_readiness: true` and carried an `account` the caller is
   authorized for; otherwise the seller omits it (an `account` that does not
   resolve still returns `ACCOUNT_NOT_FOUND`). It covers only the products on the
-  page. The purchase task (`buy_products`, or `create_media_buy`) still revalidates and rejects per
-  `execution-requirement-unmet.json` or `AUTHORIZATION_REQUIRED`, which echo the
-  same requirement.
+  page. The purchase decides: the legacy `create_media_buy` still revalidates and
+  rejects per `execution-requirement-unmet.json` or `AUTHORIZATION_REQUIRED`,
+  which echo the same requirement. A rejection rule for unmet `buy_products`
+  purchases is not yet specified; it is tracked with proposal bindings in
+  [adcp#7763](https://github.com/adcontextprotocol/adcp/issues/7763).
 - **Seller cost.** Whether an account has a pixel, catalog, or connection is the
   same answer for every product that needs it. Sellers SHOULD read it once per
   account and requirement kind and stamp every product on the page.
