@@ -39,9 +39,11 @@ const CONNECTION = {
   },
 };
 
+// buy_products paths: readiness is read on list_products, whose next step is
+// buy_products, not the legacy create_media_buy packages[] (adcp#8501).
 const ES_BINDING =
-  "packages[].optimization_goals[].event_sources[].event_source_id";
-const CATALOG_BINDING = "packages[].catalogs[]";
+  "purchases[].optimization_goals[].event_sources[].event_source_id";
+const CATALOG_BINDING = "purchases[].catalog_ids[]";
 
 const READY_EVENT_SOURCE = {
   requirement: EVENT_SOURCE,
@@ -306,7 +308,7 @@ test("downstream_connection readiness derives from connection_state and has no c
       "no resolved resource for connections",
     ],
     [
-      { ...connected, binding_field: "packages[].identity" },
+      { ...connected, binding_field: "purchases[].identity" },
       "connections have no binding field",
     ],
     [
