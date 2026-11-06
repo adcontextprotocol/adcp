@@ -259,7 +259,7 @@ describe('CrawlerService brand.json ingestion', () => {
       manifestPersisted: false,
     });
     expect(updateHostedBrand).toHaveBeenCalledWith('brand_hosted', {
-      domain_verified: true,
+      verified_by_brand_json_pointer: true,
       origin_validated: true,
     });
   });

@@ -928,7 +928,7 @@ export class CrawlerService {
           // origin evidence, including central hosting on a third-party CDN.
           // Only the exact AAO-hosted pointer may also promote ownership.
           await this.brandDb.updateHostedBrand(hosted.id, {
-            ...(pointsToAaoHostedBrand ? { domain_verified: true } : {}),
+            ...(pointsToAaoHostedBrand ? { verified_by_brand_json_pointer: true as const } : {}),
             origin_validated: true,
           });
           if (pointsToAaoHostedBrand && !hosted.domain_verified) {

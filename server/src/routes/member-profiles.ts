@@ -1673,7 +1673,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             await brandDb.claimOrphanedHostedBrand(hosted.id, orgId);
           } else {
             await brandDb.updateHostedBrand(hosted.id, {
-              domain_verified: true,
+              verified_by_brand_json_pointer: true,
               workos_organization_id: orgId,
             });
           }
@@ -1806,7 +1806,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // DNS lookup against its issued challenge. On success WorkOS marks the
   // domain Verified, emits an organization_domain.verified webhook, and the
   // service mirrors state into the brand registry — webhook handler also
-  // writes through idempotently via markBrandDomainVerified.
+  // writes through idempotently via syncBrandDomainFromWorkos.
   router.post('/brand-claim/verify', requireAuth, async (req, res) => {
     try {
       const orgId = await resolveBrandClaimOrgOr401(req, res);
@@ -1840,6 +1840,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             state: result.state,
             ...(result.dns_record_name !== undefined ? { dns_record_name: result.dns_record_name } : {}),
             ...(result.retry_after_seconds !== undefined ? { retry_after_seconds: result.retry_after_seconds } : {}),
+          });
+        }
+        if (result.code === 'manual_domain' || result.code === 'verified_elsewhere') {
+          return res.status(409).json({
+            error: result.code === 'manual_domain' ? 'Domain not proven' : 'Domain verified by another organization',
+            code: result.code,
+            message: result.message,
+            domain: canonical,
           });
         }
         return res.status(500).json({ error: 'Failed to verify brand claim challenge', code: 'workos_error' });
