@@ -83,6 +83,7 @@ Both models use the same schema. The router does not distinguish between provide
 | `identity_match` | bool | No | Provider handles Identity Match requests. At least one of `context_match` or `identity_match` must be true. |
 | `countries` | List\<string\> | Conditional | ISO 3166-1 alpha-2 country codes. MUST be present when `identity_match` is true. |
 | `uid_types` | List\<string\> | Conditional | Identity types this provider resolves. MUST be present when `identity_match` is true. |
+| `match_keys` | List\<MatchKey\> | No | **Experimental.** Scope and vendor for the keys in `uid_types`, in the [match-key shape](/docs/media-buy/specification#match-keys-and-cross-publisher-frequency-capping-experimental). Informational for buyers; the router routes and filters on `uid_types` only. |
 | `timeout_ms` | integer | No | Per-provider timeout. Must be ≤ the router's `latency_budget_ms`. Default: 50. |
 | `priority` | integer | No | Merge conflict resolution order (lower = higher priority). Default: 0. |
 | `status` | enum | No | `active`, `inactive`, or `draining`. Default: `active`. |
