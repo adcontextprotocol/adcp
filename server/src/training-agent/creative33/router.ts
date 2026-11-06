@@ -179,7 +179,9 @@ export function mountCreative33Sandbox(parent: Router, options: {
   parent.get('/beta/3.3/creative/fixtures/video-15s.mp4', (_req, res) => {
     cors(res);
     res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
-    res.sendFile(path.resolve('server/public/test-assets/creative33/video-15s.mp4'));
+    // `root` keeps the dotfile check to the file name. An absolute path is
+    // checked whole, so a checkout under a dot-directory would 404.
+    res.sendFile('video-15s.mp4', { root: path.resolve('server/public/test-assets/creative33') });
   });
   parent.get('/beta/3.3/creative/fixtures/responsive.zip', (_req, res) => {
     cors(res); res.type('application/zip').send(CREATIVE33_ZIP_BYTES);
