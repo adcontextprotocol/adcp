@@ -78,6 +78,31 @@ algorithms) change. A clarification is patch-eligible only when the prior spec
 was demonstrably ambiguous *and* any conformant 3.1.0 implementation would
 already satisfy the new MUST. "It's just docs" does not apply to normative docs.
 
+### Mandatory: every minor-release change has a pathway back
+
+Per DR-0033, a PR that changes `static/schemas/source/**` or normative docs for
+a minor release (3.x now, and each later major's own minors from 4.1 onward)
+must state, for each new or changed field, enum value, task, union variant,
+requiredness or semantic rule, how it maps to the previous minor release of the
+same major:
+
+- **ignorable**: on an open schema, and a peer on the previous minor can
+  ignore it without committing to anything different;
+- **gated**: on an open schema, but a peer that ignores it would commit to
+  something different, with the refusal SDKs apply on a mutation and any
+  capability flag senders check;
+- **moves**: an exact equivalent in the previous minor, with the mapping; or
+- **correction**: a DR-0036 correction, with the spec text it restores.
+
+Look in the PR body, the changeset, or the docs migration page. A minor-release
+change with no stated pathway is `high`. A stated pathway with no cross-version
+conformance case and no tracked follow-up is `medium`. A field declared
+"ignorable" whose loss would change spend, targeting, caps, bidding, creative
+activation, measurement or account settings is `high`, because it is a gated
+change mislabeled as ignorable. An addition to a closed schema that DR-0036
+doesn't list as a correction, or a change to account or resource identity, is
+`high` in a minor: it waits for the next major.
+
 ### Mandatory: cite governance precedent
 
 When a PR decides a question of protocol policy or convention rather than
