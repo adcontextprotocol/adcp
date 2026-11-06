@@ -1,0 +1,15 @@
+{
+  "setup": {
+    "default": "ROOT=\"$(cd \"$(git rev-parse --git-common-dir)/..\" && pwd)\" || exit 1\n. \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" || exit 1\nnvm install || exit 1\nnvm use || exit 1\n[ \"$(node -v)\" = \"$(nvm version \"$(cat .nvmrc)\")\" ] || { echo \"Node $(node -v) does not match .nvmrc $(cat .nvmrc)\" >&2; false; } || exit 1\nfor f in \"$ROOT\"/.env*; do n=\"${f##*/}\"; [ -f \"$f\" ] && [ ! -e \"$n\" ] && git check-ignore -q \"$n\" && cp \"$f\" \"$n\"; done; true || exit 1\nsh scripts/configure-git-hooks.sh || exit 1\nnpx --yes npm@10.9.4 ci || exit 1\nuv sync --frozen || exit 1",
+    "macos": null,
+    "linux": null,
+    "windows": null
+  },
+  "teardown": {
+    "default": "",
+    "macos": null,
+    "linux": null,
+    "windows": null
+  },
+  "updatedAt": 1793934266990
+}
