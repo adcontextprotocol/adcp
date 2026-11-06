@@ -3515,6 +3515,9 @@ export function createMemberToolHandlers(
         // confirm the record is live before another attempt.
         return `<!-- STATUS: still_pending -->\n\nWorkOS hasn't found the DNS TXT record yet. ${result.message}\n\n**Stop here. Do NOT call verify_brand_domain_challenge again.** Ask the user to confirm the record is published and resolves correctly (a \`dig TXT <record-name>\` from their machine should show the verification value), then wait for them to ask before retrying.`;
       }
+      if (result.code === 'manual_domain' || result.code === 'verified_elsewhere') {
+        return `<!-- STATUS: ${result.code} -->\n\n${result.message}`;
+      }
       return `<!-- STATUS: workos_error -->\n\nVerification failed: ${result.message}`;
     }
 

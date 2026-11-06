@@ -116,7 +116,7 @@ These endpoints resolve domains to brand identities. The `source` field identifi
 
 | Source | Meaning |
 |--------|----------|
-| `hosted` | Registered by a domain owner whose control of the domain has been verified |
+| `hosted` | Registered by a domain owner whose control of the domain has been verified: by a DNS record, by the domain's `/.well-known/brand.json` pointing at the hosted record, or by a member of the owning organization with a verified email address on the domain. An administrator adding the domain to an organization is not verification. |
 | `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
 | `enriched` | Enriched via Brandfetch API |
 | `community` | Submitted by a community member |

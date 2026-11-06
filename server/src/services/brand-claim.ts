@@ -11,7 +11,7 @@
  */
 
 import type { WorkOS } from '@workos-inc/node';
-import { BrandDatabase } from '../db/brand-db.js';
+import { BrandDatabase, workosDomainVerificationStrategy } from '../db/brand-db.js';
 import type { HostedBrand } from '../types.js';
 import { canonicalizeBrandDomain, assertClaimableBrandDomain } from './identifier-normalization.js';
 import { createLogger } from '../logger.js';
@@ -54,6 +54,8 @@ export type VerifyChallengeResult =
     }
   | { ok: false; code: 'no_challenge'; message: string }
   | { ok: false; code: 'still_pending'; message: string; state: string; retry_after_seconds?: number; dns_record_name?: string }
+  | { ok: false; code: 'manual_domain'; message: string }
+  | { ok: false; code: 'verified_elsewhere'; message: string }
   | { ok: false; code: 'workos_error'; message: string };
 
 /**
@@ -314,12 +316,32 @@ export async function verifyDomainChallenge(input: {
     };
   }
 
+  const method = await brandDb.resolveWorkosDomainVerification(
+    domain,
+    orgId,
+    workosDomainVerificationStrategy(verified.verificationStrategy),
+  );
+  if (method === 'manual') {
+    return {
+      ok: false,
+      code: 'manual_domain',
+      message: `${domain} was marked verified by an AgenticAdvertising.org administrator, which does not prove control of the domain. Point ${domain}/.well-known/brand.json at the hosted brand record, or sign in with a verified email address on ${domain}.`,
+    };
+  }
+
   let updated: HostedBrand | null = null;
   try {
-    updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, { adoptPriorManifest });
+    updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, method, { adoptPriorManifest });
   } catch (err) {
     logger.error({ err, orgId, domain }, 'brand-claim: applyVerifiedBrandClaim failed after WorkOS verify');
     return { ok: false, code: 'workos_error', message: 'Domain verified with WorkOS but the brand registry write failed. Retry the verify call.' };
+  }
+  if (!updated) {
+    return {
+      ok: false,
+      code: 'verified_elsewhere',
+      message: `Another organization has verified ${domain}. Only DNS verification can move a verified brand to a new organization.`,
+    };
   }
   // Verify succeeded — clear cooldown so a follow-up call returns the
   // already-verified path without an artificial wait.
@@ -330,7 +352,7 @@ export async function verifyDomainChallenge(input: {
     domain,
     newly_verified: !alreadyVerified,
     adopted_prior_manifest: adoptPriorManifest,
-    brand: updated ? { brand_domain: updated.brand_domain, domain_verified: updated.domain_verified } : null,
+    brand: { brand_domain: updated.brand_domain, domain_verified: updated.domain_verified },
   };
 }
 
