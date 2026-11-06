@@ -15,6 +15,10 @@
  * Rows whose domain is not a verified domain of the organization in WorkOS
  * (for example, verified by a brand.json pointer) are listed and left alone.
  *
+ * --skip-orgs-with-members leaves every row owned by an organization that has
+ * members as it is, so those can be decided one by one; only member-less
+ * organizations (CRM prospects and similar) are classified.
+ *
  * --apply writes through BrandDatabase.syncBrandDomainFromWorkos, the same
  * path as the WorkOS webhooks, with `reclassifyLegacy`. Routine syncs leave
  * these rows alone, so this script is the only thing that demotes them.
@@ -22,6 +26,7 @@
  * Usage (dev):
  *   DATABASE_URL=… WORKOS_API_KEY=… npx tsx server/src/scripts/reclassify-brand-domain-verification.ts            # dry-run
  *   DATABASE_URL=… WORKOS_API_KEY=… npx tsx server/src/scripts/reclassify-brand-domain-verification.ts --apply    # write
+ *   … --skip-orgs-with-members [--apply]                                                                              # member-less orgs only
  *
  * Usage (prod):
  *   fly ssh console -a adcp-docs -C 'node /app/dist/scripts/reclassify-brand-domain-verification.js'           # dry-run
@@ -50,6 +55,7 @@ const WORKOS_CONCURRENCY = 10;
 
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
+  const skipOrgsWithMembers = process.argv.includes('--skip-orgs-with-members');
   const dbConfig = getDatabaseConfig();
   if (!dbConfig) {
     console.error('DATABASE_URL is required');
@@ -59,7 +65,8 @@ async function main(): Promise<void> {
   const brandDb = new BrandDatabase();
   const workos = getWorkos();
 
-  console.log(`=== brand domain verification reclassification (${apply ? 'APPLY' : 'DRY-RUN'}) ===\n`);
+  console.log(`=== brand domain verification reclassification (${apply ? 'APPLY' : 'DRY-RUN'}`
+    + `${skipOrgsWithMembers ? ', member-less orgs only' : ''}) ===\n`);
 
   const candidates = (await getPool().query<Candidate>(
     `SELECT b.domain, b.workos_organization_id, o.name AS org_name
@@ -68,7 +75,11 @@ async function main(): Promise<void> {
      WHERE b.domain_verified = TRUE
        AND b.workos_organization_id IS NOT NULL
        AND b.domain_verification_method IS NULL
+       AND (NOT $1::boolean OR NOT EXISTS (
+         SELECT 1 FROM organization_memberships m
+         WHERE m.workos_organization_id = b.workos_organization_id))
      ORDER BY b.domain`,
+    [skipOrgsWithMembers],
   )).rows;
   console.log(`Candidates: ${candidates.length}`);
 
