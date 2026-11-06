@@ -24,8 +24,9 @@ combine business durations from different calendars without computing a common b
 
 ## Creative review
 
-`creative_policy.review_sla` uses the existing SLA window with a required
-`completion_max`. Completion means an **approved or rejected decision** for a
+`creative_policy.review_sla` is a creative review SLA with a required
+`completion_max`, in elapsed time by default or in business time on a declared
+calendar. Completion means an **approved or rejected decision** for a
 creative in an accepted format. Ingestion, `processing`, `pending_review`, and
 `suspended` do not complete review. Every applicable approval scope must reach
 an approved or rejected decision; a partially approved assignment with pending
@@ -64,10 +65,16 @@ alone cannot authorize spend.
 
 ## Business-time calendars
 
-`SLAWindow.clock` defaults to `elapsed`, including weekends and non-working time.
-An explicit `business` clock counts only working time and MUST reference exactly
-one `get_adcp_capabilities.business_calendars[]` entry by `business_calendar_id`.
+Only the creative review SLA carries a clock. Its `clock` defaults to `elapsed`,
+including weekends and non-working time. An explicit `business` clock counts only
+working time and MUST reference exactly one
+`get_adcp_capabilities.business_calendars[]` entry by `business_calendar_id`.
 Missing or unresolved calendars invalidate the commitment; never fall back to elapsed time.
+
+Every other SLA is elapsed time, as in 3.2: an action's `sla`, a change term's
+`processing_sla`, and the escalation SLA. Their schemas are closed, so they reject
+`clock` and `business_calendar_id`, and sellers include weekends and non-working
+periods in the maximum.
 
 A calendar declares an IANA time zone, weekly working periods, complete
 non-working dates, a coverage interval, and working minutes per business day:
@@ -127,7 +134,7 @@ Duration filters MUST require presence and account for `clock`: compare UTC
 deadlines for the same receipt time across business and elapsed commitments.
 Without calendar support, treat business SLAs as unknown for duration matching.
 
-For a peer pinned below 3.3, sellers MUST omit the entire business-clock SLA or
+For a peer pinned below 3.3, sellers MUST omit the entire business-clock review SLA or
 translate it to a conservative elapsed bound that holds for every request to
 which that declaration applies. Dropping only `clock` and
 `business_calendar_id` silently changes the promise and is forbidden. Business

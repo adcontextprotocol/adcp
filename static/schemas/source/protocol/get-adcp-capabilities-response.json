@@ -815,7 +815,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "x-added-in": "3.3.0",
-      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment.",
+      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock creative review SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment.",
       "maxItems": 32
     },
     "adcp": {
