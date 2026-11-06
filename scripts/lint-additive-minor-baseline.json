@@ -3,13 +3,6 @@
   "base": "3.2.8",
   "entries": [
     {
-      "file": "compliance/comply-test-controller-response.json",
-      "pointer": "/oneOf/3/properties/forced",
-      "kind": "property-added-to-closed",
-      "detail": "property proposal_id added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "core/agent-notification-config.json",
       "pointer": "",
       "kind": "property-added-to-closed",
