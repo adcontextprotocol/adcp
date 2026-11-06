@@ -390,6 +390,7 @@ What this means for 3.3 adopters:
 - **Features that needed to add terms to `commercial_terms` are withdrawn** ([above](#withdrawn-from-3-3-planned-for-4-0)), and seller-held change terms are planned for 4.0 instead of shipping as `commercial_terms.change_terms[]`.
 - **New 3.3 additions sit on open schemas or in sibling fields.** `target_audiences[]` is a sibling of the closed `audience_evidence_requirements`, `vendor_metric_provenance[]` is a sibling of the closed `vendor_metric_values[]` row, and `counting_mechanisms` reaches the closed canonical measurement terms in 4.0.
 - **Send a 3.3 field on a reopened schema only to a 3.3 peer.** A strict validator on an earlier 3.2 patch still rejects it ([Send only to 3.3 peers](#send-only-to-3-3-peers)).
+- **[`force_hold_unavailable`](/docs/building/by-layer/L3/comply-test-controller#force_hold_unavailable) answers in `simulated`.** In `3.3.0-beta.0` through `3.3.0-beta.4`, this experimental controller scenario answered `forced: { arm: "unable", proposal_id }`. It now answers `simulated: { proposal_id }`, and `forced` keeps its 3.2 arms.
 
 ### Capabilities are bounded by structure
 
