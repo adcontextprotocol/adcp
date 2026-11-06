@@ -12,14 +12,21 @@ function readSchema(name) {
   return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, name), 'utf8'));
 }
 
+// create_media_buy and update_media_buy are deprecated compatibility tasks, so 3.3
+// withdrew the gate from their package schemas (adcp#8501). control_media_buy and the
+// get_media_buys readback keep it.
+const withdrawnSurfaces = [
+  'media-buy/package-request.json',
+  'media-buy/package-update.json',
+  'core/package.json',
+];
+
+// True when any object in the schema declares FIELD as a property (prose mentions don't count).
+const declaresField = node => node !== null && typeof node === 'object' &&
+  (Object.hasOwn(node, FIELD) || Object.values(node).some(declaresField));
+
 const surfaces = [
-  ['media-buy/package-request.json', schema => schema, {
-    product_id: 'streamhaus_video', pricing_option_id: 'cpm_usd',
-    creative_assignments: [{ creative_id: 'launch_video' }],
-  }],
-  ['media-buy/package-update.json', schema => schema, { package_id: 'pkg_launch' }],
   ['media-buy/package-control.json', schema => schema, { package_id: 'pkg_launch', paused: false }],
-  ['core/package.json', schema => schema, { package_id: 'pkg_launch' }],
   ['media-buy/get-media-buys-response.json',
     schema => schema.properties.media_buys.items.properties.packages.items,
     { package_id: 'pkg_launch' }],
@@ -42,7 +49,15 @@ for (const [name, select, legacy] of surfaces) {
   });
 }
 
-test('create, update, and both read surfaces carry the same initial-start contract', () => {
+test('the deprecated create/update package schemas no longer carry the creative start gate', () => {
+  for (const name of withdrawnSurfaces) {
+    assert.equal(declaresField(readSchema(name)), false, name);
+  }
+  // The get_products exact-package forecast input that mirrored the package row is withdrawn too.
+  assert.equal(fs.existsSync(path.join(SCHEMA_ROOT, 'media-buy/package-forecast-input.json')), false);
+});
+
+test('control and the get_media_buys readback carry the same initial-start contract', () => {
   for (const [name, select] of surfaces) {
     const schema = select(readSchema(name));
     const field = schema.properties[FIELD];
@@ -70,6 +85,7 @@ test('compound create and update use the package schemas that define the gate', 
   const create = readSchema('media-buy/create-media-buy-request.json');
   const update = readSchema('media-buy/update-media-buy-request.json');
   assert.equal(create.properties.packages.items.$ref, '/schemas/media-buy/package-request.json');
+  assert.equal(declaresField(create), false);
   assert.equal(update.properties.new_packages.items.$ref, '/schemas/media-buy/package-request.json');
   assert.equal(update.properties.packages.items.$ref, '/schemas/media-buy/package-update.json');
   const success = readSchema('media-buy/create-media-buy-response.json').oneOf[0];
