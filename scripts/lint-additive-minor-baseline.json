@@ -17,13 +17,6 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "core/canonical-media-buy-action-fields.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property review_sla added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "core/canonical-performance-standard.json",
       "pointer": "",
       "kind": "property-added-to-closed",
@@ -42,13 +35,6 @@
       "pointer": "",
       "kind": "property-added-to-closed",
       "detail": "property start_time added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/media-buy-available-action.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property review_sla added",
       "reason": "pending WG decision"
     },
     {
@@ -134,20 +120,6 @@
       "kind": "property-added-to-closed",
       "detail": "property ZA added (closed in 3.0.28)",
       "reason": "Released in 3.1.0, before DR-0036. Every 3.0.x release closed the capabilities geo_postal_areas object with 11 boolean keys. 3.1.0 replaced it with core/postal-area-support.json, which adds the country keys, so a strict 3.0.x validator rejects them. The key stays until 4.0, because removing it would break 3.1 and later peers."
-    },
-    {
-      "file": "core/sla-window.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property business_calendar_id added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/sla-window.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property clock added",
-      "reason": "pending WG decision"
     },
     {
       "file": "core/spot-reporting-capability.json",
