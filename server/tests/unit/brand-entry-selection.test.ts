@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectBrandEntry } from '../../src/services/brand-entry-selection.js';
+import { housePortfolioBrandDomains, selectBrandEntry } from '../../src/services/brand-entry-selection.js';
 
 const spark = {
   id: 'spark',
@@ -101,5 +101,54 @@ describe('selectBrandEntry', () => {
     const document = { ...spark, brand_context: context };
     expect(selectBrandEntry(document, { domain: 'spark.example' })).toEqual(spark);
     expect(document.brand_context).toBe(context);
+  });
+});
+
+describe('housePortfolioBrandDomains', () => {
+  it('lists inline brands by url and owned website, and pointers by domain', () => {
+    const document = {
+      house: { domain: 'nova-brands.example', name: 'Nova Brands' },
+      brands: [
+        { id: 'spark', names: [{ en: 'Spark' }], url: 'https://www.spark.example/about' },
+        { id: 'glow', names: [{ en: 'Glow' }], properties: [{ type: 'website', identifier: 'Glow.example' }] },
+      ],
+      brand_refs: [{ domain: 'beam.example', brand_id: 'beam' }],
+    };
+    expect(housePortfolioBrandDomains(document, 'nova-brands.example').sort())
+      .toEqual(['beam.example', 'glow.example', 'spark.example']);
+  });
+
+  it('ignores websites the house does not own', () => {
+    const document = {
+      house: { domain: 'nova-brands.example' },
+      brands: [{
+        id: 'spark',
+        names: [{ en: 'Spark' }],
+        properties: [
+          { type: 'website', identifier: 'partner.example', relationship: 'delegated' },
+          { type: 'website', identifier: 'network.example', delegation_type: 'ad_network' },
+          { type: 'mobile_app', identifier: 'com.spark.app' },
+        ],
+      }],
+    };
+    expect(housePortfolioBrandDomains(document, 'nova-brands.example')).toEqual([]);
+  });
+
+  it('leaves out the house itself', () => {
+    const document = {
+      house: { domain: 'nova-brands.example' },
+      brands: [{ id: 'nova', names: [{ en: 'Nova' }], url: 'https://nova-brands.example' }],
+    };
+    expect(housePortfolioBrandDomains(document, 'nova-brands.example')).toEqual([]);
+  });
+
+  it('lists nothing when the document is not this house\'s portfolio', () => {
+    const document = {
+      house: { domain: 'other-house.example' },
+      brand_refs: [{ domain: 'beam.example', brand_id: 'beam' }],
+    };
+    expect(housePortfolioBrandDomains(document, 'nova-brands.example')).toEqual([]);
+    expect(housePortfolioBrandDomains({ id: 'beam', names: [{ en: 'Beam' }] }, 'beam.example')).toEqual([]);
+    expect(housePortfolioBrandDomains(null, 'nova-brands.example')).toEqual([]);
   });
 });

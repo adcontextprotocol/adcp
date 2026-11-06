@@ -1,3 +1,5 @@
+import { canonicalizeBrandDomain } from './identifier-normalization.js';
+
 export interface BrandEntrySelector {
   domain: string;
   /** An already-resolved portfolio ID, not a display name or domain alias. */
@@ -22,26 +24,65 @@ function publicEntry(brand: Record<string, unknown>): Record<string, unknown> {
   return entry;
 }
 
+function urlHostname(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'https:' || url.protocol === 'http:') return url.hostname.toLowerCase();
+  } catch {
+    // An invalid display URL cannot select an identity.
+  }
+  return undefined;
+}
+
+function ownedWebsiteIdentifiers(brand: Record<string, unknown>): string[] {
+  if (!Array.isArray(brand.properties)) return [];
+  return brand.properties
+    .filter(property =>
+      isRecord(property) && property.type === 'website'
+      && typeof property.identifier === 'string'
+      && (property.relationship === undefined || property.relationship === 'owned')
+      // Raw/cached documents may use the adagents.json compatibility field.
+      // A supplied delegation marker cannot establish owned brand identity.
+      && property.delegation_type === undefined)
+    .map(property => (property.identifier as string).toLowerCase());
+}
+
 function matchesDomain(brand: Record<string, unknown>, domain: string): boolean {
-  if (typeof brand.url === 'string') {
-    try {
-      const url = new URL(brand.url);
-      if ((url.protocol === 'https:' || url.protocol === 'http:') && url.hostname.toLowerCase() === domain) {
-        return true;
-      }
-    } catch {
-      // An invalid display URL cannot select an identity.
+  return urlHostname(brand.url) === domain || ownedWebsiteIdentifiers(brand).includes(domain);
+}
+
+/**
+ * Domains a house portfolio document names as its brands: each brand_refs[]
+ * pointer, plus each inline brand's url and owned websites. Returned as
+ * canonical registry domains, without the house's own domain.
+ *
+ * This is the house's own claim. It never extends relationship trust; the
+ * caller decides whether the house is entitled to make it.
+ */
+export function housePortfolioBrandDomains(document: unknown, houseDomain: string): string[] {
+  if (!isRecord(document) || !isRecord(document.house)) return [];
+  const house = canonicalizeBrandDomain(houseDomain);
+  if (typeof document.house.domain !== 'string' || canonicalizeBrandDomain(document.house.domain) !== house) {
+    return [];
+  }
+
+  const declared = new Set<string>();
+  const brands = Array.isArray(document.brands) ? document.brands.filter(isBrand) : [];
+  for (const brand of brands) {
+    const hostname = urlHostname(brand.url);
+    if (hostname) declared.add(canonicalizeBrandDomain(hostname));
+    for (const identifier of ownedWebsiteIdentifiers(brand)) declared.add(canonicalizeBrandDomain(identifier));
+  }
+  const pointers = Array.isArray(document.brand_refs) ? document.brand_refs : [];
+  for (const pointer of pointers) {
+    if (isRecord(pointer) && typeof pointer.domain === 'string') {
+      declared.add(canonicalizeBrandDomain(pointer.domain));
     }
   }
-  return Array.isArray(brand.properties) && brand.properties.some(property =>
-    isRecord(property) && property.type === 'website'
-    && typeof property.identifier === 'string'
-    && property.identifier.toLowerCase() === domain
-    && (property.relationship === undefined || property.relationship === 'owned')
-    // Raw/cached documents may use the adagents.json compatibility field.
-    // A supplied delegation marker cannot establish owned brand identity.
-    && property.delegation_type === undefined,
-  );
+  declared.delete(house);
+  declared.delete('');
+  return [...declared];
 }
 
 /**

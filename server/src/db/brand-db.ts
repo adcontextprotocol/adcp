@@ -14,6 +14,7 @@ import type {
 import { isValidRelationshipTrust } from '../types.js';
 import { preserveBrandTrustFields, stripBrandTrustFields } from '../services/brand-trust-fields.js';
 import { BRAND_REVISION_SNAPSHOT_FIELDS, pickSnapshotFields } from './registry-revision-snapshot.js';
+import { housePortfolioBrandDomains } from '../services/brand-entry-selection.js';
 
 /**
  * Brand-manifest keys that must not be accepted from caller-supplied
@@ -454,6 +455,70 @@ const DOMAIN_CONTROL_VERIFIED_SQL =
 /** The row carries manifest content, rather than an empty placeholder. */
 const HAS_MANIFEST_SQL =
   `(brands.brand_manifest IS NOT NULL AND brands.brand_manifest <> '{}'::jsonb)`;
+/** Rows the public registry lists. */
+const REGISTRY_VISIBLE_SQL =
+  `(brands.is_public = true OR brands.review_status IS NULL OR brands.review_status = 'approved')`;
+
+/**
+ * How a listed brand is known to belong to a house:
+ * - `confirmed`: both sides publish the link, or the brand redirects to the house.
+ * - `house_declared`: the house's own manifest lists the brand. The house has
+ *   shown it controls its domain; the brand has not confirmed.
+ * - `brand_declared`: the brand's own brand.json names the house; the house
+ *   does not list it.
+ * - `inferred`: an enrichment or community record links them. Nobody declared it.
+ */
+export type HouseLink = 'confirmed' | 'house_declared' | 'brand_declared' | 'inferred';
+
+/** A house as the brand list sees it, read once per request. */
+export interface RegistryHouse {
+  domain: string;
+  /** The house's own registry row, when it has a public one. */
+  record: { brand_name: string; verified: boolean } | null;
+  /**
+   * Brands the house's manifest lists. Empty unless the house has shown it
+   * controls its domain, because anyone can write a community row naming brands.
+   */
+  declared_brand_domains: string[];
+}
+
+/**
+ * A claim the brand published in its own brand.json. The crawler clears
+ * `house_domain` whenever it records such a claim, while a verdict computed
+ * from stored records (computeUnpublishedHouseRelationshipTrust) copies the
+ * inferred house into `claimed_house_domain` and keeps `house_domain`.
+ */
+const OWN_CLAIM_SQL = `(brands.house_domain IS NULL AND brands.claimed_house_domain IS NOT NULL)`;
+
+/**
+ * Rows linked to a house by any evidence. A house's declaration does not list
+ * a brand whose own document names a different house, or that has a confirmed
+ * link to a different house: the brand's statement about itself wins.
+ */
+function houseFilterSql(house: RegistryHouse, params: unknown[]): string {
+  params.push(house.domain);
+  const domainParam = params.length;
+  params.push(house.declared_brand_domains);
+  const declaredParam = params.length;
+  return `(brands.house_domain = $${domainParam}
+    OR brands.claimed_house_domain = $${domainParam}
+    OR (brands.domain = ANY($${declaredParam}::text[])
+      AND (NOT ${OWN_CLAIM_SQL} OR brands.claimed_house_domain = $${domainParam})
+      AND (brands.relationship_trust IS NULL
+        OR brands.relationship_trust NOT IN ('mutual', 'inline')
+        OR brands.house_domain = $${domainParam})))`;
+}
+
+function houseLinkFor(
+  row: { domain: string; house_domain: string | null; claimed_house_domain: string | null; relationship_trust: string | null },
+  house: RegistryHouse,
+): HouseLink {
+  const trust = row.relationship_trust;
+  if (row.house_domain === house.domain && (trust === 'mutual' || trust === 'inline')) return 'confirmed';
+  if (house.declared_brand_domains.includes(row.domain)) return 'house_declared';
+  if (row.house_domain === null && row.claimed_house_domain === house.domain) return 'brand_declared';
+  return 'inferred';
+}
 
 /**
  * Whether a registry row is safe to use as an organization's public identity.
@@ -1381,8 +1446,13 @@ export class BrandDatabase {
    * control of the domain was demonstrated (owner verification, or a valid
    * brand.json served from the domain itself), and `has_manifest` means the
    * row actually carries manifest content.
+   *
+   * With `house`, only brands linked to that house are listed, each with a
+   * `house_link` saying how the link is known.
    */
-  async getAllBrandsForRegistry(options: ListBrandsOptions = {}): Promise<Array<{
+  async getAllBrandsForRegistry(
+    options: Omit<ListBrandsOptions, 'house_domain'> & { house?: RegistryHouse } = {},
+  ): Promise<Array<{
     domain: string;
     brand_name: string;
     source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
@@ -1398,12 +1468,11 @@ export class BrandDatabase {
     relationship_trust?: RelationshipTrust;
     relationship_verified_at?: Date;
     claimed_house_domain?: string;
+    house_link?: HouseLink;
   }>> {
     const params: unknown[] = [];
     let paramIndex = 1;
-    const conditions: string[] = [
-      `(brands.is_public = true OR brands.review_status IS NULL OR brands.review_status = 'approved')`,
-    ];
+    const conditions: string[] = [REGISTRY_VISIBLE_SQL];
 
     if (options.search) {
       const p = `%${options.search.replace(/[%_\\]/g, '\\$&')}%`;
@@ -1416,15 +1485,9 @@ export class BrandDatabase {
       paramIndex++;
     }
 
-    // A brand under a house is either a confirmed edge (house_domain) or the
-    // brand's own unconfirmed claim (claimed_house_domain); relationship_trust
-    // on each row says which.
-    if (options.house_domain) {
-      conditions.push(
-        `(brands.house_domain = $${paramIndex} OR brands.claimed_house_domain = $${paramIndex})`
-      );
-      params.push(options.house_domain.toLowerCase());
-      paramIndex++;
+    if (options.house) {
+      conditions.push(houseFilterSql(options.house, params));
+      paramIndex = params.length + 1;
     }
 
     if (options.source) {
@@ -1492,22 +1555,53 @@ export class BrandDatabase {
       params
     );
 
+    const house = options.house;
     return result.rows.map(row => ({
       ...row,
       house_domain: row.house_domain ?? undefined,
       relationship_trust: isValidRelationshipTrust(row.relationship_trust) ? row.relationship_trust : undefined,
       relationship_verified_at: row.relationship_verified_at ?? undefined,
       claimed_house_domain: row.claimed_house_domain ?? undefined,
+      ...(house ? { house_link: houseLinkFor(row, house) } : {}),
     }));
+  }
+
+  /**
+   * Read a house for the brand list: its public record, and the brands its
+   * manifest lists when it has shown it controls its domain (owner-verified,
+   * or crawled from its own /.well-known/brand.json).
+   */
+  async getRegistryHouse(houseDomain: string): Promise<RegistryHouse> {
+    const domain = canonicalizeBrandDomain(houseDomain);
+    const result = await query<{
+      brand_name: string;
+      verified: boolean;
+      brand_manifest: unknown;
+    }>(
+      `SELECT
+         COALESCE(brands.brand_name, brands.brand_manifest->>'name', brands.brand_manifest->'house'->>'name', brands.domain) AS brand_name,
+         ${DOMAIN_CONTROL_VERIFIED_SQL} AS verified,
+         brands.brand_manifest
+       FROM brands
+       WHERE brands.domain = $1 AND ${REGISTRY_VISIBLE_SQL}`,
+      [domain],
+    );
+    const row = result.rows[0];
+    if (!row) return { domain, record: null, declared_brand_domains: [] };
+    return {
+      domain,
+      record: { brand_name: row.brand_name, verified: row.verified },
+      declared_brand_domains: row.verified ? housePortfolioBrandDomains(row.brand_manifest, domain) : [],
+    };
   }
 
   /**
    * Get aggregate counts for the brand registry, always unfiltered by source.
    * Used alongside getAllBrandsForRegistry so stats remain global even when
-   * a source filter narrows the brands list. `search` and `houseDomain`
-   * narrow the counts the same way they narrow the list.
+   * a source filter narrows the brands list. `search` and `house` narrow the
+   * counts the same way they narrow the list.
    */
-  async getBrandRegistryStats(search?: string, houseDomain?: string): Promise<{
+  async getBrandRegistryStats(search?: string, house?: RegistryHouse): Promise<{
     total: number;
     hosted: number;
     brand_json: number;
@@ -1535,10 +1629,8 @@ export class BrandDatabase {
       paramIndex++;
     }
 
-    if (houseDomain) {
-      conditions.push(`(house_domain = $${paramIndex} OR claimed_house_domain = $${paramIndex})`);
-      params.push(houseDomain.toLowerCase());
-      paramIndex++;
+    if (house) {
+      conditions.push(houseFilterSql(house, params));
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
