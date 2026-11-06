@@ -412,6 +412,7 @@ What this means for 3.3 adopters:
 - **Generated types can change.** A generator that reads `additionalProperties` treats the opened objects as open: json-schema-to-typescript adds an index signature, and Pydantic models generated with `extra="forbid"` stop rejecting extra fields. Code that relied on a type or validation error for an unknown key needs its own check.
 - **Send a 3.3 field only to a 3.3 peer.** A strict validator on 3.2.9 or earlier still rejects it ([Send only to 3.3 peers](#send-only-to-3-3-peers)).
 - **Features that needed new terms in `commercial_terms` stay withdrawn** ([above](#withdrawn-from-3-3-planned-for-4-0)), and seller-held change terms are planned for 4.0 instead of shipping as `commercial_terms.change_terms[]`.
+- **Only the creative review SLA carries a clock** ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). `core/sla-window.json` is back to its 3.2.8 shape, and `clock` and `business_calendar_id` now live on `core/creative-review-sla.json`, which `creative_policy.review_sla` uses. Sellers built on 3.3.0-beta.1 through beta.5 stop sending `clock` and `business_calendar_id` on an action's `sla`, a change term's `processing_sla`, and the escalation SLA. Those maxima are elapsed time and include weekends and non-working periods.
 
 ### Capabilities are bounded by structure
 

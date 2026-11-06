@@ -79,11 +79,11 @@
         },
         "business-calendar": {
           "$ref": "/schemas/core/business-calendar.json",
-          "description": "Immutable working-time declaration for business-clock service commitments"
+          "description": "Immutable working-time declaration for business-clock creative review commitments"
         },
         "creative-review-sla": {
           "$ref": "/schemas/core/creative-review-sla.json",
-          "description": "Product-scoped commitment to an approved or rejected creative review decision"
+          "description": "Product-scoped commitment to an approved or rejected creative review decision, in elapsed or business time"
         },
         "escalation-sla": {
           "$ref": "/schemas/core/escalation-sla.json",

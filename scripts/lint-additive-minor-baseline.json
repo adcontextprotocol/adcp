@@ -1,5 +1,5 @@
 {
-  "$comment": "Non-additive schema changes recorded by scripts/lint-additive-minor.cjs, relative to the release named in base. This list only shrinks: CI rejects an entry that the target branch does not have. Remove an entry when its change is reverted or released, and record the decision in reason. A property-added-to-closed entry records an addition to a schema that stays closed in 3.x; all four current entries are in commercial-terms schemas, which are held closed until 4.0 (DR-0036).",
+  "$comment": "Non-additive schema changes recorded by scripts/lint-additive-minor.cjs, relative to the release named in base. This list only shrinks: CI rejects an entry that the target branch does not have. Remove an entry when its change is reverted or released, and record the decision in reason. A property-added-to-closed entry records an addition to a schema that stays closed in 3.x; the one current entry is in a commercial-terms schema, which is held closed until 4.0 (DR-0036).",
   "base": "3.2.9",
   "entries": [
     {
@@ -8,20 +8,6 @@
       "kind": "property-added-to-closed",
       "detail": "property metric_id added",
       "reason": "Kept closed: part of the signed commercial terms (DR-0036). metric_id selects which vendor number decides a signed performance standard, so a 3.2 buyer would read the same standard differently. #8501 entry 6 withdraws it from 3.3 and removes this entry."
-    },
-    {
-      "file": "core/sla-window.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property business_calendar_id added",
-      "reason": "Kept closed: part of the signed commercial terms through change_terms[].processing_sla (DR-0036). #8762 (#8501 entry 12) moves business_calendar_id to core/creative-review-sla.json and removes this entry."
-    },
-    {
-      "file": "core/sla-window.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property clock added",
-      "reason": "Kept closed: part of the signed commercial terms through change_terms[].processing_sla (DR-0036). A business clock changes what a signed maximum means. #8762 (#8501 entry 11) moves clock to core/creative-review-sla.json and removes this entry."
     },
     {
       "file": "core/x-entity-types.json",
