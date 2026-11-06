@@ -172,6 +172,8 @@ Three features shipped in `3.3.0-beta.1` and are not part of 3.3. They leave the
 
 The [migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) lists every surface removed, and [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) keeps the designs.
 
+One conformance-runner shape also changes after beta.4, for the same closed-schema reason. The experimental [`force_hold_unavailable`](/docs/building/by-layer/L3/comply-test-controller#force_hold_unavailable) controller scenario answered `forced: { arm: "unable", proposal_id }` in `3.3.0-beta.0` through `3.3.0-beta.4`, and now answers `simulated: { proposal_id }`.
+
 ## Required integration evidence
 
 Retain the exact protocol bundle, SDK package versions, capability responses, redacted requests and responses, task IDs, and account and MediaBuy identifiers for each run.

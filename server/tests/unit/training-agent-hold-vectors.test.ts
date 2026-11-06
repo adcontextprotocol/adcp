@@ -299,7 +299,8 @@ describe('experimental 3.3 holds graded by the reference hold-policy grader', ()
       scenario: 'force_hold_unavailable',
       params: { proposal_id: forced.draft.proposal_id },
     });
-    expect(directive.structured, JSON.stringify(directive.structured)).toMatchObject({ success: true, forced: { arm: 'unable', proposal_id: forced.draft.proposal_id } });
+    expect(directive.structured, JSON.stringify(directive.structured)).toMatchObject({ success: true, simulated: { proposal_id: forced.draft.proposal_id } });
+    expect(directive.structured).not.toHaveProperty('forced');
     const drafts = [forced.draft, sibling.draft, termsOnly.draft];
     const failed = await finalize(drafts, { label: 'forced batch' });
     expect(failed.structured.results.map((entry: Json) => entry.reason_code)).toEqual(['hold_unavailable', 'batch_aborted', 'batch_aborted']);

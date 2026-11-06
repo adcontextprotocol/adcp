@@ -194,7 +194,7 @@
     },
     {
       "title": "SimulationSuccess",
-      "description": "A simulate_delivery, simulate_budget_spend, simulate_later_proposal, catalog_item_availability_probe, compact_product_lifecycle_probe, compact_direct_buy_lifecycle_probe, reporting_core_lifecycle_probe, reporting_subscription_probe, or Reliable Reporting tier-probe operation succeeded. For delivery: simulated contains the metrics injected by this call (impressions/clicks/plays/reported_spend/conversions plus optional DOOH, reach, frequency, reach-window, and viewability values) and cumulative contains running totals or latest non-additive metric state. For budget: simulated contains spend_percentage/computed_spend/budget. For a later proposal: simulated contains proposal_id, opportunity_id, and later_reason of the created snapshot. For catalog availability: simulated reports seeded foreign identity, actual eligibility gates, processed expiry time, or delete/recreate generation rotation according to params.operation. For compact product lifecycle: simulated reports deterministic preparation through MediaBuy control/readback or strict post-deadline proposal expiry. For compact direct-buy lifecycle: simulated reports deterministic preparation. For reporting Core: simulated reports the fixed virtual time plus stable account, configuration, obligation, and revision identifiers created or advanced by the operation; prepare also reports the complete resolved configuration, period, expected_at, and recovery_deadline, restate_snapshot reports the new revision plus supersedes_reporting_revision_id, and restate_after_received additionally reports received_reporting_revision_id, restated_at, and stale_received_grace_deadline; advance_past_status_deadline reports expected_at, automated_recovery_window_seconds, and the crossed consumer_status_deadline; and advance_past_escalation reports issue_id, issue_opened_at, consumer_mismatch_escalation_seconds, consumer_mismatch_escalation_deadline, expected_recommended_action, and any still-future stale_received_grace_deadline. For reporting subscriptions: simulated reports simulated_now and account_id; revoke_grant adds unauthorized_at; regrant adds authorized_at, regranted_at when the re-grant continued the chain, and chain (continued or new); reduce_grant adds the applied allowed_tasks; set_account_timezone returns SetAccountTimezoneResult (previous_timezone, timezone, changed_at, and the per-offering timezone_cutovers); advance_time adds the applied simulated_now. Reliable Reporting tier probes return the exact seeded ledger IDs, checkpoints, notification order, resource lifecycle evidence, and receipt bodies required by their storyboards.",
+      "description": "A simulate_delivery, simulate_budget_spend, simulate_later_proposal, force_hold_unavailable, catalog_item_availability_probe, compact_product_lifecycle_probe, compact_direct_buy_lifecycle_probe, reporting_core_lifecycle_probe, reporting_subscription_probe, or Reliable Reporting tier-probe operation succeeded. For delivery: simulated contains the metrics injected by this call (impressions/clicks/plays/reported_spend/conversions plus optional DOOH, reach, frequency, reach-window, and viewability values) and cumulative contains running totals or latest non-additive metric state. For budget: simulated contains spend_percentage/computed_spend/budget. For a later proposal: simulated contains proposal_id, opportunity_id, and later_reason of the created snapshot. For force_hold_unavailable (experimental, media_buy.hold_policy): simulated contains proposal_id, the draft whose next refine_proposals finalize will fail with hold_unavailable. Registering the directive changes nothing else, and the draft stays a draft. For catalog availability: simulated reports seeded foreign identity, actual eligibility gates, processed expiry time, or delete/recreate generation rotation according to params.operation. For compact product lifecycle: simulated reports deterministic preparation through MediaBuy control/readback or strict post-deadline proposal expiry. For compact direct-buy lifecycle: simulated reports deterministic preparation. For reporting Core: simulated reports the fixed virtual time plus stable account, configuration, obligation, and revision identifiers created or advanced by the operation; prepare also reports the complete resolved configuration, period, expected_at, and recovery_deadline, restate_snapshot reports the new revision plus supersedes_reporting_revision_id, and restate_after_received additionally reports received_reporting_revision_id, restated_at, and stale_received_grace_deadline; advance_past_status_deadline reports expected_at, automated_recovery_window_seconds, and the crossed consumer_status_deadline; and advance_past_escalation reports issue_id, issue_opened_at, consumer_mismatch_escalation_seconds, consumer_mismatch_escalation_deadline, expected_recommended_action, and any still-future stale_received_grace_deadline. For reporting subscriptions: simulated reports simulated_now and account_id; revoke_grant adds unauthorized_at; regrant adds authorized_at, regranted_at when the re-grant continued the chain, and chain (continued or new); reduce_grant adds the applied allowed_tasks; set_account_timezone returns SetAccountTimezoneResult (previous_timezone, timezone, changed_at, and the per-offering timezone_cutovers); advance_time adds the applied simulated_now. Reliable Reporting tier probes return the exact seeded ledger IDs, checkpoints, notification order, resource lifecycle evidence, and receipt bodies required by their storyboards.",
       "type": "object",
       "properties": {
         "success": {
@@ -271,7 +271,7 @@
     },
     {
       "title": "ForcedDirectiveSuccess",
-      "description": "A forced response-arm directive was registered. The directive shapes the next matching operation call from this caller's authenticated sandbox account into the requested arm, then is consumed. No entity transitioned yet, so this branch carries 'forced' rather than previous_state/current_state. The experimental force_hold_unavailable scenario (media_buy.hold_policy) registers the 'unable' arm for one draft proposal, echoed in forced.proposal_id: the next refine_proposals finalize that includes it fails with hold_unavailable, siblings with batch_aborted, and the directive is then consumed.",
+      "description": "A forced response-arm directive was registered. The directive shapes the next matching operation call from this caller's authenticated sandbox account into the requested arm, then is consumed. No entity transitioned yet, so this branch carries 'forced' rather than previous_state/current_state.",
       "type": "object",
       "properties": {
         "success": {
@@ -288,10 +288,9 @@
                 "submitted",
                 "completed",
                 "input-required",
-                "rejected",
-                "unable"
+                "rejected"
               ],
-              "description": "Arm the seller will emit on the next forced operation response. 'unable' (experimental, media_buy.hold_policy; added in 3.3) is the per-entry refine_proposals finalize outcome registered by force_hold_unavailable: the named draft returns unable with reason_code hold_unavailable, its otherwise-eligible batch siblings return unable with reason_code batch_aborted, no committed proposal is created and no hold is placed."
+              "description": "Arm the seller will emit on the next forced operation response."
             },
             "task_id": {
               "description": "Echo of the registered task_id. Present only when arm is 'submitted' (the arm that emits a task envelope).",
@@ -321,14 +320,6 @@
                 "minLength": 1,
                 "maxLength": 1000
               }
-            },
-            "proposal_id": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Echo of the draft proposal whose next finalize will fail with hold_unavailable. Present only when arm is 'unable'.",
-              "x-entity": "proposal",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0"
             }
           },
           "required": [
@@ -376,51 +367,6 @@
                         "suggestions"
                       ]
                     }
-                  ]
-                }
-              }
-            },
-            {
-              "if": {
-                "properties": {
-                  "arm": {
-                    "const": "unable"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "proposal_id"
-                ],
-                "not": {
-                  "anyOf": [
-                    {
-                      "required": [
-                        "task_id"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "evaluation_id"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "reason"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "suggestions"
-                      ]
-                    }
-                  ]
-                }
-              },
-              "else": {
-                "not": {
-                  "required": [
-                    "proposal_id"
                   ]
                 }
               }
@@ -1113,8 +1059,7 @@
       "data": {
         "status": "completed",
         "success": true,
-        "forced": {
-          "arm": "unable",
+        "simulated": {
           "proposal_id": "prop_draft_ctv"
         },
         "message": "The next finalize of prop_draft_ctv will fail with hold_unavailable"

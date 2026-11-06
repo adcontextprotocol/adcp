@@ -240,12 +240,8 @@ phases:
             path: "success"
             value: true
             description: "The directive is registered"
-          - check: field_value
-            path: "forced.arm"
-            value: "unable"
-            description: "The directive registers the unable arm"
           - check: field_equals_context
-            path: "forced.proposal_id"
+            path: "simulated.proposal_id"
             context_key: "second_draft_id"
             description: "The directive names the second draft"
 

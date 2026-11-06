@@ -939,9 +939,12 @@ async function registerForcedHoldUnavailable(params: Json, ctx: TrainingContext)
     saveHoldDocument(session, doc, await sandboxNow(ctx));
     await flushDirtySessions();
   }
+  // The registration answers on the SimulationSuccess branch: `simulated`
+  // carries the value this call applied. ForcedDirectiveSuccess (`forced.arm`)
+  // has no arm for a per-entry finalize outcome (adcp#8501).
   return {
     success: true,
-    forced: { arm: 'unable', proposal_id: proposalId },
+    simulated: { proposal_id: proposalId },
     message: `The next finalize that includes ${proposalId} returns hold_unavailable`,
   };
 }
