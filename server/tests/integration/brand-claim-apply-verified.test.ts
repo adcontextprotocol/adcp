@@ -54,11 +54,12 @@ describe('applyVerifiedBrandClaim', () => {
     );
   });
 
-  it('creates a verified brand row when none exists', async () => {
+  it('creates a verified brand row when none exists, recording how it was verified', async () => {
     const result = await brandDb.applyVerifiedBrandClaim(TEST_DOMAIN, ORG_A, 'dns');
     expect(result).toBeTruthy();
     expect(result!.workos_organization_id).toBe(ORG_A);
     expect(result!.domain_verified).toBe(true);
+    expect(result!.domain_verification_method).toBe('dns');
     expect(result!.is_public).toBe(true);
   });
 
@@ -259,14 +260,27 @@ describe('applyVerifiedBrandClaim', () => {
       expect(await row()).toMatchObject({ domain_verified: false, domain_verification_method: 'manual' });
     });
 
-    it('reclassifies a row verified before the method was recorded', async () => {
+    it('leaves a row verified before the method was recorded to the reclassification script', async () => {
       await pool.query(
         `INSERT INTO brands (domain, workos_organization_id, source_type, review_status, is_public, domain_verified)
          VALUES ($1, $2, 'enriched', 'approved', TRUE, TRUE)`,
         [TEST_DOMAIN, ORG_A],
       );
       await brandDb.syncBrandDomainFromWorkos(TEST_DOMAIN, ORG_A, 'manual');
+      expect(await row()).toMatchObject({ domain_verified: true, domain_verification_method: null });
+
+      await brandDb.syncBrandDomainFromWorkos(TEST_DOMAIN, ORG_A, 'manual', { reclassifyLegacy: true });
       expect(await row()).toMatchObject({ domain_verified: false, domain_verification_method: 'manual' });
+    });
+
+    it('records proof on a legacy row from a routine sync', async () => {
+      await pool.query(
+        `INSERT INTO brands (domain, workos_organization_id, source_type, review_status, is_public, domain_verified)
+         VALUES ($1, $2, 'enriched', 'approved', TRUE, TRUE)`,
+        [TEST_DOMAIN, ORG_A],
+      );
+      await brandDb.syncBrandDomainFromWorkos(TEST_DOMAIN, ORG_A, 'dns');
+      expect(await row()).toMatchObject({ domain_verified: true, domain_verification_method: 'dns' });
     });
 
     it('does not let an administrator-asserted domain displace another org\'s verified row', async () => {

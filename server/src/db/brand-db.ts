@@ -478,6 +478,11 @@ const EXISTING_PROOF_SQL = `(CASE WHEN brands.domain_verified THEN COALESCE(
   brands.domain_verification_method,
   CASE WHEN brands.source_type = 'brand_json' THEN 'brand_json' END) END)`;
 
+/** Verified before the method was recorded, with no recognisable proof. */
+const LEGACY_VERIFIED_SQL = `(brands.domain_verified
+  AND brands.domain_verification_method IS NULL
+  AND brands.source_type IS DISTINCT FROM 'brand_json')`;
+
 /**
  * A write would move another organization's verified row to a new owner on
  * evidence weaker than DNS. Used as the ON CONFLICT ... WHERE guard: the
@@ -939,9 +944,10 @@ export class BrandDatabase {
     const result = await query<HostedBrand>(
       `INSERT INTO brands (
          domain, workos_organization_id, brand_manifest, has_brand_manifest,
-         source_type, review_status, is_public, domain_verified, manifest_orphaned
+         source_type, review_status, is_public, domain_verified, domain_verification_method,
+         manifest_orphaned
        )
-       VALUES ($1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE, TRUE, FALSE)
+       VALUES ($1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE, TRUE, $3::text, FALSE)
        ON CONFLICT (domain) DO UPDATE SET
          workos_organization_id = $2,
          domain_verified = TRUE,
@@ -1021,7 +1027,9 @@ export class BrandDatabase {
    * `domain_verified` follows the proof (resolveWorkosDomainVerification): a
    * `manual` domain links the brand to the organization without verifying it.
    * Only DNS proof displaces another organization's verified row, and a weaker
-   * method never replaces this organization's stronger proof.
+   * method never replaces this organization's stronger proof. Rows verified
+   * before the method was recorded are left as they are unless
+   * `reclassifyLegacy` is set.
    *
    * Idempotent — repeated calls produce the same end state. Returns the
    * current row.
@@ -1030,11 +1038,19 @@ export class BrandDatabase {
     domain: string,
     workosOrganizationId: string,
     strategy: WorkosDomainVerificationStrategy,
+    options: { reclassifyLegacy?: boolean } = {},
   ): Promise<HostedBrand | null> {
     const canonicalDomain = canonicalizeBrandDomain(domain);
+    // Routine syncs never demote a row verified before the method was
+    // recorded; only the reclassification script (reviewed dry-run first)
+    // does. Proof from a routine sync is still recorded on it.
+    const keepsLegacy = options.reclassifyLegacy
+      ? 'FALSE'
+      : `(${LEGACY_VERIFIED_SQL} AND EXCLUDED.domain_verification_method = 'manual')`;
     // Same-org proof that is at least as strong as the incoming method wins.
     const keepsProof = `(brands.workos_organization_id = EXCLUDED.workos_organization_id
-      AND ${methodRankSql(EXISTING_PROOF_SQL)} >= ${methodRankSql('EXCLUDED.domain_verification_method')})`;
+      AND (${keepsLegacy}
+        OR ${methodRankSql(EXISTING_PROOF_SQL)} >= ${methodRankSql('EXCLUDED.domain_verification_method')}))`;
     const verifiedAfter = `(${keepsProof} OR EXCLUDED.domain_verified)`;
     // The member check runs inside the write, so a concurrent promotion
     // cannot be overwritten with a stale `manual`.

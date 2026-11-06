@@ -16,7 +16,8 @@
  * (for example, verified by a brand.json pointer) are listed and left alone.
  *
  * --apply writes through BrandDatabase.syncBrandDomainFromWorkos, the same
- * path as the WorkOS webhooks.
+ * path as the WorkOS webhooks, with `reclassifyLegacy`. Routine syncs leave
+ * these rows alone, so this script is the only thing that demotes them.
  *
  * Usage (dev):
  *   DATABASE_URL=… WORKOS_API_KEY=… npx tsx server/src/scripts/reclassify-brand-domain-verification.ts            # dry-run
@@ -133,7 +134,9 @@ async function main(): Promise<void> {
 
   let written = 0;
   for (const row of classified) {
-    await brandDb.syncBrandDomainFromWorkos(row.domain, row.workos_organization_id, row.strategy);
+    await brandDb.syncBrandDomainFromWorkos(row.domain, row.workos_organization_id, row.strategy, {
+      reclassifyLegacy: true,
+    });
     written++;
   }
   console.log(`\nWrote ${written} rows.`);
