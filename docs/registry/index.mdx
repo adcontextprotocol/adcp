@@ -116,7 +116,7 @@ These endpoints resolve domains to brand identities. The `source` field identifi
 
 | Source | Meaning |
 |--------|----------|
-| `hosted` | Registered by a domain owner whose control of the domain has been verified |
+| `hosted` | Registered by a domain owner whose control of the domain has been verified: by a DNS record, by the domain's `/.well-known/brand.json` pointing at the hosted record, or by a member of the owning organization with a verified email address on the domain. An administrator adding the domain to an organization is not verification. |
 | `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
 | `enriched` | Enriched via Brandfetch API |
 | `community` | Submitted by a community member |
@@ -198,7 +198,18 @@ Pre-v3 documents are promoted to canonical v3 identity for the response, flagged
 
 An absent `relationship_trust` in a list result means trust has not yet been computed for that brand — it MUST NOT be interpreted as `standalone`. For an authoritative, real-time verdict use `/api/brands/resolve`.
 
-`/api/brands/registry?house_domain=pg.com` returns the brands whose `house_domain` is `pg.com`. Each row's `house_domain` comes from the brand's own record, so it is a claim unless `relationship_trust` is `inline` or `mutual`. Treat the list as suggestions, not as brands the house has confirmed.
+A brand that names a house but publishes no brand.json of its own (an enriched, community or hosted record) gets its verdict from stored records after each crawl: `house_only` when the house's record lists it in `brand_refs[]`, and `unverifiable` otherwise, with the house copied to `claimed_house_domain`. Neither verdict extends trust. `mutual` still requires both published documents.
+
+`/api/brands/registry?house_domain=pg.com` lists every brand the registry links to `pg.com`, and adds the house's own record as `house`. Each row's `house_link` says how the link is known:
+
+| `house_link` | Meaning | Extends trust |
+|---|---|---|
+| `confirmed` | Both sides publish the link, or the brand redirects to the house (`relationship_trust` is `mutual` or `inline`) | Yes |
+| `house_declared` | The house's own manifest lists the brand, and the house has shown it controls its domain | No |
+| `brand_declared` | The brand's own brand.json names the house; the house does not list it | No |
+| `inferred` | An enrichment or community record links them | No |
+
+A verdict computed from stored records does not make a row `brand_declared`: the brand published nothing. A house's declaration does not list a brand whose own brand.json names a different house, or that is confirmed under a different house. Offer anything other than `confirmed` as a suggestion, under the brand's own domain, never as authority from the house.
 
 | Method | Path | Description |
 |--------|------|-------------|

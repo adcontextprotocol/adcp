@@ -2,7 +2,7 @@
 "adcontextprotocol": patch
 ---
 
-Reopen the 3.2 proposal-flow schemas that were closed against DR-0019, as correction (a) recorded in DR-0036.
+Reopen the 3.2 proposal-flow schemas that were closed against DR-0019, as a correction under DR-0036.
 
 3.2 published the proposal-flow task roots and containers with `additionalProperties: false`. DR-0019 keeps request roots, response roots, and container objects open. These schemas now set `additionalProperties: true` at the listed locations:
 

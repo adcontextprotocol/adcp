@@ -87,6 +87,7 @@ import {
   withDurableReportingLedger,
 } from './reporting-reliability.js';
 import {
+  flushDirtySessions,
   getSession,
   registerSharedPublicBrandPartition,
   runWithAccountIdAliasScope,
@@ -1725,6 +1726,13 @@ export class TrainingSalesPlatform
       const platformResult = translateV5Result<CreateMediaBuyHandlerResult>(
         canonicalMediaBuyPlatformResult(v5Result),
       );
+      if ('media_buy_id' in platformResult && typeof platformResult.media_buy_id === 'string') {
+        // The tenant transport's fallback flush runs after the MCP response.
+        // Commit this synchronous buy before the SDK publishes its result so
+        // the next controller request can read it on another web process.
+        // Session persistence and SDK replay publication remain separate.
+        await flushDirtySessions();
+      }
       // SDK 14 intentionally keeps synchronous terminal responses silent in
       // AdCP 3.2. Released 3.0 storyboards, however, require the historical
       // inline completion callback. Emit only on that compatibility surface,

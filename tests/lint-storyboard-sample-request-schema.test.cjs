@@ -436,6 +436,43 @@ test('static authoring excludes only valid runtime asset directives while wire r
   }
 });
 
+test('offline format directives require the runtime gate and an exact wrapper before static exclusion', async () => {
+  const { storyboard, steps } = cancellationCreativeAuthoringFixture();
+  const step = structuredClone(steps[0]);
+  const schema = loadSchema(step.schema_ref);
+  const directive = { format_id: '$context.legacy_format_id', catalog: 'test_kit' };
+  step.sample_request.creatives[0].assets = { $build_assets_from_format: directive };
+  const gated = { ...storyboard, requires: ['test_kit_format_catalog_runner'] };
+  const validate = async (source, candidate) => Promise.all(normalizeStoryboardSampleRequests(source, candidate, schema)
+    .map(payload => validateStep({ schemaRef: step.schema_ref, payload })));
+  assert.ok((await validate(gated, step)).every(result => result.ok));
+  assert.ok((await validate({ ...storyboard, requires: ['real_wire'] }, step)).every(result => !result.ok),
+    'an older runner must be gated before the wrapper can appear');
+  for (const requires of ['test_kit_format_catalog_runner', 'not_test_kit_format_catalog_runner', {}, null]) {
+    assert.ok((await validate({ ...storyboard, requires }, step)).every(result => !result.ok),
+      'only an exact member of a requirement array enables the wrapper');
+  }
+  assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: step.sample_request })).ok, false,
+    'the wrapper is never a valid wire asset');
+  for (const malformed of [
+    { ...directive, extra: true },
+    { ...directive, catalog: 'remote' },
+    { ...directive, format_id: '$context.' },
+    { catalog: 'test_kit' },
+    [directive],
+  ]) {
+    const broken = structuredClone(step);
+    broken.sample_request.creatives[0].assets.$build_assets_from_format = malformed;
+    assert.ok((await validate(gated, broken)).every(result => !result.ok), JSON.stringify(malformed));
+  }
+  const brokenSibling = structuredClone(step);
+  brokenSibling.sample_request.creatives[0].assets.bad = 'not an asset';
+  assert.ok((await validate(gated, brokenSibling)).every(result => !result.ok));
+  const brokenAssignment = structuredClone(step);
+  brokenAssignment.sample_request.assignments[0].creative_id = 42;
+  assert.ok((await validate(gated, brokenAssignment)).every(result => !result.ok));
+});
+
 test('cancellation directives materialize real test-kit assets before strict request validation', async () => {
   const { expandCreativeAssetDirectives, findUnresolvedCreativeAssetDirectives, injectContext } = require('@adcp/sdk/testing');
   const { testKit, steps } = cancellationCreativeAuthoringFixture();

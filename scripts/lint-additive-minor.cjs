@@ -49,18 +49,18 @@
  *   additional-properties-opened: a closed schema is opened. Opening breaks no
  *   validator, but it permits no additions within the major.
  *
- * Corrections (DR-0036)
- *   A minor or patch release may change a closed schema only to make it
- *   accept what the published spec text already required.
- *   scripts/lint-additive-minor-corrections.json lists each recorded
- *   correction: the schema location, the property it lets in, the release it
- *   lands in, and the source text that required it. The check accepts
+ * Corrections and named exceptions (DR-0036)
+ *   A minor or patch release may change a closed schema only by a correction,
+ *   which makes it accept what the published spec text already required, or
+ *   by a named exception. scripts/lint-additive-minor-corrections.json lists
+ *   each one: the schema location, the property it lets in, the release it
+ *   lands in, and the source text it rests on. The check accepts
  *   exactly the listed additions from the listed release on. Property `*`
  *   reopens the whole schema: the schema must be open in the candidate, and
  *   any addition to it passes. A named property must be declared at its
  *   location in the candidate. Each source file must exist and contain its
- *   quote, and each entry must appear in the correction tables of the
- *   decision record that the file names.
+ *   quote, and the file must name an existing decision record under
+ *   governance/decisions.
  *
  *   A correction may instead tighten one bound (`bound` and `value`, such as
  *   `minLength` 1) where the published spec text already required it: an
@@ -1126,32 +1126,10 @@ function checkCorrectionSources(entries, root) {
 }
 
 /**
- * The corrections a decision record lists, as correction keys. The tables sit
- * under its `### Corrections` heading. In a table row, the first cell names
- * the schema file in code, the second reads `root` or lists pointers in code,
- * and the third names the property in code.
+ * The corrections list names the decision record that governs it, and that
+ * record must exist under governance/decisions.
  */
-function recordedCorrections(recordText) {
-  const keys = new Set();
-  const heading = /^### Corrections[^\n]*$/m.exec(recordText);
-  if (!heading) return keys;
-  const section = recordText.slice(heading.index + heading[0].length).split(/^#{1,3} /m)[0];
-  for (const line of section.split('\n')) {
-    const cells = line.split('|').map((cell) => cell.trim());
-    const file = /^`([^`]+\.json)`$/.exec(cells[1] || '');
-    const property = /^`([^`]+)`$/.exec(cells[3] || '');
-    if (!file || !property) continue;
-    const pointers = cells[2] === 'root' ? [''] : [...cells[2].matchAll(/`([^`]*)`/g)].map((m) => m[1]);
-    for (const pointer of pointers) keys.add(correctionKey({ file: file[1], pointer, property: property[1] }));
-  }
-  return keys;
-}
-
-/**
- * Each correction must appear in the correction tables of the decision record
- * that the list names, so a new correction needs a governance change.
- */
-function checkCorrectionsRecorded(value, root) {
+function checkCorrectionsDecision(value, root) {
   if (!isObject(value) || !Array.isArray(value.corrections) || value.corrections.length === 0) return [];
   if (typeof value.decision !== 'string' || !/^DR-\d+$/.test(value.decision)) {
     return ['corrections list must name its decision record, such as DR-0036'];
@@ -1160,17 +1138,7 @@ function checkCorrectionsRecorded(value, root) {
   const record = fs.existsSync(directory)
     ? fs.readdirSync(directory).find((name) => name.startsWith(`${value.decision}-`) && name.endsWith('.md'))
     : undefined;
-  if (!record) return [`no decision record for ${value.decision} under governance/decisions`];
-  const recorded = recordedCorrections(fs.readFileSync(path.join(directory, record), 'utf8'));
-  // Malformed entries are reported by readCorrections.
-  const changeField = (entry) => (entry.bound !== undefined ? 'bound' : entry.required !== undefined ? 'required' : 'property');
-  const wellFormed = (entry) => isObject(entry)
-    && ['file', 'pointer', changeField(entry)].every((field) => typeof entry[field] === 'string');
-  return value.corrections
-    .filter(wellFormed)
-    .map(correctionKey)
-    .filter((key) => !recorded.has(key))
-    .map((key) => `correction ${key} is not in the correction tables of ${record}`);
+  return record ? [] : [`no decision record for ${value.decision} under governance/decisions`];
 }
 
 // ---------------------------------------------------------------------------
@@ -1339,7 +1307,7 @@ function analyze({
     ...trees.flatMap(({ tree }) => tree.errors),
     ...corrections.errors,
     ...checkCorrectionSources(corrections.entries, repoRoot),
-    ...checkCorrectionsRecorded(value, repoRoot),
+    ...checkCorrectionsDecision(value, repoRoot),
     ...checkCorrectionsApplied(corrections, candTree),
   ];
   const closedEarlier = closedInEarlierReleases(baseTree, trees);
@@ -1479,7 +1447,7 @@ function main() {
   }
   for (const notice of result.notices) {
     console.log(notice.corrected
-      ? `notice: ${findingKey(notice)}. Reopened as a correction recorded in DR-0036 (scripts/lint-additive-minor-corrections.json).`
+      ? `notice: ${findingKey(notice)}. Reopened as a correction listed in scripts/lint-additive-minor-corrections.json (DR-0036).`
       : `notice: ${findingKey(notice)}. Opening breaks no validator, but it permits no additions until the next major (DR-0036).`);
   }
   result.warnings.forEach((warning) => console.warn(`warning: ${warning}`));
@@ -1498,8 +1466,8 @@ function main() {
       '\nA minor release only adds. Make the change additive instead: add the property to an open' +
       ' object, keep removed values and properties, and keep new properties optional. If the change' +
       ' has to ship anyway, it needs a WG decision and a major release. If the published spec text' +
-      ' already required it, record it as a correction in DR-0036 and' +
-      ' scripts/lint-additive-minor-corrections.json.',
+      ' already required it, add it as a correction to scripts/lint-additive-minor-corrections.json' +
+      ' (DR-0036).',
     );
   }
   process.exitCode = 1;
@@ -1518,7 +1486,6 @@ module.exports = {
   findingKey,
   historyPairs,
   lintAdditiveMinor,
-  recordedCorrections,
 };
 
 if (require.main === module) main();

@@ -2375,7 +2375,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     const accountSessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
     const catalogSessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
     await clearSession(sessionKey);
-    clearAccountStoreForSession(accountSessionKey, ctx.principal);
+    await clearAccountStoreForSession(accountSessionKey, ctx.principal);
     clearCatalogEventStoresForSession(catalogSessionKey);
     clearForcedTaskCompletionsForScope(ctx.taskRegistryScope);
     SEED_CACHES.delete(sessionKey);

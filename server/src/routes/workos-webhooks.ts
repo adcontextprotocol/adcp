@@ -35,7 +35,7 @@ import {
   autoPromotePrimaryIfNone,
   removeWorkosDomainAndReselectPrimary,
 } from '../db/organization-domains-db.js';
-import { BrandDatabase } from '../db/brand-db.js';
+import { BrandDatabase, workosDomainVerificationStrategy } from '../db/brand-db.js';
 import { getAuthorizationEnforcementWorkos, getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
@@ -94,6 +94,8 @@ interface UserData {
 interface OrganizationDomainData {
   domain: string;
   state: 'verified' | 'pending';
+  /** How WorkOS verified the domain: `dns`, or `manual` when an administrator marked it verified. */
+  verification_strategy?: string;
 }
 
 /**
@@ -105,6 +107,7 @@ export interface OrganizationDomainEventData {
   domain?: string;
   organization_id: string;
   state: 'verified' | 'pending' | 'failed';
+  verification_strategy?: string;
 }
 
 export interface OrganizationData {
@@ -438,6 +441,22 @@ export async function upsertMembership(
   } catch (err) {
     logger.warn({ err, userId: synchronizedUserId }, 'primary_organization_id backfill failed during membership upsert');
   }
+
+  // A member with a verified email on a domain the org holds only as an
+  // administrator's assertion is the proof that domain was missing.
+  try {
+    const promoted = await new BrandDatabase().promoteManualDomainsForMember(
+      membership.organization_id,
+      synchronizedUserId,
+    );
+    if (promoted.length > 0) {
+      logger.info({ orgId: membership.organization_id, userId: synchronizedUserId, domains: promoted },
+        'Verified brand domains by member email');
+    }
+  } catch (err) {
+    logger.error({ err, orgId: membership.organization_id, userId: synchronizedUserId },
+      'Failed to verify brand domains by member email');
+  }
   return synchronizedActiveMembership;
 }
 
@@ -673,7 +692,11 @@ export async function syncOrganizationDomains(org: OrganizationData): Promise<vo
         continue;
       }
       try {
-        await brandDb.markBrandDomainVerified(normalizedDomain, org.id);
+        await brandDb.syncBrandDomainFromWorkos(
+          normalizedDomain,
+          org.id,
+          workosDomainVerificationStrategy(domainData.verification_strategy),
+        );
         logger.info({ orgId: org.id, domain: normalizedDomain, isPersonal }, 'Synced verified domain to brand registry');
       } catch (err) {
         logger.error({ err, orgId: org.id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
@@ -803,7 +826,11 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
       if (claimable) {
         try {
           const brandDb = new BrandDatabase();
-          await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
+          await brandDb.syncBrandDomainFromWorkos(
+            normalizedDomain,
+            domainData.organization_id,
+            workosDomainVerificationStrategy(domainData.verification_strategy),
+          );
           logger.info({
             orgId: domainData.organization_id,
             domain: normalizedDomain,
@@ -1586,9 +1613,10 @@ export async function backfillOrganizationDomains(): Promise<{
           const orgData: OrganizationData = {
             id: workosOrg.id,
             name: workosOrg.name,
-            domains: (workosOrg.domains || []).map((d: { domain: string; state: string }) => ({
+            domains: (workosOrg.domains || []).map((d) => ({
               domain: d.domain,
               state: d.state as 'verified' | 'pending',
+              verification_strategy: d.verificationStrategy,
             })),
             created_at: workosOrg.createdAt,
             updated_at: workosOrg.updatedAt,
