@@ -273,7 +273,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | Trust-record fetches used as an amplifier or network probe | Evaluated only at gates and, for a JWS artifact, to select the profile (R4); never on the request-signature path. One hop, fetch limits, and one external authorization code (R3a). |
 | Signature errors used to probe which check failed | WBA status and headers only; no signature-specific body detail (R2). |
 | Posture used as an onboarding oracle | Seller-wide, unauthenticated, uniform block. Per-agent state only in authenticated `get_principal` (R7, R8). |
-| PSL drift between verifiers | Fails closed: a verifier whose list lacks a new PRIVATE suffix derives the platform's trust record, which doesn't list the tenant. Lists are bundled, never fetched at runtime, and refreshed through dependency updates (DR-0037). |
+| PSL drift between verifiers | Fails closed: a verifier whose list lacks a newly added suffix derives the platform's trust record, which doesn't list the tenant. Lists are bundled, never fetched at runtime, and refreshed through dependency updates (DR-0037). |
 
 ## Known risks
 

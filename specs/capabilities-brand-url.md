@@ -322,7 +322,7 @@ A per-process SDK resolver doesn't have the same threat model as a hosted endpoi
 - Timeouts: connect 5 s, per-stage 4 s, total 10 s.
 - Redirects disallowed (`maxRedirects: 0`).
 - Per-upstream-host rate limit (10 req/s/host keyed on eTLD+1) — politeness to operator infra, not amplification defense.
-- Public Suffix List from a pinned, dated snapshot bumped via dependency update — not a runtime fetch.
+- A Public Suffix List bundled with the verifier and refreshed through dependency updates (DR-0037) — not a runtime fetch.
 - JWKS cache: propagate upstream `Cache-Control` byte-for-byte. **No stale-while-revalidate on JWKS** — a rotated-out compromised key MUST NOT be served past its TTL.
 
 ### Why this works without a hosted layer
@@ -381,7 +381,7 @@ What we lose vs. the hosted shape: the three-line `createRemoteJWKSet(aaoUrl)` i
 - **Protocol (required-when on `supported` is wrong cut)**: tightened to `supported_for[]`/`required_for[]` non-empty for `request_signing` (a no-op declaration with empty arrays doesn't bind any operation, so it shouldn't drag in `key_origins`). `webhook_signing.supported === true` cut unchanged.
 - **Protocol (consistency check breaks sell-side webhooks)**: step 7 now skips the origin check for purposes whose JWKS source was a publisher `adagents.json signing_keys` pin — the pin is an intentional override and may legitimately point at a different host than the operator's `key_origins` declaration. Operator-side purposes still enforced.
 - **Protocol (loose SHOULDs)**: tightened to MUSTs at lines 143 (production verifiers MUST use native), 195 (verifiers MUST honor upstream `Cache-Control`), and the trust-posture paragraph.
-- **Security (PSL pinning)**: SSRF hardening now requires a pinned, dated PSL snapshot, not a runtime fetch.
+- **Security (PSL pinning)**: SSRF hardening now requires a Public Suffix List bundled with the verifier and refreshed through dependency updates (DR-0037), not a runtime fetch.
 - **Security (IPv6 ULA + cloud metadata)**: SSRF list expanded with explicit IPv6 unique-local, IPv4-mapped IPv6, multicast, AWS/GCP/Azure metadata IPs, bracketed-IPv6 zone-ID handling.
 - **Security (DNS rebinding ordering)**: address-family filter MUST run before DNS-pin.
 - **Security (per-caller < per-host rate cap)**: explicit invariant added so a single caller cannot exhaust an operator's quota.
