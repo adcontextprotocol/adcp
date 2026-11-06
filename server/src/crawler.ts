@@ -768,6 +768,11 @@ export class CrawlerService {
       assertExecutionLock();
       await this.scanBrandsForDomains(brandDomains, assertExecutionLock);
 
+      // Brands that name a house without a published brand.json get their
+      // verdict from stored records, after the scan has refreshed the houses.
+      assertExecutionLock();
+      await this.computeUnpublishedHouseRelationshipTrust();
+
       return result;
     } catch (error) {
       log.error({ err: error }, 'Crawl failed');
@@ -1052,6 +1057,15 @@ export class CrawlerService {
           }
         }),
       );
+    }
+  }
+
+  private async computeUnpublishedHouseRelationshipTrust(): Promise<void> {
+    try {
+      const updated = await this.brandDb.computeUnpublishedHouseRelationshipTrust();
+      log.info({ updated }, 'Computed relationship trust for unpublished house links');
+    } catch (err) {
+      log.warn({ err }, 'Failed to compute relationship trust for unpublished house links');
     }
   }
 

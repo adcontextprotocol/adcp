@@ -198,6 +198,8 @@ Pre-v3 documents are promoted to canonical v3 identity for the response, flagged
 
 An absent `relationship_trust` in a list result means trust has not yet been computed for that brand — it MUST NOT be interpreted as `standalone`. For an authoritative, real-time verdict use `/api/brands/resolve`.
 
+A brand that names a house but publishes no brand.json of its own (an enriched, community or hosted record) gets its verdict from stored records after each crawl: `house_only` when the house's record lists it in `brand_refs[]`, and `unverifiable` otherwise, with the house copied to `claimed_house_domain`. Neither verdict extends trust. `mutual` still requires both published documents.
+
 `/api/brands/registry?house_domain=pg.com` returns the brands recorded under `pg.com`: rows whose `house_domain` or `claimed_house_domain` is `pg.com`. Use each row's `relationship_trust` to tell a confirmed relationship (`inline` or `mutual`) from a claim. An absent value means trust has not been computed yet, so treat the row as a claim, not as a brand the house has confirmed.
 
 | Method | Path | Description |
