@@ -1,0 +1,30 @@
+name: Optional product feature declaration proposal evidence
+
+on:
+  pull_request:
+    paths:
+      - 'specs/optional-product-feature-declarations.md'
+      - 'specs/optional-product-feature-declarations/**'
+      - '.github/workflows/optional-product-feature-declarations.yml'
+      - 'static/schemas/source/**'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+jobs:
+  contract-probes:
+    name: Product feature commitment proposal probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+      - run: node --test --test-timeout=30000 specs/optional-product-feature-declarations/probes.test.cjs
