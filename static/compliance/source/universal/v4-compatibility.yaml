@@ -219,20 +219,22 @@ checks:
     issue: 8125
     change: new_requirement
     applies_to: [sellers]
-    detection: "A seller that lists media_buy.audience_evidence_targets in experimental_features does not accept target_audiences on buy_products purchases and list_products offer_filters."
+    detection: "A seller does not accept target_audiences beside audience_evidence_requirements on buy_products purchases and list_products offer_filters, or does not record it in the accepted purchase snapshot."
     fix: >-
-      Accept the experimental target_audiences sibling of
-      audience_evidence_requirements on buy_products purchases and
-      list_products offer_filters, and record it in the accepted purchase
-      snapshot. 3.3 carries it only on create_media_buy packages. It was
-      withdrawn from the deprecated get_products filters after
-      3.3.0-beta.4 (adcp#8501), and the purchase and offer-filter schemas are closed and a
-      minor release does not change a closed schema.
+      Nothing in 3.3. The experimental target_audiences sibling of
+      audience_evidence_requirements (#8215) shipped in the 3.3 betas only on
+      the deprecated get_products filters and create_media_buy and
+      update_media_buy packages, and is withdrawn from both because 3.3 adds
+      nothing to deprecated tasks (adcp#8501), so 3.3 has no wire form for
+      it. 4.0 adds it to buy_products purchases and list_products
+      offer_filters, which are closed in 3.x, and records it in the accepted
+      purchase snapshot. Until then, a buyer that needs an audit record keeps
+      its own copy of the requirements and targets it sent.
     observed_by:
       none:
         reason: >-
-          Buyer-sent field on schemas that are closed in 3.x. A 3.x seller
-          run cannot send or observe it.
+          Buyer-sent field on schemas that are closed in 3.x, and 3.3 has no
+          wire form for it. A 3.x seller run cannot send or observe it.
   - id: seller_held_change_terms_required_in_4_0
     issue: 8087
     change: new_requirement
@@ -312,17 +314,21 @@ checks:
     issue: 6878
     change: new_requirement
     applies_to: [sellers]
-    detection: "A seller that lists media_buy.measurement_provenance in experimental_features declares counting_mechanisms on measurement_terms.billing_measurement but not on the canonical commercial terms."
+    detection: "A seller that lists media_buy.measurement_provenance in experimental_features cannot declare counting_mechanisms on the canonical commercial terms' billing_measurement."
     fix: >-
-      Declare the experimental billing_measurement.counting_mechanisms on the
-      canonical commercial terms too. 3.3 carries it only on
-      core/measurement-terms.json, because canonical-measurement-terms.json is a
-      closed schema and a minor release does not change a closed schema.
+      Nothing in 3.3. billing_measurement.counting_mechanisms shipped from
+      3.3.0-beta.2 on core/measurement-terms.json, which only the deprecated
+      get_products, create_media_buy and update_media_buy tasks use, and is
+      withdrawn from 3.3 because 3.3 adds nothing to deprecated tasks
+      (adcp#8501). canonical-measurement-terms.json is a closed schema and a
+      minor release does not change a closed schema, so 4.0 adds the
+      declaration there. vendor_metric_provenance[].mechanisms[] on delivery
+      rows stays in 3.3.
     observed_by:
       none:
         reason: >-
-          The canonical schema is closed in 3.x and does not carry the field, so
-          a 3.x seller run cannot send or observe it.
+          The canonical schema is closed in 3.x and 3.3 has no wire form for
+          the declaration, so a 3.x seller run cannot send or observe it.
 
   - id: canonical_price_adjustments_required_in_4_0
     issue: 7659

@@ -24,21 +24,9 @@ const impression = { event: 'impression', url: 'https://measurement.example/imp?
 const custom = { event: 'custom', custom_event_name: 'engagement_3s', url: 'https://measurement.example/engagement' };
 const requestBase = { account: { account_id: 'acct_acme' }, idempotency_key: 'assignment-trackers-test-0001' };
 const assignment = { creative_id: 'hero', package_id: 'pkg_display' };
+// create_media_buy and update_media_buy are deprecated tasks and carry no assignment
+// trackers in 3.3 (adcp#8501); the cases below are the surfaces that keep them.
 const cases = [
-  {
-    schema: 'media-buy/create-media-buy-request.json', write: true,
-    data: { ...requestBase, brand: { domain: 'acme.example' },
-      start_time: '2026-11-01T00:00:00Z', end_time: '2026-11-30T23:59:59Z',
-      packages: [{ product_id: 'display', pricing_option_id: 'cpm', budget: 1000,
-        creative_assignments: [{ creative_id: 'hero' }] }] },
-    row: data => data.packages[0].creative_assignments[0]
-  },
-  {
-    schema: 'media-buy/update-media-buy-request.json', write: true,
-    data: { ...requestBase, media_buy_id: 'mb_display',
-      packages: [{ package_id: 'pkg_display', creative_assignments: [{ creative_id: 'hero' }] }] },
-    row: data => data.packages[0].creative_assignments[0]
-  },
   {
     schema: 'creative/sync-creatives-request.json', write: true,
     data: { ...requestBase, assignment_operations: [{ operation: 'assign', ...assignment }] },
@@ -111,6 +99,16 @@ test('complete create, update, sync, list, and get messages validate optional as
   }
 });
 
+test('the deprecated create/update creative assignment rows carry no trackers (adcp#8501)', () => {
+  const assignmentSchema = readSchema('core/creative-assignment.json');
+  assert.equal(assignmentSchema.properties.trackers, undefined);
+  // The row stays open (additionalProperties), so the schema no longer declares trackers;
+  // a seller on the later schema ignores them like any unknown field.
+  for (const schema of ['media-buy/package-request.json', 'media-buy/package-update.json', 'core/package.json']) {
+    assert.equal(readSchema(schema).properties.creative_assignments.items.$ref, '/schemas/core/creative-assignment.json');
+  }
+});
+
 test('sync supports multi-package assignment-only trafficking and atomic reset, limiting trackers to assign', async () => {
   const validate = await compile('creative/sync-creatives-request.json');
   assert.equal(validate({ ...requestBase, assignment_operations: [
@@ -169,10 +167,7 @@ test('assignment tracker capability defaults off, requires a library, and is ind
 test('tracker-slot limits apply only where the format declares a tracker slot, matched by event', () => {
   const assign = readSchema('creative/sync-creatives-request.json')
     .properties.assignment_operations.items.oneOf.find(variant => variant.properties.operation.const === 'assign');
-  const descriptions = [
-    assign.properties.trackers.description,
-    readSchema('core/creative-assignment.json').properties.trackers.description,
-  ];
+  const descriptions = [assign.properties.trackers.description];
   for (const description of descriptions) {
     assert.match(description, /These limits apply only when the effective format declares at least one tracker slot/);
     assert.match(description, /makes no slot-limit claim/);

@@ -24,7 +24,7 @@ The latest checkpoint is **`3.3.0-beta.3`, published 2026-10-31**. Each beta is 
 | `3.3.0-beta.2` | 2026-10-30 | Account change outcomes, seller offers, measurement provenance, structural capability bounds, the principal clarification, reporting-subscription convergence, and the withdrawal of definition pins, purchase rights, and installment selection | The same teams, against the withdrawn surfaces removed |
 | `3.3.0-beta.3` | 2026-10-31 | Live creative updates, the protocol envelope on every task response, money terms on resolved account requests, revocation as no access, and reporting-subscription coverage computable from the wire | The same teams; this is the checkpoint the docs describe |
 
-Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1).
+Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1), and six 3.3 additions are [withdrawn from the deprecated tasks](#withdrawn-from-the-deprecated-tasks).
 
 ## Know which version string to use
 
@@ -174,16 +174,21 @@ The [migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-pl
 
 ## Withdrawn from the deprecated tasks
 
-3.3 adds no field that exists only on a deprecated task ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). These fields shipped in 3.3 betas on `get_products` or the deprecated `sync_creatives` `assignments[]` row and leave after beta.4.
+3.3 adds no field that exists only on a deprecated task ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). These fields shipped in 3.3 betas on `get_products`, the deprecated `sync_creatives` `assignments[]` row, or the deprecated `create_media_buy` and `update_media_buy`, and leave after beta.4. Each one that a live task also carries stays there unchanged.
 
 | Field | Shipped in | Action |
 |---|---|---|
 | `get_products` `refine[].package` and `refinement_applied[]` `result_product_id`, `resolved_start_time`, `resolved_end_time` ([#8468](https://github.com/adcontextprotocol/adcp/pull/8468)) | beta.1 to beta.4 | Stop sending and returning them. The exact-package forecast has no 3.3 home yet. |
-| `get_products` `filters.target_audiences` ([#8215](https://github.com/adcontextprotocol/adcp/pull/8215)) | beta.1 to beta.4 | Stop sending it. Planned for 4.0. |
+| `target_audiences[]` on `get_products` `filters`, `create_media_buy` packages and `update_media_buy` `new_packages` (`media_buy.audience_evidence_targets`, [#8215](https://github.com/adcontextprotocol/adcp/pull/8215)) | beta.1 to beta.4 | Stop sending it and stop listing the feature id: no 3.3 wire form remains. Planned for 4.0. |
 | `get_products` `include_collections` and `collections` ([#8141](https://github.com/adcontextprotocol/adcp/pull/8141)) | beta.0 to beta.4 | Use `list_products`, `request_proposals` or `refine_proposals`. |
 | `get_products` `include_execution_readiness` and `execution_readiness` ([#7934](https://github.com/adcontextprotocol/adcp/pull/7934)) | beta.1 to beta.4 | Send and read them on `list_products`. |
 | `price_adjustments` on `get_products` pricing options, `media_buy.price_adjustments` ([#7955](https://github.com/adcontextprotocol/adcp/pull/7955)) | beta.1 to beta.4 | Stop listing the feature id and returning tables. Planned for 4.0. |
 | `sync_creatives` `assignments[]` `landing_page_url` and `trackers` ([#8180](https://github.com/adcontextprotocol/adcp/pull/8180), [#8220](https://github.com/adcontextprotocol/adcp/pull/8220)) | beta.0 to beta.4 | Send them on an `assign` operation. |
+| `predecessor_media_buy_id` and `lineage_reason` on `create_media_buy` (`media_buy.lineage`, [#8038](https://github.com/adcontextprotocol/adcp/pull/8038)) | beta.0 to beta.4 | Send lineage on `buy_products` or `accept_proposal`. |
+| `artifact_webhook.signing_profile` on `create_media_buy` ([#7894](https://github.com/adcontextprotocol/adcp/pull/7894)) | beta.0 to beta.4 | Stop sending it. An `artifact_webhook` without `authentication` is signed with `adcp/webhook-signing/v1`. |
+| `start_requires_all_creatives_approved` on `create_media_buy` and `update_media_buy` packages and their readback ([#8485](https://github.com/adcontextprotocol/adcp/pull/8485)) | beta.1 to beta.4 | Set the gate through `control_media_buy` and read it on `get_media_buys`. |
+| `trackers` and `landing_page_url` on `create_media_buy` and `update_media_buy` package `creative_assignments` ([#8220](https://github.com/adcontextprotocol/adcp/pull/8220), [#8180](https://github.com/adcontextprotocol/adcp/pull/8180)) | beta.0 to beta.4 | Set them through `sync_creatives` `assignment_operations` `assign`; read them on `list_creatives` and `get_media_buys`. |
+| `billing_measurement.counting_mechanisms[]` on `measurement_terms` (`media_buy.measurement_provenance`, [#7940](https://github.com/adcontextprotocol/adcp/pull/7940)) | beta.2 to beta.4 | Stop emitting and sending it. The canonical commercial terms gain it in 4.0; `vendor_metric_provenance[]` stays. |
 
 The [migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-the-deprecated-tasks) lists every surface removed.
 
@@ -248,7 +253,7 @@ Four records document surfaces merged for beta.0 and are accepted (decided 2026-
 | Delivery and measurement | [#5683](https://github.com/adcontextprotocol/adcp/issues/5683) | Linear TV preemption notice and replacement offer | — | Report-time spot lifecycle (#8017); the offer-and-accept loop as experimental seller offers (#8102); contract-time preemption criteria planned for 3.4 |
 | Delivery and measurement | [#8009](https://github.com/adcontextprotocol/adcp/issues/8009) | Book and report position in break | — | Reporting half (#8017) |
 | Delivery and measurement | [#7777](https://github.com/adcontextprotocol/adcp/issues/7777) | Delivery evidence gaps for scheduled and offline channels | — | `change_cutoff` (#8054) |
-| Delivery and measurement | [#6878](https://github.com/adcontextprotocol/adcp/issues/6878) | Seller-initiated trackers and measurement sources | — | Experimental `collection-mechanism` vocabulary, `counting_mechanisms[]`, and `vendor_metric_provenance[]` (#7940); seller-initiated trackers and `impression_id` joinability remain open |
+| Delivery and measurement | [#6878](https://github.com/adcontextprotocol/adcp/issues/6878) | Seller-initiated trackers and measurement sources | — | Experimental `collection-mechanism` vocabulary and `vendor_metric_provenance[]` (#7940), with `counting_mechanisms[]` [withdrawn](#withdrawn-from-the-deprecated-tasks) until 4.0; seller-initiated trackers and `impression_id` joinability remain open |
 | Delivery and measurement | [#6628](https://github.com/adcontextprotocol/adcp/issues/6628) | Reporting metric coherence findings | — | Flat totals omitted for multi-qualifier metrics (#8055) |
 | Delivery and measurement | [#7253](https://github.com/adcontextprotocol/adcp/issues/7253) | DOOH impression basis: typed tier, effective multiplier, and derivation link | — | — |
 | Security and signing | [#7812](https://github.com/adcontextprotocol/adcp/issues/7812) | `error.mutation_outcome` on failed mutations | — | `mutation_outcome` on `core/error.json` (#7935) |
