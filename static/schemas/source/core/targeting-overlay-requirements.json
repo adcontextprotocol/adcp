@@ -107,7 +107,7 @@
               }
             }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     }
@@ -200,7 +200,7 @@
             }
           },
           "anyOf": [{ "required": ["age"] }, { "required": ["gender"] }],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -231,5 +231,5 @@
   },
   "minProperties": 1,
   "not": { "required": ["frequency_cap", "frequency_cap_support"] },
-  "additionalProperties": false
+  "additionalProperties": true
 }

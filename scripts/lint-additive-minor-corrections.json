@@ -267,6 +267,105 @@
       "reason": "Opens a schema closed in 3.2 against DR-0019. Container for buyer context in a planning cycle. Its opportunity_id is opaque, not a join key. It has no ext."
     },
     {
+      "file": "core/daypart-target.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "A Class B schema without an escape hatch is a defect."
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Row for one daypart window. It is not a join-key object, and it has no ext. The root oneOf still rejects a window that mixes whole hours with clock times."
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container for a buyer's targeting requirements. A requirement the seller does not recognize still does not match."
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "/definitions/daypartRequirement/anyOf/1",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container branch for the structured daypart requirement inside the requirements container."
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "/properties/demographics/anyOf/1",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container branch for the structured demographics requirement inside the requirements container."
+    },
+    {
+      "file": "core/targeting-overlay-support.json",
+      "pointer": "/definitions/daypartSupport/anyOf/1",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Capability block for a product's structured daypart support."
+    },
+    {
+      "file": "core/spot-reporting-capability.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Capability block for a product's spot-level reporting. It has no ext."
+    },
+    {
+      "file": "core/canonical-reporting-capabilities.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Capability block for a canonical product's reporting. It has no ext."
+    },
+    {
+      "file": "creative/sync-creatives-request.json",
+      "pointer": "/properties/assignment_operations/items/oneOf/0",
+      "property": "trackers",
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/creative/sync-creatives-request.json",
+        "quote": "Requires creative.supports_assignment_trackers: true; buyers MUST NOT send this field otherwise"
+      },
+      "reason": "Named exception: the assign branch is a discriminated oneOf branch, DR-0019 class A, so it stays closed and takes only this name. Assignment trackers, which require the seller to declare creative.supports_assignment_trackers: true."
+    },
+    {
+      "file": "creative/sync-creatives-request.json",
+      "pointer": "/properties/assignment_operations/items/oneOf/0",
+      "property": "landing_page_url",
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/creative/sync-creatives-request.json",
+        "quote": "Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise"
+      },
+      "reason": "Named exception: the assign branch is a discriminated oneOf branch, DR-0019 class A, so it stays closed and takes only this name. The assignment landing page override, which requires the seller to declare creative.supports_assignment_landing_page: true."
+    },
+    {
       "file": "core/protocol-envelope.json",
       "pointer": "/properties/task_id",
       "bound": "minLength",
