@@ -17,13 +17,6 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "core/canonical-media-buy-action-fields.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property review_sla added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "core/canonical-performance-standard.json",
       "pointer": "",
       "kind": "property-added-to-closed",
@@ -42,13 +35,6 @@
       "pointer": "",
       "kind": "property-added-to-closed",
       "detail": "property start_time added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/media-buy-available-action.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property review_sla added",
       "reason": "pending WG decision"
     },
     {

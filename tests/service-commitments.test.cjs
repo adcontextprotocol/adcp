@@ -134,15 +134,21 @@ test('creative review requires a completion commitment and is available through 
   assert.equal(read('core/product.json').properties.creative_policy.$ref, '/schemas/core/creative-policy.json');
 });
 
-test('creative review is distinct from action ingestion and restricted to review-bearing actions', async () => {
+test('creative review stays on the product: product and buy actions reject review_sla (#8501)', async () => {
   for (const name of ['core/product-allowed-action.json', 'core/canonical-product-action.json']) {
     const validate = await compile(name);
     rejects(validate, { action: 'replace_creative', modes: ['seller_managed'], review_sla: business });
     rejects(validate, { action: 'pause', modes: ['seller_managed'], review_sla: business });
   }
+  for (const name of ['core/media-buy-available-action.json', 'core/canonical-media-buy-action-fields.json']) {
+    assert.equal(read(name).properties.review_sla, undefined, `${name} must keep its 3.2.8 property set`);
+  }
   for (const name of ['core/media-buy-available-action.json', 'core/canonical-media-buy-action.json']) {
     const validate = await compile(name);
-    accepts(validate, { action: 'replace_creative', task: 'sync_creatives', mode: 'seller_managed', sla: { completion_max: 'PT5M' }, review_sla: business, applicable_package_ids: ['package_video'] });
+    const creative = { action: 'replace_creative', task: 'sync_creatives', mode: 'seller_managed', sla: { completion_max: 'PT5M' }, applicable_package_ids: ['package_video'] };
+    accepts(validate, creative);
+    rejects(validate, { ...creative, review_sla: business });
+    rejects(validate, { ...creative, review_sla: { completion_max: 'PT24H' } });
     rejects(validate, { action: 'pause', task: 'control_media_buy', mode: 'self_serve', review_sla: business });
   }
 });

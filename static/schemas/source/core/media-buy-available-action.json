@@ -29,11 +29,6 @@
       "$ref": "/schemas/core/sla-window.json",
       "description": "Optional SLA commitment for this action on this buy. Absence means no commitment, not zero commitment."
     },
-    "review_sla": {
-      "$ref": "/schemas/core/creative-review-sla.json",
-      "x-added-in": "3.3.0",
-      "description": "Product review commitment resolved for applicable packages. Separate from the SLA for applying the creative mutation; not a negotiated change term."
-    },
     "change_term_id": {
       "$ref": "/schemas/core/media-buy-change-term-id.json"
     },
@@ -64,10 +59,6 @@
     {
       "if": { "properties": { "action": { "const": "report_media_buy_issue" } }, "required": ["action"] },
       "then": { "required": ["task"], "properties": { "sla": { "$ref": "/schemas/core/escalation-sla.json" }, "mode": { "const": "seller_managed" }, "task": { "const": "report_media_buy_issue" }, "change_term_id": false, "terms_ref": false } }
-    },
-    {
-      "if": { "required": ["review_sla"] },
-      "then": { "properties": { "action": { "enum": ["sync_creatives", "replace_creative", "update_creative_assignments"] } } }
     }
   ],
   "additionalProperties": false

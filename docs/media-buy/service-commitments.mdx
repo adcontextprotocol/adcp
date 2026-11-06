@@ -11,16 +11,11 @@ These additive contracts are new in AdCP 3.3. They are development schemas;
 </Note>
 
 A product can declare how quickly the seller reviews creatives and acknowledges
-critical reports. Buyers compare these commitments before booking; the buy's
-`available_actions[]` resolves the applicable commitment and package scope.
+critical reports. Buyers compare these commitments before booking. The review
+commitment stays on the product's `creative_policy`; the buy's
+`available_actions[]` resolves the critical-report commitment and its package scope.
 An absent SLA means **no commitment**, never an immediate response.
 Commercial penalties and remedies remain in contracts.
-
-Each resolved commitment covers the packages in `applicable_package_ids`
-(all relevant packages when omitted). For mixed products, sellers MUST declare
-a conservative bound valid across that set; one package without a commitment
-prevents claiming a bound for the set. Never select the fastest package or
-combine business durations from different calendars without computing a common bound.
 
 ## Creative review
 
@@ -45,11 +40,11 @@ working day on the calendar below:
 }
 ```
 
-The product value covers all accepted formats. The seller MUST carry it onto the
-applicable creative entry in the buy's
-`available_actions[]`: `replace_creative` or `update_creative_assignments`
-routed to `sync_creatives`, or the legacy coarse `sync_creatives` action.
-The action's separate `sla` continues to cover applying the mutation or ingestion.
+The product value covers all accepted formats. It stays on the product: a buy
+does not change it, so the buy's `available_actions[]` entries do not repeat it.
+For a booked package, read the commitment from its product's
+`creative_policy.review_sla`. A creative action's `sla` covers applying the
+mutation or ingestion, not review.
 
 The clock starts at seller receipt of a review submission in the product's
 context, including an assignment through `sync_creatives`. A library-only upload
@@ -154,7 +149,11 @@ Issue-reporting support requires `adcp.idempotency.supported: true` with a
 declared `replay_ttl_seconds`, so a lost receipt can be recovered by replaying
 the original request during the replay window.
 
-The mixed-package rule above applies to report SLAs too. A report without
+A resolved report action covers the packages in `applicable_package_ids` (all
+relevant packages when omitted). For a buy that mixes products, sellers MUST
+declare a conservative bound valid across that set; one package without a
+commitment prevents claiming a bound for the set, and sellers never select the
+fastest package. A report without
 `package_id` concerns the entire buy and requires an action covering all packages.
 A package-scoped report cannot inherit another package's promise.
 
