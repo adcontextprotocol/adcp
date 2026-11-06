@@ -109,6 +109,26 @@ test('target_audiences is off create/update packages', () => {
   // core/product-filters.json (get_products) is deliberately not asserted here.
 });
 
+test('audience evidence targets have no 3.3 wire form, and their orphaned schemas are gone', () => {
+  for (const file of ['core/audience-evidence-target.json', 'enums/audience-evidence-relationship.json']) {
+    assert.equal(fs.existsSync(path.join(SCHEMAS, file)), false, `${file} is withdrawn`);
+  }
+  const index = fs.readFileSync(path.join(SCHEMAS, 'index.json'), 'utf8');
+  assert.equal(index.includes('audience-evidence-target.json'), false);
+  assert.equal(index.includes('audience-evidence-relationship.json'), false);
+  assert.doesNotMatch(readDoc('reference/experimental-status.mdx'), /^\| `media_buy\.audience_evidence_targets` \|/m);
+  // The stable inline relationship enums on audience evidence stay.
+  for (const file of ['core/audience-evidence.json', 'core/canonical-audience-evidence.json']) {
+    assert.deepEqual(readSchema(file).properties.relationship.enum, ['composition', 'index', 'reach_estimate'], file);
+  }
+  // The 4.0 check keeps its id but no longer keys off the retired feature id.
+  const registry = yaml.load(fs.readFileSync(
+    path.join(ROOT, 'static/compliance/source/universal/v4-compatibility.yaml'), 'utf8'));
+  const check = registry.checks.find((entry) => entry.id === 'purchase_target_audiences_required_in_4_0');
+  assert.ok(check);
+  assert.equal(String(check.detection).includes('audience_evidence_targets'), false);
+});
+
 test('assignment trackers and landing page are off the create/update assignment row and stay on sync and readback', () => {
   const row = readSchema('core/creative-assignment.json');
   assert.equal(row.properties.trackers, undefined);
