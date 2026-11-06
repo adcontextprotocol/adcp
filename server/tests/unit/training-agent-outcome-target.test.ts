@@ -183,7 +183,8 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
 
   describe('get_adcp_capabilities', () => {
     it('declares media_buy.outcome_target: true', async () => {
-      const caps = await callTool(server, 'get_adcp_capabilities', {});
+      // A 3.2 field: an unpinned (3.0) caller does not get it (#8487).
+      const caps = await callTool(server, 'get_adcp_capabilities', { adcp_version: '3.2' });
       expect((caps as { media_buy: { outcome_target?: boolean } }).media_buy.outcome_target).toBe(true);
     });
   });

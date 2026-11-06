@@ -1,0 +1,241 @@
+{
+  "$comment": "URL canonicalization conformance vectors for the AdCP RFC 9421 request-signing profile. Each case asserts the canonical @target-uri and @authority values a signer MUST compute from the as-received URL before emitting the signature base, and that a verifier MUST recompute before verifying. Independent of cryptographic signing — an SDK can run this set without keys, crypto, or a full verifier harness. Cited by docs/building/implementation/security.mdx §AdCP RFC 9421 profile, `@target-uri` canonicalization.",
+  "version": "3.0",
+  "spec_reference": "#adcp-rfc-9421-profile",
+  "cases": [
+    {
+      "name": "scheme-lowercase",
+      "rule": "step 1: lowercase the scheme",
+      "input_url": "HTTPS://seller.example.com/adcp/create_media_buy",
+      "expected_target_uri": "https://seller.example.com/adcp/create_media_buy",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "host-lowercase",
+      "rule": "step 2: lowercase the host",
+      "input_url": "https://Seller.Example.COM/p",
+      "expected_target_uri": "https://seller.example.com/p",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "idn-to-punycode",
+      "rule": "step 2: UTS-46 Nontransitional ToASCII → Punycode A-label",
+      "input_url": "https://bücher.example/p",
+      "expected_target_uri": "https://xn--bcher-kva.example/p",
+      "expected_authority": "xn--bcher-kva.example",
+      "$comment": "Punycode of 'bücher' is 'bcher-kva' → ACE label 'xn--bcher-kva'. Verifiable against any UTS-46-conformant IDN tool."
+    },
+    {
+      "name": "idn-mixed-case-to-punycode",
+      "rule": "step 2: UTS-46 case-folds non-ASCII before Punycode; naive ASCII-lowercase + Punycode diverges",
+      "input_url": "https://BÜCHER.Example/p",
+      "expected_target_uri": "https://xn--bcher-kva.example/p",
+      "expected_authority": "xn--bcher-kva.example",
+      "$comment": "Pins UTS-46 Nontransitional behavior. A signer that lowercases to 'bücher' via locale-dependent ASCII lowercasing before ToASCII still produces the same A-label here because 'Ü' → 'ü' is a UTS-46 mapping, but implementations that skip UTS-46 entirely (e.g., raw idnaEncodeLabel) can diverge on other scripts — this case is the canary."
+    },
+    {
+      "name": "ipv6-host-hex-lowercased",
+      "rule": "step 2: IPv6 brackets preserved; hex digits inside lowercased",
+      "input_url": "https://[2001:DB8::1]/p",
+      "expected_target_uri": "https://[2001:db8::1]/p",
+      "expected_authority": "[2001:db8::1]"
+    },
+    {
+      "name": "ipv6-host-with-port",
+      "rule": "step 2 + step 4: IPv6 brackets + non-default port preserved",
+      "input_url": "https://[::1]:8443/p",
+      "expected_target_uri": "https://[::1]:8443/p",
+      "expected_authority": "[::1]:8443"
+    },
+    {
+      "name": "userinfo-stripped",
+      "rule": "step 3: strip userinfo",
+      "input_url": "https://user:pass@seller.example.com/p",
+      "expected_target_uri": "https://seller.example.com/p",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "default-port-https-stripped",
+      "rule": "step 4: strip :443 for https",
+      "input_url": "https://seller.example.com:443/adcp/create_media_buy",
+      "expected_target_uri": "https://seller.example.com/adcp/create_media_buy",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "default-port-http-stripped",
+      "rule": "step 4: strip :80 for http",
+      "input_url": "http://seller.example.com:80/p",
+      "expected_target_uri": "http://seller.example.com/p",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "non-default-port-preserved",
+      "rule": "step 4: preserve non-default ports",
+      "input_url": "https://seller.example.com:8443/p",
+      "expected_target_uri": "https://seller.example.com:8443/p",
+      "expected_authority": "seller.example.com:8443"
+    },
+    {
+      "name": "dot-segment-collapsed",
+      "rule": "step 5: remove_dot_segments (RFC 3986 §5.2.4)",
+      "input_url": "https://seller.example.com/adcp/./create_media_buy",
+      "expected_target_uri": "https://seller.example.com/adcp/create_media_buy",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "double-dot-segment-collapsed",
+      "rule": "step 5: remove_dot_segments resolves /a/b/../c to /a/c",
+      "input_url": "https://seller.example.com/a/b/../c",
+      "expected_target_uri": "https://seller.example.com/a/c",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "consecutive-slashes-preserved",
+      "rule": "step 5: consecutive slashes preserved byte-for-byte (NOT collapsed)",
+      "input_url": "https://seller.example.com/a//b",
+      "expected_target_uri": "https://seller.example.com/a//b",
+      "expected_authority": "seller.example.com",
+      "$comment": "RFC 3986 does not mandate collapsing consecutive slashes. Preserving closes a path-confusion attack surface where the server routes /a//b differently from /a/b; deployments MUST disable slash-folding on signed routes (nginx merge_slashes off; Express: do not pre-normalize; Go http.ServeMux 1.22+: use explicit http.Handler)."
+    },
+    {
+      "name": "dot-segment-with-consecutive-slashes",
+      "rule": "step 5: remove_dot_segments + preserve consecutive slashes; /a/.//b → /a//b",
+      "input_url": "https://seller.example.com/a/.//b",
+      "expected_target_uri": "https://seller.example.com/a//b",
+      "expected_authority": "seller.example.com",
+      "$comment": "remove_dot_segments resolves /./ but does not collapse the following //. Pins the interaction explicitly — some parsers eagerly collapse // during dot-segment processing."
+    },
+    {
+      "name": "double-dot-segment-with-consecutive-slashes",
+      "rule": "step 5: remove_dot_segments across a consecutive-slash boundary; /a//../b → /a/b",
+      "input_url": "https://seller.example.com/a//../b",
+      "expected_target_uri": "https://seller.example.com/a/b",
+      "expected_authority": "seller.example.com",
+      "$comment": "remove_dot_segments treats // as 'segment + empty segment'; /../ pops the empty segment, leaving /a/b. Pins this behavior so parsers that treat // as a single boundary don't emit /b."
+    },
+    {
+      "name": "empty-path-with-authority-becomes-slash",
+      "rule": "step 5: empty path with authority → /",
+      "input_url": "https://seller.example.com?x=1",
+      "expected_target_uri": "https://seller.example.com/?x=1",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "percent-encoded-hex-uppercased",
+      "rule": "step 6: uppercase %xx hex digits",
+      "input_url": "https://seller.example.com/path%2fhere",
+      "expected_target_uri": "https://seller.example.com/path%2Fhere",
+      "expected_authority": "seller.example.com",
+      "$comment": "%2F is a reserved gen-delim and remains percent-encoded; only the hex case is normalized."
+    },
+    {
+      "name": "percent-encoded-reserved-preserved",
+      "rule": "step 6: reserved characters remain percent-encoded; only hex case normalized",
+      "input_url": "https://seller.example.com/a%3Ab%3Fc",
+      "expected_target_uri": "https://seller.example.com/a%3Ab%3Fc",
+      "expected_authority": "seller.example.com",
+      "$comment": "%3A (':') and %3F ('?') are reserved sub-delims / gen-delims and MUST stay encoded. Implementers who over-decode produce an invalid path."
+    },
+    {
+      "name": "percent-encoded-unreserved-tilde-decoded",
+      "rule": "step 6: decode percent-encoded unreserved '~' (RFC 3986 §2.3)",
+      "input_url": "https://seller.example.com/%7Efoo",
+      "expected_target_uri": "https://seller.example.com/~foo",
+      "expected_authority": "seller.example.com",
+      "$comment": "%7E is the unreserved character '~'; RFC 3986 §6.2.2.2 requires decoding. Verifiers that leave it encoded fail step 10 on cross-SDK traffic."
+    },
+    {
+      "name": "percent-encoded-unreserved-alpha-decoded",
+      "rule": "step 6: decode percent-encoded unreserved ALPHA (general rule, not just ~)",
+      "input_url": "https://seller.example.com/%41%42C",
+      "expected_target_uri": "https://seller.example.com/ABC",
+      "expected_authority": "seller.example.com",
+      "$comment": "%41 ('A') and %42 ('B') are unreserved ALPHA. Implementers commonly only decode %7E/%2D/%5F/%2E and miss the general rule — this case catches that bug."
+    },
+    {
+      "name": "query-byte-preserved",
+      "rule": "step 7: preserve query string byte-for-byte (no reordering, no re-encoding)",
+      "input_url": "https://seller.example.com/p?b=2&a=1&c=3",
+      "expected_target_uri": "https://seller.example.com/p?b=2&a=1&c=3",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "query-plus-not-decoded",
+      "rule": "step 7: '+' is preserved, NOT interpreted as space",
+      "input_url": "https://seller.example.com/p?x=a+b",
+      "expected_target_uri": "https://seller.example.com/p?x=a+b",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "trailing-empty-query-preserved",
+      "rule": "step 7: trailing '?' with empty query preserved (distinct from no '?')",
+      "input_url": "https://seller.example.com/p?",
+      "expected_target_uri": "https://seller.example.com/p?",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "no-query-preserved",
+      "rule": "step 7: URL with no '?' stays with no '?'",
+      "input_url": "https://seller.example.com/p",
+      "expected_target_uri": "https://seller.example.com/p",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "fragment-stripped",
+      "rule": "step 8: strip fragment (RFC 9421 §2.2.2)",
+      "input_url": "https://seller.example.com/p#frag",
+      "expected_target_uri": "https://seller.example.com/p",
+      "expected_authority": "seller.example.com"
+    },
+    {
+      "name": "malformed-port-without-host",
+      "rule": "step 3: authority with port but no host is malformed",
+      "input_url": "https://:443/p",
+      "reject": true,
+      "reject_reason": "authority missing host",
+      "expected_error_code": "request_target_uri_malformed"
+    },
+    {
+      "name": "malformed-userinfo-without-host",
+      "rule": "step 3: authority with userinfo but no host is malformed",
+      "input_url": "https://user@/p",
+      "reject": true,
+      "reject_reason": "authority missing host",
+      "expected_error_code": "request_target_uri_malformed"
+    },
+    {
+      "name": "malformed-empty-authority",
+      "rule": "step 3: empty authority is malformed",
+      "input_url": "https:///p",
+      "reject": true,
+      "reject_reason": "empty authority",
+      "expected_error_code": "request_target_uri_malformed"
+    },
+    {
+      "name": "malformed-ipv6-missing-closing-bracket",
+      "rule": "step 2: bracketed IPv6 host missing closing bracket is malformed",
+      "input_url": "https://[::1/p",
+      "reject": true,
+      "reject_reason": "IPv6 literal missing closing bracket",
+      "expected_error_code": "request_target_uri_malformed"
+    },
+    {
+      "name": "malformed-bare-ipv6",
+      "rule": "step 2: IPv6 address outside brackets is malformed (ambiguous with port)",
+      "input_url": "https://fe80::1/p",
+      "reject": true,
+      "reject_reason": "IPv6 literal not bracketed",
+      "expected_error_code": "request_target_uri_malformed",
+      "$comment": "Parsers variously treat '::1' as port or as host; rejecting unambiguously removes the interop divergence."
+    },
+    {
+      "name": "malformed-ipv6-zone-identifier",
+      "rule": "step 2: IPv6 zone identifier (RFC 6874) is node-local and MUST be rejected in signed URLs",
+      "input_url": "https://[fe80::1%25eth0]/p",
+      "reject": true,
+      "reject_reason": "IPv6 zone identifier in signed URL",
+      "expected_error_code": "request_target_uri_malformed",
+      "$comment": "RFC 6874 §1 defines zone-ids as node-local; they have no meaning outside the signing host. A verifier on a different node cannot interpret them. Rejecting at the signer (MUST NOT sign) and verifier (MUST reject) closes the ambiguity."
+    }
+  ]
+}

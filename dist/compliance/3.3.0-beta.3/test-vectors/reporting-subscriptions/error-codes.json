@@ -1,0 +1,181 @@
+{
+  "vocabulary_version": 1,
+  "contract_version": "3.3",
+  "feature": "media_buy.reporting_subscriptions",
+  "status": "experimental",
+  "description": "Frozen error codes for reporting subscriptions that SDKs raise themselves, before or instead of a wire error. TypeScript (@adcp/sdk) and Python (adcp) use these codes and recovery classes verbatim, so callers can branch on them across languages. Wire error codes returned by a seller (for example INVALID_REQUEST, UNSUPPORTED_FEATURE, or CONFLICT from sync_principal) are not redefined here; SDKs surface them unchanged. Adding a code is additive; renaming or removing one, or changing its recovery, needs a new vocabulary_version.",
+  "error_shape": {
+    "code": "One of the codes below, or the wire error code for a seller-returned error.",
+    "recovery": "transient: retry the same call later. correctable: the caller must change its input or configuration first. terminal: retrying cannot help; a person must act. This is the TypeScript adcpError.recovery vocabulary.",
+    "message": "Human-readable text whose last sentence says how to fix it (message_fix below). Untrusted display data; never parse it.",
+    "dispatched": "false when no bytes of the task left the process, so the operation certainly had no effect on the seller. Otherwise the property is absent. Local computations that never dispatch anything (coverage, configuration checks) omit it as well; see dispatched below.",
+    "detail": "For codes that list details, the detail code naming the specific cause."
+  },
+  "dispatched_values": {
+    "false": "The property is present and false: the SDK refused before sending.",
+    "absent": "The property is omitted: the request may have reached the seller.",
+    "not_applicable": "The property is omitted: the error comes from a local computation or configuration check with no task to dispatch."
+  },
+  "codes": [
+    {
+      "code": "SUBSCRIPTION_WOULD_DEACTIVATE",
+      "raised_by": "buyer",
+      "dispatched": "false",
+      "recovery": "correctable",
+      "raised_when": "A sync_principal reporting_subscriptions write would omit a subscription that is currently active, or set it active false, without the caller asking to deactivate it. The section is complete desired state, so omitting an entry deactivates that subscription.",
+      "message_fix": "Use unsubscribe(), or pass allowDeactivation: true.",
+      "context": { "would_deactivate": "subscription_id values the write would deactivate." },
+      "sdk_classes": { "typescript": "ReportingSubscriptionError", "python": "ReportingSubscriptionError" },
+      "spec_refs": ["docs/protocol/sync_principal.mdx#reporting-subscriptions", "docs/protocol/sync_principal.mdx#synchronization-semantics"]
+    },
+    {
+      "code": "DESTINATION_WOULD_REVOKE",
+      "raised_by": "buyer",
+      "dispatched": "false",
+      "recovery": "correctable",
+      "raised_when": "A sync_principal reporting_destinations write would omit a current destination without the caller asking to revoke it. Omission is revocation and cuts delivery for every account bound to the destination.",
+      "message_fix": "Omitting a destination revokes it for every account. Pass allowRevocation: true.",
+      "context": { "would_revoke": "destination_id values the write would revoke." },
+      "sdk_classes": { "typescript": "ReportingSubscriptionError", "python": "ReportingSubscriptionError" },
+      "spec_refs": ["docs/protocol/sync_principal.mdx#suspension-and-revocation", "docs/protocol/sync_principal.mdx#synchronization-semantics"]
+    },
+    {
+      "code": "SUBSCRIPTION_ID_CLASH",
+      "raised_by": "buyer",
+      "dispatched": "false",
+      "recovery": "correctable",
+      "raised_when": "A subscription_id equals a delivery_config_id the caller uses on an account with this seller. Subscription IDs and delivery_config_id values share one caller-scoped namespace, and the seller rejects a collision.",
+      "message_fix": "Choose a subscription_id that no account-level delivery config uses; the message names the clashing delivery_config_id and account.",
+      "context": { "delivery_config_id": "The clashing delivery_config_id.", "account_id": "The account that uses it." },
+      "sdk_classes": { "typescript": "ReportingSubscriptionError", "python": "ReportingSubscriptionError" },
+      "spec_refs": ["static/schemas/source/core/reporting-subscription.json#/properties/subscription_id", "docs/protocol/sync_principal.mdx#reporting-subscriptions"]
+    },
+    {
+      "code": "SUBSCRIPTION_OPERATOR_SCOPE_REQUIRED",
+      "raised_by": "buyer",
+      "dispatched": "false",
+      "recovery": "correctable",
+      "raised_when": "An all_authorized_accounts subscription names a destination and no operator_domains. Such a subscription follows every account the principal is granted, including accounts another operator grants later, and would send their data to that destination.",
+      "message_fix": "Add operator_domains, or pass acknowledgeCrossOperator: true.",
+      "sdk_classes": { "typescript": "ReportingSubscriptionError", "python": "ReportingSubscriptionError" },
+      "spec_refs": ["static/schemas/source/core/reporting-subscription.json#/properties/operator_domains", "docs/protocol/sync_principal.mdx#reporting-subscriptions"]
+    },
+    {
+      "code": "SUBSCRIPTION_SELECTOR_UNMATCHED",
+      "raised_by": "buyer",
+      "dispatched": "false",
+      "recovery": "correctable",
+      "raised_when": "No offering in the seller's advertised reporting_delivery offerings is a candidate for the selector (feed_purpose, period_duration, reconciliation_mode, required_finality, alignment, destination method, period_timezone) with a matching dimension set, so the subscription could only ever record offering_unsupported.",
+      "message_fix": "Change the selector; the message lists the nearest offerings and the attribute each one failed.",
+      "context": { "nearest": "Offerings that fail on the fewest attributes, each with the attributes it fails." },
+      "sdk_classes": { "typescript": "ReportingSubscriptionError", "python": "ReportingSubscriptionError" },
+      "spec_refs": ["static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/selection"]
+    },
+    {
+      "code": "SUBSCRIPTION_CONFLICT_EXHAUSTED",
+      "raised_by": "buyer",
+      "dispatched": "absent",
+      "recovery": "transient",
+      "raised_when": "A guarded sync_principal write kept returning CONFLICT (a stale expected_configuration_version) after the SDK re-read the principal and retried up to its limit.",
+      "message_fix": "Another writer is updating this principal; retry later.",
+      "sdk_classes": { "typescript": "ReportingSubscriptionError", "python": "ReportingSubscriptionError" },
+      "spec_refs": ["docs/protocol/sync_principal.mdx#synchronization-semantics"]
+    },
+    {
+      "code": "SUBSCRIPTION_READBACK_MISMATCH",
+      "raised_by": "buyer",
+      "dispatched": "absent",
+      "recovery": "terminal",
+      "raised_when": "The applied readback of a subscription differs from the submitted configuration in a field the seller must not alter.",
+      "message_fix": "The seller altered a submitted field; contact the seller.",
+      "context": { "readback": "The readback configuration as returned." },
+      "sdk_classes": { "typescript": "ReportingSubscriptionError", "python": "ReportingSubscriptionError" },
+      "spec_refs": ["static/schemas/source/core/reporting-subscription-state.json#/properties/configuration"]
+    },
+    {
+      "code": "COVERAGE_INPUT_INCOMPLETE",
+      "raised_by": "both",
+      "dispatched": "not_applicable",
+      "recovery": "correctable",
+      "raised_when": "Coverage cannot be computed because the input lacks a value the rule needs. detail names it.",
+      "message_fix": "Supply the missing value; the message names the version configuration, zone, or field.",
+      "details": {
+        "missing_account_timezone": "An account_timezone offering resolves and the account has no timezone (list_accounts timezone).",
+        "missing_source_timezone": "An account_resolved source_timezone offering resolves and the seller-resolved zone (the obligation's period.source_timezone) is not known.",
+        "missing_previous_timezone": "A timezone_cutovers entry has no previous_timezone, which sellers MUST include.",
+        "missing_standard_dimensions": "A candidate offering does not publish standard_dimensions, which sellers advertising subscriptions MUST publish.",
+        "missing_status_retention_days": "A grant was revoked and re-granted later, and status_retention_days, which decides whether the re-grant continues the chain, is not known.",
+        "missing_version_configuration": "A version whose obligations matter has no configuration (prior_versions[].configuration, which sellers MUST include).",
+        "missing_destination_method": "A version names a destination whose pattern and transport are not known."
+      },
+      "sdk_classes": { "typescript": "CoverageInputError", "python": "CoverageInputError" },
+      "spec_refs": ["static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage", "static/schemas/source/core/reporting-subscription-coverage.json#/properties/timezone_cutovers", "static/schemas/source/core/reporting-subscription-state.json#/properties/prior_versions"]
+    },
+    {
+      "code": "COVERAGE_INPUT_INVALID",
+      "raised_by": "both",
+      "dispatched": "not_applicable",
+      "recovery": "correctable",
+      "raised_when": "Coverage cannot be computed because a value the rule reads is malformed. detail names it.",
+      "message_fix": "Correct the value; the message names the field and the rule it breaks.",
+      "details": {
+        "invalid_timezone": "A zone a schedule reads is not an IANA zone or link name (reporting-schedule.json iana_timezone); a numeric offset is not one.",
+        "invalid_period_duration": "A period_duration does not match the schedule pattern (which has no W designator), mixes date and time components under a local alignment, or is sub-daily under a local alignment without dividing 24 hours.",
+        "invalid_instant": "A timestamp is not an RFC 3339 date-time.",
+        "invalid_input": "The input breaks a structural rule: duplicate offering_id or media_buy_id values, versions out of accepted_at or subscription_version order, a superseded_at that is not the next version's accepted_at, no grants, a grant followed by another without unauthorized_at, or an unknown alignment."
+      },
+      "sdk_classes": { "typescript": "CoverageInputError", "python": "CoverageInputError" },
+      "spec_refs": ["static/schemas/source/core/reporting-schedule.json#/x-adcp-validation/iana_timezone", "static/schemas/source/core/reporting-schedule.json#/x-adcp-validation/period_generation", "static/schemas/source/core/reporting-schedule.json#/properties/period_duration"]
+    },
+    {
+      "code": "COVERAGE_BUDGET_EXCEEDED",
+      "raised_by": "both",
+      "dispatched": "not_applicable",
+      "recovery": "correctable",
+      "raised_when": "Computing coverage would produce more periods, or examine more boundaries, than the caller's budget allows. SDKs fail closed rather than return a partial set.",
+      "message_fix": "Narrow the input or raise the budget; the message names maxPeriods (or the boundary budget) and the input that exceeded it.",
+      "sdk_classes": { "typescript": "CoverageInputError", "python": "CoverageInputError" },
+      "spec_refs": ["static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage"]
+    },
+    {
+      "code": "REPORTING_STORAGE_NOT_DURABLE",
+      "raised_by": "seller",
+      "dispatched": "not_applicable",
+      "recovery": "correctable",
+      "raised_when": "Reliable reporting with subscriptions is enabled on storage that does not survive a restart, so obligations, grants, and frozen coverage would be lost.",
+      "message_fix": "Configure durable storage; the message names the configuration key.",
+      "sdk_classes": { "typescript": "PlatformConfigError", "python": "ReliableReportingConfigurationError" },
+      "spec_refs": ["static/schemas/source/core/reporting-subscription-state.json#/properties/prior_versions"]
+    },
+    {
+      "code": "REPORTING_SCHEMA_BEHIND",
+      "raised_by": "seller",
+      "dispatched": "not_applicable",
+      "recovery": "correctable",
+      "raised_when": "The reporting storage schema is older than the SDK requires.",
+      "message_fix": "Run the migration; the message names the command.",
+      "sdk_classes": { "typescript": "PlatformConfigError", "python": "ReliableReportingConfigurationError" },
+      "spec_refs": []
+    },
+    {
+      "code": "SUBSCRIPTIONS_REQUIRE_STANDARD_DIMENSIONS",
+      "raised_by": "seller",
+      "dispatched": "not_applicable",
+      "recovery": "correctable",
+      "raised_when": "A seller enabling reporting subscriptions advertises an offering without standard_dimensions.",
+      "message_fix": "Publish standard_dimensions (empty for totals-only) on every offering; the message names the offering.",
+      "sdk_classes": { "typescript": "PlatformConfigError", "python": "ReliableReportingConfigurationError" },
+      "spec_refs": ["static/schemas/source/core/reporting-delivery-offering.json#/properties/standard_dimensions"]
+    },
+    {
+      "code": "SUBSCRIPTION_ROSTER_UNAVAILABLE",
+      "raised_by": "seller",
+      "dispatched": "not_applicable",
+      "recovery": "correctable",
+      "raised_when": "The seller host supplied no way to enumerate the accounts a principal is authorized for, which all_authorized_accounts subscriptions follow.",
+      "message_fix": "Provide the account roster hook; the message names the configuration key.",
+      "sdk_classes": { "typescript": "PlatformConfigError", "python": "ReliableReportingConfigurationError" },
+      "spec_refs": ["static/schemas/source/core/reporting-subscription.json#/properties/scope"]
+    }
+  ]
+}

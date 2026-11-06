@@ -18,7 +18,8 @@
     "requirements": {
       "type": "array",
       "items": { "$ref": "/schemas/core/agent-onboarding-requirement.json" },
-      "description": "What the counterparty must satisfy for this mode."
+      "description": "What the counterparty must satisfy for this mode.",
+      "maxItems": 16
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

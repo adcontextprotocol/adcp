@@ -1,0 +1,172 @@
+id: media_buy_seller/pricing_currency_filter
+version: "1.0.0"
+title: "Seller filters products by accepted pricing currencies"
+category: media_buy_seller
+summary: "Verifies that get_products filters.pricing_currencies returns only products buyable in the requested media pricing currency and prunes returned product pricing_options."
+track: media_buy
+required_tools:
+  - get_products
+  - comply_test_controller
+
+narrative: |
+  Some buyers can only transact in a specific currency. The buyer uses
+  filters.pricing_currencies to ask the seller to return products with media
+  pricing in an accepted currency. The seller must match against product-level
+  pricing_options, prune returned product pricing_options to the requested
+  currencies, and exclude products whose mandatory product-scoped signal charges
+  cannot be satisfied in the requested currencies.
+
+  Optional signal or vendor add-ons are not part of this filter's product media
+  pricing match. Buyers remain responsible for avoiding optional add-on prices
+  they cannot transact in.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Publishers with USD and EUR rate cards"
+    - "Retail media networks that expose account-specific product currencies"
+    - "CTV sellers with regional currency rate cards"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller supports get_products wholesale discovery and can seed products with
+    multiple pricing currencies. The seeded catalog includes one product with
+    USD and EUR media pricing and one product whose only compatible media or
+    mandatory add-on pricing is outside USD.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "mixed_currency_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      signal_targeting_allowed: true
+      signal_targeting_rules:
+        resolution_model: "direct_targeting"
+        selection_mode: "optional"
+      signal_targeting_options:
+        - signal_ref:
+            scope: "product"
+            signal_id: "premium_outdoor_affinity"
+          name: "Premium outdoor affinity"
+          value_type: "binary"
+          default_selected: false
+          pricing_options:
+            - pricing_option_id: "premium_outdoor_affinity_eur_cpm"
+              model: "cpm"
+              cpm: 1.00
+              currency: "EUR"
+    - product_id: "mandatory_eur_signal_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      signal_targeting_allowed: true
+      signal_targeting_rules:
+        resolution_model: "direct_targeting"
+        selection_mode: "fixed"
+      signal_targeting_options:
+        - signal_ref:
+            scope: "product"
+            signal_id: "fixed_sports_affinity"
+          name: "Fixed sports affinity"
+          value_type: "binary"
+          default_selected: true
+          pricing_options:
+            - pricing_option_id: "fixed_sports_affinity_eur_cpm"
+              model: "cpm"
+              cpm: 1.50
+              currency: "EUR"
+  pricing_options:
+    - product_id: "mixed_currency_display"
+      pricing_option_id: "mixed_display_usd_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.00
+    - product_id: "mixed_currency_display"
+      pricing_option_id: "mixed_display_eur_cpm"
+      pricing_model: "cpm"
+      currency: "EUR"
+      fixed_price: 11.00
+    - product_id: "mandatory_eur_signal_display"
+      pricing_option_id: "mandatory_eur_base_usd_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 10.00
+
+phases:
+  - id: discover_usd_products
+    title: "Discover products priced in USD"
+    steps:
+      - id: get_products_usd_pricing
+        title: "Request only USD product pricing"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expected: |
+          Return products whose media product transaction can be priced in USD:
+          - The mixed-currency product may be returned, but its product-level
+            pricing_options must be pruned to USD entries.
+          - Products with mandatory product-scoped signal charges that cannot be
+            satisfied in USD must be excluded.
+          - Optional signal add-on pricing does not need to be pruned by this filter.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            pricing_currencies: ["USD"]
+          fields:
+            - product_id
+            - name
+            - pricing_options
+            - signal_targeting_allowed
+            - signal_targeting_options
+            - signal_targeting_rules
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "pricing_currency_filter--get_products_usd_pricing"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one USD-compatible product is returned"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "mixed_currency_display"
+            description: "The seeded mixed-currency product is the USD-compatible product returned"
+          - check: field_value
+            path: "products[0].pricing_options[0].pricing_option_id"
+            value: "mixed_display_usd_cpm"
+            description: "The retained product-level price is the seeded USD rate card entry"
+          - check: field_value
+            path: "products[0].pricing_options[0].currency"
+            value: "USD"
+            description: "Returned product-level pricing option is in the requested currency"
+          - check: field_absent
+            path: "products[0].pricing_options[1]"
+            description: "Mixed-currency product pricing_options are pruned to matching currencies"
+          - check: field_absent
+            path: "products[1]"
+            description: "Product with mandatory EUR-only signal charge is excluded from USD results"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pricing_currency_filter--get_products_usd_pricing"
+            description: "Context correlation_id returned unchanged"

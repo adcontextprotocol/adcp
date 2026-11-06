@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/compliance/comply-test-controller-request.json",
   "title": "Comply Test Controller Request",
-  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: each known `scenario` is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The one exception is definition_pin_probe mutate_definition with mutation material, which advances the published definition so every call yields a digest distinct from all earlier digests of that definition. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
+  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: each known `scenario` is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
   "type": "object",
   "allOf": [
     {
@@ -998,43 +998,120 @@
     {
       "if": {
         "properties": {
-          "scenario": { "const": "definition_pin_probe" }
+          "scenario": {
+            "const": "reporting_subscription_probe"
+          }
         },
-        "required": ["scenario"]
+        "required": [
+          "scenario"
+        ]
       },
       "then": {
-        "required": ["params"],
+        "required": [
+          "params"
+        ],
         "properties": {
           "params": {
-            "required": ["operation"],
+            "required": [
+              "operation"
+            ],
             "properties": {
-              "operation": { "enum": ["prepare", "mutate_definition"] }
+              "operation": {
+                "enum": [
+                  "revoke_grant",
+                  "regrant",
+                  "reduce_grant",
+                  "set_account_timezone",
+                  "advance_time"
+                ]
+              }
             },
             "allOf": [
               {
                 "if": {
-                  "properties": { "operation": { "const": "prepare" } },
-                  "required": ["operation"]
+                  "properties": {
+                    "operation": {
+                      "enum": [
+                        "revoke_grant",
+                        "regrant",
+                        "reduce_grant",
+                        "set_account_timezone"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ]
                 },
                 "then": {
-                  "required": ["product_id"],
+                  "required": [
+                    "account_id"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "operation": {
+                      "const": "reduce_grant"
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "allowed_tasks"
+                  ]
+                },
+                "else": {
                   "not": {
-                    "anyOf": [
-                      { "required": ["proposal_id"] },
-                      { "required": ["ref_kind"] },
-                      { "required": ["mutation"] }
+                    "required": [
+                      "allowed_tasks"
                     ]
                   }
                 }
               },
               {
                 "if": {
-                  "properties": { "operation": { "const": "mutate_definition" } },
-                  "required": ["operation"]
+                  "properties": {
+                    "operation": {
+                      "const": "set_account_timezone"
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ]
                 },
                 "then": {
-                  "required": ["proposal_id", "ref_kind", "mutation"],
-                  "not": { "required": ["product_id"] }
+                  "required": [
+                    "timezone"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "timezone"
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "operation": {
+                      "const": "advance_time"
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "target_time"
+                  ]
                 }
               }
             ]
@@ -1047,7 +1124,7 @@
   "properties": {
     "scenario": {
       "type": "string",
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, restate one the caller already received, or cross the consumer-status deadline and consumer-mismatch escalation boundaries, without waiting for wall-clock boundaries. 'force_hold_unavailable' (experimental, media_buy.hold_policy) makes the next refine_proposals finalize of one draft proposal fail with hold_unavailable, its batch siblings with batch_aborted, and is then consumed. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'reporting_subscription_probe' (experimental, media_buy.reporting_subscriptions) revokes, re-grants, or reduces the caller's own grant on a sandbox account, changes a sandbox account's timezone, or advances the sandbox clock, so storyboards can test reporting-subscription coverage across grants and cutovers against a remote seller. 'reset_state' takes no params and returns the authenticated caller's sandbox to a baseline; a runner that finds it in list_scenarios calls it once before each storyboard. It acts only on the caller's own sandbox state, and what it discards is implementation-defined except where a scenario names its reset effects: a seller that lists reporting_subscription_probe MUST also list reset_state, which MUST unpin the caller's sandbox clock (simulated_now reads the seller's wall clock again until the next advance_time) and discard every grant and timezone change the probe made for the caller. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, restate one the caller already received, or cross the consumer-status deadline and consumer-mismatch escalation boundaries, without waiting for wall-clock boundaries. 'force_hold_unavailable' (experimental, media_buy.hold_policy) makes the next refine_proposals finalize of one draft proposal fail with hold_unavailable, its batch siblings with batch_aborted, and is then consumed. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
     },
     "params": {
       "type": "object",
@@ -1079,7 +1156,7 @@
         },
         "product_id": {
           "type": "string",
-          "description": "Product to seed or prepare for deterministic compact lifecycle testing. Used by seed_product, seed_pricing_option, compact_product_lifecycle_probe prepare, compact_direct_buy_lifecycle_probe prepare, and definition_pin_probe prepare.",
+          "description": "Product to seed or prepare for deterministic compact lifecycle testing. Used by seed_product, seed_pricing_option, compact_product_lifecycle_probe prepare, and compact_direct_buy_lifecycle_probe prepare.",
           "x-entity": "product"
         },
         "opportunity_id": {
@@ -1093,7 +1170,7 @@
         "proposal_id": {
           "type": "string",
           "minLength": 1,
-          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, the draft or committed proposal whose pinned definition definition_pin_probe mutate_definition changes, or the holdable draft proposal whose next finalize force_hold_unavailable fails with hold_unavailable.",
+          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, the holdable draft proposal whose next finalize force_hold_unavailable fails with hold_unavailable.",
           "x-entity": "proposal"
         },
         "pricing_option_id": {
@@ -1118,17 +1195,8 @@
         },
         "operation": {
           "type": "string",
-          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation", "advance_past_status_deadline", "advance_past_escalation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment", "mutate_definition"],
-          "description": "Scenario-specific probe operation. definition_pin_probe uses prepare to make one seeded product reference a controller-published publisher-catalog definition so its proposals carry definition pins, and mutate_definition to change that published definition behind an existing proposal's pin without touching the proposal: mutation material changes a digest-covered field and mutation cosmetic changes only a projection-excluded field such as name. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, and advance_past_escalation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, buyer-side missing-obligation detection, counted consumer-status silence, and consumer-mismatch escalation. advance_past_status_deadline moves the clock strictly past expected_at plus the advertised automated_recovery_window_seconds without recording any consumer status, so obligation_counts.consumer_status_pending is gradable; advance_past_escalation moves it strictly past the open CONSUMER_STATUS_MISMATCH issue opened_at plus the advertised consumer_mismatch_escalation_seconds and returns both that boundary and any still-future stale_received_grace_deadline, so the escalation precedence rule is gradable. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence."
-        },
-        "ref_kind": {
-          "$ref": "/schemas/enums/definition-pin-ref-kind.json",
-          "description": "Kind of pinned definition that definition_pin_probe mutate_definition changes. The controller mutates the definition behind the first pin of this kind in the named proposal's commercial_terms.definition_pins."
-        },
-        "mutation": {
-          "type": "string",
-          "enum": ["material", "cosmetic"],
-          "description": "Required by definition_pin_probe mutate_definition. material changes a field inside the kind's pin projection (for example a member of a format option's params) so the definition's content_digest changes. cosmetic changes only a field the projection excludes (for example display_name) so the content_digest is unchanged and the pin still verifies."
+          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog", "prepare", "expire_proposal", "publish_zero_row", "publish_nonempty", "restate_snapshot", "restate_after_received", "omit_obligation", "advance_past_status_deadline", "advance_past_escalation", "publish_official_adjustment", "probe_scheduler_dst", "suppress_readiness", "advance_within_retention", "revoke_access", "publish_adjustment", "revoke_grant", "regrant", "reduce_grant", "set_account_timezone"],
+          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, and advance_past_escalation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, buyer-side missing-obligation detection, counted consumer-status silence, and consumer-mismatch escalation. advance_past_status_deadline moves the clock strictly past expected_at plus the advertised automated_recovery_window_seconds without recording any consumer status, so obligation_counts.consumer_status_pending is gradable; advance_past_escalation moves it strictly past the open CONSUMER_STATUS_MISMATCH issue opened_at plus the advertised consumer_mismatch_escalation_seconds and returns both that boundary and any still-future stale_received_grace_deadline, so the escalation precedence rule is gradable. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence. reporting_subscription_probe (experimental, media_buy.reporting_subscriptions) uses revoke_grant, regrant, reduce_grant, set_account_timezone, and advance_time to drive grants, account timezone cutovers, and the sandbox clock for reporting-subscription coverage."
         },
         "target_health": {
           "type": "string",
@@ -1170,10 +1238,28 @@
           "description": "Catalog item operated on by catalog_item_availability_probe.",
           "x-entity": "catalog_item"
         },
+        "allowed_tasks": {
+          "type": "array",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 64 },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "description": "reporting_subscription_probe reduce_grant: the complete allowed_tasks the caller's grant on account_id keeps, for example only get_reporting_status, sync_reporting_receipts, and sync_reporting_status to model a wind-down."
+        },
+        "timezone": {
+          "type": "string",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "reporting_subscription_probe set_account_timezone: the account's new IANA timezone."
+        },
         "target_time": {
           "type": "string",
           "format": "date-time",
-          "description": "Deterministic sandbox clock target used by catalog_item_availability_probe advance_time."
+          "description": "Deterministic sandbox clock target used by catalog_item_availability_probe advance_time and reporting_subscription_probe advance_time."
         },
         "status": {
           "type": "string",
@@ -1464,10 +1550,9 @@
           "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, force_get_signals_arm, and force_get_creative_features_arm. 'submitted' is supported for all four operations; get_creative_features also supports 'completed' with a deterministic result; create_media_buy also supports 'input-required'; get_products also supports 'rejected'. Async completion after a submitted task is covered by force_task_completion; 'working' is an out-of-band progress signal, not an initial response arm."
         },
         "task_id": {
-          "type": "string",
-          "maxLength": 128,
           "description": "Deterministic task handle the seller MUST emit verbatim on the next forced operation response when arm is 'submitted'. The seller MUST accept this exact value on subsequent tasks/get or get_task_status calls within the same authenticated sandbox account + principal pair and MUST return REFERENCE_NOT_FOUND for the same task_id under any other account or principal. Sandbox task_ids are caller-opaque strings - the seller's production task-id format rules do not apply.",
-          "x-entity": "task"
+          "allOf": [{ "$ref": "/schemas/core/task-id.json" }],
+          "maxLength": 128
         },
         "evaluation_id": {
           "type": "string",

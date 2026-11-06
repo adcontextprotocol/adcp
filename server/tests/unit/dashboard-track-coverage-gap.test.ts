@@ -317,13 +317,14 @@ describe('dashboard grading profile comparison', () => {
     expect(html).toContain('No current-policy comparison is available yet.');
   });
 
-  it('uses the server-provided public effect and grace deadline for exact-role selection', () => {
+  it('labels the selection effect as conditional and separates it from the Legacy selection deadline', () => {
     const exact = structuredClone(currentComparison);
     exact.scope = 'badge';
     exact.role = 'media-buy';
     exact.adcp_version = '3.1';
     exact.selection_enabled = true;
     exact.selection_revision = 4;
+    exact.legacy_selection_allowed_until = '2026-09-20T12:00:00.000Z';
     exact.profiles.spec = {
       available: true,
       status: 'failing',
@@ -343,8 +344,10 @@ describe('dashboard grading profile comparison', () => {
     expect(html).toContain('media-buy · AdCP 3.1');
     expect(html).toContain('Use Strict Spec grading');
     expect(html).toContain('data-public-effect="degrade"');
-    expect(html).toContain('The public badge will enter its degraded grace period.');
-    expect(html).toContain('Grace deadline:');
+    expect(html).toContain('If you select Strict Spec grading now: The public badge will enter its degraded grace period.');
+    expect(html).toContain('Estimated grace deadline if selected now:');
+    expect(html).toContain('<strong>Legacy grading selection deadline:</strong>');
+    expect(html).not.toContain('<strong>Public badge effect:</strong> The public badge will enter its degraded grace period.');
     expect(html).not.toContain('onclick="selectGradingProfileFromComparison(this)">Select</button>');
   });
 

@@ -10,10 +10,12 @@ import type {
   MemberBrandInfo,
   BrandLogo,
   RelationshipTrust,
+  DomainVerificationMethod,
 } from '../types.js';
 import { isValidRelationshipTrust } from '../types.js';
 import { preserveBrandTrustFields, stripBrandTrustFields } from '../services/brand-trust-fields.js';
 import { BRAND_REVISION_SNAPSHOT_FIELDS, pickSnapshotFields } from './registry-revision-snapshot.js';
+import { housePortfolioBrandDomains } from '../services/brand-entry-selection.js';
 
 /**
  * Brand-manifest keys that must not be accepted from caller-supplied
@@ -346,7 +348,8 @@ export interface CreateHostedBrandInput {
  */
 export interface UpdateHostedBrandInput {
   brand_json?: Record<string, unknown>;
-  domain_verified?: boolean;
+  /** The domain's own brand.json points at this hosted record: proof of control. */
+  verified_by_brand_json_pointer?: true;
   /** Mark a successful live origin read as terminal brand.json evidence. */
   origin_validated?: boolean;
   verification_token?: string;
@@ -425,6 +428,70 @@ export interface ListBrandsOptions {
  * crawler-discovered row carries it. Owner-hosted means a verified
  * organization registered the row.
  */
+/** WorkOS's record of how an organization domain was verified. */
+export type WorkosDomainVerificationStrategy = 'dns' | 'manual';
+
+/**
+ * Only a domain WorkOS verified by DNS proves control. Anything else,
+ * including a missing value, is an administrator's assertion.
+ */
+export function workosDomainVerificationStrategy(value: unknown): WorkosDomainVerificationStrategy {
+  return value === 'dns' ? 'dns' : 'manual';
+}
+
+/**
+ * A membership the user took part in. An org admin can add an existing user
+ * by email without their consent (`admin_added`), which is no evidence of
+ * anything about that user's domain. Memberships from before the source was
+ * recorded (NULL) predate that path's tagging and still count.
+ */
+const CONSENTED_MEMBERSHIP_SQL = `m.provisioning_source IS DISTINCT FROM 'admin_added'`;
+
+/**
+ * Whether organization $2 has a consenting member with a verified email on
+ * domain $1. Evidence that a `manual` WorkOS domain belongs to the organization.
+ */
+const MEMBER_EMAIL_ON_DOMAIN_SQL = `EXISTS (
+  SELECT 1 FROM organization_memberships m
+  JOIN users u ON u.workos_user_id = m.workos_user_id
+  WHERE m.workos_organization_id = $2
+    AND ${CONSENTED_MEMBERSHIP_SQL}
+    AND u.email_verified = TRUE
+    AND lower(split_part(u.email, '@', 2)) IN ($1, 'www.' || $1))`;
+
+/**
+ * Strength of a verification method, for deciding whether a new write may
+ * replace an existing one. DNS and brand.json prove control; a member's email
+ * is weaker; an administrator's assertion proves nothing.
+ */
+const methodRankSql = (method: string) =>
+  `(CASE WHEN ${method} IS NULL THEN 0 WHEN ${method} = 'manual' THEN 1
+    WHEN ${method} = 'member_email' THEN 2 ELSE 3 END)`;
+
+/**
+ * The proof an existing verified row already carries. Rows verified before
+ * the method was recorded count as `brand_json` when the domain's own
+ * brand.json was read (source_type), and as no proof otherwise, so a sync
+ * reclassifies them.
+ */
+const EXISTING_PROOF_SQL = `(CASE WHEN brands.domain_verified THEN COALESCE(
+  brands.domain_verification_method,
+  CASE WHEN brands.source_type = 'brand_json' THEN 'brand_json' END) END)`;
+
+/** Verified before the method was recorded, with no recognisable proof. */
+const LEGACY_VERIFIED_SQL = `(brands.domain_verified
+  AND brands.domain_verification_method IS NULL
+  AND brands.source_type IS DISTINCT FROM 'brand_json')`;
+
+/**
+ * A write would move another organization's verified row to a new owner on
+ * evidence weaker than DNS. Used as the ON CONFLICT ... WHERE guard: the
+ * write is skipped.
+ */
+const TAKES_ANOTHER_ORGS_VERIFIED_ROW_SQL = (method: string, orgId: string) =>
+  `(${method} <> 'dns' AND brands.domain_verified
+    AND brands.workos_organization_id IS DISTINCT FROM ${orgId})`;
+
 const OWNER_HOSTED_SQL =
   `(brands.workos_organization_id IS NOT NULL AND brands.domain_verified = true)`;
 /**
@@ -454,6 +521,70 @@ const DOMAIN_CONTROL_VERIFIED_SQL =
 /** The row carries manifest content, rather than an empty placeholder. */
 const HAS_MANIFEST_SQL =
   `(brands.brand_manifest IS NOT NULL AND brands.brand_manifest <> '{}'::jsonb)`;
+/** Rows the public registry lists. */
+const REGISTRY_VISIBLE_SQL =
+  `(brands.is_public = true OR brands.review_status IS NULL OR brands.review_status = 'approved')`;
+
+/**
+ * How a listed brand is known to belong to a house:
+ * - `confirmed`: both sides publish the link, or the brand redirects to the house.
+ * - `house_declared`: the house's own manifest lists the brand. The house has
+ *   shown it controls its domain; the brand has not confirmed.
+ * - `brand_declared`: the brand's own brand.json names the house; the house
+ *   does not list it.
+ * - `inferred`: an enrichment or community record links them. Nobody declared it.
+ */
+export type HouseLink = 'confirmed' | 'house_declared' | 'brand_declared' | 'inferred';
+
+/** A house as the brand list sees it, read once per request. */
+export interface RegistryHouse {
+  domain: string;
+  /** The house's own registry row, when it has a public one. */
+  record: { brand_name: string; verified: boolean } | null;
+  /**
+   * Brands the house's manifest lists. Empty unless the house has shown it
+   * controls its domain, because anyone can write a community row naming brands.
+   */
+  declared_brand_domains: string[];
+}
+
+/**
+ * A claim the brand published in its own brand.json. The crawler clears
+ * `house_domain` whenever it records such a claim, while a verdict computed
+ * from stored records (computeUnpublishedHouseRelationshipTrust) copies the
+ * inferred house into `claimed_house_domain` and keeps `house_domain`.
+ */
+const OWN_CLAIM_SQL = `(brands.house_domain IS NULL AND brands.claimed_house_domain IS NOT NULL)`;
+
+/**
+ * Rows linked to a house by any evidence. A house's declaration does not list
+ * a brand whose own document names a different house, or that has a confirmed
+ * link to a different house: the brand's statement about itself wins.
+ */
+function houseFilterSql(house: RegistryHouse, params: unknown[]): string {
+  params.push(house.domain);
+  const domainParam = params.length;
+  params.push(house.declared_brand_domains);
+  const declaredParam = params.length;
+  return `(brands.house_domain = $${domainParam}
+    OR brands.claimed_house_domain = $${domainParam}
+    OR (brands.domain = ANY($${declaredParam}::text[])
+      AND (NOT ${OWN_CLAIM_SQL} OR brands.claimed_house_domain = $${domainParam})
+      AND (brands.relationship_trust IS NULL
+        OR brands.relationship_trust NOT IN ('mutual', 'inline')
+        OR brands.house_domain = $${domainParam})))`;
+}
+
+function houseLinkFor(
+  row: { domain: string; house_domain: string | null; claimed_house_domain: string | null; relationship_trust: string | null },
+  house: RegistryHouse,
+): HouseLink {
+  const trust = row.relationship_trust;
+  if (row.house_domain === house.domain && (trust === 'mutual' || trust === 'inline')) return 'confirmed';
+  if (house.declared_brand_domains.includes(row.domain)) return 'house_declared';
+  if (row.house_domain === null && row.claimed_house_domain === house.domain) return 'brand_declared';
+  return 'inferred';
+}
 
 /**
  * Whether a registry row is safe to use as an organization's public identity.
@@ -485,7 +616,7 @@ export function canSurfaceBrandForMember(
 // Column list for queries returning HostedBrand (aliases brands columns to match the interface)
 const HOSTED_BRAND_COLUMNS = `id, workos_organization_id, created_by_user_id, created_by_email,
   domain AS brand_domain, brand_manifest AS brand_json, source_type,
-  domain_verified, verification_token, is_public,
+  domain_verified, domain_verification_method, verification_token, is_public,
   manifest_orphaned, prior_owner_org_id,
   created_at, updated_at`;
 
@@ -604,9 +735,9 @@ export class BrandDatabase {
       updates.push(`brand_manifest = $${paramIndex++}`);
       values.push(JSON.stringify(input.brand_json));
     }
-    if (input.domain_verified !== undefined) {
-      updates.push(`domain_verified = $${paramIndex++}`);
-      values.push(input.domain_verified);
+    if (input.verified_by_brand_json_pointer) {
+      updates.push(`domain_verified = TRUE`);
+      updates.push(`domain_verification_method = 'brand_json'`);
     }
     if (input.origin_validated === true) {
       updates.push(`source_type = 'brand_json'`);
@@ -631,7 +762,7 @@ export class BrandDatabase {
       `UPDATE brands SET ${updates.join(', ')} WHERE id = $${paramIndex}
        RETURNING id, workos_organization_id, created_by_user_id, created_by_email,
          domain AS brand_domain, brand_manifest AS brand_json,
-         domain_verified, verification_token, is_public, created_at, updated_at`,
+         domain_verified, domain_verification_method, verification_token, is_public, created_at, updated_at`,
       values
     );
     return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
@@ -657,6 +788,7 @@ export class BrandDatabase {
          created_by_user_id = NULL,
          created_by_email = NULL,
          domain_verified = FALSE,
+         domain_verification_method = NULL,
          verification_token = NULL,
          manifest_orphaned = TRUE,
          is_public = FALSE,
@@ -692,6 +824,7 @@ export class BrandDatabase {
       `UPDATE brands SET
          workos_organization_id = $2,
          domain_verified = TRUE,
+         domain_verification_method = 'brand_json',
          is_public = TRUE,
          manifest_orphaned = FALSE,
          prior_owner_org_id = NULL,
@@ -786,13 +919,19 @@ export class BrandDatabase {
    * decision (`adoptPriorManifest`). Used by /api/me/member-profile/brand-claim/verify
    * where the caller has explicitly chosen adopt-vs-fresh.
    *
-   * Webhook handlers must use markBrandDomainVerified instead — that path
+   * Webhook handlers must use syncBrandDomainFromWorkos instead — that path
    * doesn't know the user's adopt choice and would otherwise clobber a
    * manifest the caller intentionally adopted seconds earlier.
+   *
+   * `method` is the proof the caller established (see
+   * resolveWorkosDomainVerification). A `manual` domain is not a claim.
+   * Returns null, writing nothing, when another organization holds the row
+   * verified and `method` is weaker than DNS.
    */
   async applyVerifiedBrandClaim(
     domain: string,
     workosOrganizationId: string,
+    method: Exclude<DomainVerificationMethod, 'manual'>,
     options: { adoptPriorManifest?: boolean } = {},
   ): Promise<HostedBrand | null> {
     const canonicalDomain = canonicalizeBrandDomain(domain);
@@ -805,59 +944,147 @@ export class BrandDatabase {
     const result = await query<HostedBrand>(
       `INSERT INTO brands (
          domain, workos_organization_id, brand_manifest, has_brand_manifest,
-         source_type, review_status, is_public, domain_verified, manifest_orphaned
+         source_type, review_status, is_public, domain_verified, domain_verification_method,
+         manifest_orphaned
        )
-       VALUES ($1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE, TRUE, FALSE)
+       VALUES ($1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE, TRUE, $3::text, FALSE)
        ON CONFLICT (domain) DO UPDATE SET
          workos_organization_id = $2,
          domain_verified = TRUE,
+         domain_verification_method = CASE
+           WHEN brands.workos_organization_id = $2
+             AND ${methodRankSql(EXISTING_PROOF_SQL)} > ${methodRankSql('$3::text')}
+           THEN ${EXISTING_PROOF_SQL} ELSE $3::text END,
          is_public = TRUE,
          manifest_orphaned = FALSE,
          prior_owner_org_id = NULL,
          brand_manifest = ${manifestSet},
          has_brand_manifest = ${hasManifestSet},
          updated_at = NOW()
+       WHERE NOT (${TAKES_ANOTHER_ORGS_VERIFIED_ROW_SQL('$3::text', '$2')})
        RETURNING ${HOSTED_BRAND_COLUMNS}`,
-      [canonicalDomain, workosOrganizationId]
+      [canonicalDomain, workosOrganizationId, method]
     );
     return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
   }
 
   /**
-   * Mark a domain verified from a WorkOS webhook event.
-   * Sync-only: sets ownership, domain_verified, clears orphan state, but
-   * NEVER touches brand_manifest / has_brand_manifest. The verify route
+   * Turn a verified WorkOS domain into a verification method. `dns` is proof
+   * of control. A `manual` domain was marked verified by an administrator, so
+   * it counts only when one of the organization's members has a verified email
+   * on the domain; otherwise it stays `manual` and does not verify the brand.
+   */
+  async resolveWorkosDomainVerification(
+    domain: string,
+    workosOrganizationId: string,
+    strategy: WorkosDomainVerificationStrategy,
+  ): Promise<DomainVerificationMethod> {
+    if (strategy === 'dns') return 'dns';
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    const result = await query<{ has_member: boolean }>(
+      `SELECT ${MEMBER_EMAIL_ON_DOMAIN_SQL} AS has_member`,
+      [canonicalDomain, workosOrganizationId],
+    );
+    return result.rows[0]?.has_member ? 'member_email' : 'manual';
+  }
+
+  /**
+   * A member with a verified email on a domain the organization holds as
+   * `manual` is the evidence that domain was missing: mark it verified.
+   * Returns the domains upgraded.
+   */
+  async promoteManualDomainsForMember(workosOrganizationId: string, workosUserId: string): Promise<string[]> {
+    const result = await query<{ domain: string }>(
+      `UPDATE brands b SET
+         domain_verified = TRUE,
+         domain_verification_method = 'member_email',
+         updated_at = NOW()
+       FROM users u
+       JOIN organization_memberships m
+         ON m.workos_user_id = u.workos_user_id AND m.workos_organization_id = $1
+       WHERE b.workos_organization_id = $1
+         AND ${CONSENTED_MEMBERSHIP_SQL}
+         AND b.domain_verification_method = 'manual'
+         AND u.workos_user_id = $2
+         AND u.email_verified = TRUE
+         AND lower(split_part(u.email, '@', 2)) IN (b.domain, 'www.' || b.domain)
+       RETURNING b.domain`,
+      [workosOrganizationId, workosUserId],
+    );
+    return result.rows.map(row => row.domain);
+  }
+
+  /**
+   * Mirror a verified WorkOS organization domain into the brand registry.
+   * Sync-only: sets ownership and clears orphan state, but NEVER touches
+   * brand_manifest / has_brand_manifest. The verify route
    * (applyVerifiedBrandClaim) is what the user-facing "adopt vs fresh"
    * decision flows through; the webhook is a backstop in case the inline
    * write was missed (or for state changes flipped via the WorkOS dashboard).
    * Without this separation, a webhook arriving after `adoptPriorManifest:true`
    * would reset the just-adopted manifest to {}.
    *
-   * Idempotent — repeated calls produce the same end state. Always returns
-   * the current row.
+   * `domain_verified` follows the proof (resolveWorkosDomainVerification): a
+   * `manual` domain links the brand to the organization without verifying it.
+   * Only DNS proof displaces another organization's verified row, and a weaker
+   * method never replaces this organization's stronger proof. Rows verified
+   * before the method was recorded are left as they are unless
+   * `reclassifyLegacy` is set.
+   *
+   * Idempotent — repeated calls produce the same end state. Returns the
+   * current row.
    */
-  async markBrandDomainVerified(
+  async syncBrandDomainFromWorkos(
     domain: string,
     workosOrganizationId: string,
+    strategy: WorkosDomainVerificationStrategy,
+    options: { reclassifyLegacy?: boolean } = {},
   ): Promise<HostedBrand | null> {
     const canonicalDomain = canonicalizeBrandDomain(domain);
+    // Routine syncs never demote a row verified before the method was
+    // recorded; only the reclassification script (reviewed dry-run first)
+    // does. Proof from a routine sync is still recorded on it.
+    const keepsLegacy = options.reclassifyLegacy
+      ? 'FALSE'
+      : `(${LEGACY_VERIFIED_SQL} AND EXCLUDED.domain_verification_method = 'manual')`;
+    // Same-org proof that is at least as strong as the incoming method wins.
+    const keepsProof = `(brands.workos_organization_id = EXCLUDED.workos_organization_id
+      AND (${keepsLegacy}
+        OR ${methodRankSql(EXISTING_PROOF_SQL)} >= ${methodRankSql('EXCLUDED.domain_verification_method')}))`;
+    const verifiedAfter = `(${keepsProof} OR EXCLUDED.domain_verified)`;
+    // The member check runs inside the write, so a concurrent promotion
+    // cannot be overwritten with a stale `manual`.
     const result = await query<HostedBrand>(
-      `INSERT INTO brands (
-         domain, workos_organization_id, brand_manifest, has_brand_manifest,
-         source_type, review_status, is_public, domain_verified, manifest_orphaned
+      `WITH proof AS (
+         SELECT CASE WHEN $3 = 'dns' THEN 'dns'
+                     WHEN ${MEMBER_EMAIL_ON_DOMAIN_SQL} THEN 'member_email'
+                     ELSE 'manual' END AS method
        )
-       VALUES ($1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE, TRUE, FALSE)
+       INSERT INTO brands (
+         domain, workos_organization_id, brand_manifest, has_brand_manifest,
+         source_type, review_status, is_public, domain_verified, domain_verification_method,
+         manifest_orphaned
+       )
+       SELECT $1, $2, '{}'::jsonb, FALSE, 'community', 'approved', TRUE,
+              proof.method <> 'manual', proof.method, FALSE
+       FROM proof
        ON CONFLICT (domain) DO UPDATE SET
          workos_organization_id = $2,
-         domain_verified = TRUE,
-         is_public = TRUE,
-         manifest_orphaned = FALSE,
-         prior_owner_org_id = NULL,
+         domain_verified = ${verifiedAfter},
+         domain_verification_method = CASE WHEN ${keepsProof}
+           THEN ${EXISTING_PROOF_SQL} ELSE EXCLUDED.domain_verification_method END,
+         -- Only a verified claim takes a relinquished row out of the orphan
+         -- state; an administrator's assertion leaves the adopt choice open.
+         is_public = CASE WHEN ${verifiedAfter} THEN TRUE ELSE brands.is_public END,
+         manifest_orphaned = CASE WHEN ${verifiedAfter} THEN FALSE ELSE brands.manifest_orphaned END,
+         prior_owner_org_id = CASE WHEN ${verifiedAfter} THEN NULL ELSE brands.prior_owner_org_id END,
          updated_at = NOW()
+       WHERE NOT (${TAKES_ANOTHER_ORGS_VERIFIED_ROW_SQL('EXCLUDED.domain_verification_method', 'EXCLUDED.workos_organization_id')})
        RETURNING ${HOSTED_BRAND_COLUMNS}`,
-      [canonicalDomain, workosOrganizationId]
+      [canonicalDomain, workosOrganizationId, strategy]
     );
-    return result.rows[0] ? this.deserializeHostedBrand(result.rows[0]) : null;
+    if (result.rows[0]) return this.deserializeHostedBrand(result.rows[0]);
+    return this.getHostedBrandByDomain(canonicalDomain);
   }
 
   /**
@@ -998,6 +1225,62 @@ export class BrandDatabase {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Give a relationship_trust verdict to every brand that names a house but
+   * has no verdict from a published brand.json. These links come from
+   * enrichment, community records or hosted profiles, so the brand has
+   * published no claim the crawler could check.
+   *
+   * The verdict is `house_only` when the house's own stored record lists the
+   * brand in `brand_refs[]`, and `unverifiable` otherwise, with the link
+   * copied to `claimed_house_domain`. Neither verdict extends trust: `mutual`
+   * still needs the crawler's check of both published documents.
+   *
+   * `house_domain` is left as it is, because membership inheritance, domain
+   * resolution and hierarchical auto-provisioning read it. Rows the crawler
+   * has verified are skipped: it keeps `house_domain` only for `mutual` and
+   * `inline` and clears it otherwise. Earlier verdicts from this pass are
+   * recomputed, so a house that later lists the brand upgrades it.
+   *
+   * Returns the number of rows whose verdict changed.
+   */
+  async computeUnpublishedHouseRelationshipTrust(): Promise<number> {
+    const result = await query(
+      `WITH verdicts AS (
+         SELECT leaf.domain,
+                CASE WHEN EXISTS (
+                  SELECT 1
+                  FROM brands house,
+                       jsonb_array_elements(
+                         CASE WHEN jsonb_typeof(house.brand_manifest->'brand_refs') = 'array'
+                              THEN house.brand_manifest->'brand_refs'
+                              ELSE '[]'::jsonb END
+                       ) AS ref
+                  WHERE house.domain = leaf.house_domain
+                    AND lower(ref->>'domain') = leaf.domain
+                ) THEN 'house_only' ELSE 'unverifiable' END AS relationship_trust,
+                leaf.house_domain
+         FROM brands leaf
+         WHERE leaf.house_domain IS NOT NULL
+           AND leaf.house_domain <> leaf.domain
+           AND (leaf.relationship_trust IS NULL
+                OR leaf.relationship_trust IN ('house_only', 'unverifiable'))
+       )
+       UPDATE brands b
+       SET relationship_trust = v.relationship_trust,
+           claimed_house_domain = CASE WHEN v.relationship_trust = 'unverifiable'
+                                       THEN v.house_domain ELSE NULL END,
+           relationship_verified_at = NULL,
+           relationship_trust_computed_at = NOW()
+       FROM verdicts v
+       WHERE b.domain = v.domain
+         AND (b.relationship_trust IS DISTINCT FROM v.relationship_trust
+              OR b.claimed_house_domain IS DISTINCT FROM
+                 CASE WHEN v.relationship_trust = 'unverifiable' THEN v.house_domain ELSE NULL END)`
+    );
+    return result.rowCount ?? 0;
   }
 
   /**
@@ -1325,8 +1608,13 @@ export class BrandDatabase {
    * control of the domain was demonstrated (owner verification, or a valid
    * brand.json served from the domain itself), and `has_manifest` means the
    * row actually carries manifest content.
+   *
+   * With `house`, only brands linked to that house are listed, each with a
+   * `house_link` saying how the link is known.
    */
-  async getAllBrandsForRegistry(options: ListBrandsOptions = {}): Promise<Array<{
+  async getAllBrandsForRegistry(
+    options: Omit<ListBrandsOptions, 'house_domain'> & { house?: RegistryHouse } = {},
+  ): Promise<Array<{
     domain: string;
     brand_name: string;
     source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
@@ -1342,12 +1630,11 @@ export class BrandDatabase {
     relationship_trust?: RelationshipTrust;
     relationship_verified_at?: Date;
     claimed_house_domain?: string;
+    house_link?: HouseLink;
   }>> {
     const params: unknown[] = [];
     let paramIndex = 1;
-    const conditions: string[] = [
-      `(brands.is_public = true OR brands.review_status IS NULL OR brands.review_status = 'approved')`,
-    ];
+    const conditions: string[] = [REGISTRY_VISIBLE_SQL];
 
     if (options.search) {
       const p = `%${options.search.replace(/[%_\\]/g, '\\$&')}%`;
@@ -1358,6 +1645,11 @@ export class BrandDatabase {
       );
       params.push(p);
       paramIndex++;
+    }
+
+    if (options.house) {
+      conditions.push(houseFilterSql(options.house, params));
+      paramIndex = params.length + 1;
     }
 
     if (options.source) {
@@ -1425,21 +1717,53 @@ export class BrandDatabase {
       params
     );
 
+    const house = options.house;
     return result.rows.map(row => ({
       ...row,
       house_domain: row.house_domain ?? undefined,
       relationship_trust: isValidRelationshipTrust(row.relationship_trust) ? row.relationship_trust : undefined,
       relationship_verified_at: row.relationship_verified_at ?? undefined,
       claimed_house_domain: row.claimed_house_domain ?? undefined,
+      ...(house ? { house_link: houseLinkFor(row, house) } : {}),
     }));
+  }
+
+  /**
+   * Read a house for the brand list: its public record, and the brands its
+   * manifest lists when it has shown it controls its domain (owner-verified,
+   * or crawled from its own /.well-known/brand.json).
+   */
+  async getRegistryHouse(houseDomain: string): Promise<RegistryHouse> {
+    const domain = canonicalizeBrandDomain(houseDomain);
+    const result = await query<{
+      brand_name: string;
+      verified: boolean;
+      brand_manifest: unknown;
+    }>(
+      `SELECT
+         COALESCE(brands.brand_name, brands.brand_manifest->>'name', brands.brand_manifest->'house'->>'name', brands.domain) AS brand_name,
+         ${DOMAIN_CONTROL_VERIFIED_SQL} AS verified,
+         brands.brand_manifest
+       FROM brands
+       WHERE brands.domain = $1 AND ${REGISTRY_VISIBLE_SQL}`,
+      [domain],
+    );
+    const row = result.rows[0];
+    if (!row) return { domain, record: null, declared_brand_domains: [] };
+    return {
+      domain,
+      record: { brand_name: row.brand_name, verified: row.verified },
+      declared_brand_domains: row.verified ? housePortfolioBrandDomains(row.brand_manifest, domain) : [],
+    };
   }
 
   /**
    * Get aggregate counts for the brand registry, always unfiltered by source.
    * Used alongside getAllBrandsForRegistry so stats remain global even when
-   * a source filter narrows the brands list.
+   * a source filter narrows the brands list. `search` and `house` narrow the
+   * counts the same way they narrow the list.
    */
-  async getBrandRegistryStats(search?: string): Promise<{
+  async getBrandRegistryStats(search?: string, house?: RegistryHouse): Promise<{
     total: number;
     hosted: number;
     brand_json: number;
@@ -1465,6 +1789,10 @@ export class BrandDatabase {
       );
       params.push(p);
       paramIndex++;
+    }
+
+    if (house) {
+      conditions.push(houseFilterSql(house, params));
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;

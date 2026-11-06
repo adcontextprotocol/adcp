@@ -8,7 +8,7 @@
 - the `identity.trust_url` back-pointer;
 - "Every discovery path is bound both ways" (§Agent resolution);
 - the acknowledgement "point back" rule (§Acknowledgements);
-- §Grants "Chain limit", "Freshness", and "Absence vs failure", and its AdCP profile's "Checking a claim" (one hop, exact matching) and "Re-verification". `L2/accounts-and-agents.mdx` §Grants in trust records replaces them with a chain through `account.operator`, registrable-domain matching, the R3a freshness schedule, and the outage rules of Web Bot Auth identities for a fetch failure. The rest of §Grants stands.
+- §Grants "Chain limit", "Freshness", and "Absence vs failure", and its AdCP profile's "Checking a claim" (one hop, exact matching) and "Re-verification". `L2/accounts-and-agents.mdx` §Grants in trust records replaces them with one delegation-chain rule, registrable-domain matching, the R3a freshness schedule, and the outage rules of Web Bot Auth identities for a fetch failure. The rest of §Grants stands.
 
 It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-url`) in #7817.
 
@@ -166,12 +166,12 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 
 ### R6. Authority: grants (P5, `L2/accounts-and-agents.mdx`)
 
-- The house's trust record authorizes an acts-for claim: the record of the house that brand.json's mutual-assertion model resolves, or the brand's own when the model resolves none, as L2 says.
-- Authority is implicit when `account.operator` and the signer's operator (R3a) are the same registrable domain as the brand's domain or its house.
-- Otherwise a grant chain with `account.operator` on it must reach the signer's operator with a scope covering the operation.
-- Effective authority is the intersection along the chain.
+- The parent organization's trust record authorizes an acts-for claim: the record of the parent organization that brand.json's mutual-assertion model resolves, or the brand's own when the model resolves none, as L2 says.
+- Implicit authority holds when `account.operator` and the signer's operator (R3a) are each the brand or its parent organization, in either combination.
+- Otherwise a delegation chain of at most two grants must reach the signer's operator with a scope covering the operation. `account.operator` is the brand, the parent organization, or the grantee of the first grant; otherwise the chain doesn't cover the claim.
+- Effective authority is the intersection along the delegation chain.
 
-The rules (which record, domain matching, the chain forms and their limit, `agents[]` narrowing, the intersection's operands, absence, fetch failure, freshness, and the error) are stated once, in `L2/accounts-and-agents.mdx` §Grants in trust records. The decision is [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). R7 relies on R6 for the `grant` requirement kind.
+The rules (which record, domain matching, the delegation-chain rule, `agents[]` narrowing, the intersection's operands, absence, fetch failure, freshness, and the error) are stated once, in `L2/accounts-and-agents.mdx` §Grants in trust records. The decision is [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). R7 relies on R6 for the `grant` requirement kind.
 
 ### R7. Onboarding posture (P6, `get_adcp_capabilities.mdx`)
 
@@ -247,7 +247,7 @@ Applies to both signing profiles. The revocation list stays as it is (signed by 
 
    Verification is unchanged: a revoked key is rejected whatever its detail. As in X.509, an entry is not withdrawn or weakened once published, and verifiers keep the most severe detail they have seen for a key (a `keyCompromise` entry, and the earliest `invalidity_date`). A signer that revoked a key by mistake publishes a new key.
 4. **Exposure.** A request verified under a key revoked with `reason: keyCompromise` is suspect if the seller **received** it at or after the `invalidity_date`, or at any time when there is no date. The comparison uses the seller's receipt time, never the signature's `created`, which the signer controls. A key revoked for any other reason, or with no detail, exposes nothing.
-5. **The seller SHOULD show the buyer the buys it accepted under suspect requests,** by a means of its choice. The buyer resolves each with the existing `control_media_buy` actions (`paused`, `canceled`), signed with a current key; disputes go through the commercial relationship. A standard signal for this, and a bulk resolution path, are a separate proposal: #8158.
+5. **The seller SHOULD show the buyer the buys it accepted under suspect requests,** by a means of its choice. The buyer resolves each with the existing `control_media_buy` actions (`paused`, `canceled`), signed with a current key; disputes go through the commercial relationship. The seller checks the signing key when a request arrives, and that is its whole job: a buyer that knows its key leaked lists its buys with `get_media_buys` and cancels what it didn't send. WG Session C (2026-10-26) decided #8158 with no new surface (no indicator, no reaffirmation, no bulk path). A standard signal, if a buyer later needs one, is additive in 3.4.
 6. **Governed buys** keep today's rule: a revoked governance key stops new delivery-phase tokens until the governance agent issues a fresh one.
 
 The window of exposure is the time between compromise and the revocation reaching the seller. The revocation freshness ceiling bounds it, and so does the recommended spend ceiling in the production security profile (#7066).
@@ -268,7 +268,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | Origin control used to take over a 3.2 principal | Binding onto a 3.2 principal needs out-of-band seller approval (R5 rule 4). |
 | Downgrade to a stale 3.2 key | No downgrade after binding; before binding, the operator removes the 3.2 keys from brand.json (R4). |
 | Stale brand.json grants override trust.json | A 200 from trust.json disables `authorized_operators[]` (R4). |
-| Anonymous party opens billed accounts | `open` binds identity only. Spend needs an existing billing relationship, and an out-of-domain brand needs a grant whose chain includes `account.operator` (R6, R7). |
+| Anonymous party opens billed accounts | `open` binds identity only. Spend needs an existing billing relationship, and an out-of-domain brand needs a delegation chain that R6 admits (R6, R7). |
 | Free registrable domains on hosting platforms defeat quotas | Sellers SHOULD limit PRIVATE-section domains to `sandbox` and count quotas per operator domain (R7). |
 | Trust-record fetches used as an amplifier or network probe | Evaluated only at gates and, for a JWS artifact, to select the profile (R4); never on the request-signature path. One hop, fetch limits, and one external authorization code (R3a). |
 | Signature errors used to probe which check failed | WBA status and headers only; no signature-specific body detail (R2). |
@@ -306,7 +306,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | **P4** | First contact and binding (R5); relationship status (R8), including the `get-principal-response.json` and `principal-changed-webhook.json` changes | minor |
 | **P5** | Grants (R6, #6033) | minor |
 | **P6** | Onboarding posture (R7, #8113), including the `profiles.adcp.onboarding` slot for the buyer posture (#8114). Lands independently; only `open` and `grant` wait for P2–P5. | minor |
-| **P7** | Conformance:<br>- dual-source storyboards;<br>- trust-record, grant-chain, downgrade, and WBA vectors;<br>- an end-to-end self-onboarding storyboard;<br>- the training agent verifies WBA, serves its own directory and trust record, and opens the sandbox mode. | minor |
+| **P7** | Conformance:<br>- dual-source storyboards;<br>- trust-record, delegation-chain, downgrade, and WBA vectors;<br>- an end-to-end self-onboarding storyboard;<br>- the training agent verifies WBA, serves its own directory and trust record, and opens the sandbox mode. | minor |
 | **P8** | Docs:<br>- an "A buyer agent onboards itself" walkthrough, which sets the TL;DR expectation for `open`;<br>- rewrites of `request-signing.mdx` and `brand-protocol/seller-setup.mdx`;<br>- updates to `brand-json.mdx`, `trust.mdx`, `security-model.mdx`, `L2/authentication.mdx`, operating guides, learning tracks, glossary, and `known-limitations.mdx` (D10);<br>- the OAuth/auth.md mapping (D11). | patch |
 | **P9** | Migration guide `docs/reference/migration/agent-identity-3-3.mdx`, by role (buyer signer, seller verifier, agency or operator, SaaS platform, governance agent), with an SDK version table, the 3.2 deprecation, and rollback; entries in `3-2-to-3-3.mdx`, `whats-new-in-3-3.mdx`, and release notes | patch |
 | R1 (follow-on) | Registry crawl of trust records and posture; requirement-match filter | — |

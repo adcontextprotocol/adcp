@@ -53,9 +53,10 @@ narrative: |
   `status` on `get_media_buys`) tells the buyer what is actionable next, such as supplying
   creatives. `confirmed_at` records seller commitment. Commitment is keyed off
   `confirmed_at`, never off `status`. A provisional buy reports the status it will have on
-  confirmation, `pending_creatives` while creatives are missing or unapproved and
-  `pending_start` once it is otherwise ready, and it is never `active`. This storyboard
-  asserts that a status is valid, not which valid status a seller reports.
+  confirmation: `pending_creatives` when missing creatives or a blocking rejection
+  requires buyer action, and `pending_start` while waiting only on seller creative review
+  or other initial-start conditions. It is never `active`. This storyboard asserts that
+  a status is valid, not which valid status a seller reports.
 
   The review hold is optional. The phases that exercise it run only when the seller
   advertises the `force_media_buy_confirmation` controller scenario under

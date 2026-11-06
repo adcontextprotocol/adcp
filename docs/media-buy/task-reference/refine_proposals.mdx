@@ -60,7 +60,6 @@ Typed fields are deliberately small and mechanically verifiable:
 | `constraints.impressions` | Hard volume floor. Satisfied only when every purchase carries `impressions` and their sum is at least `min`. |
 | `constraints.flight` | Flight-window bounds. `start_no_later_than` requires a concrete `commercial_terms.start_time` at or before the bound (`asap` is unverifiable and unsatisfied); `end_no_earlier_than` requires `end_time` at or after it. |
 | `product_changes` | Map keyed by product ID. `include` requires a product in `commercial_terms.purchases`; `omit` requires it to be absent. Keying makes contradictory actions unrepresentable. |
-| `installment_changes` | Experimental (`media_buy.installment_selection`). List of `{product_id, installment_ref, action}`, all three required. `include` requires an installment in that purchase's `installments`; `omit` requires it to be absent. A tuple cannot be an object key, so this is a list, and entries MUST be unique by `(product_id, installment_ref)` — unlike `product_changes`, the shape does not enforce it. See [Change installments](#change-installments-experimental). |
 | `alternatives.count` | Number of drafts with distinct commercial terms requested, from 2 through the protocol maximum of 10 and no higher than a seller's advertised `max_alternatives`. Returned alternatives have distinct `commercial_terms` and therefore unique `terms_digest` values; diversity strategy remains free text. |
 | `criteria` | Structured discovery criteria to replace on the source proposal. Omitted criteria fields remain inherited; concrete targeting and offer filters belong here. |
 | `remove_media_buy_frequency_cap` | Set to `true` to produce a revised draft without the inherited root frequency cap. Mutually exclusive with `criteria.media_buy_frequency_cap`. |
@@ -97,13 +96,12 @@ The response contains one ordered `results[]` entry per requested source proposa
 | `source_unavailable` | The source proposal was unavailable or ineligible for this caller. |
 | `hold_unavailable` | The seller declined or failed to reserve inventory for a finalize, or declined to extend the hold on an `extend_hold`. |
 | `batch_aborted` | This entry failed only because a sibling in the all-or-none finalize or `extend_hold` batch failed. |
-| `definition_changed` | A third-party-published definition pinned in the source proposal no longer matches its pin. Valid only on `unable`, with required `drifted_pins[]`. |
 
 Typed failures always use `constraint_unsatisfiable`, regardless of whether the refusal is capability or commercial; won't-versus-can't nuance belongs in `reason` or a `commercially_declined` response to an `ask`. When multiple shortfalls co-occur, `constraint_unsatisfiable` takes precedence over every other code, and an alternatives shortfall remains visible through `proposals.length`.
 
 A draft that violates a hard constraint MUST NOT be returned as `revised`. For `constraints.total_budget`, satisfaction requires a present `commercial_terms.total_budget`, the requested currency, and an amount inside every supplied bound. An absent total, currency mismatch, or out-of-range amount is unsatisfied: the seller returns `partial`, or `unable` when it cannot produce an honest draft, with `reason_code: "constraint_unsatisfiable"` and `unsatisfied_constraints: ["total_budget"]`. The other `constraints` keys behave identically under their satisfaction rules in the request schema.
 
-Every draft on a `partial` result MUST satisfy every typed constraint whose key is absent from `unsatisfied_constraints`, every product action absent from `unsatisfied_product_changes`, and every installment action absent from `unsatisfied_installment_changes`, whatever the `reason_code`. This is the invariant that lets a buyer trust typed compliance without parsing prose. Constraint failures are identified through `unsatisfied_constraints` (echoing request `constraints` keys), `unsatisfied_product_changes` (a subset of the requested product-action map), `unsatisfied_installment_changes` (a subset of the requested installment-action list), or any combination of them.
+Every draft on a `partial` result MUST satisfy every typed constraint whose key is absent from `unsatisfied_constraints`, and every product action absent from `unsatisfied_product_changes`, whatever the `reason_code`. This is the invariant that lets a buyer trust typed compliance without parsing prose. Constraint failures are identified through `unsatisfied_constraints` (echoing request `constraints` keys), `unsatisfied_product_changes` (a subset of the requested product-action map), or any combination of them.
 
 A `partial` response to the request above looks like:
 
@@ -200,7 +198,6 @@ Not every proposal-capable seller holds inventory. A seller declaring `hold_sema
 
 **Holds that wait on a person (added in 3.3).** A seller whose hold depends on someone's agreement, such as a creator, host, or talent, MAY return `submitted` for a finalize-only request, or for an [`extend_hold`](#extend-a-hold-experimental)-only request when the extension depends on that agreement, and SHOULD set `expected_confirmation_at` on that response. It estimates when the seller expects to resolve the finalize or extension. Buyers schedule a status check for that time instead of polling tightly. It carries the [same semantics](/docs/media-buy/task-reference/create_media_buy#expected-confirmation-time) as on [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy): an estimate, not a commitment, and not the hold's `expires_at`, which exists only on the committed proposal once the hold is placed, or on the committed successor once it is extended. Sellers SHOULD NOT send it on a revise request; the response cannot see the request, so that is a seller obligation rather than a schema rule. A `completed` response MUST NOT carry it.
 
-**Definition pins are verified before the hold (or, under `terms_only`, before terms are committed).** Finalization re-resolves each entry in the source proposal's `commercial_terms.definition_pins[]` (see [Definition pins](/docs/media-buy/specification#definition-pins)) and, if any published definition no longer matches, takes no hold under `inventory_hold` semantics and commits no terms under `terms_only` semantics. The entry returns `unable` with `reason_code: "definition_changed"` and a required `drifted_pins[]`; each item carries the `pin` exactly as the draft carried it and the `current_content_digest` the definition resolves to now, omitted only when the entry was withdrawn from a successfully fetched, validated document. The seller verifies every entry's pins before creating any hold. A pin failure is an entry failure: that entry's `definition_changed` takes precedence over `batch_aborted`, and otherwise-eligible siblings in the finalize batch return `batch_aborted`. A source document that cannot be fetched or parsed is not drift; the seller returns [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable) at task level without taking any hold. The buyer revises the proposal, which re-resolves the definitions and issues fresh pins, reviews the changed definition, and finalizes again. Only `commercial_terms` is frozen at finalize: `forecast` may differ between a draft and its committed successor, and a rename or other change outside the pin's projection is not drift.
 
 Holds are a seller commitment against real inventory, so hold policy is the seller's. Sellers MAY decline any hold (`hold_unavailable`), MAY cap concurrent unexpired holds per buyer to prevent inventory squatting, and choose `expires_at` themselves, within any declared [hold policy](#hold-policy-experimental) — the hold window should be long enough to complete acceptance and short enough that unaccepted holds do not function as free inventory options. Nothing in this task obliges a seller to grant holds without whatever credit or relationship checks it applies to reservations generally; the async `submitted` path exists for exactly that re-underwriting.
 
@@ -405,66 +402,10 @@ Buyers often need more time for legal review or client sign-off than the seller'
 - **Retries.** An exact retry with the same idempotency key replays the original response. A new key after a successful extension targets a source that is no longer acceptable, so it fails with `INVALID_STATE`; extending a hold always goes through `extend_hold`, never through a new finalize key.
 - **Limits.** `hold_extension: true` is the agent-level gate for the action; the source's [`hold_policy`](#hold-policy-experimental), when present, sets the limits for that hold. `extendable` defaults to `false`: when it is `false` or absent the seller declines (`hold_unavailable`), and buyers SHOULD NOT send `extend_hold` for that proposal. The successor's `expires_at` MUST NOT exceed `hold_placed_at` plus `max_total_duration`. Because every successor carries `hold_placed_at` forward, that is the instant the root finalize placed the hold, so `max_total_duration` is measured across the whole chain of extension successors and is not reset by an extension. A request the seller cannot extend at all, for example because no later `expires_at` fits under that ceiling, returns `hold_unavailable`. Absent `hold_policy` (a seller that does not list `media_buy.hold_policy`), limits remain seller policy expressed through `hold_unavailable`. In either case sellers MAY decline any extension and MAY cap extensions per root lineage, so repeated extension cannot turn a hold into a free option, and how far `expires_at` moves within those bounds is the seller's choice, as for finalize.
 
-## Change installments (experimental)
-
-Experimental under feature id `media_buy.installment_selection`. For scheduled media — a creator's upcoming video, a podcast episode, a sponsored newsletter issue — the installment is the thing being sold, and a buyer renegotiates by dropping or swapping a slot rather than by changing the product mix. `installment_changes` is the installment-level analogue of `product_changes`:
-
-```json
-{
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655441009",
-  "refinements": [
-    {
-      "proposal_id": "proposal_123",
-      "action": "revise",
-      "installment_changes": [
-        {
-          "product_id": "creator_juniper_vale",
-          "installment_ref": {
-            "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "channel_juniper_vale" },
-            "installment_id": "slot_2"
-          },
-          "action": "omit"
-        },
-        {
-          "product_id": "creator_juniper_vale",
-          "installment_ref": {
-            "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "channel_juniper_vale" },
-            "installment_id": "slot_3"
-          },
-          "action": "include"
-        }
-      ],
-      "ask": "The December slot lands in our holiday blackout; move it to January."
-    }
-  ]
-}
-```
-
-A swap is one `omit` plus one `include` in the same refinement. The resulting draft carries the new set in `commercial_terms.purchases[].installments`, ordered by the JCS bytes of each reference so that equal bought sets always produce equal digests, so its `terms_digest` differs from the source's and the [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) digest check binds the exact slot identifiers bought. A purchase whose `installments` the source proposal left absent starts from the product's complete installment set, so a single `omit` entry materializes the remaining slots.
-
-Error handling is deliberately split by what the seller can know before creating a draft:
-
-Checks run in this order, so an unauthorized caller never causes reference resolution:
-
-| # | Condition | Result |
-|---|---|---|
-| 1 | The seller declares `supported_dimensions` without `installment_changes` | Task-level [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before mutation |
-| 2 | Two entries repeat the same `(product_id, installment_ref)`, whether or not their actions agree | Task-level [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request); the seller never picks a winner by position |
-| 3 | `product_id` is neither purchased in the source proposal nor included by `product_changes` in the same refinement, or `product_changes` omits it | Task-level `INVALID_REQUEST`; no draft is created |
-| 4 | `installment_ref` names an installment the product does not declare | Task-level [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found); no draft is created |
-| 5 | The change is resolvable but the seller will not or cannot make it | `partial` or `unable` with `reason_code: "constraint_unsatisfiable"` and the entry echoed in `unsatisfied_installment_changes` |
-
-When the seller omits `proposal_refinement` entirely, typed-dimension support is unknown rather than absent, and an unsupported `installment_changes` comes back as `partial` or `unable` instead of `UNSUPPORTED_FEATURE`.
-
-Two properties a buyer should plan around. **A swap is not atomic**: the seller may satisfy the `omit`, fail the `include`, and return `partial` with a plan strictly worse than the source — say so in `ask` when you need all-or-nothing. And **adding a creator and naming its slots is one round trip**, because an entry may name a product that `product_changes` includes in the same refinement.
-
-Sellers declare support by listing `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, which requires `media_buy.installment_selection` in `experimental_features`. Buyers MUST NOT send the field otherwise. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
-
 ## Negotiation security
 
 Both sides of this task are agents, and both sides' inputs are untrusted. `ask` is attacker-controlled free text: sellers MUST NOT let it alter pricing floors, authorization, or policy, and MUST NOT expose other buyers' terms through it — fence it from any LLM with pricing authority and treat its interpretation as suggestion, never instruction. In the other direction, deterministic `constraint_unsatisfiable` responses form a price oracle: repeated budget or rate probes can binary-search a floor at no cost. Sellers SHOULD apply rate or commercial friction to sustained un-held revision rounds and MAY keep `reason` deliberately coarse rather than revealing how near a rejected constraint came to clearing.
 
-`installment_changes` sharpens that oracle from a price probe into an availability probe. A deterministic `constraint_unsatisfiable` per slot lets a buyer map exactly which of a creator's or a network's upcoming installments are already sold or held to someone else, one entry per probe, at no cost and without placing a hold — commercially sensitive in a way the coarser `product_changes` is not. The same friction guidance applies, and sellers MAY answer an unavailable slot with the same coarse `reason` they would use for a slot they simply decline to sell.
 
 ## Amend an accepted MediaBuy
 
@@ -485,5 +426,7 @@ An accepted proposal is the immutable commercial envelope attached to its MediaB
 ```
 
 Use `change_kind: "cancellation"` when cancellation requires counterparty agreement. The returned draft has `proposal_kind: "media_buy_cancellation"`, identifies the MediaBuy and base revision, and must be finalized before it can be applied through [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal).
+
+**Revising a seller offer.** Experimental in AdCP 3.3. A committed proposal with `proposal_initiator: "seller"` (see [Seller offers](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers)) is a valid `revise` source. The draft is buyer-initiated, keeps the offer's `proposal_kind` (amendment or cancellation), `media_buy_id` and `base_media_buy_revision`, and sets `parent_proposal_id` to the offer. `change_kind` is not required because the kind is inherited. Revising does not extend the offer's `expires_at`; the buyer finalizes and accepts the draft under the usual hold rules.
 
 Sellers MAY respond asynchronously with `status: "submitted"` when a complex multi-publisher revision or inventory hold requires upstream pricing queries or manual re-underwriting. In that case the response contains a `task_id` for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); terminal results are delivered on the completion artifact or via push notification if `push_notification_config` was supplied.

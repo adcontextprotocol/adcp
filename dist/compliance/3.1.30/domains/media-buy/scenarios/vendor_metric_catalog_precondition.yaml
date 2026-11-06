@@ -1,0 +1,307 @@
+id: media_buy_seller/vendor_metric_catalog_precondition
+version: "1.0.0"
+title: "Vendor-metric external catalog precondition"
+category: media_buy_seller
+summary: "Exercises the 3.1 SHOULD-window behavior for vendor_metric goals whose metric_id is absent from a seeded measurement.metrics[] catalog."
+track: media_buy
+introduced_in: "3.1"
+
+# Gate: scenario runs only when the seller declares vendor-metric
+# optimization support. Sellers that do not advertise this optional 3.1
+# capability are not expected to handle vendor_metric optimization goals.
+requires_capability:
+  path: media_buy.vendor_metric_optimization
+  present: true
+
+required_tools:
+  - create_media_buy
+  - sync_accounts
+  - comply_test_controller
+
+narrative: |
+  Vendor-metric optimization goals bind to a measurement vendor's
+  `measurement.metrics[]` catalog. In AdCP 3.1, sellers SHOULD verify that the
+  goal's `(vendor, metric_id)` is present in that vendor-published catalog, but
+  MAY accept catalog misses while measurement vendors finish publishing
+  conformant capability catalogs. The next minor tightens this discovery
+  precondition to MUST.
+
+  This storyboard seeds two facts that intentionally diverge. The seller product
+  can optimize and report `attention_catalog_probe`, satisfying the product
+  capability and reporting-coherence preconditions. The measurement vendor
+  catalog seeded for `attentionvendor.example` publishes only
+  `attention_catalog_baseline`, so `attention_catalog_probe` is a deterministic
+  external catalog miss. The storyboard captures the 3.1 compatibility window:
+  a seller may accept the request, or it may reject with `TERMS_REJECTED`. The
+  3.2 storyboard cut should collapse this branch set to the reject path only.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_vendor_metric_optimization
+  examples:
+    - "Premium publishers with attention measurement optimization"
+    - "Sellers integrating vendor-defined measurement into bidding"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The runner seeds a product that can optimize and report the
+    attention_catalog_probe metric, with an attentionvendor.example
+    measurement.metrics[] fixture that deliberately omits that metric_id. The
+    request is therefore valid by product capability and reporting coherence,
+    but is a deterministic external catalog miss.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "display_vendor_metric_catalog_precondition"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      reporting_capabilities:
+        available_metrics:
+          - impressions
+          - clicks
+          - spend
+        vendor_metrics:
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "attention_catalog_probe"
+      vendor_metric_optimization:
+        supported_metrics:
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "attention_catalog_probe"
+            supported_targets:
+              - threshold_rate
+  pricing_options:
+    - product_id: "display_vendor_metric_catalog_precondition"
+      pricing_option_id: "cpm_vendor_metric_catalog_precondition"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 14.0
+
+phases:
+  - id: account_setup
+    title: "Establish account"
+    narrative: |
+      The buyer provisions or resolves an account so subsequent media-buy
+      creation uses the same tenant scope as the seeded product.
+    steps:
+      - id: sync_accounts
+        title: "Establish buyer account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_catalog_precondition_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+  - id: seed_measurement_catalog
+    title: "Seed the measurement vendor catalog"
+    narrative: |
+      The product fixture proves the seller-side vendor_metric capability and
+      reporting contract. This controller step separately seeds the external
+      measurement vendor catalog so the later create_media_buy request is a
+      deterministic catalog miss rather than merely catalog-unproven.
+
+    steps:
+      - id: seed_attention_vendor_catalog
+        title: "Seed attentionvendor.example without the requested metric"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The controller stores attentionvendor.example's measurement.metrics[]
+          catalog for this compliance session.
+        sample_request:
+          account:
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          scenario: "seed_measurement_catalog"
+          params:
+            vendor:
+              domain: "attentionvendor.example"
+            metrics:
+              - metric_id: "attention_catalog_baseline"
+                unit: "score"
+                description: "Baseline attention metric present in the seeded vendor catalog."
+          context:
+            correlation_id: "vendor_metric_catalog_precondition--seed_catalog"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Measurement catalog seeding succeeds"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "vendor_metric_catalog_precondition--seed_catalog"
+            description: "Context correlation_id returned unchanged"
+
+  - id: catalog_miss_accept_path
+    title: "3.1 catalog-miss metric — accept path"
+    narrative: |
+      The seller may accept the buy during the 3.1 SHOULD window even though
+      attention_catalog_probe is absent from the seeded vendor catalog.
+    optional: true
+    branch_set:
+      id: vendor_metric_catalog_miss_handled
+      semantics: any_of
+    steps:
+      - id: create_media_buy_catalog_miss_accept
+        title: "Accept vendor_metric with catalog miss during 3.1 SHOULD window"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: false
+        contributes: true
+        expected: |
+          3.1 compatibility behavior: accept the buy even though the metric is
+          absent from the seeded vendor measurement.metrics[] catalog.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "display_vendor_metric_catalog_precondition"
+              pricing_option_id: "cpm_vendor_metric_catalog_precondition"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_catalog_probe"
+                  target:
+                    kind: "threshold_rate"
+                    value: 70
+                  priority: 1
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_catalog_probe"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_catalog_precondition_accept"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema for the 3.1 catalog-miss accept branch"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id during the 3.1 catalog-miss SHOULD window"
+
+  - id: catalog_miss_reject_path
+    title: "3.1 catalog-miss metric — reject path"
+    narrative: |
+      The seller may also reject the same request in 3.1. This is the
+      recommended behavior ahead of the 3.2 MUST boundary.
+    optional: true
+    branch_set:
+      id: vendor_metric_catalog_miss_handled
+      semantics: any_of
+    steps:
+      - id: create_media_buy_catalog_miss_reject
+        title: "Reject vendor_metric with catalog miss using TERMS_REJECTED"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: false
+        contributes: true
+        expected: |
+          Recommended 3.1 behavior and required 3.2 behavior: reject with
+          TERMS_REJECTED because the metric is absent from the vendor's seeded
+          measurement.metrics[] catalog.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "display_vendor_metric_catalog_precondition"
+              pricing_option_id: "cpm_vendor_metric_catalog_precondition"
+              budget: 5000
+              optimization_goals:
+                - kind: "vendor_metric"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_catalog_probe"
+                  target:
+                    kind: "threshold_rate"
+                    value: 70
+                  priority: 1
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_catalog_probe"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_catalog_precondition_reject"
+        validations:
+          - check: error_code
+            allowed_values: ["TERMS_REJECTED"]
+            description: "Seller may reject catalog-miss vendor metrics with TERMS_REJECTED in 3.1; catalog misses become required rejections at 3.2"
+
+  - id: catalog_miss_assertion
+    title: "Require catalog-miss metric handling"
+    narrative: |
+      Synthetic assertion over the accept and reject branches. In 3.1, either
+      compatibility acceptance or recommended TERMS_REJECTED rejection satisfies
+      the catalog-miss metric behavior. The 3.2 storyboard cut should collapse
+      this branch set to the reject branch only.
+    steps:
+      - id: assert_vendor_metric_catalog_miss_handled
+        title: "Require catalog-miss handling from either branch"
+        task: assert_contribution
+        comply_scenario: create_media_buy
+        stateful: false
+        expected: |
+          At least one of catalog_miss_accept_path or catalog_miss_reject_path
+          contributed vendor_metric_catalog_miss_handled.
+        validations:
+          - check: any_of
+            allowed_values: ["vendor_metric_catalog_miss_handled"]
+            description: "Agent must either accept the catalog-miss metric during the 3.1 SHOULD window or reject it with TERMS_REJECTED."

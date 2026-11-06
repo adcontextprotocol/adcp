@@ -156,6 +156,12 @@ The response tells you what happened to each creative:
 
 After upload, the creative enters the library's review process. Check `list_creatives` to see when it transitions from `pending_review` to `approved`.
 
+In AdCP 3.3, a buyer can book first and assign a library creative while it is
+`pending_review` or `rejected`. The assignment persists through correction and
+review under the same ID. Eligible approved assignments serve by default;
+`start_requires_all_creatives_approved: true` on a package holds its first
+delivery until every assignment has package approval. See the [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review).
+
 ### Prepare creatives before a time-sensitive launch
 
 For a seller that advertises `creative.has_creative_library: true`, sync a finished creative before booking the campaign. This lets the seller review the library asset while the buyer finalizes the media buy. Use the same account when syncing, checking status, and assigning the creative.
@@ -204,7 +210,7 @@ After the package is created, a separate request assigns the already reviewed li
 }
 ```
 
-For a recurring campaign, check the library status again and assign the same `creative_id` to each new package if it remains approved and eligible. To stage changed content, sync it under a new `revision_id` when revision support is advertised, wait for that revision's review, then assign it. If the earlier creative is still serving, use a separate `creative_id` for the candidate so the sync does not update the live library item. Do not reuse a `revision_id` for changed content. Sellers set review timing and policy; this workflow does not promise approval by the launch date or bypass package review.
+For a recurring campaign, check the library status again and assign the same `creative_id` to each new package if it remains approved and eligible. To stage changed content, sync it under a new `revision_id` when revision support is advertised, wait for that revision's review, then assign it. If the earlier creative is still serving, use a separate `creative_id` for the candidate so the sync does not update the live library item, unless the seller declares [`creative.live_updates`](/docs/creative/task-reference/sync_creatives#live-creative-updates) and applies that change in `staged` mode, which keeps the earlier version serving until the change is approved. Do not reuse a `revision_id` for changed content. Sellers set review timing and policy; this workflow does not promise approval by the launch date or bypass package review.
 
 ### Uploading with assignments
 

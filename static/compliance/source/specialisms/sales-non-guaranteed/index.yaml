@@ -46,7 +46,7 @@ narrative: |
   registration and rejects multiple agents; the governance-aware-seller specialism owns the
   complete registration, approval, and governed-create loop.
 
-  The buyer discovers products with bid guidance and any declared floors, creates a buy
+  The buyer discovers auction products and any declared floors, creates a buy
   with bid prices per package, monitors win rates and pacing, and adjusts bids or budgets
   in-flight to optimize performance.
 
@@ -123,17 +123,11 @@ fixtures:
       pricing_model: "cpm"
       currency: "USD"
       floor_price: 5.0
-      price_guidance:
-        p50: 6.0
-        p75: 7.0
     - product_id: "outdoor_video_auction"
       pricing_option_id: "cpm_auction"
       pricing_model: "cpm"
       currency: "USD"
       floor_price: 15.0
-      price_guidance:
-        p50: 16.0
-        p75: 18.0
 
 # 3.2 catalog-adaptive pilot. The fixture literals above remain seed IDs for
 # existing runners. New runners may instead bind each handle to a qualifying
@@ -264,8 +258,8 @@ phases:
         title: "Send a brief for non-guaranteed inventory"
         narrative: |
           The buyer describes what they want. Your platform returns non-guaranteed
-          products with auction mechanics: floor prices, recommended bid ranges,
-          estimated win rates at different bid levels, and available audience segments.
+          products with auction mechanics and available audience segments. Floor
+          prices, bid guidance, and win-rate forecasts may be included when available.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -277,7 +271,7 @@ phases:
           - product_id: unique identifier
           - name and description
           - delivery_type: non_guaranteed
-          - pricing_models: auction-based pricing with bid guidance and any declared floor_price
+          - pricing_models: auction-based pricing; floor_price and price_guidance are optional
           - forecast: estimated impressions at different bid levels (best-effort)
           - creative format_options: required canonical creative declarations
           - targeting: available audiences and contexts
@@ -285,6 +279,8 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_product_discovery_get_products_brief"
           buying_mode: "brief"
+          brand:
+            domain: "acmeoutdoor.example"
           brief: "Display and video inventory across sports and outdoor lifestyle sites. Q2 flight, $25K budget. Adults 25-54, US. Auction-based, looking for competitive CPMs."
           filters:
             delivery_type: "non_guaranteed"
@@ -311,18 +307,10 @@ phases:
             key: "first_product_id"
           - path: "products[0].pricing_options[0].pricing_option_id"
             key: "first_pricing_option_id"
-          - path: "products[0].pricing_options[0].price_guidance.p50"
-            key: "first_bid_price"
-          - path: "products[0].pricing_options[0].price_guidance.p75"
-            key: "first_updated_bid_price"
           - path: "products[1].product_id"
             key: "second_product_id"
           - path: "products[1].pricing_options[0].pricing_option_id"
             key: "second_pricing_option_id"
-          - path: "products[1].pricing_options[0].price_guidance.p50"
-            key: "second_bid_price"
-          - path: "products[1].pricing_options[0].price_guidance.p75"
-            key: "second_updated_bid_price"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -338,18 +326,6 @@ phases:
           - check: field_present
             path: "products[1].product_id"
             description: "At least two auction products are available for the multi-package buy"
-          - check: field_present
-            path: "products[0].pricing_options[0].price_guidance.p50"
-            description: "First auction pricing option declares median bid guidance used as the initial bid"
-          - check: field_present
-            path: "products[0].pricing_options[0].price_guidance.p75"
-            description: "First auction pricing option declares higher bid guidance used for the update"
-          - check: field_present
-            path: "products[1].pricing_options[0].price_guidance.p50"
-            description: "Second auction pricing option declares median bid guidance used as the initial bid"
-          - check: field_present
-            path: "products[1].pricing_options[0].price_guidance.p75"
-            description: "Second auction pricing option declares higher bid guidance used for the update"
 
           - check: field_present
             path: "context"
@@ -417,14 +393,14 @@ phases:
             sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
+          # The runner chooses buyer bid prices from these exact discovered
+          # auction options, honoring any floor. Seller price guidance is optional.
           packages:
             - product_id: "$context.first_product_id"
               budget: 10000
-              bid_price: "$context.first_bid_price"
               pricing_option_id: "$context.first_pricing_option_id"
             - product_id: "$context.second_product_id"
               budget: 15000
-              bid_price: "$context.second_bid_price"
               pricing_option_id: "$context.second_pricing_option_id"
 
           idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_create_buy_create_media_buy"
@@ -525,19 +501,20 @@ phases:
             value: "sales_non_guaranteed--get_media_buys_pacing"
             description: "Context correlation_id returned unchanged"
   - id: adjust_bids
-    title: "Adjust bids and budget"
+    title: "Reallocate package budgets"
     narrative: |
       The buyer can adjust bids or budgets before activation or in-flight. Here it
-      raises each bid and reallocates package budgets while the buy awaits library
+      reallocates budgets while preserving existing bids as the buy awaits library
       creatives or is already active on a seller that does not require assignment.
 
     steps:
       - id: update_media_buy
-        title: "Update bid prices and budget"
+        title: "Update budgets while preserving valid bids"
         narrative: |
-          The buyer modifies the accepted media buy by adjusting bid prices and
-          reallocating budget between packages. Your platform persists the complete
-          post-update package state without changing lifecycle readiness.
+          The buyer modifies the accepted media buy by reallocating budget between
+          packages while leaving its previously accepted bids unchanged. Your
+          platform persists the complete post-update package state without
+          changing lifecycle readiness.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
@@ -547,7 +524,7 @@ phases:
         expected: |
           Apply the updates and return the modified media buy state:
           - media_buy_id: matches the existing buy
-          - affected_packages: full post-update package objects reflecting new bids and budgets
+          - affected_packages: full post-update package objects reflecting the unchanged bids and updated budgets
           - media_buy_status: retain pending_creatives or active if lifecycle state is emitted
           - Changes are retained for subsequent auction participation
 
@@ -562,10 +539,8 @@ phases:
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.first_package_id"
-              bid_price: "$context.first_updated_bid_price"
               budget: 12000
             - package_id: "$context.second_package_id"
-              bid_price: "$context.second_updated_bid_price"
               budget: 13000
 
           idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_adjust_bids_update_media_buy"
@@ -584,18 +559,16 @@ phases:
               package_id: "$context.first_package_id"
               product_id: "$context.first_product_id"
               pricing_option_id: "$context.first_pricing_option_id"
-              bid_price: "$context.first_updated_bid_price"
               budget: 12000
-            description: "First updated package includes complete post-update bid and budget state"
+            description: "First updated package includes its identity and updated budget"
           - check: field_contains
             path: "affected_packages[*]"
             value:
               package_id: "$context.second_package_id"
               product_id: "$context.second_product_id"
               pricing_option_id: "$context.second_pricing_option_id"
-              bid_price: "$context.second_updated_bid_price"
               budget: 13000
-            description: "Second updated package includes complete post-update bid and budget state"
+            description: "Second updated package includes its identity and updated budget"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"

@@ -7,6 +7,9 @@ const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
@@ -14,9 +17,9 @@ function readSchema(uri) {
 }
 
 async function compile(uri) {
-  const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async ref => readSchema(ref) });
+  const ajv = new Ajv({ allErrors: true, strict: false, loadSchema: async ref => readBuiltSchema(ref) });
   addFormats(ajv);
-  return ajv.compileAsync(readSchema(uri));
+  return ajv.compileAsync(readBuiltSchema(uri));
 }
 
 function assertSelfContainedReportingSchema(schema) {

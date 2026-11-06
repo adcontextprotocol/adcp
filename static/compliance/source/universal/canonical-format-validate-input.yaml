@@ -42,6 +42,16 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Bind product fixtures to the complete sandbox account used by their probes.
+context:
+  account:
+    brand:
+      domain: "acmeoutdoor.example"
+    operator: "pinnacle-agency.example"
+    operator_unit:
+      id: "compliance-canonical_format_validate_input-37dd030b"
+    sandbox: true
+
 fixtures:
   accounts:
     - account_id: "acct_acmeoutdoor_example_sandbox_016078627b3e"

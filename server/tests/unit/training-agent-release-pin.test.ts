@@ -14,6 +14,7 @@ import {
   TRAINING_AGENT_DEFAULT_ADCP_VERSION,
   TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS,
 } from '../../src/training-agent/types.js';
+import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../../src/training-agent/candidate-version.js';
 
 describe('training agent 3.2 release-line pin', () => {
   it('derives the release line from the current bundle', () => {
@@ -26,7 +27,12 @@ describe('training agent 3.2 release-line pin', () => {
   it('advertises the release line and keeps the exact rc.7 pin, without duplicates', () => {
     expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS).toContain(TRAINING_AGENT_CURRENT_ADCP_VERSION);
     expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS).toContain('3.2-rc.7');
-    expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.at(-1)).toBe(TRAINING_AGENT_CURRENT_ADCP_RELEASE);
+    // The release line is the newest release; only the opt-in 3.3 preview
+    // (#8181), served to an exact pin alone, is listed after it.
+    expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.at(TRAINING_AGENT_PREVIEW_ADCP_VERSION ? -2 : -1)).toBe(TRAINING_AGENT_CURRENT_ADCP_RELEASE);
+    if (TRAINING_AGENT_PREVIEW_ADCP_VERSION) {
+      expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.at(-1)).toBe(TRAINING_AGENT_PREVIEW_ADCP_VERSION);
+    }
     expect(new Set(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS).size).toBe(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.length);
   });
 

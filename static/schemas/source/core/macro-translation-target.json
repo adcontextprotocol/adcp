@@ -5,11 +5,11 @@
   "description": "The exact downstream-native token produced by a `translate_to_native` operation. The output asset replaces the source declaration with a declaration for this token and its next operation.",
   "type": "object",
   "properties": {
-    "token": { "type": "string", "minLength": 1 },
+    "token": { "type": "string", "minLength": 1, "x-max-length-4.0": 128 },
     "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
     "dialect_namespace": { "type": "string", "format": "uri" },
-    "dialect_revision": { "type": "string", "minLength": 1 },
-    "dialect_semantic": { "type": "string", "minLength": 1 },
+    "dialect_revision": { "type": "string", "minLength": 1, "x-max-length-4.0": 128 },
+    "dialect_semantic": { "type": "string", "minLength": 1, "x-max-length-4.0": 128 },
     "mapping_status": { "$ref": "/schemas/enums/macro-mapping-status.json" },
     "universal_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
     "next_operation": {

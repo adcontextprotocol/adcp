@@ -278,10 +278,27 @@ export function mountComplianceRoutes(app: Application, compliancePath: string):
  * artifact they want.
  */
 export function mountProtocolRoutes(app: Application, protocolPath: string): void {
+  async function offloadedTarballs(): Promise<string[]> {
+    let index: { schema_version?: unknown; files?: unknown };
+    try {
+      index = JSON.parse(await fs.readFile(`${protocolPath}/.runtime-offloaded-tarballs.json`, "utf8"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    if (index?.schema_version !== 1 || !Array.isArray(index.files)
+      || index.files.some((name: unknown) => typeof name !== "string" || !name.endsWith(".tgz")
+        || semver.valid(name.slice(0, -4)) !== name.slice(0, -4))
+      || new Set(index.files).size !== index.files.length) {
+      throw new Error("Invalid runtime protocol offload inventory");
+    }
+    return index.files as string[];
+  }
+
   app.get("/protocol/", async (_req, res) => {
     try {
       const entries = await fs.readdir(protocolPath, { withFileTypes: true });
-      const tarballs = entries
+      const localTarballs = entries
         .filter(
           (e) =>
             e.isFile() &&
@@ -290,6 +307,7 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
               semver.valid(e.name.replace(/\.tgz$/, "")) !== null),
         )
         .map((e) => e.name);
+      const tarballs = [...new Set([...localTarballs, ...await offloadedTarballs()])];
 
       const versioned = tarballs
         .filter((name) => name !== "latest.tgz")
@@ -373,6 +391,32 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
     } catch (error) {
       logger.error({ err: error }, "Failed to list protocol tarballs");
       res.status(500).json({ error: "Failed to list protocol tarballs" });
+    }
+  });
+
+  app.get("/protocol/:filename", async (req, res, next) => {
+    try {
+      const { filename } = req.params;
+      const offloaded = await offloadedTarballs();
+      if (!offloaded.includes(filename)) return next();
+      try {
+        await fs.stat(`${protocolPath}/${filename}`);
+        return next(); // A local archive always takes precedence.
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      // The CDN optionally falls back to Fly on a missing R2 object. Its
+      // fallback preserves the query, so this marker stops an origin loop.
+      if (Object.hasOwn(req.query, "fly_protocol_offload")) {
+        res.setHeader("Cache-Control", "no-store");
+        return res.status(404).send("Protocol archive unavailable from the artifact CDN");
+      }
+      res.setHeader("Cache-Control", "public, max-age=600");
+      return res.redirect(302,
+        `https://adcontextprotocol.org/protocol/${filename}?fly_protocol_offload=1`);
+    } catch (error) {
+      next(error);
     }
   });
 

@@ -171,9 +171,16 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
   it('calls refreshReviewCardForOrg fire-and-forget on success paths', async () => {
     mockMarkLinkedInPosted.mockResolvedValueOnce({ kind: 'recorded', draft: {}, state: {} });
     const app = buildApp();
-    await request(app)
+    const res = await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)
       .send({});
+    // The route calls the refresh before it responds, so a missing call means
+    // the request took another branch. Assert the branch first to name it.
+    expect({ status: res.status, body: res.body }).toMatchObject({
+      status: 200,
+      body: { success: true, already_done: false },
+    });
+    expect(mockMarkLinkedInPosted).toHaveBeenCalledTimes(1);
     expect(mockRefreshReviewCardForOrg).toHaveBeenCalledWith(ORG_ID);
   });
 

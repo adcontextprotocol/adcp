@@ -194,7 +194,7 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "not": {
     "anyOf": [
       { "required": ["packages"] },

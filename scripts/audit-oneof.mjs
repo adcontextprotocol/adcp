@@ -17,9 +17,11 @@
 // a worse status. Improvements (dangerous → discriminated) are accepted
 // silently but printed in the diff so they get reflected on --update.
 //
-// Known limitations: ref resolution is one hop; variants of the form
-// {allOf: [{$ref: ...}, {required: [...]}]} are not fused before classification
-// (they fall into `dangerous` and need the discriminator added at the parent).
+// Known limitations: ref resolution is one hop. A variant's `allOf` members
+// are fused into it before classification (allOf is a conjunction, and code
+// generators merge it): their properties and required names count as the
+// variant's own, so a submitted branch that composes core/task-submitted.json
+// is discriminated by that schema's required `status` const.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -131,12 +133,36 @@ function variantInfo(variant, sourceFile) {
       ref: variant.$ref,
     };
   }
-  return {
+  return fuseAllOf({
     properties: variant.properties || {},
     required: variant.required || [],
     refOnly: false,
     scalar: false,
-  };
+  }, variant, sourceFile);
+}
+
+/**
+ * Adds the properties and required names of a variant's `allOf` members to
+ * its info: inline members directly, `$ref` members one hop.
+ */
+function fuseAllOf(info, variant, sourceFile) {
+  if (!Array.isArray(variant.allOf)) return info;
+  const properties = { ...info.properties };
+  const required = new Set(info.required);
+  for (const member of variant.allOf) {
+    let target = member;
+    if (member && typeof member.$ref === 'string') {
+      const resolved = resolveRef(member.$ref, sourceFile);
+      target = resolved ? resolved.schema : null;
+    }
+    if (!target || typeof target !== 'object') continue;
+    for (const [name, declaration] of Object.entries(target.properties || {})) {
+      // A local declaration wins; the member adds what the variant lacks.
+      if (!(name in properties)) properties[name] = declaration;
+    }
+    for (const name of target.required || []) required.add(name);
+  }
+  return { ...info, properties, required: [...required] };
 }
 
 function classify(oneOfArr, parentSchema, sourceFile) {

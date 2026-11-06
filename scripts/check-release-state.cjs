@@ -550,7 +550,7 @@ function approval() {
 const storyboardWorkflow = "training-agent-storyboards.yml";
 const storyboardWorkflowPath = `.github/workflows/${storyboardWorkflow}`;
 const storyboardJobs = [
-  ...["signals", "governance", "creative", "creative-builder", "brand", "si", "typed-negotiation", "constrained-seller"]
+  ...["signals", "governance", "creative", "creative-builder", "brand", "si", "typed-negotiation", "constrained-seller", "finalization-failure"]
     .map((tenant) => `Storyboards (current /${tenant})`),
   ...["signals", "sales", "governance", "creative", "creative-builder", "brand", "si"]
     .map((tenant) => `Storyboards (3.0-compat /${tenant})`),

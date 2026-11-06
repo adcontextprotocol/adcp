@@ -194,11 +194,11 @@ function pathResolves(node, segments, seen = new Set(), root = node) {
   // (intersection of constraints means the resolved object carries the union
   // of properties across branches — a property defined in any branch is
   // present after merging).
-  const variants = node.oneOf || node.anyOf || node.allOf;
-  if (Array.isArray(variants)) {
-    for (const variant of variants) {
-      if (pathResolves(variant, segments, seen, root)) return true;
-    }
+  // A node can carry several of these at once: a response root composes the
+  // protocol envelope through `allOf` and lists its arms in `oneOf`.
+  const variants = [...(node.oneOf || []), ...(node.anyOf || []), ...(node.allOf || [])];
+  for (const variant of variants) {
+    if (pathResolves(variant, segments, seen, root)) return true;
   }
 
   if (isPureExtensionPoint(node)) return true;
@@ -335,6 +335,10 @@ function lintDoc(doc, filePath, allowlist = []) {
       if (typeof rawPath !== 'string' || rawPath.length === 0) continue;
       const segments = parsePath(rawPath);
       if (contextOutputPathResolves(schema, segments)) continue;
+      // An arm is validated together with the root's `allOf`, which carries
+      // the protocol envelope (task_id, status, ...).
+      if (schema !== fullSchema
+        && (fullSchema.allOf || []).some((member) => pathResolves(member, segments, new Set(), fullSchema))) continue;
       if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
       violations.push({
         rule: 'path_not_in_schema',

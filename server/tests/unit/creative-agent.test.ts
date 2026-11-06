@@ -122,6 +122,47 @@ describe('reference formats', () => {
     }
   });
 
+  it('projects HTML-markup legacy formats to display_tag with the html_creative slot', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const htmlFormats = formats.filter(f => /^display_(?:\d+x\d+_)?html$/.test((f.format_id as { id: string }).id));
+    expect(htmlFormats.map(f => (f.format_id as { id: string }).id).sort()).toEqual([
+      'display_160x600_html',
+      'display_300x250_html',
+      'display_300x50_html',
+      'display_300x600_html',
+      'display_320x50_html',
+      'display_336x280_html',
+      'display_728x90_html',
+      'display_970x250_html',
+      'display_html',
+    ]);
+
+    for (const format of htmlFormats) {
+      const id = (format.format_id as { id: string }).id;
+      // Erratum: canonical-projection-ref rule 5 requires the projected slots to match
+      // the v1 assets. The only required v1 asset is html markup, not an html5 zip bundle.
+      expect(format.canonical, id).toEqual({
+        kind: 'display_tag',
+        asset_source: 'buyer_uploaded',
+        slots_override: [{ asset_group_id: 'html_creative', asset_type: 'display_tag', required: true }],
+        supported_delivery_types: ['inline_markup'],
+      });
+      const required = (format.assets as Array<Record<string, unknown>>).filter(asset => asset.required);
+      expect(required.map(asset => [asset.asset_id, asset.asset_type]), id).toEqual([['html_creative', 'html']]);
+
+      const sized = id.match(/^display_(\d+)x(\d+)_html$/);
+      if (sized) {
+        expect((format.renders as any[])[0].dimensions, id).toMatchObject({
+          width: Number(sized[1]),
+          height: Number(sized[2]),
+        });
+      }
+    }
+
+    const js = formats.find(f => (f.format_id as { id: string }).id === 'display_js')!;
+    expect(js.canonical).toEqual({ kind: 'display_tag' });
+  });
+
   it('includes all expected format categories', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
     const ids = formats.map(f => (f.format_id as { id: string }).id);
@@ -1677,6 +1718,49 @@ describe('MCP tool responses include structuredContent', () => {
     expect(structured.formats).toBeDefined();
     expect(Array.isArray(structured.formats)).toBe(true);
     expect(structured.formats.length).toBe(4);
+  });
+
+  it('list_creative_formats declares URL slot purposes using role', async () => {
+    const result = await client.callTool({ name: 'list_creative_formats', arguments: {} });
+    expect(result.isError).toBeFalsy();
+    type Asset = {
+      asset_id?: string;
+      asset_type?: string;
+      requirements?: Record<string, unknown>;
+      assets?: Asset[];
+    };
+    const { formats } = result.structuredContent as {
+      formats: Array<{ format_id: { id: string }; assets?: Asset[] }>;
+    };
+    const expectedRoles: Record<string, string> = {
+      click_url: 'clickthrough',
+      cta_url: 'clickthrough',
+      impression_tracker: 'impression_tracker',
+    };
+    const declaredRoles = new Set<string>();
+    const inspectAssets = (assets: Asset[]) => {
+      for (const asset of assets) {
+        if (asset.asset_type === 'url') {
+          const requirements = asset.requirements ?? {};
+          expect(requirements).not.toHaveProperty('url_type');
+          if (requirements.role !== undefined) {
+            const expectedRole = expectedRoles[asset.asset_id ?? ''];
+            expect(expectedRole).toBeDefined();
+            expect(requirements.role).toBe(expectedRole);
+            declaredRoles.add(String(requirements.role));
+          }
+        }
+        if (asset.assets) inspectAssets(asset.assets);
+      }
+    };
+    for (const format of formats) inspectAssets(format.assets ?? []);
+    expect(declaredRoles).toEqual(new Set(['clickthrough', 'impression_tracker']));
+    const display = formats.find(format => format.format_id.id === 'display_300x250_image');
+    expect(display?.assets?.find(asset => asset.asset_id === 'click_url')?.requirements?.role)
+      .toBe('clickthrough');
+    const recommendation = formats.find(format => format.format_id.id === 'sponsored_recommendation');
+    expect(recommendation?.assets?.find(asset => asset.asset_id === 'cta_url')?.requirements?.role)
+      .toBe('clickthrough');
   });
 
   it('list_creative_formats keeps the text summary distinct from structuredContent', async () => {

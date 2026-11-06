@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/proposal-refinement.json",
   "title": "Proposal Refinement",
-  "description": "Fork an immutable proposal, finalize a draft into a held committed snapshot, or extend a committed hold into a new committed snapshot. Revising with structured criteria, typed boundaries, product changes, installment changes, requested alternatives, and/or a semantic ask creates one or more new drafts; finalizing and extending a hold change no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged. A revised product mix must support the resulting root frequency cap; because omitted criteria inherit, clearing the cap is explicit through remove_media_buy_frequency_cap.",
+  "description": "Fork an immutable proposal, finalize a draft into a held committed snapshot, or extend a committed hold into a new committed snapshot. Revising with structured criteria, typed boundaries, product changes, requested alternatives, and/or a semantic ask creates one or more new drafts; finalizing and extending a hold change no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged. A revised product mix must support the resulting root frequency cap; because omitted criteria inherit, clearing the cap is explicit through remove_media_buy_frequency_cap.",
   "type": "object",
   "properties": {
     "proposal_id": {
@@ -69,12 +69,6 @@
       "$ref": "/schemas/core/product-change-map.json",
       "description": "Product IDs mapped to membership actions checked against commercial_terms.purchases. include requires presence; omit requires absence. The verbs match legacy get_products refinement."
     },
-    "installment_changes": {
-      "$ref": "/schemas/core/installment-change-set.json",
-      "x-status": "experimental",
-      "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.installment_selection). Installment-level membership actions checked against commercial_terms.purchases[].installments in every returned draft, so a buyer can drop a slot or swap one for another without restating the whole plan. Each entry names the purchase by product_id and the installment by its canonical tuple. An entry names a product that the source proposal purchases or that product_changes includes in the same refinement, so adding a product and naming its slots is one round trip; any other product_id, a product_changes omit of the same product, and a repeated or contradictory (product_id, installment_ref) pair are each rejected at task level with INVALID_REQUEST. The seller validates product_id membership BEFORE resolving any installment_ref, so an unauthorized caller never causes reference resolution; an installment the named product does not declare is then rejected with REFERENCE_NOT_FOUND. A swap is not atomic: the seller may satisfy the omit, fail the include, and return partial, so a buyer that needs all-or-nothing says so in ask. Entries the seller understood but could not satisfy make the result partial or unable with reason_code constraint_unsatisfiable and are echoed in unsatisfied_installment_changes. A purchase whose installments the source proposal left absent starts from the product's complete installment set, so a single omit entry materializes the remaining slots. Buyers MUST NOT send this field unless the seller declares media_buy.installment_selection."
-    },
     "alternatives": {
       "type": "object",
       "description": "Request drafts with distinct commercial terms by count. Every returned alternative MUST carry distinct commercial_terms and therefore a unique terms_digest; diversity preferences remain in ask.",
@@ -114,7 +108,6 @@
           { "required": ["change_kind"] },
           { "required": ["constraints"] },
           { "required": ["product_changes"] },
-          { "required": ["installment_changes"] },
           { "required": ["alternatives"] },
           { "required": ["ask"] },
           { "required": ["criteria"] },
@@ -132,7 +125,6 @@
           { "required": ["change_kind"] },
           { "required": ["constraints"] },
           { "required": ["product_changes"] },
-          { "required": ["installment_changes"] },
           { "required": ["alternatives"] },
           { "required": ["ask"] },
           { "required": ["criteria"] },
@@ -146,7 +138,6 @@
       "anyOf": [
         { "required": ["constraints"] },
         { "required": ["product_changes"] },
-        { "required": ["installment_changes"] },
         { "required": ["alternatives"] },
         { "required": ["ask"] },
         { "required": ["criteria"] },
@@ -168,5 +159,5 @@
       }
     ]
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -1,0 +1,247 @@
+---
+title: AdCP 4.0 compatibility checks
+sidebarTitle: 4.0 compatibility
+description: "Advisory compliance checks that tell a 3.x agent which AdCP 4.0 removals and new requirements it still depends on, with the fix for each."
+"og:title": "AdCP — 4.0 compatibility checks"
+---
+
+# AdCP 4.0 compatibility checks
+
+AdCP 4.0 removes fields and tightens requirements that 3.x agents depend on today. The compliance suite checks a 3.x agent against each of these changes, so the agent learns what to fix before a 4.0 buyer stops working with it.
+
+<Info>
+**These checks are advisory throughout 3.x.** A failing check never fails a 3.x conformance run. Each one is graded inside a storyboard step that already runs, so it adds no new calls and no new ways to fail.
+
+The checks ship in compliance bundles from 3.3 onward. Released bundles never change, so an agent graded against an earlier bundle shows every check as not observable until it is graded against a bundle that carries them.
+</Info>
+
+## Reading the results
+
+Each check has a stable id. The registry at [`universal/v4-compatibility.yaml`](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/universal/v4-compatibility.yaml) in the compliance bundle names the storyboard step and validation, or the runner notice, that observes it. A report joins a run's output against that registry and shows one of three results for each check:
+
+| Result | Meaning |
+|---|---|
+| Passed | The check ran and the agent does not depend on what 4.0 changes. |
+| Failing | The agent depends on something 4.0 removes or tightens. The fix below says what to change. |
+| Not observable | The run could not show it: the storyboard did not apply to the agent, the step was skipped, there was nothing to inspect (for example, no products returned), or the runner predates the check. |
+
+In raw runner output, a check observed by a validation appears as a `validation_result` whose `id` is the check id. Checks added only for 4.0 carry `severity: "advisory"`. A check observed by a notice appears as a notice whose `code` is the check id; a notice is only evidence of a pass from a runner known to emit that code.
+
+| Check id | Issue | Applies to | Observed in |
+|---|---|---|---|
+| [`format_ids_removed_in_4_0`](#format_ids_removed_in_4_0) | [#7629](https://github.com/adcontextprotocol/adcp/issues/7629) | Sellers | `media_buy_seller` product discovery |
+| [`major_versions_removed_in_4_0`](#major_versions_removed_in_4_0) | [#3572](https://github.com/adcontextprotocol/adcp/issues/3572) | All agents | `version_negotiation` |
+| [`adcp_version_echo_required_in_4_0`](#adcp_version_echo_required_in_4_0) | [#3572](https://github.com/adcontextprotocol/adcp/issues/3572) | All agents | `version_negotiation` |
+| [`signed_requests_specialism_deprecated`](#signed_requests_specialism_deprecated) | [#3078](https://github.com/adcontextprotocol/adcp/issues/3078) | All agents | Notice on `signed_requests` |
+| [`request_signing_required_in_4_0`](#request_signing_required_in_4_0) | [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) | Sellers | `media_buy_seller` capability discovery |
+| [`legacy_hmac_fallback_removed_in_4_0`](#legacy_hmac_fallback_removed_in_4_0) | [#4205](https://github.com/adcontextprotocol/adcp/issues/4205) | All agents | `capability_discovery` |
+| [`capabilities_structural_bounds_required_in_4_0`](#capabilities_structural_bounds_required_in_4_0) | [#8198](https://github.com/adcontextprotocol/adcp/issues/8198) | All agents | Not observable |
+| [`purchase_target_audiences_required_in_4_0`](#purchase_target_audiences_required_in_4_0) | [#8125](https://github.com/adcontextprotocol/adcp/issues/8125) | Sellers | Not observable in 3.x |
+| [`seller_held_change_terms_required_in_4_0`](#seller_held_change_terms_required_in_4_0) | [#8087](https://github.com/adcontextprotocol/adcp/issues/8087) | Sellers | Not observable in 3.x |
+| [`canonical_counting_mechanisms_required_in_4_0`](#canonical_counting_mechanisms_required_in_4_0) | [#6878](https://github.com/adcontextprotocol/adcp/issues/6878) | Sellers | Not observable in 3.x |
+
+## Checks
+
+<a id="format_ids_removed_in_4_0"></a>
+### Products declare canonical format options
+
+**Check id:** `format_ids_removed_in_4_0` · **Change:** removal
+
+**Detects:** a product returned by `get_products` declares `format_ids` without `format_options`.
+
+4.0 removes the exact plural `format_ids` fields. `format_options[]` becomes the only way a product declares the creative formats it accepts, so a 4.0 buyer sees no formats on a product that carries `format_ids` alone.
+
+**Fix:** author canonical `format_options[]` on every product. You can keep projecting `format_ids` for older 3.x buyers until 4.0. See [Canonical formats migration](/dist/docs/3.3.0-beta.3/creative/canonical-formats-migration).
+
+The check inspects every product in the `media_buy_seller` brief response, which returns up to five products. It uses the `all_fields_present` check kind; a runner that does not implement it reports the check as not observable.
+
+<a id="major_versions_removed_in_4_0"></a>
+### Capabilities declare release-precision versions
+
+**Check id:** `major_versions_removed_in_4_0` · **Change:** removal
+
+**Detects:** `get_adcp_capabilities` declares `adcp.major_versions` without `adcp.supported_versions`.
+
+4.0 removes `adcp.major_versions` and the request field `adcp_major_version`. A 4.0 buyer reads `adcp.supported_versions` only.
+
+**Fix:** list every release you speak in `adcp.supported_versions`, as release-precision strings such as `"3.2"`. Keep emitting `adcp.major_versions` through 3.x. See [Versioning](/dist/docs/3.3.0-beta.3/reference/versioning).
+
+3.2 certification already requires `supported_versions`, so this check adds no new failure: it labels an existing requirement as one 4.0 depends on.
+
+<a id="adcp_version_echo_required_in_4_0"></a>
+### Responses echo the served release
+
+**Check id:** `adcp_version_echo_required_in_4_0` · **Change:** new requirement
+
+**Detects:** the response envelope does not echo the served release in `adcp_version`.
+
+The echo is SHOULD-level in 3.x. 4.0 makes it a MUST, and buyers lose the major-version fallback.
+
+**Fix:** echo the release you served in `adcp_version` on every response envelope. 3.2 certification already requires the echo.
+
+<a id="signed_requests_specialism_deprecated"></a>
+### Capabilities do not claim the signed-requests specialism
+
+**Check id:** `signed_requests_specialism_deprecated` · **Change:** removal
+
+**Detects:** `get_adcp_capabilities` lists `signed-requests` in `specialisms`.
+
+4.0 removes the `signed-requests` specialism enum value. Request signing is a capability, not a specialism.
+
+**Fix:** drop `signed-requests` from `specialisms` and advertise `request_signing.supported: true`. See [Signed requests](/dist/docs/3.3.0-beta.3/building/by-layer/L1/security#request-signing).
+
+<a id="request_signing_required_in_4_0"></a>
+### Sellers verify signed requests
+
+**Check id:** `request_signing_required_in_4_0` · **Change:** new requirement
+
+**Detects:** `get_adcp_capabilities` does not advertise `request_signing.supported: true`.
+
+Request signing is optional in 3.x. 4.0 requires it on spend-committing operations.
+
+**Fix:** verify RFC 9421 request signatures, advertise `request_signing.supported: true`, and register the compliance runner's test key before the 4.0 cut. See [Signed requests](/dist/docs/3.3.0-beta.3/building/by-layer/L1/security#request-signing).
+
+<a id="legacy_hmac_fallback_removed_in_4_0"></a>
+### Webhooks do not fall back to HMAC
+
+**Check id:** `legacy_hmac_fallback_removed_in_4_0` · **Change:** removal
+
+**Detects:** `get_adcp_capabilities` advertises `webhook_signing.legacy_hmac_fallback: true`.
+
+4.0 removes the HMAC-SHA256 webhook fallback.
+
+**Fix:** sign webhooks with RFC 9421 only and stop advertising `legacy_hmac_fallback`. See [Webhooks](/dist/docs/3.3.0-beta.3/building/by-layer/L3/webhooks).
+
+<a id="capabilities_structural_bounds_required_in_4_0"></a>
+### Capabilities stay within their structural bounds
+
+**Check id:** `capabilities_structural_bounds_required_in_4_0` · **Change:** new requirement
+
+**Detects:** `get_adcp_capabilities` carries an array, string, or keyed map above the limit that a field annotates with `x-max-items-4.0`, `x-max-length-4.0`, or `x-max-properties-4.0`.
+
+From 3.3 every array, string, and keyed map in the capabilities response has a limit. Fields new in 3.3 and experimental fields enforce it as `maxItems`, `maxLength`, or `maxProperties`. A field that was stable before 3.3 carries the limit as an annotation, because a minor release may not tighten it. 4.0 makes each annotation the keyword, so a document above a limit becomes schema-invalid.
+
+**Fix:** keep each annotated field within its limit now. The limits and their worst case are in [Response Size Bounds](/dist/docs/3.3.0-beta.3/building/by-layer/L1/security#response-size-bounds). Run `node scripts/capabilities-structural-bounds.cjs` against the schemas to list them.
+
+No storyboard step inspects every annotated field, so the suite reports this check as not observable.
+
+**4.0 follow-up:** the structural bounds are the protocol's limit on the capabilities document. `MAX_CAPABILITIES_BYTES` (64 KiB) stays only as a receiver backstop against runaway or hostile documents, and 4.0 does not lean on it. With the current bounds, the largest schema-valid document is 87 MiB. The way to lower that ceiling is to tighten the nested object lists that multiply it before the annotations become keywords: the brand reference (`brand_kit_override`, `provenance`), the creative format declaration (`macro_resolution_capabilities`), the attestation issuer entry, the audience activation method, and the geographic place system.
+
+<a id="purchase_target_audiences_required_in_4_0"></a>
+### Purchases carry target audiences
+
+**Check id:** `purchase_target_audiences_required_in_4_0` · **Change:** new requirement
+
+**Detects:** a seller that lists `media_buy.audience_evidence_targets` in `experimental_features` does not accept `target_audiences` on `buy_products` purchases and `list_products` `offer_filters`.
+
+In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `get_products` filters and on `create_media_buy` packages. `buy_products` purchases (`product-purchase-input.json`, `product-purchase.json`) and `list_products` `offer_filters` are closed schemas, and a minor release never changes a closed schema, so they gain the field in 4.0.
+
+**Fix:** accept the sibling on those surfaces and record it in the accepted purchase snapshot. Until 4.0, a buyer that needs an audit record keeps its own copy of the requirements and targets it sent. A 3.x run cannot observe this check, so it reports as not observable.
+
+## Planned for 4.0: withdrawn from 3.3
+
+The three checks below record 3.3 features that are withdrawn and planned for 4.0. All three add terms to `commercial_terms`. The `commercial-terms` schema is closed on purpose: a buyer must not be bound by terms it cannot read, and `terms_digest` signs exactly those terms. If the object were open, a 3.2 buyer could accept a 3.3 term it silently ignored. A minor release never changes a closed schema ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so these features wait for 4.0, where `commercial_terms` gets a declared extension point with must-understand. The decision and its reasoning are in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501). The [3.3 migration guide](/dist/docs/3.3.0-beta.3/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) says what changed between `3.3.0-beta.0` and `3.3.0-beta.1`.
+
+Nothing here is graded. 3.3 has no wire form for any of it after beta.1, so a run cannot observe it. The designs are preserved at the merge commits named below, so the 4.0 work starts from them instead of from a blank page: `git show <commit>:<path>` prints any file.
+
+<a id="definition_pins_required_in_4_0"></a>
+### Definition pins
+
+**Check id:** `definition_pins_required_in_4_0` · **Change:** new requirement · **Issue:** [#7660](https://github.com/adcontextprotocol/adcp/issues/7660)
+
+**What it was:** seller-authored `commercial_terms.definition_pins[]`, so a third-party-published definition referenced by a proposal cannot change after commitment while `terms_digest` still verifies. It shipped in `3.3.0-beta.0` and `3.3.0-beta.1` ([#7960](https://github.com/adcontextprotocol/adcp/pull/7960)) and is removed after beta.1.
+
+**Design to keep:**
+
+- A pin is `{ ref_kind, reference, content_digest, source_version? }`. `ref_kind` is `publisher_format_option`, `publisher_placement`, `publisher_collection`, or `data_provider_signal`. `reference` is the closed identity of the entry in the publisher's or data provider's `adagents.json`.
+- `content_digest` is the lowercase-hex SHA-256 of the RFC 8785 (JCS) serialization of a per-kind projection of the published entry. The projection removes display text, extension data, freshness timestamps, and origin-dependent members, and de-duplicates and sorts the named set arrays. The rules are published as data so implementers port the table, not the prose.
+- Sellers author pins on every new-buy and amendment proposal. Requests never carry them. Finalize and `accept_proposal` re-verify every pin before any hold or mutation. Drift returns the `definition_changed` refinement reason with `drifted_pins[]` at finalize and `REFERENCE_DEFINITION_CHANGED` at acceptance. A fetch or parse failure is `SERVICE_UNAVAILABLE`, not drift.
+- Not covered: property and collection lists, product-local format options, seller-inline placements, product and signal-source signals, and default-mode selections.
+- The per-kind exclusion lists cannot change later without a new `ref_kind`, so settle them again against `adagents.json` before 4.0 freezes them.
+
+**Where it is preserved:** commit `9632c4a73` (#7960) carries `core/definition-pin.json`, `enums/definition-pin-ref-kind.json`, `error-details/reference-definition-changed.json`, the normative text in `docs/media-buy/specification.mdx#definition-pins`, the vectors in `static/compliance/source/test-vectors/definition-pins/` with their reference implementation `tests/helpers/reference-definition-pin.cjs` and replay test, and the `definition_pin_drift` storyboard. The released `3.3.0-beta.0` and `3.3.0-beta.1` bundles under `dist/` keep the same files.
+
+**What 4.0 needs:** the declared `commercial_terms` extension point, and a rule for a buyer that does not understand a pin: it must refuse the terms, not ignore the pin.
+
+<a id="purchase_rights_required_in_4_0"></a>
+### Purchase rights
+
+**Check id:** `purchase_rights_required_in_4_0` · **Change:** new requirement · **Issue:** [#8090](https://github.com/adcontextprotocol/adcp/issues/8090)
+
+**What it was:** experimental `media_buy.purchase_rights`, an optional `rights[]` array on `purchases[]` so `accept_proposal` and `terms_digest` bind usage, paid-amplification, and exclusivity rights alongside price ([#8101](https://github.com/adcontextprotocol/adcp/pull/8101), merged 2026-10-24 and published in `3.3.0-beta.1`). It is removed after beta.1.
+
+**Design to keep:**
+
+- `rights[]` entries carry `uses[]`, `start_date`, `end_date`, and `exclusivity`, using the shape `brand/rights-terms.json` already has. #8101 hoisted that shape into `brand/rights-scope.json`, which `rights-terms` composed with `allOf` next to its pricing fields.
+- Rights are priced inside the purchase, the media seller grants or warrants them, and exclusivity is per purchase.
+- `right-use` gains `paid_amplification` (the brand runs the creator's post as paid media from the creator's identity) and `content_reuse` (the brand republishes the content from its own identity).
+- No rights grant is minted at acceptance. Whether acceptance should mint an attested grant that a later `rights-constraint` can cite is open ([#5543](https://github.com/adcontextprotocol/adcp/issues/5543)).
+
+**Where it is preserved:** commit `563f199d1` (#8101) carries the `rights-scope` hoist, the `right-use` values, the `product-purchase.json` field, `tests/purchase-rights.test.cjs`, and the negotiation-guide section "Rights in the purchase".
+
+**Until then:** carry rights through the brand protocol, where `acquire_rights` already returns `rights-terms`. The `right-use` additions left with the feature because their only consumer was `purchases[].rights[]`; 4.0 restores them with it.
+
+<a id="installment_selection_required_in_4_0"></a>
+### Installment selection
+
+**Check id:** `installment_selection_required_in_4_0` · **Change:** new requirement · **Issue:** [#8230](https://github.com/adcontextprotocol/adcp/issues/8230)
+
+**What it was:** experimental `media_buy.installment_selection`: `purchases[].installments[]` named the exact slots a purchase buys, and `refine_proposals` gained `installment_changes` with `unsatisfied_installment_changes` to drop or swap one ([#8246](https://github.com/adcontextprotocol/adcp/pull/8246), merged 2026-10-24 and published in `3.3.0-beta.1`). It is removed after beta.1.
+
+**What stays in 3.3:** `installments[]` on the canonical product (`core/canonical-installment.json`), the `installments` entry in `list_products` `fields`, and installment hold readback (`holds[]`). A purchase buys the product as offered, which is the product's complete installment set when it declares one.
+
+**Design to keep:**
+
+- Entries are closed `(collection_ref, installment_id)` references (`core/canonical-installment-ref.json`), ordered by the JCS bytes of each reference so equal bought sets serialize to equal digests. Present, the array is the complete bought set. Absent, the purchase buys the product as offered.
+- `installment_changes` is a list of `{ product_id, installment_ref, action }`, unique by `(product_id, installment_ref)`. A tuple cannot be an object key, so it is not a map like `product_changes`. The seller validates `product_id` membership before it resolves any reference, so an unauthorized caller never causes reference resolution.
+- `terms_digest` binds which slots were bought, not what the seller later publishes under them.
+- Selection is a negotiation surface, not a discovery one: no request field names installments.
+
+**Where it is preserved:** commit `0555b8a99` (#8246) carries `core/installment-change-set.json`, the `product-purchase.json` and `proposal-refinement.json` fields, the `refine_proposals` section "Change installments", and `tests/canonical-installments.test.cjs`.
+
+<a id="seller_held_change_terms_required_in_4_0"></a>
+### Seller-held change terms
+
+**Check id:** `seller_held_change_terms_required_in_4_0` · **Change:** new requirement
+
+**Detects:** a seller that changes a signed purchase on its own authority carries no seller-held entry in `commercial_terms.change_terms[]` naming the bounded change.
+
+In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/dist/docs/3.3.0-beta.3/media-buy/product-discovery/proposal-negotiation#seller-offers) that the buyer accepts. A way for the buyer to pre-agree bounded seller changes (a budget release, a schedule shift, ordered line alternates) would add `holder` and `purchase_index` to `change-term.json` and new constraint kinds. `commercial_terms` and `change-term.json` are closed schemas, and a minor release never changes a closed schema, so the lane ships in 4.0. The expected shape is in [Planned for 4.0](/dist/docs/3.3.0-beta.3/media-buy/product-discovery/proposal-negotiation#planned-for-40-seller-held-change-terms).
+
+**Fix:** until 4.0, send a seller offer for every seller-initiated change to a signed buy. A 3.x run cannot observe this check, so it reports as not observable.
+
+<a id="canonical_counting_mechanisms_required_in_4_0"></a>
+### Canonical terms carry counting mechanisms
+
+**Check id:** `canonical_counting_mechanisms_required_in_4_0` · **Change:** new requirement
+
+**Detects:** a seller that lists `media_buy.measurement_provenance` in `experimental_features` declares `counting_mechanisms` on `measurement_terms.billing_measurement` but not on the canonical commercial terms.
+
+In 3.3 the experimental `billing_measurement.counting_mechanisms[]` is carried on `core/measurement-terms.json` only. `core/canonical-measurement-terms.json` holds terms the buyer is bound by and is a closed schema, and a minor release never changes a closed schema, so the canonical terms gain the field in 4.0.
+
+**Fix:** declare `counting_mechanisms` on the canonical terms as well. A 3.x run cannot observe this check, so it reports as not observable.
+
+## Changes not checked yet
+
+A check is added once its 4.0 change is decided. These changes are still proposals or under working group review, so the suite does not grade them yet:
+
+- `channels` required on every product ([#7869](https://github.com/adcontextprotocol/adcp/issues/7869))
+- `duration_ms` required on hosted video assets ([#5668](https://github.com/adcontextprotocol/adcp/issues/5668))
+- the `account_id` from `sync_accounts` as the only account reference after provisioning ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850))
+- nested `status` renamed to `media_buy_status` ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905))
+
+The schemas also mark 46 deprecated fields with `x-removed-in: "4.0.0"`. The registry lists each one, either under the check that covers it or in `schema_removals_not_checked` with the reason no check covers it yet. Most uncovered fields are sent by buyers, so a seller run can't observe them. A few are seller-emitted and checkable but not graded yet: flat `valid_actions`, response-wide delivery `currency` and `aggregated_totals`, `inline_creative_management`, and the format-level build and pricing surface that `list_transformers` replaces.
+
+The full list of planned 4.0 work is the [4.0 milestone](https://github.com/adcontextprotocol/adcp/milestone/5).
+
+## Adding a check
+
+Every 4.0 issue that removes or tightens something an agent relies on declares a stable check id and a one-line detection rule. When the change is accepted, the same PR:
+
+1. Adds the observation. Prefer an advisory validation on a step that already makes the needed call, with `id` set to the check id, `severity: advisory`, and `permanent_advisory`. Don't use `expires_after_version`, which promotes the check on runner version rather than on the spec version the agent is graded against. A check the runner already reports as a canonical notice with `effective_version: "4.0"` uses the notice code as its id.
+2. Adds the entry to `universal/v4-compatibility.yaml`, with the removed schema nodes in `schema_sites`.
+3. Adds a section here with an `<a id>` anchor that matches the check id.
+
+A schema node that 4.0 removes is marked `"deprecated": true` and `"x-removed-in": "4.0.0"`, and the registry lists it once: in a check's `schema_sites`, or in `schema_removals_not_checked` with its 4.0 tracking issue and a reason. Marking a node therefore forces the decision of whether a 3.x agent can be checked for it, and gives every removal a tracking issue.
+
+`scripts/lint-v4-compatibility-registry.cjs` fails the compliance build when the registry, the storyboards, the notice codes, the schema markers, and this page disagree.

@@ -308,7 +308,7 @@ export function requestSigningProfileVersion(ctx: SigningRouteContext): RequestS
  * lose cross-instance replay protection — production must have a pool.
  */
 let _replayStore: ReplayStore | null = null;
-function getReplayStore(): ReplayStore {
+export function getReplayStore(): ReplayStore {
   if (_replayStore) return _replayStore;
   try {
     _replayStore = new PostgresReplayStore(getPool());

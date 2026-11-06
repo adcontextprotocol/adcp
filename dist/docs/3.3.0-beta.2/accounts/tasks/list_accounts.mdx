@@ -1,0 +1,297 @@
+---
+title: list_accounts
+description: "list_accounts returns all advertiser accounts an authenticated agent can operate on an AdCP vendor agent. Works across media buy, signals, governance, and creative protocols."
+"og:title": "AdCP — list_accounts"
+testable: false
+---
+
+Returns all accounts the authenticated agent can operate on this vendor agent. Use this to discover existing accounts, check status changes on pending accounts, and recover the exact account reference expected on protocol operations.
+
+Account visibility is source-neutral: the seller MUST return every account the
+authenticated caller can operate, including pre-existing accounts created or
+managed through seller and connected-platform surfaces. `list_accounts` is not
+limited to relationships first provisioned through [`sync_accounts`](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_accounts).
+
+`list_accounts` returns accounts, and every account has an `account_id`. A
+seller that keeps pending provisioning as [account requests](/dist/docs/3.3.0-beta.2/accounts/tasks/request_account)
+(experimental in 3.3) lists the account only once its request resolves; until
+then, read the request in `account_requests[]` by setting `include_requests: true`
+(or `request_ids`). Requests page separately from accounts: `account_requests_pagination`
+in the response, `requests_pagination` in the request. The top-level `pagination` pages
+accounts only.
+
+For upstream-managed account namespaces, `list_accounts` is not optional discovery polish; it is the namespace discovery contract. The upstream platform owns the accessible account set, so buyers MUST resolve an explicit `account_id` before the first account-scoped request. If the authenticated credential can access more than one account, the seller MUST expose `list_accounts`; if it can access exactly one account, the seller SHOULD expose `list_accounts` returning that singleton so SDKs can auto-select it and still send `{ "account_id": "..." }` on required-account calls. [`sync_accounts`](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_accounts) provisioning does not create account-id accounts in 3.0.x unless a future explicit capability declares that mode; if `sync_accounts` is exposed on these sellers today, use it only for settings updates against an account already identified by `account_id`.
+
+`list_accounts` works across all vendor protocols — media buy agents, signals agents, governance agents, and creative agents all return accounts through this same task.
+
+**Response Time**: ~1s.
+
+**Request Schema**: [`static/schemas/source/account/list-accounts-request.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/account/list-accounts-request.json)
+**Response Schema**: [`/schemas/3.3.0-beta.2/account/list-accounts-response.json`](https://adcontextprotocol.org/schemas/3.3.0-beta.2/account/list-accounts-response.json)
+
+## Quick Start
+
+List all accounts this agent can operate:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
+
+const result = await testAgent.listAccounts({});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const account of validated.accounts) {
+  console.log(`${account.account_id}: ${account.name} (${account.status})`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.list_accounts()
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        print(f"{account.account_id}: {account.name} ({account.status})")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+All parameters are optional. An empty request returns all accounts visible to
+the authenticated caller. Use `account` to re-read one known account by
+seller-assigned `account_id`, or to find buyer-declared accounts by natural key.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account` | object | No | Account filter. Pass `{ "account_id": "..." }` for one known account. For buyer-declared accounts, pass the natural key, `brand` and `operator`, narrowed by any account attribute such as `brand.countries` or `timezone`. The seller returns every matching account visible to the authenticated caller. |
+| `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
+| `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform. |
+| `include_webhook_activity` | boolean | No | When true, request recent webhook delivery attempts for each returned account in `webhook_activity[]`. |
+| `webhook_activity_limit` | integer | No | Maximum number of `webhook_activity[]` records to return per account when `include_webhook_activity` is true. Default 50, max 200. |
+| `pagination` | object | No | Pagination cursor for large account sets. Pages `accounts` only. |
+| `include_requests` | boolean | No | Experimental (`account.requests`). Also return the caller's [account requests](/dist/docs/3.3.0-beta.2/accounts/tasks/request_account) in `account_requests[]`: every open request plus requests that changed state in the last 30 days. |
+| `request_ids` | array | No | Experimental. Return only these requests; implies `include_requests`. Unknown IDs and other callers' IDs are omitted silently. |
+| `requests_pagination` | object | No | Experimental. Pages `account_requests[]` independently of accounts; implies `include_requests`. |
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `accounts` | Array of account objects (see below) |
+| `errors` | Array of errors, if the request failed |
+| `pagination` | Pagination cursor for the next page of `accounts`, if more exist |
+| `account_requests` | Experimental. The caller's account requests, when `include_requests`, `request_ids`, or `requests_pagination` was sent. Requests are not accounts: an open request has no `account_id` until it resolves. |
+| `account_requests_pagination` | Experimental. Paging for `account_requests[]`. |
+
+**Each account includes:**
+
+| Field | Description |
+|-------|-------------|
+| `account_id` | Seller/storefront identifier and the account's identity. Use it on every account-scoped task, in both account models. It is distinct from `operator_unit.id`, which belongs to the buyer-side operator. May be absent when `status: "rejected"`. |
+| `name` | Vendor agent's display name for the account |
+| `brand` | Brand reference: `domain`, optional `brand_id`, and the optional `countries[]` account attribute. Countries are not delivery targeting. |
+| `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
+| `operator_unit` | Optional operator-owned unit, an account attribute. `name` is display metadata. |
+| `revision` | Current account optimistic-concurrency revision. Pass it in the next [`request_account`](/dist/docs/3.3.0-beta.2/accounts/tasks/request_account) change or [`sync_accounts`](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_accounts) settings update. |
+| `identity_change` | **Deprecated in 3.3.** Pending or rejected desired operator identity. While present, `operator` and `operator_unit` remain the current canonical identity. Poll until the change applies or is rejected. |
+| `currency` | Optional account currency. When present, media buys on the account must use it. |
+| `timezone` | Operational timezone for the account. It is the default for account-scoped calendar behavior unless a feature explicitly declares another timezone basis. |
+| `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. With a seller that keeps pending accounts as [requests](/dist/docs/3.3.0-beta.2/accounts/tasks/request_account), `pending_approval` and `rejected` appear on the request, not on an account. |
+| `billing` | Billing model in effect: `operator` or `agent` |
+| `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/dist/docs/3.3.0-beta.2/building/by-layer/L2/accounts-and-agents#account-scope). |
+| `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. Binding for all invoices when the account is active. |
+| `governance_agents` | Governance agent endpoints registered on this account. Present when governance agents have been configured via [`sync_governance`](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_governance). |
+| `reporting_delivery_configs` | Experimental caller-visible resolved durable reporting configuration states, including setup/readiness, destination binding, immutable generation, and deactivation cutoff. Another caller's configurations are never returned. |
+| `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
+| `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope for this account; callers MUST NOT infer access from absence and fall back to error-driven discovery via the RBAC error codes. See [Caller authorization](/dist/docs/3.3.0-beta.2/accounts/overview#caller-authorization) for the full shape and semantics. Experimental `authorized_at` (`media_buy.reporting_subscriptions`) says when the current grant to this caller began; reporting subscriptions cover the account from the first period boundary at or after it. |
+| `notification_configs` | Account-level webhook subscribers registered via [`sync_accounts`](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_accounts#account-level-webhook-subscriptions). Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`. Present when the account has any persisted subscribers. `subscriber_id` is the account-scoped logical key; re-registering the same subscriber replaces that subscriber's config. `authentication.credentials` is omitted on every entry (write-only). Use this surface to verify what's active after a sync, audit fan-out across multiple subscribers, and detect drift between buyer-side expectations and seller-side persisted state. `account.status_changed` subscribers repair by rereading this account; `account.change_recorded` subscribers drain [`list_account_changes`](/dist/docs/3.3.0-beta.2/accounts/tasks/list_account_changes) and invoke each record's repair task. |
+| `webhook_activity` | Optional recent webhook delivery attempts for this account, returned when `include_webhook_activity: true` and the seller exposes the debug log. Omitted means unsupported or not requested; `[]` means supported but no retained fires; non-empty records are most recent first. |
+
+For buyer-declared accounts, `list_accounts` MUST return each account's `account_id` with its current `brand`, `operator`, and attributes. A stateless buyer recovers its account IDs this way after a cold start and sends `{ "account_id": "..." }` on later tasks. A natural-key `account` filter returns every matching account, so several accounts for one brand and operator are a normal result here, not an ambiguity.
+
+### Mapping buyers to listed accounts
+
+When the seller owns the account namespace, the caller usually maps its own buyers onto accounts it already has, and asks for a new one only when none fits. A storefront holding credentials for its ad servers' sales agents works this way, as does a buyer on a social platform. The caller needs to know what each account is for:
+
+- Sellers SHOULD return [`account_scope`](/dist/docs/3.3.0-beta.2/building/by-layer/L2/accounts-and-agents#account-scope) on every account, and `brand` and/or `operator` wherever the scope names them.
+- When several accounts could serve a buyer, a person chooses. The choice decides who is invoiced, so there is no default order between scopes, and a caller does not pick one automatically.
+- When nothing fits, ask for an account with [`request_account`](/dist/docs/3.3.0-beta.2/accounts/tasks/request_account) (experimental in 3.3) or `sync_accounts`.
+
+### Single-publisher cardinality
+
+A seller serving exactly one publisher entity MAY return that entity as the sole account on `list_accounts` responses, regardless of calling principal. The *"Direct advertiser with single account"* example in [`list-accounts-response.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/account/list-accounts-response.json) is canonical for this case — a single-element `accounts[]` with no `pagination` envelope at all.
+
+Pagination conformance requiring `pagination.has_more: true` does not apply when:
+
+- `pagination` is absent entirely (canonical single-account shape), or
+- `pagination.total_count` is present and ≤ 1
+
+Runners SHOULD grade pagination-walk phases as `not_applicable` in either case. This pattern is conformant; the spec carries no `minItems` constraint on `accounts[]` and the single-account example is normative.
+
+## Common Scenarios
+
+### Poll until account becomes active
+
+After [`sync_accounts`](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_accounts) returns `pending_approval`, poll until the account is ready. With [`request_account`](/dist/docs/3.3.0-beta.2/accounts/tasks/request_account), poll the request instead, with `request_ids`:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
+
+async function waitForAccount(targetAccountId, maxAttempts = 20) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const result = await testAgent.listAccounts({ status: "active" });
+
+    if (!result.success) {
+      throw new Error(`Request failed: ${result.error}`);
+    }
+
+    const validated = ListAccountsResponseSchema.parse(result.data);
+
+    if ("errors" in validated && validated.errors) {
+      throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+    }
+
+    if ("accounts" in validated) {
+      const account = validated.accounts.find(a => a.account_id === targetAccountId);
+      if (account) {
+        console.log(`Account active: ${account.account_id}`);
+        return account;
+      }
+    }
+
+    // Wait 30 seconds before polling again
+    await new Promise(resolve => setTimeout(resolve, 30_000));
+  }
+
+  throw new Error(`Account ${targetAccountId} did not become active`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def wait_for_account(target_account_id: str, max_attempts: int = 20):
+    for _ in range(max_attempts):
+        result = await test_agent.simple.list_accounts(status='active')
+
+        if hasattr(result, 'errors') and result.errors:
+            raise Exception(f"Operation failed: {result.errors}")
+
+        account = next(
+            (a for a in result.accounts if a.account_id == target_account_id),
+            None
+        )
+        if account:
+            print(f"Account active: {account.account_id}")
+            return account
+
+        await asyncio.sleep(30)
+
+    raise Exception(f"Account {target_account_id} did not become active")
+```
+
+</CodeGroup>
+
+### Reconcile account status webhooks
+
+After receiving `account.status_changed`, re-read the account snapshot. The webhook tells you which account changed; `list_accounts` is the source of truth for the current status, setup hints, billing terms, and authorization.
+
+The [seller-mediated account provisioning walkthrough](/dist/docs/3.3.0-beta.2/accounts/provisioning-walkthrough#observe-and-reconcile-resolution) shows this invalidation-and-repair pattern in context.
+
+```javascript
+async function handleAccountStatusWebhook(req, res) {
+  if (!verifyWebhookSignature(req)) return res.status(401).end();
+
+  const fire = req.body; // account-status-changed-webhook
+  if (await alreadyProcessed(fire.idempotency_key)) return res.status(200).end();
+
+  const result = await testAgent.listAccounts({
+    account: { account_id: fire.account_id },
+    include_webhook_activity: true,
+    webhook_activity_limit: 20
+  });
+
+  const account = result.accounts[0];
+  await reconcileAccount(account);
+  await markProcessed(fire.idempotency_key);
+  return res.status(200).end();
+}
+```
+
+### Filter active accounts only
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
+
+const result = await testAgent.listAccounts({ status: "active" });
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListAccountsResponseSchema.parse(result.data);
+
+if ("accounts" in validated) {
+  for (const account of validated.accounts) {
+    console.log(`${account.account_id}: ${account.name} — billing: ${account.billing}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.list_accounts(status='active')
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        print(f"{account.account_id}: {account.name} — billing: {account.billing}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| [`ACCOUNT_NOT_FOUND`](/dist/docs/3.3.0-beta.2/building/verification/compliance-catalog#error-code-account-not-found) | No accounts found for this agent | Open an account first with [`request_account`](/dist/docs/3.3.0-beta.2/accounts/tasks/request_account) (when the seller supports `account.requests`) or [`sync_accounts`](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_accounts) |
+
+## Next Steps
+
+- [request_account](/dist/docs/3.3.0-beta.2/accounts/tasks/request_account) — Open or change an account (experimental, `account.requests`)
+- [sync_accounts](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller
+- [sync_governance](/dist/docs/3.3.0-beta.2/accounts/tasks/sync_governance) — Sync governance agents to accounts
+- [Accounts and agents](/dist/docs/3.3.0-beta.2/building/by-layer/L2/accounts-and-agents) — Billing models, trust models, and authorized operators
+- [Brand protocol](/dist/docs/3.3.0-beta.2/brand-protocol/brand-json) — How vendor agents resolve brand identity from the brand's `domain`

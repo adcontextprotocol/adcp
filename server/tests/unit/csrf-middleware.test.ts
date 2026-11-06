@@ -116,6 +116,32 @@ describe('csrfProtection', () => {
     },
   );
 
+  // Lab routes served at the root of test-agent.adcontextprotocol.org with
+  // more than one segment before /mcp: exempted by exact path.
+  it.each([
+    '/sales/identity/mcp',
+    '/beta/3.3/creative/mcp',
+    '/sales/profiles/typed-negotiation/mcp',
+    '/sales/profiles/constrained-seller/mcp',
+    '/sales/profiles/finalization-failure/mcp',
+  ])('allows a cookie-less POST to the training-agent lab route %s', (path) => {
+    const req = mockReq({ method: 'POST', path });
+    const res = mockRes();
+    csrfProtection(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['/sales/identity/mcp/extra', '/sales/identity', '/sales/profiles/other/mcp', '/sales/profiles/typed-negotiation/mcp/x', '/beta/3.3/creative/mcp/extra', '/beta/3.3/creative', '/beta/3.3/sales/mcp'])(
+    'does not widen the lab-route exemption to %s',
+    (path) => {
+      const req = mockReq({ method: 'POST', path, cookies: { 'csrf-token': 'a'.repeat(64) }, headers: {} as Record<string, string> });
+      const res = mockRes();
+      csrfProtection(req, res, next);
+      expect(next).not.toHaveBeenCalled();
+      expect(res._status).toBe(403);
+    },
+  );
+
   // Guard against the regex over-matching shapes that aren't real MCP routes
   // (and could collide with future cookie-authed routes).
   const nearMissTenantPaths = [

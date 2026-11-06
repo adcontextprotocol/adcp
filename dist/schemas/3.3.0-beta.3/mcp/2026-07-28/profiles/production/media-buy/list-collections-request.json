@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/mcp/2026-07-28/profiles/production/media-buy/list-collections-request.json",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "account": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+        }
+      ]
+    },
+    "collections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1collection-selector.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "filters": {
+      "type": "object",
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1collection-kind.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "genres_include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "genres_exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "genre_taxonomy": {
+          "$ref": "#/$defs/external:enums~1genre-taxonomy.json"
+        },
+        "statuses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1collection-status.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1locale-tag.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "talent": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "brand_id": {
+                "$ref": "#/$defs/external:core~1brand-id.json"
+              }
+            },
+            "required": [
+              "domain"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "name_contains": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-request.json"
+    },
+    "if_collections_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/version-envelope.json",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "x-max-length-4.0": 32
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "x-removed-in": "4.0.0",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/context.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/context.json",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/canonical-account-ref.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/canonical-account-ref.json",
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/mcp/2026-07-28/profiles/production/media-buy/list-collections-request.json#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/mcp/2026-07-28/profiles/production/media-buy/list-collections-request.json#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/brand-key.json",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/mcp/2026-07-28/profiles/production/media-buy/list-collections-request.json#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/brand-id.json",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "x-max-length-4.0": 64
+    },
+    "external:core/operator-unit.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/operator-unit.json",
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/collection-selector.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/collection-selector.json",
+      "type": "object",
+      "properties": {
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "collection_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "x-entity": "collection"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "publisher_domain"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/collection-kind.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/collection-kind.json",
+      "type": "string",
+      "enum": [
+        "series",
+        "publication",
+        "event_series",
+        "rotation",
+        "channel"
+      ]
+    },
+    "external:enums/genre-taxonomy.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/genre-taxonomy.json",
+      "type": "string",
+      "enum": [
+        "iab_content_3.0",
+        "iab_content_2.2",
+        "gracenote",
+        "eidr",
+        "apple_genres",
+        "google_genres",
+        "roku",
+        "amazon_genres",
+        "custom"
+      ]
+    },
+    "external:enums/collection-status.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/collection-status.json",
+      "type": "string",
+      "enum": [
+        "active",
+        "hiatus",
+        "ended",
+        "upcoming"
+      ]
+    },
+    "external:core/locale-tag.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/locale-tag.json",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "well_formed": "rfc5646",
+          "semantic_scope": "language_identity_only",
+          "canonical_wire_profile": "adcp_bcp47_casing",
+          "rfc5646_comparison": "case_insensitive",
+          "non_profile": "reject"
+        },
+        "spec": "docs/protocol/language-and-localization.mdx#one-language-tag-primitive"
+      },
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 63,
+      "pattern": "^(?:[a-z]{2,8}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*(?:-[0-9a-wy-z](?:-[a-z0-9]{2,8})+)*(?:-x(?:-[a-z0-9]{1,8})+)?|x(?:-[a-z0-9]{1,8})+)$"
+    },
+    "external:core/pagination-request.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/pagination-request.json",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        },
+        "cursor": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/ext.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. Read the selling agent's catalog of collection cards: look up specific collections by key, or browse with filters and pages. Returns the same core/response-collection.json copies, under the same authority rules, as include_collections on product and proposal reads, and never returns products. Not to be confused with list_collection_lists, which lists buyer-owned collection targeting lists on a governance agent. Side-effect free: the call never provisions an account. It is the bootstrap and repair read for collection_card.* and collection_catalog.bulk_change webhooks, which are registered only through sync_accounts notification_configs; the request takes no push_notification_config, so a call never creates a subscription. Sellers implementing it MUST list media_buy.collection_catalog and media_buy.collection_cards in experimental_features. A seller MUST NOT serve this task to a caller whose adcp_version is below 3.3; it fails the request with UNSUPPORTED_FEATURE."
+}

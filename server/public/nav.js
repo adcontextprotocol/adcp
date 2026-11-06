@@ -48,8 +48,8 @@
       trustjson: {
         name: 'trust.json',
         links: [
-          { href: 'https://github.com/adcontextprotocol/adcp/issues/7809', label: 'RFC' },
-          { href: 'https://github.com/adcontextprotocol/adcp/pull/7819', label: 'Draft spec' },
+          { href: '/#publish', label: 'Get started' },
+          { href: 'https://docs.adcontextprotocol.org/docs/reference/trust-json', label: 'Reference' },
           { href: 'https://github.com/adcontextprotocol/adcp', label: 'GitHub' },
         ],
       },

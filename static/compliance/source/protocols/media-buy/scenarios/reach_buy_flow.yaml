@@ -198,6 +198,7 @@ phases:
             - product_id: "reach_ctv_q2"
               budget: 50000
               pricing_option_id: "auction_cpm"
+              bid_price: 27
               optimization_goals:
                 - kind: "metric"
                   metric: "reach"
@@ -268,6 +269,7 @@ phases:
             - product_id: "reach_ctv_q2"
               budget: 10000
               pricing_option_id: "auction_cpm"
+              bid_price: 27
               optimization_goals:
                 - kind: "metric"
                   metric: "reach"
@@ -394,6 +396,7 @@ phases:
             - product_id: "reach_ctv_q2"
               budget: 10000
               pricing_option_id: "auction_cpm"
+              bid_price: 27
               optimization_goals:
                 - kind: "metric"
                   metric: "reach"
@@ -509,6 +512,7 @@ phases:
             - product_id: "reach_ctv_q2"
               budget: 10000
               pricing_option_id: "auction_cpm"
+              bid_price: 27
               optimization_goals:
                 - kind: "metric"
                   metric: "reach"
@@ -631,6 +635,7 @@ phases:
             - product_id: "reach_ctv_q2"
               budget: 10000
               pricing_option_id: "auction_cpm"
+              bid_price: 27
               optimization_goals:
                 - kind: "metric"
                   metric: "reach"
@@ -755,6 +760,7 @@ phases:
             - product_id: "reach_ctv_q2"
               budget: 10000
               pricing_option_id: "auction_cpm"
+              bid_price: 27
               optimization_goals:
                 - kind: "metric"
                   metric: "reach"

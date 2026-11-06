@@ -37,11 +37,13 @@
     },
     "state_id": {
       "type": "string",
-      "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one declared `states[].state_id` (semantic validators resolve it). Omit for ordinary image slots."
+      "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one declared `states[].state_id` (semantic validators resolve it). Omit for ordinary image slots.",
+      "x-max-length-4.0": 128
     },
     "breakpoint_id": {
       "type": "string",
-      "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one breakpoint declared on the selected state (semantic validators resolve it). Omit for ordinary image slots."
+      "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one breakpoint declared on the selected state (semantic validators resolve it). Omit for ordinary image slots.",
+      "x-max-length-4.0": 128
     },
     "focal_point": {
       "type": "array",
@@ -52,12 +54,14 @@
     },
     "format": {
       "type": "string",
-      "description": "Image file format (jpg, png, gif, webp, etc.)"
+      "description": "Image file format (jpg, png, gif, webp, etc.)",
+      "x-max-length-4.0": 128
     },
     "alt_text": {
       "type": "string",
       "description": "Alternative text for accessibility",
-      "x-accessibility": true
+      "x-accessibility": true,
+      "x-max-length-4.0": 512
     },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",

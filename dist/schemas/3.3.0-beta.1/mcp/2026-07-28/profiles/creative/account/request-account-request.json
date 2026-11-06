@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/creative/account/request-account-request.json",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account_id": {
+      "type": "string",
+      "x-entity": "account"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "brand": {
+      "$ref": "#/$defs/external:core~1brand-key.json"
+    },
+    "operator": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "operator_unit": {
+      "$ref": "#/$defs/external:core~1operator-unit.json"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sandbox": {
+      "type": "boolean"
+    },
+    "billing": {
+      "$ref": "#/$defs/external:enums~1billing-party.json"
+    },
+    "billing_entity": {
+      "$ref": "#/$defs/external:core~1business-entity.json"
+    },
+    "payment_terms": {
+      "$ref": "#/$defs/external:enums~1payment-terms.json"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/version-envelope.json",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "x-max-length-4.0": 32
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "x-removed-in": "4.0.0",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/brand-key.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-key.json",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/creative/account/request-account-request.json#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-id.json",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "x-max-length-4.0": 64
+    },
+    "external:core/operator-unit.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/operator-unit.json",
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/billing-party.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/billing-party.json",
+      "type": "string",
+      "enum": [
+        "operator",
+        "agent",
+        "advertiser"
+      ]
+    },
+    "external:core/business-entity.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/business-entity.json",
+      "type": "object",
+      "properties": {
+        "legal_name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "vat_id": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}[A-Z0-9]{2,13}$"
+        },
+        "tax_id": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "registration_number": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "city": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "postal_code": {
+              "type": "string",
+              "maxLength": 20
+            },
+            "region": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "country": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          },
+          "required": [
+            "street",
+            "city",
+            "postal_code",
+            "country"
+          ],
+          "additionalProperties": false
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "billing",
+                  "legal",
+                  "creative",
+                  "general"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "maxLength": 254
+              },
+              "phone": {
+                "type": "string",
+                "maxLength": 30
+              }
+            },
+            "required": [
+              "role"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 10
+        },
+        "bank": {
+          "type": "object",
+          "writeOnly": true,
+          "properties": {
+            "account_holder": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "iban": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}[0-9]{2}[A-Z0-9]{4,30}$"
+            },
+            "bic": {
+              "type": "string",
+              "pattern": "^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$"
+            },
+            "routing_number": {
+              "type": "string",
+              "maxLength": 30
+            },
+            "account_number": {
+              "type": "string",
+              "maxLength": 30
+            }
+          },
+          "required": [
+            "account_holder"
+          ],
+          "additionalProperties": false
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/profiles/creative/account/request-account-request.json#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "legal_name"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/ext.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/ext.json",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/payment-terms.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/payment-terms.json",
+      "type": "string",
+      "enum": [
+        "net_15",
+        "net_30",
+        "net_45",
+        "net_60",
+        "net_90",
+        "prepay"
+      ]
+    },
+    "external:core/context.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/context.json",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "The single account write (experimental, account.requests). Open an account (brand and operator: the seller finds an existing one or creates one) or change one (account_id plus the attributes to change), possibly after human review on either side. Every write is a request with the same lifecycle. Experimental in 3.3 (#8280): sellers implementing this task MUST list account.requests in experimental_features. Retries are safe through idempotency_key; deduplicating separate requests for the same advertiser is seller discretion, with non-normative guidance in the task docs. Send either account_id, or brand and operator; sellers enforce this at runtime so the MCP input schema stays a plain root object, and reject a request carrying both, or neither, with INVALID_REQUEST. With account_id, every other field present is a requested change, validated as when the account opens: brand.domain and brand.brand_id must equal the account's (a different brand is a different account, INVALID_REQUEST), currency and timezone changes MAY be refused with UNSUPPORTED_FEATURE, and sandbox never changes. Authorization (change or select): the seller first resolves account_id against the caller's own access and answers an unreachable account exactly as an unknown one, before any other validation of the body. A change requires request_account in the caller's allowed_tasks for that account and read_only: false; when the grant lists request_account under field_scopes, every changed field (including billing, billing_entity, and payment_terms) must be in that allowlist, as field_scopes already works. Otherwise SCOPE_INSUFFICIENT, READ_ONLY_SCOPE, or FIELD_NOT_PERMITTED. A change that goes in_review re-checks revision when it resolves; if the account changed meanwhile, the request is rejected with CONFLICT. A new change request for the same account from the same caller supersedes that caller's open change request: the new request gets its own request_id and must carry every change still wanted, and the open one moves to rejected with CONFLICT and details.superseded_by. It never affects another caller's request."
+}

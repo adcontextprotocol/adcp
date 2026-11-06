@@ -43,10 +43,14 @@ function makeWorkos(overrides: Partial<{
 function makeBrandDb(overrides: Partial<{
   getHostedBrandByDomain: any;
   applyVerifiedBrandClaim: any;
+  resolveWorkosDomainVerification: any;
 }> = {}): BrandDatabase {
   return {
     getHostedBrandByDomain: overrides.getHostedBrandByDomain ?? vi.fn().mockResolvedValue(null),
     applyVerifiedBrandClaim: overrides.applyVerifiedBrandClaim ?? vi.fn().mockResolvedValue(null),
+    // Real behaviour for DNS; a manual domain has no member evidence unless a test says so.
+    resolveWorkosDomainVerification: overrides.resolveWorkosDomainVerification
+      ?? vi.fn(async (_domain: string, _orgId: string, strategy: string) => (strategy === 'dns' ? 'dns' : 'manual')),
   } as unknown as BrandDatabase;
 }
 
@@ -441,7 +445,7 @@ describe('verifyDomainChallenge', () => {
     } as HostedBrand;
     const workos = makeWorkos({
       getOrganization: vi.fn().mockResolvedValue({
-        domains: [{ id: 'd1', domain: DOMAIN, state: 'verified' }],
+        domains: [{ id: 'd1', domain: DOMAIN, state: 'verified', verificationStrategy: 'dns' }],
       }),
     });
     const brandDb = makeBrandDb({
@@ -499,7 +503,7 @@ describe('verifyDomainChallenge', () => {
       getOrganization: vi.fn().mockResolvedValue({
         domains: [{ id: 'd1', domain: DOMAIN, state: 'pending' }],
       }),
-      verifyOrganizationDomain: vi.fn().mockResolvedValue({ state: 'verified' }),
+      verifyOrganizationDomain: vi.fn().mockResolvedValue({ state: 'verified', verificationStrategy: 'dns' }),
     });
     const brandDb = makeBrandDb({
       applyVerifiedBrandClaim: vi.fn().mockResolvedValue(updatedBrand),
@@ -550,7 +554,7 @@ describe('verifyDomainChallenge', () => {
     const updatedBrand = { brand_domain: DOMAIN, domain_verified: true } as HostedBrand;
     const workos = makeWorkos({
       getOrganization: vi.fn().mockResolvedValue({
-        domains: [{ id: 'd1', domain: DOMAIN, state: 'verified' }],
+        domains: [{ id: 'd1', domain: DOMAIN, state: 'verified', verificationStrategy: 'dns' }],
       }),
     });
     const brandDb = makeBrandDb({
@@ -564,5 +568,70 @@ describe('verifyDomainChallenge', () => {
       workos: workos as any, brandDb, orgId: ORG, rawDomain: DOMAIN,
     });
     expect(second.ok).toBe(true);
+  });
+
+  it('records a DNS-verified claim as dns', async () => {
+    const applyVerifiedBrandClaim = vi.fn().mockResolvedValue({ brand_domain: DOMAIN, domain_verified: true });
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{ id: 'd1', domain: DOMAIN, state: 'verified', verificationStrategy: 'dns' }],
+      }),
+    });
+    await verifyDomainChallenge({
+      workos: workos as any, brandDb: makeBrandDb({ applyVerifiedBrandClaim }), orgId: ORG, rawDomain: DOMAIN,
+    });
+    expect(applyVerifiedBrandClaim).toHaveBeenCalledWith(DOMAIN, ORG, 'dns', { adoptPriorManifest: false });
+  });
+
+  it('refuses a domain an administrator marked verified, without writing the brand', async () => {
+    const applyVerifiedBrandClaim = vi.fn();
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{ id: 'd1', domain: DOMAIN, state: 'verified', verificationStrategy: 'manual' }],
+      }),
+    });
+    const result = await verifyDomainChallenge({
+      workos: workos as any, brandDb: makeBrandDb({ applyVerifiedBrandClaim }), orgId: ORG, rawDomain: DOMAIN,
+    });
+    expect(result).toMatchObject({ ok: false, code: 'manual_domain' });
+    expect(applyVerifiedBrandClaim).not.toHaveBeenCalled();
+  });
+
+  it('reports verified_elsewhere when the registry keeps another organization\'s verified row', async () => {
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{ id: 'd1', domain: DOMAIN, state: 'verified', verificationStrategy: 'manual' }],
+      }),
+    });
+    const result = await verifyDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb({
+        applyVerifiedBrandClaim: vi.fn().mockResolvedValue(null),
+        resolveWorkosDomainVerification: vi.fn().mockResolvedValue('member_email'),
+      }),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(result).toMatchObject({ ok: false, code: 'verified_elsewhere' });
+  });
+
+  it('accepts an administrator-verified domain when a member has an email on it', async () => {
+    const applyVerifiedBrandClaim = vi.fn().mockResolvedValue({ brand_domain: DOMAIN, domain_verified: true });
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{ id: 'd1', domain: DOMAIN, state: 'verified', verificationStrategy: 'manual' }],
+      }),
+    });
+    const result = await verifyDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb({
+        applyVerifiedBrandClaim,
+        resolveWorkosDomainVerification: vi.fn().mockResolvedValue('member_email'),
+      }),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(result.ok).toBe(true);
+    expect(applyVerifiedBrandClaim).toHaveBeenCalledWith(DOMAIN, ORG, 'member_email', { adoptPriorManifest: false });
   });
 });

@@ -54,7 +54,13 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { packageReportingOfferingIds } from './package-reporting-offerings.js';
+import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
+import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
+import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
+import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
+import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem } from './assignment-operations.js';
+import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -75,6 +81,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -128,6 +135,7 @@ import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getGovernanceSigningPublicJwk } from './governance-signing.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
 import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
+import { projectTaskOutcomeForRelease } from './served-outcome-status.js';
 import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
 import { validateCtvSemantics } from './ctv-experience-matrix.js';
 import {
@@ -1865,6 +1873,7 @@ function validateCreateAssignmentSemantics(
   session: SessionState,
   fieldPrefix: string,
   packageRequirements: CanonicalPackageFormat[] = [],
+  options: { declaresAssignmentSettings?: boolean } = {},
 ): TaskError[] {
   const errors: TaskError[] = [];
   const effectiveModes = new Set(assignments.map(assignment => assignment.rotation_mode ?? 'weighted'));
@@ -1918,6 +1927,28 @@ function validateCreateAssignmentSemantics(
     const creative = typeof assignment.creative_id === 'string'
       ? session.creatives.get(assignment.creative_id)
       : undefined;
+    const settings = assignment as unknown as { trackers?: unknown; landing_page_url?: unknown };
+    if (options.declaresAssignmentSettings === false) {
+      for (const field of ['trackers', 'landing_page_url'] as const) {
+        if (settings[field] !== undefined) {
+          errors.push({
+            code: 'UNSUPPORTED_FEATURE',
+            message: `${fieldPrefix}[${index}].${field} requires creative.supports_assignment_${field === 'trackers' ? 'trackers' : 'landing_page'}`,
+            field: `${fieldPrefix}[${index}].${field}`,
+          });
+        }
+      }
+    } else if (Array.isArray(settings.trackers) && settings.trackers.length > 0) {
+      const slotProblem = assignmentTrackerSlotProblem(
+        { formatsToProvide: packageRequirements },
+        creative?.manifest,
+        creative,
+        settings.trackers as Array<Record<string, unknown>>,
+      );
+      if (slotProblem) {
+        errors.push({ code: 'VALIDATION_ERROR', message: `${fieldPrefix}[${index}]: ${slotProblem}`, field: `${fieldPrefix}[${index}].trackers` });
+      }
+    }
     const routedPlacements: Record<string, unknown>[] = [];
     const hasExplicitRoute = (Array.isArray(assignment.placement_refs) && assignment.placement_refs.length > 0)
       || (Array.isArray(assignment.placement_ids) && assignment.placement_ids.length > 0);
@@ -2004,6 +2035,33 @@ function packageReadinessFields(pkg: PackageState, session: SessionState): Recor
     formats_to_provide: pkg.formatsToProvide,
     formats_pending: formatsPendingForPackage(pkg, session),
   };
+}
+
+/** The reference seller serves approved assignments independently and does not
+ * implement an initial all-creatives gate. Never acknowledge a requested hold
+ * that delivery simulation would ignore. */
+function unsupportedCreativeStartPolicyError(request: unknown): TaskError | undefined {
+  if (!isRecord(request)) return undefined;
+  for (const field of ['packages', 'new_packages'] as const) {
+    const packages = request[field];
+    if (!Array.isArray(packages)) continue;
+    const index = packages.findIndex(pkg => isRecord(pkg) && pkg.start_requires_all_creatives_approved === true);
+    if (index < 0) continue;
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: 'This seller does not support holding package startup until every assigned creative is approved.',
+      field: `${field}[${index}].start_requires_all_creatives_approved`,
+      recovery: 'correctable',
+    };
+  }
+  return undefined;
+}
+
+function creativeStartPolicyForWire(ctx: TrainingContext): Record<string, boolean> {
+  const version = parseAdcpReleaseVersion(lifecycleSplitVersionForContext(ctx) ?? DEFAULT_ADCP_VERSION);
+  return version && (version.major > 3 || (version.major === 3 && version.minor >= 3))
+    ? { start_requires_all_creatives_approved: false }
+    : {};
 }
 
 const MAX_URL_LEN = 2048;
@@ -3095,7 +3153,14 @@ function productForServedAdcpVersion(product: Product, servedAdcpVersion: string
     audience_activation?: unknown;
     overlay_support?: unknown;
   };
-  return rest as Product;
+  if (!servesReleaseBefore(servedAdcpVersion, 3, 1)) return rest as Product;
+  // 3.0 cards are a format reference plus its manifest, not the inline card.
+  const {
+    product_card: _inlineCard,
+    product_card_detailed: _inlineDetailedCard,
+    ...withoutInlineCards
+  } = rest as Product & { product_card?: unknown; product_card_detailed?: unknown };
+  return { ...withoutInlineCards, ...threeZeroProductCards(product) } as unknown as Product;
 }
 
 /**
@@ -3131,6 +3196,7 @@ import {
   briefExcludesProduct,
   buildCatalog,
   buildProposals,
+  threeZeroProductCards,
   TRAINING_AUDIENCE_ACTIVATION_METHODS,
 } from './product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
@@ -3143,7 +3209,7 @@ import {
   getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
-import { getAgentUrl } from './config.js';
+import { getAgentUrl, getIdentityBaseUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
   handleSyncPlans,
@@ -3266,7 +3332,7 @@ import {
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const SUPPORTED_RELEASE_VERSIONS = TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS;
 const DEFAULT_ADCP_VERSION = TRAINING_AGENT_DEFAULT_ADCP_VERSION;
-const CORE_GENDER_CANDIDATE_VERSION = '3.3-beta.0';
+const CORE_GENDER_CANDIDATE_VERSION = '3.3-beta.1';
 export const TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH = '/registry/acceptance-policy-catalog.json';
 export const TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST = 'sha256:3afb3865dbd69025b4f925c5c018c7659fa0a744efcb0b12b87e1b3a119b3d2a';
 export const TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE = 'meta_political_advertising_acceptance';
@@ -3300,14 +3366,6 @@ export function acceptancePolicyDiscoveryCapability(
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
-interface ParsedAdcpReleaseVersion {
-  raw: string;
-  major: number;
-  minor: number;
-  patch: number;
-  prerelease?: string;
-}
-
 interface VersionUnsupportedDetails {
   adcp_version?: string;
   adcp_major_version?: number;
@@ -3325,19 +3383,6 @@ type McpRequestHandler = (request: { params?: Record<string, unknown> }, extra: 
 const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks/cancel'] as const;
 // `request_signing.protocol_methods_*` item pattern in the AdCP 3.1 schemas.
 const THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN = /^[a-z][a-z0-9_]*\/[a-z][a-z0-9_]*$/;
-
-function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
-  if (typeof value !== 'string') return undefined;
-  const match = value.match(/^(\d+)\.(\d+)(?:\.(\d+))?(?:-([A-Za-z0-9.-]+))?$/);
-  if (!match) return undefined;
-  return {
-    raw: value,
-    major: Number.parseInt(match[1], 10),
-    minor: Number.parseInt(match[2], 10),
-    patch: match[3] ? Number.parseInt(match[3], 10) : 0,
-    ...(match[4] && { prerelease: match[4] }),
-  };
-}
 
 function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: ParsedAdcpReleaseVersion): number {
   if (left.major !== right.major) return left.major - right.major;
@@ -3399,11 +3444,16 @@ function parsedSupportedReleaseVersions(supportedVersions: readonly string[]): P
     .sort(compareAdcpReleaseVersions);
 }
 
+/** The release a major-only request is served: the highest supported entry
+ * in that major, except the opt-in preview (candidate-version.ts), which is
+ * served only to an exact pin (versioning.mdx, "Pre-release pins"). A
+ * major-only request is never upgraded onto it. */
 function highestSupportedRelease(
   major?: number,
   supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
 ): string | undefined {
-  const parsedVersions = parsedSupportedReleaseVersions(supportedVersions);
+  const parsedVersions = parsedSupportedReleaseVersions(supportedVersions)
+    .filter(version => version.raw !== TRAINING_AGENT_PREVIEW_ADCP_VERSION);
   const candidates = major === undefined
     ? parsedVersions
     : parsedVersions.filter(version => version.major === major);
@@ -3533,8 +3583,11 @@ export function resolveServedAdcpVersionForTool(
   supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
 ): VersionResolution {
   const splitProductTool = isProductDiscoveryTool(toolName) && toolName !== 'get_products';
+  // An unpinned call defaults to 3.0, which does not define a tool a later
+  // release adds (validate_input, the split product tools, search_brands,
+  // report_plan_adjustment). Serve those at the highest supported 3.x.
   if (
-    (toolName === 'validate_input' || splitProductTool)
+    (toolName === 'validate_input' || splitProductTool || toolAddedAfterRelease(toolName, DEFAULT_ADCP_VERSION))
     && args.adcp_version === undefined
     && args.adcp_major_version === undefined
   ) {
@@ -4689,6 +4742,7 @@ interface SyncCreativeResult {
   action: 'created' | 'updated' | 'failed';
   status?: string;
   localization?: Record<string, unknown>;
+  staged_update?: Record<string, unknown>;
   errors?: TaskError[];
 }
 
@@ -4999,6 +5053,41 @@ function availableActionsForMediaBuy(mb: MediaBuyState, status: string, servedAd
     || withFrequencyCaps.some(action => action.action === 'resume')
   ) return withFrequencyCaps;
   return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...withFrequencyCaps];
+}
+
+/**
+ * The wire shape of `available_actions` for the served release. 3.1
+ * introduced the field with a closed available-action object (action, mode,
+ * sla, terms_ref); `task`, `change_term_id` and `applicable_package_ids`
+ * arrive with the 3.2 lifecycle split, and the action and mode enums are the
+ * served release's own (the same projection the SDK applies on the tenant
+ * routes). 3.0 does not define the field and leaves the media-buy object
+ * open. Authorization keeps reading the full internal entries.
+ */
+function availableActionsForServedRelease(
+  actions: readonly MediaBuyAvailableActionState[],
+  servedAdcpVersion: string | undefined,
+): MediaBuyAvailableActionState[] {
+  if (
+    servedAdcpVersion === undefined
+    || !servesReleaseBefore(servedAdcpVersion, 3, 2)
+    || servesReleaseBefore(servedAdcpVersion, 3, 1)
+  ) return [...actions];
+  const servedActions = servedReleaseEnum('enums/media-buy-valid-action.json', servedAdcpVersion);
+  const servedModes = servedReleaseEnum('enums/media-buy-action-mode.json', servedAdcpVersion);
+  return actions
+    .filter(action => (!servedActions || servedActions.has(action.action)) && (!servedModes || servedModes.has(action.mode)))
+    .map(action => ({
+      action: action.action,
+      mode: action.mode,
+      ...(action.sla && { sla: action.sla }),
+      ...(action.terms_ref !== undefined && { terms_ref: action.terms_ref }),
+    }));
+}
+
+/** `available_actions` for a media-buy response at the served release. */
+function availableActionsWireForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
+  return availableActionsForServedRelease(availableActionsForMediaBuy(mb, status, servedAdcpVersion), servedAdcpVersion);
 }
 
 /**
@@ -5363,7 +5452,7 @@ function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean
   ].some(field => Object.hasOwn(root, field))) return true;
   if (req.new_packages?.length) return true;
   return Boolean(req.packages?.some(update => Object.keys(update as unknown as Record<string, unknown>)
-    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives'].includes(field))));
+    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives', 'start_requires_all_creatives_approved'].includes(field))));
 }
 
 const UNTYPED_ACCEPTED_CHANGE_ROOT_FIELDS = [
@@ -5448,7 +5537,7 @@ function actionNotAllowedError(
       details: {
         attempted_action: attemptedAction,
         reason: projectedReason,
-        currently_available_actions: availableActions,
+        currently_available_actions: availableActionsForServedRelease(availableActions, servedAdcpVersion),
       },
     }],
     ...(context !== undefined && { context }),
@@ -7717,7 +7806,20 @@ function withCanonicalProposalEnvelope(
     delete internal.__canonical_terms_digest;
   }
   internal.__commercial_start_time ??= new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  internal.__commercial_end_time ??= new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+  if (internal.__commercial_end_time === undefined) {
+    // A 3.3 hold plan (holds/context.ts) stretches the flight over the
+    // upcoming installments the draft buys; otherwise the default applies.
+    const defaultEnd = Date.now() + 31 * 24 * 60 * 60 * 1000;
+    const allocated = Array.isArray(internal.allocations)
+      ? (internal.allocations as Array<{ product_id?: unknown }>).map(allocation => (
+        typeof allocation.product_id === 'string'
+          ? products.get(allocation.product_id)
+            ?? getCatalog().find(entry => entry.product.product_id === allocation.product_id)?.product
+          : undefined
+      ))
+      : [];
+    internal.__commercial_end_time = new Date(installmentFlightEnd(allocated, defaultEnd) ?? defaultEnd).toISOString();
+  }
   internal.__proposal_kind ??= 'new_media_buy';
   const commercialTerms = buildCanonicalCommercialTerms(internal as unknown as Proposal, products, brand);
   internal.__canonical_commercial_terms = commercialTerms;
@@ -7740,6 +7842,8 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
 // installments project onto the closed core/canonical-installment.json, which
 // carries no deprecated collection_id shorthand and names a derivative source
 // by installment_ref rather than a response-local installment_id.
+const CANONICAL_PRODUCT_SCHEMA = 'core/canonical-product.json';
+
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7872,15 +7976,21 @@ function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<
 }
 
 /** Project the additive 3.x get_products representation into the closed
- * canonical offer shape used by list_products. */
+ * canonical offer shape used by list_products. With a served release, fields
+ * the source schema adds after it (for 3.2, the 3.3 `installments`) are
+ * withheld; without one the projection follows the source schema. */
 export function compactLifecycleProduct(
   product: Record<string, unknown>,
   requestedFields?: ReadonlySet<string>,
   requiredFields: ReadonlySet<string> = new Set(),
+  servedAdcpVersion?: string,
 ): Record<string, unknown> {
-  const selectedFields = requestedFields
-    ? new Set(['product_id', 'name', ...requestedFields, ...requiredFields])
-    : COMPACT_PRODUCT_FIELDS;
+  const withheldFields = servedAdcpVersion === undefined
+    ? new Set<string>()
+    : propertiesAddedAfterRelease(CANONICAL_PRODUCT_SCHEMA, servedAdcpVersion);
+  const selectedFields = new Set([...(requestedFields
+    ? ['product_id', 'name', ...requestedFields, ...requiredFields]
+    : COMPACT_PRODUCT_FIELDS)].filter(field => !withheldFields.has(field)));
   const projected = pickCompactFields(product, selectedFields);
   // A returned overlay_support.collection_list is only schema-valid alongside
   // collection_targeting_allowed: true, so it overrides a narrower projection.
@@ -7931,7 +8041,9 @@ export function compactLifecycleProduct(
       compactReportingCapabilityFields(),
     );
   }
-  return projected;
+  return servedAdcpVersion === undefined
+    ? projected
+    : omitFieldsAddedAfterRelease(projected, CANONICAL_PRODUCT_SCHEMA, servedAdcpVersion);
 }
 
 /** Match a buyer's future targeting requirement against a Product's binding
@@ -10003,6 +10115,7 @@ export function projectProductDiscoveryResult(
   toolName: string,
   result: Record<string, unknown>,
   originalArgs: Record<string, unknown>,
+  servedAdcpVersion: string,
 ): Record<string, unknown> {
   if (!isProductDiscoveryTool(toolName) || toolName === 'get_products') return result;
   if (Array.isArray(result.errors) && result.errors.length > 0 && !Array.isArray(result.products)) return result;
@@ -10083,7 +10196,12 @@ export function projectProductDiscoveryResult(
     }
     return {
       outcome: 'listed',
-      products: products.map(product => compactLifecycleProduct(product, requestedFields, requiredProductFields)),
+      products: products.map(product => compactLifecycleProduct(
+        product,
+        requestedFields,
+        requiredProductFields,
+        servedAdcpVersion,
+      )),
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
       ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
@@ -10262,6 +10380,9 @@ function legacyProposalOwnerMatches(
     && ownerAccountScope !== undefined
     && internal.__legacy_owner_account_scope === ownerAccountScope;
 }
+
+/** Product snapshots a session carries forward for later refinements. */
+const MAX_CARRIED_PRODUCT_SNAPSHOTS = 500;
 
 /** Compact proposal operations are partitioned by authenticated principal and
  * the SDK-restored account reference. */
@@ -10523,7 +10644,7 @@ const ACCEPT_PROPOSAL_INPUT_SCHEMA = loadProductDiscoveryInputSchema('accept-pro
 const CONTROL_MEDIA_BUY_INPUT_SCHEMA = loadProductDiscoveryInputSchema('control-media-buy-request');
 const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
   type: 'object',
-  description: 'Planning-cycle closure for proposal execution. Omit status to infer accepted closure, or send closed with accepted_with_seller.',
+  description: 'Planning-cycle context. Explicit packages carry opportunity_id for account-scoped correlation only and omit status, close_reason, close_detail, and later_proposals; they never change opportunity status or consent. Proposal execution infers accepted closure when status is omitted, or accepts closed with accepted_with_seller. Canonical request validation enforces the mode-specific rules.',
   properties: {
     opportunity_id: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{1,255}$' },
     phase: { type: 'string', enum: ['exploratory', 'planning', 'active_sourcing'] },
@@ -10747,7 +10868,6 @@ const TOOLS = [
         },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
-      dependencies: { opportunity: ['proposal_id'] },
     },
   },
   {
@@ -11127,7 +11247,9 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
   if (COMPACT_MEDIA_BUY_TOOLS.has(toolName)) {
     return supportsGetProductsRejected(servedAdcpVersion);
   }
-  return true;
+  // A tool a later stable release adds (search_brands in 3.1,
+  // report_plan_adjustment in 3.2) has no schema in the served release.
+  return !toolAddedAfterRelease(toolName, servedAdcpVersion);
 }
 
 // ── Task handler implementations ──────────────────────────────────
@@ -11682,7 +11804,7 @@ async function handleGetProductsUnlocked(
   // is intentionally not part of the deprecated get_products wire schema.
   type RefineEntry =
     | { scope: 'request'; ask?: string }
-    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string; package?: Record<string, unknown> }
     | {
         scope: 'proposal';
         proposal_id: string;
@@ -11714,6 +11836,7 @@ async function handleGetProductsUnlocked(
       : [],
   );
   const refinementApplied: RefinementAppliedEntry[] = [];
+  const unsupportedPackageForecastIds = new Set<string>();
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
@@ -11900,6 +12023,16 @@ async function handleGetProductsUnlocked(
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
+          if (op.package !== undefined) {
+            unsupportedPackageForecastIds.add(op.product_id);
+            refinementApplied.push({
+              scope: 'product',
+              product_id: op.product_id,
+              status: 'unable',
+              notes: 'The training agent cannot compute an availability forecast for an exact proposed package.',
+            });
+            continue;
+          }
           if (!passesFilters) {
             refinementApplied.push({
               scope: 'product',
@@ -12727,6 +12860,9 @@ async function handleGetProductsUnlocked(
           },
           { rebuild: true },
         );
+      // A 3.3 hold plan (holds/service.ts) sets the hold deadline it placed.
+      const plannedExpiry = refinement?.action === 'finalize' ? plannedHoldExpiry(sourceId) : undefined;
+      if (plannedExpiry) (successor as unknown as Record<string, unknown>).expires_at = plannedExpiry;
       if (refinement?.changeKind === 'cancellation') {
         const successorInternal = successor as unknown as Record<string, unknown>;
         const commercialTerms = structuredClone(successorInternal.__canonical_commercial_terms) as Record<string, unknown>;
@@ -12764,10 +12900,20 @@ async function handleGetProductsUnlocked(
   }
 
   // Store context for refine
-  const responseProducts = products.map(product => productForServedAdcpVersion(
-    isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
-    ctx.servedAdcpVersion,
-  ));
+  const responseProducts = products.map(product => {
+    const servedProduct = productForServedAdcpVersion(
+      isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
+      ctx.servedAdcpVersion,
+    );
+    // Suppress ordinary/horizon forecasts after every generic forecast path;
+    // none is evidence that the unsupported exact package was evaluated.
+    const sourceProductId = discoverySourceProductIds.get(product.product_id) ?? product.product_id;
+    if (!unsupportedPackageForecastIds.has(sourceProductId)
+      && !unsupportedPackageForecastIds.has(product.product_id)) return servedProduct;
+    const withoutForecast = { ...servedProduct };
+    delete withoutForecast.forecast;
+    return withoutForecast;
+  });
   const retainedCommittedProposals = new Map(
     (session.lastGetProductsContext?.proposals ?? [])
       .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
@@ -12860,8 +13006,14 @@ async function handleGetProductsUnlocked(
   // Brief/wholesale discovery must remain read-only so concurrent reads cannot
   // overwrite a proposal committed by a serialized refine request.
   if (buyingMode === 'refine' || requireProposals) {
+    // Keep the snapshots that supported earlier drafts as well: a buyer may
+    // request several drafts and finalize an earlier one, whose seeded
+    // products are not otherwise addressable from a compact refine.
+    const responseProductIds = new Set(responseProducts.map(product => product.product_id));
+    const earlierProducts = (session.lastGetProductsContext?.products ?? [])
+      .filter(product => !responseProductIds.has(product.product_id));
     session.lastGetProductsContext = {
-      products: responseProducts,
+      products: [...responseProducts, ...earlierProducts].slice(0, MAX_CARRIED_PRODUCT_SNAPSHOTS),
       proposals: persistedProposals,
     };
   }
@@ -12962,15 +13114,20 @@ export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingCon
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
   }
 
-  // The 3.0 FormatIDParameter enum predates pixel-density negotiation. Keep
-  // the template available to compatibility runners, but do not advertise an
-  // enum member their pinned response schema cannot represent.
-  if (ctx.storyboardCompat?.version === '3.0') {
-    formats = formats.map(format => format.accepts_parameters?.includes('pixel_ratio')
+  // FormatIDParameter is a closed enum, and releases before 3.2 predate
+  // pixel-density negotiation (`pixel_ratio`). Keep the template available to
+  // older callers, but advertise only the parameters their served release
+  // defines.
+  const servedFormatParameters = servedReleaseEnum(
+    'enums/format-id-parameter.json',
+    lifecycleSplitVersionForContext(ctx) ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
+  if (servedFormatParameters) {
+    formats = formats.map(format => format.accepts_parameters?.some(parameter => !servedFormatParameters.has(parameter))
       ? {
           ...format,
-          accepts_parameters: format.accepts_parameters.filter(parameter => parameter !== 'pixel_ratio'),
-          description: format.format_id.id === 'display_image'
+          accepts_parameters: format.accepts_parameters.filter(parameter => servedFormatParameters.has(parameter)),
+          description: format.format_id.id === 'display_image' && !servedFormatParameters.has('pixel_ratio')
             ? 'Static image display ad. Provide logical width and height in format_id.'
             : format.description,
         }
@@ -13096,8 +13253,12 @@ interface ListTransformersArgs {
   pagination?: { max_results?: number; cursor?: string };
 }
 
-export async function handleListTransformers(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
+export async function handleListTransformers(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListTransformersArgs;
+  // 3.1 names a transformer's inputs and outputs by legacy format
+  // (`output_format_ids` is required); the canonical `output_capability_ids`
+  // and `input_formats` declarations replace them in 3.2.
+  const namedFormatRelease = servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 2);
 
   // Pricing is account-scoped — the request schema makes account conditionally
   // required when include_pricing is true.
@@ -13181,8 +13342,15 @@ export async function handleListTransformers(args: ToolArgs, _ctx: TrainingConte
       name: t.name,
       ...(t.description && { description: t.description }),
       ...(t.metadata && { metadata: t.metadata }),
-      ...(t.input_formats && { input_formats: t.input_formats }),
-      output_capability_ids: t.output_capability_ids,
+      ...(namedFormatRelease
+        ? {
+          ...(t.input_format_ids && { input_format_ids: t.input_format_ids }),
+          output_format_ids: t.output_format_ids,
+        }
+        : {
+          ...(t.input_formats && { input_formats: t.input_formats }),
+          output_capability_ids: t.output_capability_ids,
+        }),
       params,
       ...(t.multiplicity && { multiplicity: t.multiplicity }),
       ...(req.include_pricing && t.pricing_options && { pricing_options: t.pricing_options }),
@@ -15300,6 +15468,8 @@ export async function handleCreateMediaBuy(
 ) {
   const invalidCollectionSelector = invalidSelectedCollectionSelector(args, ['packages']);
   if (invalidCollectionSelector) return { errors: invalidCollectionSelector };
+  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
+  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
 
   const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
   if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx, options);
@@ -16565,6 +16735,7 @@ async function handleCreateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${i}].creative_assignments`,
         formatSnapshot.formats ?? [],
+        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
       ));
     }
 
@@ -16720,6 +16891,11 @@ async function handleCreateMediaBuyUnlocked(
   const mediaBuyId = typeof requestedMediaBuyId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(requestedMediaBuyId)
     ? requestedMediaBuyId
     : `mb_${randomUUID().slice(0, 8)}`;
+  // package_id is the seller's unique identifier for the package
+  // (core/package.json), and sync_creatives addresses a package by package_id
+  // alone, so number packages across the account's buys rather than per buy.
+  const firstPackageIndex = nextPackageIndex(session);
+  createdPackages.forEach((pkg, index) => { pkg.packageId = `pkg-${firstPackageIndex + index}`; });
   const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
   if (govCtx && governanceAgents[0] && governanceIntentClaims) {
@@ -16928,7 +17104,7 @@ async function handleCreateMediaBuyUnlocked(
     ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
     ...(mediaBuy.aggregateBidding && { bidding: mediaBuy.aggregateBidding }),
     valid_actions: validActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
-    available_actions: availableActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsWireForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -16943,6 +17119,7 @@ async function handleCreateMediaBuyUnlocked(
       end_time: pkg.endTime,
       ...packageFormatSelectorForWire(pkg, ctx),
       ...packageReadinessFields(pkg, session),
+      ...creativeStartPolicyForWire(ctx),
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
@@ -16955,6 +17132,25 @@ async function handleCreateMediaBuyUnlocked(
     })),
     ...(isRecord(req.context) && { context: req.context }),
   };
+}
+
+/**
+ * The media buys get_media_buys shows the caller for one account, without
+ * the compliance-fixture fallback a broad empty read returns. Reporting
+ * subscription coverage reads buys through this, so it covers exactly the
+ * buys the caller can see.
+ */
+export async function mediaBuysVisibleForAccount(account: AccountRef, ctx: TrainingContext): Promise<MediaBuyState[]> {
+  const req = { account } as GetMediaBuysArgs;
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const own = Array.from(session.mediaBuys.values());
+  if (own.length > 0) return own;
+  const ownerSession = await findSessionMatching(candidate => (
+    Array.from(candidate.mediaBuys.values()).some(mediaBuy => accountRefVisibleToRequest(mediaBuy.accountRef, account, ctx))
+  ));
+  return ownerSession
+    ? Array.from(ownerSession.mediaBuys.values()).filter(mediaBuy => accountRefVisibleToRequest(mediaBuy.accountRef, account, ctx))
+    : [];
 }
 
 export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
@@ -17043,6 +17239,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
     paginationBlock = { has_more: false, total_count: buys.length };
   }
 
+  const subscriptionFields = supportsAccountSurfaces33(ctx.servedAdcpVersion);
   return {
     media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb, session);
@@ -17063,7 +17260,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
         valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-        available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+        available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
         currency: mb.currency,
         total_budget: totalBudget,
         ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
@@ -17096,9 +17293,21 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             reason: mb.cancellationReason,
           },
         }),
+        // 3.3 reporting subscriptions: the training agent stops delivery when
+        // it records a cancellation, and a completed buy completed at its end.
+        ...(subscriptionFields && mb.canceledAt && { cancellation_effective_at: mb.canceledAt }),
+        ...(subscriptionFields && status === 'completed' && { completed_at: mb.endTime }),
         packages: mb.packages.map(pkg => {
           const pkgData = {
             package_id: pkg.packageId,
+            ...(subscriptionFields && {
+              reporting_delivery_offering_ids: packageReportingOfferingIds(
+                mb,
+                pkg,
+                session.configuredProducts as unknown as Map<string, { reporting_capabilities?: unknown }>,
+              ),
+            }),
+            ...(subscriptionFields && pkg.addedAt && { added_at: pkg.addedAt }),
             ...(pkg.legacyOmitProductId ? {} : { product_id: pkg.productId }),
             ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
             ...(pkg.dailyBudgetCap !== undefined && { daily_budget_cap: pkg.dailyBudgetCap }),
@@ -17114,9 +17323,16 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             end_time: pkg.endTime,
             ...packageFormatSelectorForWire(pkg, ctx),
             ...packageReadinessFields(pkg, session),
+            ...creativeStartPolicyForWire(ctx),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
+              ...(declaresAssignmentSettings(ctx) && assignmentReadbackFields(
+                assignmentRow(pkg, cid),
+                session.creatives.get(cid)
+                  ?? getSharedAccountCreative(resolveAccountIdForRef(sessionKey, ctx.principal, req.account), cid),
+                { supportsTrackers: true, supportsLandingPage: true },
+              )),
             })),
             ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
             ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
@@ -18045,13 +18261,50 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   const isDryRun = req.dry_run === true;
   const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
-  if (!req.creatives?.length) {
+  const assignmentOperations = (req as unknown as { assignment_operations?: Array<Record<string, unknown>> }).assignment_operations;
+  if (!req.creatives?.length && !req.assignments?.length && !assignmentOperations?.length) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'creatives array is required' }] as TaskError[],
+      errors: [{ code: 'INVALID_REQUEST', message: 'At least one of creatives, assignments, or assignment_operations is required' }] as TaskError[],
     };
   }
+  if (assignmentOperations?.length && (req as unknown as { validation_mode?: string }).validation_mode === 'lenient') {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'assignment_operations are atomic and require validation_mode strict.', field: 'validation_mode' }] as TaskError[],
+    };
+  }
+  // assignment_operations make the whole request atomic. When it also carries
+  // creatives or legacy assignments, rehearse it first so a failure leaves
+  // nothing changed.
+  if (assignmentOperations?.length && (req.creatives?.length || req.assignments?.length) && !isDryRun) {
+    const rehearsal = await handleSyncCreatives({ ...args, dry_run: true } as ToolArgs, ctx) as {
+      errors?: TaskError[];
+      creatives?: SyncCreativeResult[];
+    };
+    if (rehearsal.errors?.length) return { errors: rehearsal.errors };
+    const failedAssignment = (rehearsal as { assignments?: AssignmentResult[] }).assignments
+      ?.find(result => result.status === 'error');
+    if (failedAssignment) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `Assignment of ${failedAssignment.creative_id} to ${failedAssignment.package_id} failed, so the atomic request applied nothing: ${failedAssignment.message ?? 'invalid assignment'}`,
+          field: 'assignments',
+        }] as TaskError[],
+      };
+    }
+    const failed = rehearsal.creatives?.find(result => result.action === 'failed');
+    if (failed) {
+      return {
+        errors: [{
+          code: failed.errors?.[0]?.code ?? 'VALIDATION_ERROR',
+          message: `Creative ${failed.creative_id} was not accepted, so the atomic request applied nothing: ${failed.errors?.[0]?.message ?? 'validation failed'}`,
+          field: `creatives[${failed.creative_id}]`,
+        }] as TaskError[],
+      };
+    }
+  }
 
-  if (!isDryRun && session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
+  if (!isDryRun && session.creatives.size + (req.creatives?.length ?? 0) > MAX_CREATIVES_PER_SESSION) {
     return {
       errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
@@ -18071,7 +18324,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   const results: SyncCreativeResult[] = [];
   const stagedCreativeManifests = new Map<string, CreativeManifest>();
-  for (const creative of req.creatives) {
+  for (const creative of req.creatives ?? []) {
     if (!creative.creative_id) {
       return {
         errors: [{
@@ -18262,6 +18515,48 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       continue;
     }
     if (candidateManifest) stagedCreativeManifests.set(creativeId, candidateManifest);
+
+    // Live creative updates: classify a change to a serving creative against
+    // the version that serves, then apply, stage, or refuse it.
+    const nextContent: StagedCreativeContent = {
+      ...(identity.kind === 'legacy' ? { formatId: identity.formatId } : { formatKind: identity.formatKind }),
+      ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+      ...(candidateManifest && { assets: candidateManifest.assets }),
+      ...(candidateManifest?.component_assets && { componentAssets: candidateManifest.component_assets }),
+      ...(localization && { localization }),
+      ...(candidateManifest && { manifest: candidateManifest }),
+    };
+    let liveUpdateMode: LiveUpdateServingMode | null = null;
+    let liveChangeKinds: CreativeChangeKind[] = [];
+    // Only an approved creative is live; any other status takes an ordinary upsert.
+    if (existingCreative?.status === 'approved' && declaresLiveCreativeUpdates(ctx)) {
+      const livePackages = livePackageIds(session, creativeId);
+      if (livePackages.length > 0) {
+        const formatChanged = !isDeepStrictEqual(
+          storedCreativeFormatRecord(existingCreative),
+          storedCreativeFormatRecord({ ...existingCreative, ...EMPTY_FORMAT_IDENTITY, ...nextContent }),
+        );
+        liveChangeKinds = classifyCreativeChange(servingContent(existingCreative), nextContent, formatChanged);
+        const decision = decideLiveUpdate(liveChangeKinds);
+        if (decision.outcome === 'refuse') {
+          results.push({
+            creative_id: creativeId,
+            action: 'failed',
+            errors: [{
+              code: 'CREATIVE_LIVE_UPDATE_UNSUPPORTED',
+              message: `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`,
+              field: `creatives[${creativeId}]`,
+              recovery: 'correctable',
+              details: { refused_changes: decision.refusedChanges, live_package_ids: livePackages },
+            }] as TaskError[],
+          });
+          stagedCreativeManifests.delete(creativeId);
+          continue;
+        }
+        liveUpdateMode = decision.mode;
+      }
+    }
+
     if (candidateManifest) {
       if (requiresProductBoundManifestValidation || candidateManifest.component_assets !== undefined) {
         const schemaViolations = await validateManifestSchema(candidateManifest);
@@ -18316,9 +18611,29 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
     }
 
+    // Staged: the serving version stays put and the change waits for review.
+    // Re-syncing the content already staged leaves its review untouched;
+    // syncing the serving content (no change kinds) withdraws it.
+    const priorStaged = existingCreative?.stagedUpdate;
+    const stagedUpdate: StagedCreativeUpdate | undefined = liveUpdateMode === 'staged'
+      ? (priorStaged && priorStaged.status !== 'rejected' && isDeepStrictEqual(priorStaged.content, nextContent)
+        ? priorStaged
+        : { status: 'pending_review', changeKinds: liveChangeKinds, stagedAt: new Date().toISOString(), content: nextContent })
+      : undefined;
+    const servedStatus = liveUpdateMode === 'uninterrupted'
+      ? 'approved'
+      : existingCreative?.status ?? 'approved';
+
     if (!isDryRun) {
       const manifest = candidateManifest;
-      const storedCreative: CreativeState = {
+      const storedCreative: CreativeState = stagedUpdate && existingCreative ? {
+        ...existingCreative,
+        accountId: accountId ?? existingCreative.accountId,
+        accountRef: ctx.resolvedAccount ?? req.account ?? existingCreative.accountRef,
+        name: creative.name,
+        syncedAt: new Date().toISOString(),
+        stagedUpdate,
+      } : {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
         accountRef: ctx.resolvedAccount ?? req.account ?? existingCreative?.accountRef,
@@ -18335,7 +18650,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
         ...(localization && { localization }),
         name: creative.name,
-        status: existingCreative?.status ?? 'approved',
+        status: servedStatus,
         syncedAt: new Date().toISOString(),
         // manifest is a training-agent extension, not in SDK CreativeAsset type.
         // Normalize its identity from the validated top-level union so a
@@ -18354,6 +18669,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
               ...(!isDeepStrictEqual(storedCreativeFormatRecord(existingCreative), storedCreativeFormatRecord(storedCreative))
                 ? ['/format'] : []),
               ...(!isDeepStrictEqual(existingCreative.manifest, storedCreative.manifest) ? ['/manifest'] : []),
+              ...(!isDeepStrictEqual(existingCreative.stagedUpdate, storedCreative.stagedUpdate) ? ['/staged_update'] : []),
             ]
           : [''];
         if (!existingCreative || changedPaths.length > 0) {
@@ -18385,8 +18701,9 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     results.push({
       creative_id: creativeId,
       action: existing ? 'updated' : 'created',
-      status: existingCreative?.status ?? 'approved',
+      status: servedStatus,
       ...(localization && { localization }),
+      ...(stagedUpdate && { staged_update: stagedUpdateWire(stagedUpdate) }),
     });
   }
 
@@ -18440,6 +18757,36 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
       assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'assigned' });
     }
+  }
+
+  if (assignmentOperations?.length) {
+    const accepted = new Set(results.filter(result => result.action !== 'failed').map(result => result.creative_id));
+    const statusById = new Map(results.filter(result => result.status).map(result => [result.creative_id, result.status as string]));
+    const settings = declaresAssignmentSettings(ctx);
+    const plan = await planAssignmentOperations(session, assignmentOperations, {
+      supportsTrackers: settings,
+      supportsLandingPage: settings,
+      requestCreativeIds: accepted,
+      creativeStatus: creativeId => statusById.get(creativeId)
+        ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.status,
+      validateForPackage: async (creativeId, pkg) => {
+        const product = productValidationMap.get(pkg.productId);
+        const manifest = stagedCreativeManifests.get(creativeId)
+          ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.manifest;
+        if (!product || !manifest) return undefined;
+        const violations = await validateCreativeForProduct(product, manifest);
+        return violations.length > 0
+          ? `Creative ${creativeId} does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`
+          : undefined;
+      },
+      validateTrackers: (creativeId, pkg, trackers) => {
+        const stored = session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId);
+        const manifest = stagedCreativeManifests.get(creativeId) ?? stored?.manifest;
+        return assignmentTrackerSlotProblem(pkg, manifest, stored, trackers);
+      },
+    });
+    if ('errors' in plan) return { errors: plan.errors as TaskError[] };
+    if (!isDryRun) commitAssignmentPlan(session, plan, new Date().toISOString());
   }
 
   return {
@@ -18518,6 +18865,79 @@ const FROZEN_PAGINATION_CREATIVE_IDS = new Set([
   'pagination_integrity_creative_2',
   'pagination_integrity_creative_3',
 ]);
+
+/** Next free pkg-N index across the account's buys. Deterministic, and the
+ * first buy in a fresh account still gets pkg-0, pkg-1, ... */
+function nextPackageIndex(session: Pick<SessionState, 'mediaBuys'>): number {
+  let max = -1;
+  for (const mb of session.mediaBuys.values()) {
+    for (const pkg of mb.packages) {
+      const match = /^pkg-(\d+)$/.exec(pkg.packageId);
+      if (match) max = Math.max(max, Number(match[1]));
+    }
+  }
+  return max + 1;
+}
+
+const EMPTY_FORMAT_IDENTITY = { formatId: undefined, formatKind: undefined, formatOptionRef: undefined } as const;
+
+/** Live creative updates ship with the creative library surfaces (3.2+ wire,
+ * outside the frozen 3.0 facade). /sales declares has_creative_library only
+ * where the account change feed is advertised (tenants/router.ts), and
+ * live_updates requires the library, so the two share one gate. */
+function liveCreativeUpdatesEnabled(ctx: TrainingContext): boolean {
+  const served = ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION;
+  // The capability is a 3.3 field, withheld below 3.3, so the behavior it
+  // declares is served only at 3.3.
+  return !isThreeZeroStoryboardCompat(ctx)
+    && supportsAccountChangeFeed(served)
+    && atLeastAdcpVersion(served, '3.3-beta');
+}
+
+/** Only sellers with media buys can have live creatives to declare for. */
+function declaresLiveCreativeUpdates(ctx: TrainingContext): boolean {
+  return liveCreativeUpdatesEnabled(ctx) && (ctx.tenantId === 'sales' || ctx.tenantId == null);
+}
+
+/**
+ * Assignment trackers and the creative's own trackers share each format's
+ * declared tracker slots. Check every format option the package accepts for
+ * the creative's format kind (or all of them when none matches).
+ */
+function assignmentTrackerSlotProblem(
+  pkg: Pick<PackageState, 'formatsToProvide' | 'formatKind' | 'params'>,
+  manifest: CreativeManifest | undefined,
+  stored: CreativeState | undefined,
+  trackers: ReadonlyArray<Record<string, unknown>>,
+): string | undefined {
+  const assets = (manifest?.assets ?? stored?.assets ?? {}) as Record<string, unknown>;
+  const formatKind = manifest?.format_kind ?? stored?.formatKind;
+  const formats = (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[];
+  const matching = formats.filter(format => !formatKind || format.format_kind === formatKind);
+  const candidates = matching.length > 0 ? matching : formats;
+  const declarations = candidates.length > 0
+    ? candidates.map(format => ({
+      label: format.format_option_id ?? format.format_kind ?? 'format',
+      slots: normalizeCanonicalSlots(format.params?.slots) ?? CANONICAL_FORMAT_SLOTS[format.format_kind ?? ''] ?? [],
+    }))
+    : [{
+      label: pkg.formatKind ?? 'format',
+      slots: normalizeCanonicalSlots(pkg.params?.slots) ?? CANONICAL_FORMAT_SLOTS[pkg.formatKind ?? ''] ?? [],
+    }];
+  for (const { label, slots } of declarations) {
+    const trackerSlots = slots.filter(isTrackerSlot);
+    const occupancy = Object.fromEntries(trackerSlots.map(slot => [slot.asset_group_id, slotCount(assets, slot.asset_group_id)]));
+    const problem = trackerAllocationProblem(trackerSlots, occupancy, trackers);
+    if (problem) return `${problem} (format option ${label})`;
+  }
+  return undefined;
+}
+
+/** Assignment trackers and landing-page overrides (3.3) ride the same gate:
+ * /sales on the 3.3 wire, where list_creatives and get_media_buys read them back. */
+function declaresAssignmentSettings(ctx: TrainingContext): boolean {
+  return declaresLiveCreativeUpdates(ctx);
+}
 
 function storedCreativeFormatRecord(creative: CreativeState): Record<string, unknown> {
   if (creative.formatKind) {
@@ -18606,6 +19026,8 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     include_purged?: boolean;
     include_webhook_activity?: boolean;
     webhook_activity_limit?: number;
+    include_assignments?: boolean;
+    assignment_limit?: number;
     fields?: string[];
   };
   const filters = (req.filters ?? {}) as CreativeListFilters;
@@ -18762,6 +19184,22 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // gate in #2847 and tracks the spec-side clarification referenced there.
   const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
   const selectedFields = req.fields?.length ? new Set(req.fields) : undefined;
+  // 3.0 identifies every listed creative by `format_id` (required); the
+  // canonical `format_kind` record arrives in 3.1. Project canonical
+  // creatives to their legacy format for a 3.0 caller.
+  const legacyProjectionAdapters = servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1)
+    ? filterProjectionAdapters ?? creativeProjectionAdapters()
+    : undefined;
+  const creativeFormatRecord = (creative: CreativeState): Record<string, unknown> => {
+    const stored = storedCreativeFormatRecord(creative);
+    if (!legacyProjectionAdapters || isRecord(stored.format_id)) return stored;
+    try {
+      const projected = projectCreativeRecordForWire(stored, 'legacy', legacyProjectionAdapters);
+      return isRecord(projected.format_id) ? { format_id: projected.format_id } : stored;
+    } catch {
+      return stored;
+    }
+  };
 
   return {
     query_summary: {
@@ -18780,7 +19218,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     creatives: pageCreatives.map(c => {
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        ...storedCreativeFormatRecord(c),
+        ...creativeFormatRecord(c),
         name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
@@ -18800,6 +19238,34 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
       if (req.include_snapshot) {
         base.snapshot_unavailable_reason = 'SNAPSHOT_UNSUPPORTED';
+      }
+      if (declaresLiveCreativeUpdates(ctx)) {
+        if (c.stagedUpdate && (!selectedFields || selectedFields.has('staged_update'))) {
+          base.staged_update = stagedUpdateWire(c.stagedUpdate);
+        }
+      }
+      if (declaresAssignmentSettings(ctx) && req.include_assignments !== false
+        && (!selectedFields || selectedFields.has('assignments'))) {
+        const rows: Array<Record<string, unknown>> = [];
+        for (const mb of session.mediaBuys.values()) {
+          if (!isOpenMediaBuy(mb)) continue;
+          for (const pkg of mb.packages) {
+            if (pkg.canceled || !pkg.creativeAssignments.includes(c.creativeId)) continue;
+            rows.push({
+              package_id: pkg.packageId,
+              media_buy_id: mb.mediaBuyId,
+              assigned_date: mb.createdAt,
+              ...assignmentReadbackFields(assignmentRow(pkg, c.creativeId), c, { supportsTrackers: true, supportsLandingPage: true }),
+            });
+          }
+        }
+        const limit = Math.min(Math.max(req.assignment_limit ?? 50, 1), 200);
+        base.assignments = {
+          assignment_count: rows.length,
+          returned_assignment_count: Math.min(rows.length, limit),
+          assignments_truncated: rows.length > limit,
+          assigned_packages: rows.slice(0, limit),
+        };
       }
       if (c.purge) {
         base.purge = {
@@ -19146,16 +19612,22 @@ async function handleUpdateMediaBuyUnlocked(
     return {
       media_buy_id: mb.mediaBuyId,
       ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-      status,
+      // Body `status: MediaBuyStatus` is deprecated in 3.1 and removed in 3.2
+      // (#4906). Root `status` is the envelope task status from 3.1 on (3.1
+      // composes both, so only shared values validate); 3.0 carries it.
+      ...(servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1) && { status }),
       media_buy_status: status,
       revision: mb.revision,
       valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-      available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+      available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
       ...(warnings.length > 0 && { warnings }),
       ...(req.context !== undefined && { context: req.context }),
     };
   }
+
+  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(req);
+  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
 
   if (
     !options.acceptedProposalExecution
@@ -19512,6 +19984,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `packages[${pkgId}].creative_assignments`,
           (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -19818,6 +20291,12 @@ async function handleUpdateMediaBuyUnlocked(
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
       };
     }
+    // Number new packages after every pkg-N in the account, including this
+    // buy's own (the working copy may hold packages the session doesn't yet).
+    const firstNewPackageIndex = Math.max(
+      nextPackageIndex(session),
+      nextPackageIndex({ mediaBuys: new Map([[mb.mediaBuyId, mb]]) }),
+    );
     for (let i = 0; i < newPackages.length; i++) {
       const npkg = newPackages[i];
       const productId = npkg.product_id;
@@ -19853,7 +20332,7 @@ async function handleUpdateMediaBuyUnlocked(
         formatSnapshot.selectedLegacyFormatIds,
       );
 
-      const pkgId = `pkg-${mb.packages.length + i}`;
+      const pkgId = `pkg-${firstNewPackageIndex + i}`;
       const newTargeting = genderTargetingMutation(undefined, npkg.targeting_overlay ?? npkg.targeting);
       const targetingResult = validateTargeting(newTargeting, `new_packages[${i}].targeting_overlay`);
       if (targetingResult.errors.length) {
@@ -19924,6 +20403,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `new_packages[${i}].creative_assignments`,
           formatSnapshot.formats ?? [],
+          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -19966,6 +20446,9 @@ async function handleUpdateMediaBuyUnlocked(
         ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
         frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
+        // A package added to a confirmed buy is owed reporting-subscription
+        // periods from here, as the buy is from confirmed_at.
+        ...(mb.confirmedAt && { addedAt: now }),
       };
       stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
       mb.packages.push(newPkg);
@@ -20117,6 +20600,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${pkg.packageId}].creative_assignments`,
         (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
       );
       if (assignmentErrors.length) return { errors: assignmentErrors };
     }
@@ -20195,6 +20679,7 @@ async function handleUpdateMediaBuyUnlocked(
     end_time: pkg.endTime,
     ...packageFormatSelectorForWire(pkg, ctx),
     ...packageReadinessFields(pkg, session),
+    ...creativeStartPolicyForWire(ctx),
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
@@ -20216,11 +20701,14 @@ async function handleUpdateMediaBuyUnlocked(
     ...(mb.name && { name: mb.name }),
     ...(mb.invoiceRecipient && { invoice_recipient: structuredClone(mb.invoiceRecipient) }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-    status,
+    // Body `status: MediaBuyStatus` is deprecated in 3.1 and removed in 3.2
+    // (#4906). Root `status` is the envelope task status from 3.1 on (3.1
+    // composes both, so only shared values validate); 3.0 carries it.
+    ...(servesReleaseBefore(lifecycleSplitVersionForContext(ctx), 3, 1) && { status }),
     media_buy_status: status,
     revision: mb.revision,
     valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-    available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsWireForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
     ...((aggregateUpdate.total_budget !== undefined || packageBudgetChanged) && {
       currency: mb.currency,
       total_budget: mb.totalBudget,
@@ -20386,11 +20874,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     ...(!isThreeZeroResponse && (ctx.tenantId === 'sales' || ctx.tenantId == null)
       ? ['media_buy.audience_activation', 'media_buy.product_identity', 'media_buy.daypart_granularity']
       : []),
+    ...(declaresLiveCreativeUpdates(ctx) ? ['creative.live_updates'] : []),
   ];
   const supportedCreativeFormats = includeThreeOneFields(ctx)
     ? supportedCanonicalFormatsCapability()
     : undefined;
-  return {
+  const capabilities = {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -20436,7 +20925,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         delivery_retry_horizon_seconds: 86400,
       },
       identity: {
-        brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
+        brand_json_url: `${getIdentityBaseUrl()}/.well-known/brand.json`,
       },
     }),
     media_buy: {
@@ -20569,6 +21058,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
+      ...(!isThreeZeroStoryboardCompat(ctx) && { supports_provenance: true }),
+      ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability() }),
+      ...(declaresAssignmentSettings(ctx) && {
+        supports_assignment_trackers: true,
+        supports_assignment_landing_page: true,
+      }),
       ...(supportedCreativeFormats ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
         supported_formats: supportedCreativeFormats,
@@ -20617,6 +21112,13 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       description: 'Training agent for AdCP protocol testing and certification',
     },
   };
+  // Withhold fields added after the served release, such as the 3.3
+  // property-breakdown feature flags on a 3.2 response.
+  return omitFieldsAddedAfterRelease(
+    capabilities,
+    'protocol/get-adcp-capabilities-response.json',
+    isThreeZeroResponse ? '3.0' : servedAdcpVersion,
+  );
 }
 
 // ── Signal task handlers ──────────────────────────────────────────
@@ -20624,6 +21126,17 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
 const MAX_SIGNAL_RESULTS = 10;
 
 export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
+  const signalSpecInput = (args as { signal_spec?: unknown }).signal_spec;
+  if (signalSpecInput !== undefined && typeof signalSpecInput !== 'string') {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'signal_spec must be a string.',
+        field: 'signal_spec',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   const req = args as unknown as GetSignalsRequest & ToolArgs & {
     brief?: string;
     discovery_mode?: 'brief' | 'wholesale';
@@ -22928,10 +23441,23 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
     for (const product of session.lastGetProductsContext?.products ?? []) {
       if (!refinementProducts.has(product.product_id)) refinementProducts.set(product.product_id, product);
     }
+    // force_hold_unavailable directives (comply_test_controller) live in the
+    // compact session's hold ledger, which the controller writes for these
+    // routes too.
+    const holdLedger = loadHoldDocument(session);
+    const requestedRefinements = (args as unknown as { refinements?: unknown }).refinements;
+    const finalizeIds = new Set((Array.isArray(requestedRefinements) ? requestedRefinements as unknown[] : [])
+      .filter((entry): entry is { action: unknown; proposal_id: unknown } => typeof entry === 'object' && entry !== null)
+      .filter(entry => entry.action === 'finalize' && typeof entry.proposal_id === 'string')
+      .map(entry => entry.proposal_id as string));
+    const forcedHoldUnavailable = new Set(holdLedger.forced
+      .map(entry => entry.proposal_id)
+      .filter(id => finalizeIds.has(id)));
     const policyContext: TrainingProposalPolicyContext = {
       profile,
       now,
       activeHoldCount,
+      ...(forcedHoldUnavailable.size > 0 && { forcedHoldUnavailable }),
       purchaseForProduct: purchaseForTrainingProduct,
       productForPurchase: productId => refinementProducts.get(productId),
     };
@@ -22955,6 +23481,11 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       adcp_version: '3.2',
       adcp_major_version: 3,
     }, policyContext);
+    if (forcedHoldUnavailable.size > 0 && Array.isArray((response as { results?: unknown }).results)) {
+      // The finalize attempted the forced holds, so the directives are consumed.
+      holdLedger.forced = holdLedger.forced.filter(entry => !forcedHoldUnavailable.has(entry.proposal_id));
+      saveHoldDocument(session, holdLedger, now.getTime());
+    }
     await flushDirtySessions();
     return response;
   } catch (error) {
@@ -22987,6 +23518,57 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       key: lockKey,
       claimToken: claim.claimToken,
     });
+  }
+}
+
+// ── Compact proposal state for experimental 3.3 holds (holds/service.ts) ──
+
+/** The session holding the caller's compact proposal snapshots. */
+export function compactProposalSessionKey(ctx: TrainingContext): string {
+  return productDiscoverySessionKey({ __compact_proposal_lifecycle: true } as unknown as ToolArgs, ctx);
+}
+
+/** The canonical wire form of a stored compact proposal snapshot. */
+export function compactProposalOutward(internal: Record<string, unknown>): Record<string, unknown> {
+  return outwardProposal(internal, new Map(getCatalog().map(entry => [entry.product.product_id, entry.product])));
+}
+
+/** A catalog product, with its installments. */
+export function compactCatalogProduct(productId: string): Product | undefined {
+  return getCatalog().find(entry => entry.product.product_id === productId)?.product;
+}
+
+/**
+ * Run `fn` against the caller's compact proposal session while holding the
+ * same session mutex the proposal engine writes under, then persist it. A
+ * competing writer gets the engine's transient CONFLICT.
+ */
+export async function withCompactProposalSessionLock<T extends object>(
+  ctx: TrainingContext,
+  fn: (session: SessionState) => Promise<T> | T,
+): Promise<T | { errors: TaskError[] }> {
+  const sessionScope = compactProposalSessionKey(ctx);
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const lockPrincipal = 'get-products-session-mutex';
+  const lockKey = `get-products-session:${sessionHash}`;
+  const lockStore = getIdempotencyStore();
+  const claim = await lockStore.check({ principal: lockPrincipal, key: lockKey, payload: { session: sessionHash } });
+  if (claim.kind !== 'miss') {
+    return {
+      errors: [{
+        code: 'CONFLICT',
+        message: 'Another proposal lifecycle request is already updating this session. Retry shortly.',
+        recovery: 'transient',
+      }] as TaskError[],
+    };
+  }
+  try {
+    evictSessionFromRequestCache(sessionScope);
+    const result = await fn(await getSession(sessionScope));
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await lockStore.release({ principal: lockPrincipal, key: lockKey, claimToken: claim.claimToken });
   }
 }
 
@@ -23040,13 +23622,14 @@ export async function executeProductDiscoveryPlatformTool(
         return proposalArgs;
       })()
     : normalizeProductDiscoveryArgs(toolName, args);
+  const servedAdcpVersion = ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION;
   const result = await Promise.resolve(handler(normalized as ToolArgs, {
     ...ctx,
-    servedAdcpVersion: ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION,
+    servedAdcpVersion,
   }));
   await flushDirtySessions();
   if (typedRefinement) return result as Record<string, unknown>;
-  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args);
+  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args, servedAdcpVersion);
 }
 
 function legacyPackagesFromPurchases(
@@ -23909,6 +24492,8 @@ async function handleControlMediaBuyUnlocked(
     if (args.revision !== mediaBuy.revision) {
       return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mediaBuy.revision}, got ${args.revision}` }] };
     }
+    const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
+    if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
     const currentStatus = deriveStatus(mediaBuy, session);
     const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
     if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
@@ -24261,6 +24846,12 @@ function validateIdempotencyProtectedInput(
   if (args.brief !== undefined && typeof args.brief !== 'string') {
     return { message: 'brief must be a string when provided', field: 'brief' };
   }
+  if (Array.isArray(args.refine) && args.refine.some(entry => isRecord(entry) && 'package' in entry)) {
+    // The pinned SDK preserves unknown entry fields. Validate structured
+    // packages against source before replay claims or downstream state changes.
+    const sourceError = validateProductDiscoverySourceInput('get-products-request', args);
+    if (sourceError) return sourceError;
+  }
   const hasDecline = Array.isArray(args.refine) && args.refine.some(entry => (
     isRecord(entry) && entry.scope === 'proposal' && entry.action === 'decline'
   ));
@@ -24563,11 +25154,12 @@ async function executeTrainingAgentToolInContext(
         toolName,
         outcome.response as Record<string, unknown>,
         initialHandlerArgs,
+        versionResolution.servedVersion,
       );
       return {
         success: true,
         data: {
-          ...replayed,
+          ...projectTaskOutcomeForRelease(toolName, replayed, versionResolution.servedVersion),
           adcp_version: versionResolution.servedVersion,
           replayed: true,
           ...(callerContext !== undefined && { context: callerContext }),
@@ -24600,8 +25192,13 @@ async function executeTrainingAgentToolInContext(
       toolName,
       result as Record<string, unknown>,
       initialHandlerArgs,
+      versionResolution.servedVersion,
     );
-    const response = addServedAdcpVersion(projectedResponse, versionResolution.servedVersion, callerContext) as Record<string, unknown>;
+    const response = addServedAdcpVersion(
+      projectTaskOutcomeForRelease(toolName, projectedResponse, versionResolution.servedVersion),
+      versionResolution.servedVersion,
+      callerContext,
+    ) as Record<string, unknown>;
     if (claim && typeof idempotencyKey === 'string') {
       const hasErrors = Array.isArray(cacheResponse.errors) && cacheResponse.errors.length > 0;
       const hasAdvisorySuccessPayload = permitsAdvisoryErrors(toolName, cacheResponse);
@@ -24943,11 +25540,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // before the envelope-fold landed, or handlers that emitted bodies
         // without status). Per #4878, every per-task response schema now
         // requires envelope `status`.
-        const replayBody = projectProductDiscoveryResult(
+        const replayBody = projectTaskOutcomeForRelease(name, projectProductDiscoveryResult(
           name,
           outcome.response as Record<string, unknown>,
           initialHandlerArgs,
-        );
+          servedAdcpVersion,
+        ), servedAdcpVersion);
         const body: Record<string, unknown> = { ...replayBody, replayed: true };
         if (!isTaskRequest && body.status === undefined) body.status = 'completed';
         body.adcp_version = servedAdcpVersion;
@@ -25147,7 +25745,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `completed` on synchronous success — handlers that emit a different
         // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
         // `inner` and we honor that value.
-        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs);
+        const outwardInner = projectTaskOutcomeForRelease(
+          name,
+          projectProductDiscoveryResult(name, inner, initialHandlerArgs, servedAdcpVersion),
+          servedAdcpVersion,
+        );
         const response: Record<string, unknown> = { ...outwardInner };
         if (response.status === undefined) response.status = 'completed';
         response.adcp_version = servedAdcpVersion;
@@ -25236,6 +25838,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         name,
         cachableResponse,
         initialHandlerArgs,
+        servedAdcpVersion,
       );
       maybeEmitCompletionWebhook({
         toolName: name,

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-pricing-group-rule.json",
+  "title": "Signal Pricing Group Rule",
+  "description": "Declares how the fees of signals sharing one pricing_group combine when selected in the same package. A group with no rule is charged 'each'. Only the selected cpm options of one currency are compared per thousand impressions; flat_fee, per_unit, custom and percent_of_media options are not comparable and are always charged 'each'. At most one rule per pricing_group. Experimental (x-status: experimental): sellers declaring this MUST list signals.pricing_groups in experimental_features.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "pricing_group": {
+      "type": "string",
+      "description": "The pricing_group key this rule applies to.",
+      "minLength": 1
+    },
+    "pricing_combination": {
+      "type": "string",
+      "description": "'highest': charge only the highest selected cpm fee in the group; the seller applies this and the buyer still sends pricing_option_id for every priced signal it selects. 'each': charge every selected signal's fee.",
+      "enum": ["highest", "each"]
+    }
+  },
+  "required": ["pricing_group", "pricing_combination"],
+  "additionalProperties": true
+}

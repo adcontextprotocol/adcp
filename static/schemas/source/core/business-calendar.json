@@ -6,7 +6,7 @@
   "x-added-in": "3.3.0",
   "type": "object",
   "properties": {
-    "calendar_id": { "type": "string", "minLength": 1, "x-entity": "business_calendar" },
+    "calendar_id": { "type": "string", "minLength": 1, "x-entity": "business_calendar", "maxLength": 128 },
     "timezone": { "$ref": "/schemas/core/iana-timezone.json" },
     "valid_from": { "type": "string", "format": "date" },
     "valid_through": { "type": "string", "format": "date" },
@@ -26,9 +26,10 @@
         },
         "required": ["days", "start_time", "end_time"],
         "additionalProperties": false
-      }
+      },
+      "maxItems": 14
     },
-    "non_working_dates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "format": "date" }, "description": "Complete list of local non-working dates within coverage, overriding weekly periods. An empty list explicitly means no additional closures in that interval." }
+    "non_working_dates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "format": "date" }, "description": "Complete list of local non-working dates within coverage, overriding weekly periods. An empty list explicitly means no additional closures in that interval.", "maxItems": 1024 }
   },
   "required": ["calendar_id", "timezone", "valid_from", "valid_through", "business_day_minutes", "working_periods", "non_working_dates"],
   "additionalProperties": false,

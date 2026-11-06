@@ -6,6 +6,9 @@
   "x-added-in": "3.3.0",
   "description": "One page of proposals for the requested account with their seller-tracked dispositions, plus the current state of every opportunity those proposals belong to. Each snapshot is returned byte-for-byte as issued, so terms_digest still verifies; lifecycle state lives beside it, never inside it. Experimental (media_buy.open_opportunities).",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
     "outcome": { "type": "string", "const": "listed" },
     "proposals": {
@@ -28,7 +31,13 @@
             "enum": ["request", "refinement", "later", "seller_offer"],
             "description": "How the snapshot was created: in a request_proposals response, by refine_proposals, by the seller after the creating task completed under later_proposals consent, or by the seller as an offer against an accepted media buy (media_buy.seller_offers, distinct from later proposals). Always seller_offer for a snapshot with proposal_initiator seller."
           },
-          "later_reason": { "$ref": "/schemas/enums/later-proposal-reason.json" }
+          "later_reason": { "$ref": "/schemas/enums/later-proposal-reason.json" },
+          "offer_reason": {
+            "$ref": "/schemas/enums/offer-reason.json",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Experimental (media_buy.seller_offers). Why the seller made the offer. Present exactly when origin is seller_offer. It describes the offer and is not part of the proposal's canonical terms."
+          }
         },
         "required": ["proposal", "disposition", "disposition_changed_at", "origin"],
         "if": {
@@ -55,6 +64,7 @@
               "required": ["origin"]
             },
             "then": {
+              "required": ["offer_reason"],
               "properties": {
                 "proposal": {
                   "properties": {
@@ -67,6 +77,7 @@
               }
             },
             "else": {
+              "not": { "required": ["offer_reason"] },
               "properties": {
                 "proposal": {
                   "properties": { "proposal_initiator": { "not": { "const": "seller" } } }
@@ -117,10 +128,9 @@
       }
     },
     "next_cursor": { "type": "string", "minLength": 1 },
-    "replayed": { "type": "boolean", "const": true },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["outcome", "proposals", "opportunities"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

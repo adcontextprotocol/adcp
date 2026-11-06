@@ -108,7 +108,7 @@
     "assets": [
       { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 300, "height": 250, "containers": ["jpg", "png", "gif", "webp"] } },
       { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 600, "height": 500, "containers": ["jpg", "png", "gif", "webp"] } },
-      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" } }
     ],
     "canonical": { "kind": "image" },
     "canonical_parameters": {
@@ -127,7 +127,7 @@
     "assets": [
       { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 728, "height": 90, "containers": ["jpg", "png", "gif", "webp"] } },
       { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 1456, "height": 180, "containers": ["jpg", "png", "gif", "webp"] } },
-      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" } }
     ],
     "canonical": { "kind": "image" },
     "canonical_parameters": {
@@ -146,7 +146,7 @@
     "assets": [
       { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 320, "height": 50, "containers": ["jpg", "png", "gif", "webp"] } },
       { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 640, "height": 100, "containers": ["jpg", "png", "gif", "webp"] } },
-      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" } }
     ],
     "canonical": { "kind": "image" },
     "canonical_parameters": {
@@ -165,7 +165,7 @@
     "assets": [
       { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 160, "height": 600, "containers": ["jpg", "png", "gif", "webp"] } },
       { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 320, "height": 1200, "containers": ["jpg", "png", "gif", "webp"] } },
-      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" } }
     ],
     "canonical": { "kind": "image" },
     "canonical_parameters": {
@@ -184,7 +184,7 @@
     "assets": [
       { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 336, "height": 280, "containers": ["jpg", "png", "gif", "webp"] } },
       { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 672, "height": 560, "containers": ["jpg", "png", "gif", "webp"] } },
-      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" } }
     ],
     "canonical": { "kind": "image" },
     "canonical_parameters": {
@@ -203,7 +203,7 @@
     "assets": [
       { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 300, "height": 600, "containers": ["jpg", "png", "gif", "webp"] } },
       { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 600, "height": 1200, "containers": ["jpg", "png", "gif", "webp"] } },
-      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" } }
     ],
     "canonical": { "kind": "image" },
     "canonical_parameters": {
@@ -222,7 +222,7 @@
     "assets": [
       { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 970, "height": 250, "containers": ["jpg", "png", "gif", "webp"] } },
       { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 1940, "height": 500, "containers": ["jpg", "png", "gif", "webp"] } },
-      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" } }
     ],
     "canonical": { "kind": "image" },
     "canonical_parameters": {
@@ -2422,7 +2422,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -2493,7 +2493,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }
@@ -2547,7 +2547,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -2620,7 +2620,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }
@@ -2674,7 +2674,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -2747,7 +2747,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }
@@ -2801,7 +2801,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -2874,7 +2874,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }
@@ -2928,7 +2928,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -3001,7 +3001,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }
@@ -3055,7 +3055,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -3128,7 +3128,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }
@@ -3182,7 +3182,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -3255,7 +3255,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }
@@ -3309,7 +3309,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -3382,7 +3382,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }
@@ -3417,7 +3417,7 @@
         "asset_group_id": "landing_page_url",
         "required": true,
         "asset_type": "url",
-        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+        "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" }
       }
     ],
     "canonical": { "kind": "image" },
@@ -3452,7 +3452,7 @@
         "asset_group_id": "landing_page_url",
         "required": true,
         "asset_type": "url",
-        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+        "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" }
       }
     ],
     "canonical": { "kind": "image" },
@@ -3487,7 +3487,7 @@
         "asset_group_id": "landing_page_url",
         "required": true,
         "asset_type": "url",
-        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+        "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" }
       }
     ],
     "canonical": { "kind": "image" },
@@ -3522,7 +3522,7 @@
         "asset_group_id": "landing_page_url",
         "required": true,
         "asset_type": "url",
-        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+        "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" }
       }
     ],
     "canonical": { "kind": "image" },
@@ -3557,7 +3557,7 @@
         "asset_group_id": "landing_page_url",
         "required": true,
         "asset_type": "url",
-        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+        "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" }
       }
     ],
     "canonical": { "kind": "image" },
@@ -3592,7 +3592,7 @@
         "asset_group_id": "landing_page_url",
         "required": true,
         "asset_type": "url",
-        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+        "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" }
       }
     ],
     "canonical": { "kind": "image" },
@@ -3627,7 +3627,7 @@
         "asset_group_id": "landing_page_url",
         "required": true,
         "asset_type": "url",
-        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+        "requirements": { "role": "clickthrough", "description": "Clickthrough destination URL" }
       }
     ],
     "canonical": { "kind": "image" },
@@ -4703,7 +4703,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -4795,7 +4795,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -5559,7 +5559,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Destination URL for the recommendation"
         }
       },
@@ -5649,7 +5649,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Destination URL if user clicks the mention"
         }
       },
@@ -5958,7 +5958,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       },
@@ -6028,7 +6028,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Clickthrough destination URL"
         }
       }

@@ -68,12 +68,16 @@ vi.mock('../../server/src/utils/sdk-safe-fetch.js', async (importOriginal) => ({
   withSdkSafeTransport: (options: Record<string, unknown>) => ({ ...options, ...memberToolMocks.transportOptions }),
 }));
 
+vi.mock('../../server/src/compliance/storyboard-cache.js', () => ({
+  getCachedComplianceStoryboardById: memberToolMocks.getComplianceStoryboardById,
+  clearComplianceStoryboardCache: vi.fn(),
+}));
+
 vi.mock('@adcp/sdk/testing', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   memberToolMocks.realRunStoryboardStep = actual.runStoryboardStep as typeof memberToolMocks.realRunStoryboardStep;
   return {
     ...actual,
-    getComplianceStoryboardById: memberToolMocks.getComplianceStoryboardById,
     runStoryboard: memberToolMocks.runStoryboard,
     runStoryboardStep: memberToolMocks.runStoryboardStep,
   };
@@ -283,7 +287,10 @@ describe('createMemberToolHandlers', () => {
             expect(read).toContain('[PASS]');
             expect(scenario.calls.slice(before).some((call: { task: string }) => call.task === 'get_media_buys')).toBe(true);
           }
-        }, 30000);
+          // The first case in a process pays the SDK's one-time JSON Schema
+          // compilation (about 9s alone, over 30s in a loaded full run); the
+          // others finish in about 150ms.
+        }, 90_000);
       }
     }
   });

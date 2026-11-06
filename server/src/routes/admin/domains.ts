@@ -1532,6 +1532,7 @@ export function setupDomainRoutes(
         if (!result.ok) {
           const status = result.code === "no_challenge" ? 404
             : result.code === "still_pending" ? 400
+            : result.code === "manual_domain" || result.code === "verified_elsewhere" ? 409
             : 500;
           return res.status(status).json(result);
         }

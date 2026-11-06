@@ -16,7 +16,12 @@ import type { TrainingContext } from './types.js';
 const PORT = parseInt(process.env.PORT || '4100', 10);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, bytes) => {
+    (req as unknown as { rawBody: string }).rawBody = bytes.toString('utf8');
+    (req as unknown as { creative33RawBody: Buffer }).creative33RawBody = Buffer.from(bytes);
+  },
+}));
 
 // CORS
 app.use((_req, res, next) => {

@@ -293,14 +293,23 @@ test('isNegativeStep branches on negative_path for expect_error steps', () => {
 
 test('normalizeSubstitutions replaces every live substitution dialect', () => {
   const stringSchema = { type: 'string' };
-  // $-prefix forms
-  assert.equal(normalizeSubstitutions('$context.plan_id', stringSchema), '00000000-0000-4000-8000-000000000000');
-  assert.equal(normalizeSubstitutions('$generate:uuid_v4#tag', stringSchema), '00000000-0000-4000-8000-000000000000');
-  assert.equal(normalizeSubstitutions('$test_kit.schemas.primary', stringSchema), '00000000-0000-4000-8000-000000000000');
-  assert.equal(normalizeSubstitutions('$from_step:step_a.plan_id', stringSchema), '00000000-0000-4000-8000-000000000000');
-  // Handlebars forms
-  assert.equal(normalizeSubstitutions('{{runner.webhook_url:step_a}}', stringSchema), '00000000-0000-4000-8000-000000000000');
-  assert.equal(normalizeSubstitutions('{{prior_step.step_a.operation_id}}', stringSchema), '00000000-0000-4000-8000-000000000000');
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/;
+  const tokens = [
+    // $-prefix forms
+    '$context.plan_id',
+    '$generate:uuid_v4#tag',
+    '$test_kit.schemas.primary',
+    '$from_step:step_a.plan_id',
+    // Handlebars forms
+    '{{runner.webhook_url:step_a}}',
+    '{{prior_step.step_a.operation_id}}',
+  ];
+  const placeholders = tokens.map((token) => normalizeSubstitutions(token, stringSchema));
+  for (const placeholder of placeholders) assert.match(placeholder, uuid);
+  // Distinct substitutions resolve to distinct values, so two IDs in one
+  // uniqueItems array do not collide; the same token is stable.
+  assert.equal(new Set(placeholders).size, tokens.length);
+  assert.equal(normalizeSubstitutions('$context.plan_id', stringSchema), placeholders[0]);
   // Non-substitution literals pass through
   assert.equal(normalizeSubstitutions('plain value', stringSchema), 'plain value');
 });
@@ -425,6 +434,43 @@ test('static authoring excludes only valid runtime asset directives while wire r
         'execution syntax must not skip validation of the rest of the request');
     }
   }
+});
+
+test('offline format directives require the runtime gate and an exact wrapper before static exclusion', async () => {
+  const { storyboard, steps } = cancellationCreativeAuthoringFixture();
+  const step = structuredClone(steps[0]);
+  const schema = loadSchema(step.schema_ref);
+  const directive = { format_id: '$context.legacy_format_id', catalog: 'test_kit' };
+  step.sample_request.creatives[0].assets = { $build_assets_from_format: directive };
+  const gated = { ...storyboard, requires: ['test_kit_format_catalog_runner'] };
+  const validate = async (source, candidate) => Promise.all(normalizeStoryboardSampleRequests(source, candidate, schema)
+    .map(payload => validateStep({ schemaRef: step.schema_ref, payload })));
+  assert.ok((await validate(gated, step)).every(result => result.ok));
+  assert.ok((await validate({ ...storyboard, requires: ['real_wire'] }, step)).every(result => !result.ok),
+    'an older runner must be gated before the wrapper can appear');
+  for (const requires of ['test_kit_format_catalog_runner', 'not_test_kit_format_catalog_runner', {}, null]) {
+    assert.ok((await validate({ ...storyboard, requires }, step)).every(result => !result.ok),
+      'only an exact member of a requirement array enables the wrapper');
+  }
+  assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: step.sample_request })).ok, false,
+    'the wrapper is never a valid wire asset');
+  for (const malformed of [
+    { ...directive, extra: true },
+    { ...directive, catalog: 'remote' },
+    { ...directive, format_id: '$context.' },
+    { catalog: 'test_kit' },
+    [directive],
+  ]) {
+    const broken = structuredClone(step);
+    broken.sample_request.creatives[0].assets.$build_assets_from_format = malformed;
+    assert.ok((await validate(gated, broken)).every(result => !result.ok), JSON.stringify(malformed));
+  }
+  const brokenSibling = structuredClone(step);
+  brokenSibling.sample_request.creatives[0].assets.bad = 'not an asset';
+  assert.ok((await validate(gated, brokenSibling)).every(result => !result.ok));
+  const brokenAssignment = structuredClone(step);
+  brokenAssignment.sample_request.assignments[0].creative_id = 42;
+  assert.ok((await validate(gated, brokenAssignment)).every(result => !result.ok));
 });
 
 test('cancellation directives materialize real test-kit assets before strict request validation', async () => {
@@ -573,3 +619,23 @@ test("whole collection witness substitutions satisfy minItems and composed requi
 // discriminated oneOf) must produce a shape-valid placeholder or ajv will
 // reject every branch. Regression guard against refactors of `placeholderFor`
 // / `synthesizeObject` / `firstObjectBranch`.
+test('dynamic currency filters receive non-empty schema-valid array placeholders', () => {
+  const Ajv = require('ajv');
+  const filterSchema = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/product-filters.json'), 'utf8'));
+  const currencies = filterSchema.properties.pricing_currencies;
+  const validate = new Ajv({ strict: false }).compile(currencies);
+  for (const value of ['$context.accepted_pricing_currencies', ['$context.pricing_currency']]) {
+    const normalized = normalizeSubstitutions(value, currencies);
+    assert.equal(validate(normalized), true, JSON.stringify(validate.errors));
+    assert.ok(normalized.length > 0, 'the placeholder preserves the non-empty filter contract');
+  }
+});
+
+test('literal malformed currency filters remain invalid after substitution normalization', () => {
+  const Ajv = require('ajv');
+  const filterSchema = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/product-filters.json'), 'utf8'));
+  const currencies = filterSchema.properties.pricing_currencies;
+  const validate = new Ajv({ strict: false }).compile(currencies);
+  assert.equal(validate(normalizeSubstitutions(['not-a-currency'], currencies)), false);
+  assert.equal(validate(normalizeSubstitutions([], currencies)), false);
+});

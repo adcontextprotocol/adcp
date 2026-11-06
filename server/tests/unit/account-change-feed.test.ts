@@ -404,12 +404,12 @@ describe('training account change feed', () => {
     ]));
   });
 
-  it('does not share change history when two principals reuse one wire account id', () => {
+  it('does not share change history when two principals reuse one wire account id', async () => {
     const accountId = 'acc_colliding_wire_id';
     const principalA: TrainingContext = { mode: 'open', principal: 'test:collision-a' };
     const principalB: TrainingContext = { mode: 'open', principal: 'test:collision-b' };
     for (const [ctx, domain] of [[principalA, 'alpha.example'], [principalB, 'beta.example']] as const) {
-      expect(seedAccountFixture({
+      expect((await seedAccountFixture({
         params: {
           account_id: accountId,
           fixture: {
@@ -418,7 +418,7 @@ describe('training account change feed', () => {
             sandbox: true,
           },
         },
-      }, ctx).success).toBe(true);
+      }, ctx)).success).toBe(true);
     }
 
     const bCheckpoint = call(
@@ -555,8 +555,13 @@ describe('training account change feed', () => {
         }],
       }],
     }, context) as Record<string, any>;
-    const { brand, operator } = synced.accounts[0];
-    expect(brand).toEqual({ domain: 'luma-outdoor.example' });
+    // From 3.2 a settings-update row is identified by `account` alone; the
+    // runner already knows the shared account's natural key from discovery.
+    expect(synced.accounts[0].account).toEqual(account);
+    expect(synced.accounts[0]).not.toHaveProperty('brand');
+    expect(synced.accounts[0]).not.toHaveProperty('operator');
+    const brand = { domain: 'luma-outdoor.example' };
+    const operator = 'pinnacle-agency.example';
     const seedCreative = (creativeId: string, accountRef: Record<string, unknown>) => handleComplyTestController({
       account: { ...accountRef, sandbox: true },
       scenario: 'seed_creative',

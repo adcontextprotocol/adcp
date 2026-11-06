@@ -56,5 +56,7 @@
       "may_depend_on": []
     }
   },
-  "files": {}
+  "files": {
+    "error-details/price-adjustments-mismatch.json": "media_buy"
+  }
 }

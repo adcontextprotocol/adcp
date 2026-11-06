@@ -111,7 +111,7 @@ fixtures:
   products:
     - product_id: "performance_roas_native_q2"
       delivery_type: "non_guaranteed"
-      channels: ["display", "native"]
+      channels: ["display"]
       format_options:
         - format_option_id: "native_feed_1x1"
           format_kind: "native_in_feed"

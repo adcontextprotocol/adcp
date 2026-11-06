@@ -48,9 +48,9 @@ for (const name of ["collection_selection", "owner_sold_channel_subset"])
         "schema_url",
       ])
         assert.ok(Object.hasOwn(v, key), key);
-      // SDK16.3 omits authored context_key (SDK#3396). The unchanged normative
-      // assertion and raw failed baseline are preserved separately; this case
-      // qualifies failed grading and the remaining actual wire evidence only.
+      // SDK 16.5+ echoes the authored context_key in failure evidence
+      // (adcp-client#3396), so the comparand is identifiable from the result.
+      assert.equal(v.context_key, "__adcp_fixture_collection_subset");
       assert.equal(v.schema_id, null);
       assert.equal(v.schema_url, null);
       assert.equal(

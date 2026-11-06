@@ -65,8 +65,8 @@ function normalizedDomain(value: unknown, field: string): string {
  * Validate AccountRef's exact-oneOf identity and return only canonical fields.
  *
  * AccountRef is a closed union: either the sole `account_id` field, or the
- * natural advertiser identity with optional operator unit, fixed currency,
- * and sandbox disposition. Checking
+ * brand and operator natural key with optional operator unit, fixed currency,
+ * and sandbox filters. Checking
  * property presence (rather than truthiness) ensures mixed, incomplete, and
  * unknown shapes cannot be silently interpreted as a different account.
  */

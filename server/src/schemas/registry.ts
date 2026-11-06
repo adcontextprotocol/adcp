@@ -503,6 +503,10 @@ export const AgentCapabilitiesSchema = z
         metrics: z.array(
           z.object({
             metric_id: z.string(),
+            name: z.string().optional().openapi({
+              description:
+                "Vendor-authored display name of the metric. Show it in place of `metric_id` when present; never join, key, or deduplicate on it — `metric_id` is the identifier.",
+            }),
             standard_reference: z.string().optional(),
             accreditations: z
               .array(
@@ -628,6 +632,9 @@ export const ResolvedBrandSchema = z
     }),
     brand_agent_url: z.string().optional(),
     brand_manifest: z.record(z.string(), z.unknown()).optional(),
+    brand: z.record(z.string(), z.unknown()).optional().openapi({
+      description: "Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.",
+    }),
     source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).openapi({
       description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence.",
     }),
@@ -750,6 +757,13 @@ export const BrandRegistryItemSchema = z
       .openapi({
         description:
           "Unilateral parent claim from the brand's own document. Not trust-extending. Present for `leaf_only` and `unverifiable`.",
+      }),
+    house_link: z
+      .enum(["confirmed", "house_declared", "brand_declared", "inferred"])
+      .optional()
+      .openapi({
+        description:
+          "Present when the list is filtered by `house_domain`: how this brand is known to belong to that house. `confirmed` means both sides publish the link or the brand redirects to the house, and is the only value that extends trust. `house_declared` means the house's own manifest lists the brand and the house has shown it controls its domain. `brand_declared` means the brand's own brand.json names the house. `inferred` means an enrichment or community record links them.",
       }),
   })
   .openapi("BrandRegistryItem");

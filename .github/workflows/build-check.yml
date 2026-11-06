@@ -22,6 +22,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # Full history, refs and tags stay; blobs outside the sparse set are
+          # fetched on demand. The committed release tarballs under
+          # dist/protocol/ are ~1.1 GiB of the ~1.9 GiB HEAD payload and no
+          # step in this job reads them from disk (build:protocol-tarball only
+          # writes latest.tgz; the immutable-artifact check reads git trees).
+          filter: blob:none
+          sparse-checkout: |
+            /*
+            !/dist/protocol/
+          sparse-checkout-cone-mode: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -68,6 +78,9 @@ jobs:
       - name: Routed tenant smoke tests
         run: npm run test:tenant-routing
 
+      - name: Published SDK creative 3.3 buyer journeys and isolation
+        run: npm run test:creative33-sandbox
+
       - name: Schema link plugin tests
         run: npm run test:schema-links
 
@@ -76,6 +89,13 @@ jobs:
 
       - name: Schema ownership guard (no new cross-domain $refs)
         run: npm run test:schema-ownership
+
+      - name: Additive-minor schema guard (no new non-additive changes)
+        # On pull requests the baseline may only shrink relative to the
+        # target branch's copy.
+        env:
+          ADCP_ADDITIVE_MINOR_BASELINE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+        run: npm run test:additive-minor
 
       - name: Fetch 3.0.x for error-code drift comparison
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
@@ -100,9 +120,78 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
+      - name: Reclaim unused Android SDK space
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        shell: bash
+        env:
+          ADCP_RUNNER_KIND: ${{ runner.environment }}
+        run: |
+          set -euo pipefail
+
+          [[ "${ADCP_RUNNER_KIND:-}" == "github-hosted" ]]
+          [[ "${RUNNER_OS:-}" == "Linux" ]]
+          grep -Eq '^ID="?ubuntu"?$' /etc/os-release
+          readonly android_dir=/usr/local/lib/android
+          readonly workspace_dir="${GITHUB_WORKSPACE:?}"
+          [[ -d "$workspace_dir" ]]
+          workspace_physical=$(readlink --canonicalize -- "$workspace_dir")
+          [[ "$workspace_physical" != / && "$workspace_physical" != "$android_dir" &&
+             "$workspace_physical" != "$android_dir/"* && "$android_dir" != "$workspace_physical/"* ]]
+          started_seconds=$SECONDS
+
+          printf 'run=%s attempt=%s job=%s runner=%s image_os=%s image_version=%s\n' \
+            "${GITHUB_RUN_ID:?}" "${GITHUB_RUN_ATTEMPT:?}" "${GITHUB_JOB:?}" \
+            "${RUNNER_NAME:?}" "${ImageOS:?}" "${ImageVersion:?}"
+          cat /etc/os-release
+          for measured_path in / "$workspace_dir"; do
+            findmnt --noheadings --output SOURCE,TARGET,MAJ:MIN,FSTYPE --target "$measured_path"
+          done
+          df --block-size=1 --output=source,target,size,used,avail -- / "$workspace_dir"
+          free_bytes() {
+            df --block-size=1 --output=avail -- "$1" | tail -n 1 | tr -d '[:space:]'
+          }
+          workspace_before=$(free_bytes "$workspace_dir")
+          root_before=$(free_bytes /)
+          [[ "$workspace_before" =~ ^[0-9]+$ && "$root_before" =~ ^[0-9]+$ ]]
+
+          # Only the unused Android installation is removed. The repository corpus and
+          # host Node/Python/Rust/CMake, Docker and the shared tool cache stay available.
+          if [[ -e "$android_dir" || -L "$android_dir" ]]; then
+            [[ -d "$android_dir" && ! -L "$android_dir" ]]
+            android_physical=$(readlink --canonicalize -- "$android_dir")
+            [[ "$android_physical" == "$android_dir" ]]
+            findmnt --noheadings --output SOURCE,TARGET,MAJ:MIN,FSTYPE --target "$android_dir"
+            mount_targets=$(findmnt --list --noheadings --output TARGET)
+            [[ -n "$mount_targets" ]]
+            while IFS= read -r mount_target; do
+              if [[ "$mount_target" == "$android_dir" || "$mount_target" == "$android_dir/"* ]]; then
+                echo '::error::Android installation contains a mount; refusing cleanup.'
+                exit 1
+              fi
+            done <<< "$mount_targets"
+            sudo -n du --summarize --one-file-system --block-size=1 -- "$android_dir"
+            sudo -n rm --recursive --force --one-file-system -- /usr/local/lib/android
+          else
+            echo 'Android installation is absent; no removal needed.'
+          fi
+          [[ ! -e "$android_dir" && ! -L "$android_dir" ]]
+
+          workspace_after=$(free_bytes "$workspace_dir")
+          root_after=$(free_bytes /)
+          [[ "$workspace_after" =~ ^[0-9]+$ && "$root_after" =~ ^[0-9]+$ ]]
+          df --block-size=1 --output=source,target,size,used,avail -- / "$workspace_dir"
+          printf 'workspace_free_before=%s workspace_free_after=%s workspace_delta=%s root_free_before=%s root_free_after=%s root_delta=%s elapsed_seconds=%s\n' \
+            "$workspace_before" "$workspace_after" "$((workspace_after - workspace_before))" \
+            "$root_before" "$root_after" "$((root_after - root_before))" "$((SECONDS - started_seconds))"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # History blobs are fetched on demand; the whole tip tree is still
+          # checked out (no sparse set), so every committed archive, doc and
+          # schema stays on disk. Deferring historical-only blobs reduces
+          # Git storage without omitting current release fixtures.
+          filter: blob:none
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -137,9 +226,78 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
+      - name: Reclaim unused Android SDK space
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        shell: bash
+        env:
+          ADCP_RUNNER_KIND: ${{ runner.environment }}
+        run: |
+          set -euo pipefail
+
+          [[ "${ADCP_RUNNER_KIND:-}" == "github-hosted" ]]
+          [[ "${RUNNER_OS:-}" == "Linux" ]]
+          grep -Eq '^ID="?ubuntu"?$' /etc/os-release
+          readonly android_dir=/usr/local/lib/android
+          readonly workspace_dir="${GITHUB_WORKSPACE:?}"
+          [[ -d "$workspace_dir" ]]
+          workspace_physical=$(readlink --canonicalize -- "$workspace_dir")
+          [[ "$workspace_physical" != / && "$workspace_physical" != "$android_dir" &&
+             "$workspace_physical" != "$android_dir/"* && "$android_dir" != "$workspace_physical/"* ]]
+          started_seconds=$SECONDS
+
+          printf 'run=%s attempt=%s job=%s runner=%s image_os=%s image_version=%s\n' \
+            "${GITHUB_RUN_ID:?}" "${GITHUB_RUN_ATTEMPT:?}" "${GITHUB_JOB:?}" \
+            "${RUNNER_NAME:?}" "${ImageOS:?}" "${ImageVersion:?}"
+          cat /etc/os-release
+          for measured_path in / "$workspace_dir"; do
+            findmnt --noheadings --output SOURCE,TARGET,MAJ:MIN,FSTYPE --target "$measured_path"
+          done
+          df --block-size=1 --output=source,target,size,used,avail -- / "$workspace_dir"
+          free_bytes() {
+            df --block-size=1 --output=avail -- "$1" | tail -n 1 | tr -d '[:space:]'
+          }
+          workspace_before=$(free_bytes "$workspace_dir")
+          root_before=$(free_bytes /)
+          [[ "$workspace_before" =~ ^[0-9]+$ && "$root_before" =~ ^[0-9]+$ ]]
+
+          # Only the unused Android installation is removed. The repository corpus and
+          # host Node/Python/Rust/CMake, Docker and the shared tool cache stay available.
+          if [[ -e "$android_dir" || -L "$android_dir" ]]; then
+            [[ -d "$android_dir" && ! -L "$android_dir" ]]
+            android_physical=$(readlink --canonicalize -- "$android_dir")
+            [[ "$android_physical" == "$android_dir" ]]
+            findmnt --noheadings --output SOURCE,TARGET,MAJ:MIN,FSTYPE --target "$android_dir"
+            mount_targets=$(findmnt --list --noheadings --output TARGET)
+            [[ -n "$mount_targets" ]]
+            while IFS= read -r mount_target; do
+              if [[ "$mount_target" == "$android_dir" || "$mount_target" == "$android_dir/"* ]]; then
+                echo '::error::Android installation contains a mount; refusing cleanup.'
+                exit 1
+              fi
+            done <<< "$mount_targets"
+            sudo -n du --summarize --one-file-system --block-size=1 -- "$android_dir"
+            sudo -n rm --recursive --force --one-file-system -- /usr/local/lib/android
+          else
+            echo 'Android installation is absent; no removal needed.'
+          fi
+          [[ ! -e "$android_dir" && ! -L "$android_dir" ]]
+
+          workspace_after=$(free_bytes "$workspace_dir")
+          root_after=$(free_bytes /)
+          [[ "$workspace_after" =~ ^[0-9]+$ && "$root_after" =~ ^[0-9]+$ ]]
+          df --block-size=1 --output=source,target,size,used,avail -- / "$workspace_dir"
+          printf 'workspace_free_before=%s workspace_free_after=%s workspace_delta=%s root_free_before=%s root_free_after=%s root_delta=%s elapsed_seconds=%s\n' \
+            "$workspace_before" "$workspace_after" "$((workspace_after - workspace_before))" \
+            "$root_before" "$root_after" "$((root_after - root_before))" "$((SECONDS - started_seconds))"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # History blobs are fetched on demand; the whole tip tree is still
+          # checked out (no sparse set), so every committed archive, doc and
+          # schema stays on disk. Deferring historical-only blobs reduces
+          # Git storage without omitting current release fixtures.
+          filter: blob:none
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -208,6 +366,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # Same partial checkout as build-worker. Full history, refs and tags
+          # stay; only the committed release tarballs under dist/protocol/
+          # (~1.1 GiB) are left unmaterialized. Integration setup builds
+          # schemas/latest from source, and the one /protocol assertion
+          # (schema-routing.test.ts) builds and mounts its own temp tarball.
+          filter: blob:none
+          sparse-checkout: |
+            /*
+            !/dist/protocol/
+          sparse-checkout-cone-mode: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7

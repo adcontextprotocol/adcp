@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/audience-evidence-relationship.json",
+  "title": "Audience Evidence Relationship",
+  "description": "What an audience-evidence estimate says. The vocabulary of buyer targets. Same values as the inline enum on audience_evidence.relationship, which stays inline because it is a stable 3.2 field; a test pins the two lists equal.",
+  "type": "string",
+  "enum": [
+    "composition",
+    "index",
+    "reach_estimate"
+  ],
+  "enumDescriptions": {
+    "composition": "Population share, as a fraction in [0,1].",
+    "index": "Ratio to a baseline population; 1.0 matches the baseline.",
+    "reach_estimate": "Estimated reachable count of people."
+  },
+  "x-added-in": "3.3.0"
+}

@@ -20,7 +20,7 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 | **Where keys live** | brand.json `agents[].jwks_uri` | The origin's key directory, `/.well-known/http-message-signatures-directory` |
 | **Finding the operator record** | `identity.brand_json_url` on the agent's `get_adcp_capabilities` | Derived: `https://{registrable domain}/.well-known/trust.json`. No capabilities call. |
 | **First contact** | Out-of-band credential or onboarding record | The covered `Signature-Agent` header identifies a signer the seller has never seen. Identity grants no authority until the seller binds it. |
-| **Acts-for authority** | brand.json `authorized_operators[]`, or the seller's onboarding record | trust.json `grants[]` from the brand's house, experimental. `authorized_operators` stays valid for a brand whose house has never published a trust.json. |
+| **Acts-for authority** | brand.json `authorized_operators[]`, or the seller's onboarding record | trust.json `grants[]` from the brand's parent organization, experimental. `authorized_operators` stays valid for a brand whose parent organization has never published a trust.json. |
 | **Onboarding** | Out of band | `account.agent_onboarding` on capabilities, experimental: a mode per billing party and sandbox |
 | **Relationship status** | Discovered on failure (`AGENT_SUSPENDED`) | `get_principal` `relationship` with `expires_at`; `principal.changed` warns before a lapse |
 | **Revocation detail** | `revoked_kids` only | Optional RFC 5280 `revocation_details` (`reason`, `invalidity_date`). Committed work stands on revocation. |
@@ -43,7 +43,7 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 **To be bound by a seller** (signer setup steps 4–5: the revocation list and the trust.json listing). A seller reads your trust.json listing only when it binds a principal or applies an `open` onboarding mode. Where a seller already has a principal for your agent, also get its explicit out-of-band approval to bind the new origin onto it (see **Existing seller relationships** below).
 
-**To move authority off brand.json.** Optional through 3.x, while `authorized_operators[]` stays valid for a brand whose house has never published a trust.json. Ask your advertisers to publish grants in their houses' trust.json records (see "Agency or operator" below).
+**To move authority off brand.json.** Optional through 3.x, while `authorized_operators[]` stays valid for a brand whose parent organization has never published a trust.json. Ask your advertisers to publish grants in their parent organizations' trust.json records (see "Agency or operator" below).
 
 **Keep:** your brand.json `agents[]` entry, its `jwks_uri`, and your `get_adcp_capabilities` `identity.brand_json_url` for sellers still on the RFC 9421 profile. The same key material can appear in both places, but the entries differ: Web Bot Auth `kid` values are thumbprints, and the brand.json JWKs carry `adcp_use`.
 
@@ -74,12 +74,12 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 **To be bound by a seller:** publish `/.well-known/trust.json` at your registrable domain, listing your agents by origin with their roles, and arrange each seller's approval where you have existing principals. **Revoke an agent** by removing its origin from your trust.json. Sellers drop it within one cache lifetime.
 
-**To move authority off brand.json (optional through 3.x):** move acts-for authority to grants. Each advertiser you buy for publishes a grant to your domain in its house's trust.json. When your own agent buys, the grant is ideally narrowed to that agent. When you use an intermediary or a hosted platform, the advertiser's grant to you stays unnarrowed, and you grant the intermediary in your own trust.json, narrowed to its agent; the two grants form the chain. See [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental).
+**To move authority off brand.json (optional through 3.x):** move acts-for authority to grants. Each advertiser you buy for publishes a grant to your domain in its parent organization's trust.json. When your own agent buys, the grant is ideally narrowed to that agent. When you use an intermediary or a hosted platform, the advertiser's grant to you stays unnarrowed, and you grant the intermediary in your own trust.json, narrowed to its agent; the two grants form the delegation chain. See [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental).
 
 ### Brand or advertiser
 
-- **Publish grants** in your house's trust.json (your own, when your brand.json names no house) for the operators that buy for you, with the `adcp:media_buying` scope and your brand IDs.
-- **Opt in to fail-closed** with `exclusive_grants: true` when the list is complete. When your house's trust.json exists, sellers ignore `authorized_operators` in your brand.json, so move every entry over before publishing it.
+- **Publish grants** in your parent organization's trust.json (your own, when your brand.json names no parent organization) for the operators that buy for you, with the `adcp:media_buying` scope and your brand IDs.
+- **Opt in to fail-closed** with `exclusive_grants: true` when the list is complete. When your parent organization's trust.json exists, sellers ignore `authorized_operators` in your brand.json, so move every entry over before publishing it.
 
 ### Multi-tenant platform
 

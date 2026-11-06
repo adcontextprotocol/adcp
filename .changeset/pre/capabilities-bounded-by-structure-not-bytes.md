@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Make the structural bounds the limit on the `get_adcp_capabilities` response, and describe the 64 KiB byte cap as a receiver backstop (#8198). The `maxItems`, `maxLength`, and `maxProperties` limits and their `x-max-*-4.0` annotations are the protocol's limit on the document, and agents MUST NOT design to a byte figure. `MAX_CAPABILITIES_BYTES` (64 KiB) keeps its name and value. It is now deployment guidance: receivers commonly bound response size at the HTTP or gateway layer, and a limit around 64 KiB is a reasonable backstop against runaway or hostile documents. It is not a design target and not a protocol rule on senders. The same constant stays the fetch budget of step 1 in the deprecated RFC 9421 key-discovery chain, unchanged through 3.x and removed in 4.0. The per-field budgets on the two counterparty-asserted lists (8,192 bytes each, 16,384 together) are unchanged and now stated as absolute values. The 4.0 follow-up for the 87 MiB structural worst case is tighter nested structural bounds, not the backstop. This makes no schema keyword change.

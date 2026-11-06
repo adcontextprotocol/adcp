@@ -106,8 +106,6 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_creative_fate_after_cancellation_setup_get_products_brief"
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content for creative-reuse testing."
-          filters:
-            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -135,8 +133,8 @@ phases:
             path: "products[0].format_options[0].format_option_id"
             description: "Product exposes at least one canonical format option for creative sync"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "Product exposes a selectable pricing option; auction and fixed pricing are both valid"
 
       - id: create_buy
         title: "Create the initial media buy"

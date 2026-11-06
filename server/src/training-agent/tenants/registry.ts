@@ -52,13 +52,13 @@ import { buildBrandTenantConfig } from './brand.js';
 import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
-import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } from '../candidate-version.js';
+import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION, TRAINING_AGENT_HOSTED_PREVIEW } from '../candidate-version.js';
 import { releaseLineEchoEnhancer } from './release-line-echo.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
 import { sharedTrainingTaskStore } from '../mcp-task-store.js';
 import { taskRegistryNamespaceForTenant } from '../task-registry-scope.js';
-import { ensureTrainingAgentSchemaBundle } from '../schema-compat.js';
+import { ensurePreviewSchemaBundle, ensureTrainingAgentSchemaBundle } from '../schema-compat.js';
 
 export { getCanonicalBase } from '../canonical-base.js';
 
@@ -182,7 +182,7 @@ function pickTaskRegistry(tenantId: string): TaskRegistry {
  *
  * Migration: `server/src/db/migrations/466_adcp_state.sql`.
  */
-function pickStateStore(): AdcpStateStore {
+export function pickStateStore(): AdcpStateStore {
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
     return new InMemoryStateStore();
@@ -196,17 +196,30 @@ function pickStateStore(): AdcpStateStore {
 function buildDefaultServerOptions(
   storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
   taskRegistry: TaskRegistry,
+  identity33?: CreateAdcpServerFromPlatformOptions['identity33'],
+  preview?: boolean,
 ): CreateAdcpServerFromPlatformOptions {
   const projectionAdapters = creativeProjectionAdapters();
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    adcpVersion: storyboardCompat?.version === '3.0'
-      ? '3.0'
-      : TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
-    ...(TRAINING_AGENT_CANDIDATE_ADCP_VERSION && storyboardCompat?.version !== '3.0' && {
+    // The experimental identity route speaks 3.3: the SDK binds identity33
+    // to the 3.3 schemas, and Web Bot Auth is a 3.3 profile. The hosted
+    // preview registry serves only requests pinned exactly to the preview
+    // (tenants/router.ts routes them); every other request stays on a stable
+    // registry configured as if the preview did not exist, because the SDK
+    // shapes each response down from its configured ceiling.
+    adcpVersion: identity33
+      ? '3.3'
+      : storyboardCompat?.version === '3.0'
+        ? '3.0'
+        : preview
+          ? TRAINING_AGENT_HOSTED_PREVIEW.wireVersion
+          : TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+    ...(!identity33 && !preview && TRAINING_AGENT_CANDIDATE_ADCP_VERSION && storyboardCompat?.version !== '3.0' && {
       defaultAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION,
     }),
+    ...(identity33 && { identity33 }),
     idempotency: withSellerManagedIdempotencyReplay(getSdkIdempotencyStore(), taskRegistry),
     webhooks: getWebhookSigningMaterial(),
     // Preserve terminal inline callbacks when supported by the SDK; actual
@@ -279,6 +292,13 @@ export interface RegistryHolder {
 export function createRegistryHolder(options: {
   storyboardCompat?: TrainingContext['storyboardCompat'];
   proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
+  /** Experimental 3.3 identity authorization; serves AdCP 3.3. */
+  identity33?: CreateAdcpServerFromPlatformOptions['identity33'];
+  /** Serve the hosted 3.3 preview (candidate-version.ts). The router sends
+   * this registry only requests pinned exactly to it. */
+  preview?: boolean;
+  /** Register only these tenants. Defaults to every tenant. */
+  tenantIds?: readonly string[];
 } = {}): RegistryHolder {
   let registry: TenantRegistry | null = null;
   let pendingInit: Promise<TenantRegistry> | null = null;
@@ -289,13 +309,14 @@ export function createRegistryHolder(options: {
       if (pendingInit) return pendingInit;
       const promise = (async () => {
         await ensureTrainingAgentSchemaBundle();
+        if (options.preview) await ensurePreviewSchemaBundle();
         const t0 = Date.now();
         logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
         const signalsTaskRegistry = pickTaskRegistry('signals');
         const salesTaskRegistry = withSellerManagedTaskReplay(pickTaskRegistry('sales'));
         const reg = createTenantRegistry({
-          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, salesTaskRegistry),
+          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, salesTaskRegistry, options.identity33, options.preview),
           jwksValidator: noopJwksValidator,
           autoValidate: true,
         });
@@ -308,7 +329,7 @@ export function createRegistryHolder(options: {
           { id: 'creative-builder', taskRegistry: pickTaskRegistry('creative-builder'), cfg: buildCreativeBuilderTenantConfig(hostBase, options) },
           { id: 'brand', taskRegistry: pickTaskRegistry('brand'), cfg: buildBrandTenantConfig(hostBase, options) },
           { id: 'si', taskRegistry: pickTaskRegistry('si'), cfg: buildSiTenantConfig(hostBase, options) },
-        ] as const;
+        ].filter(({ id }) => !options.tenantIds || options.tenantIds.includes(id));
         const tConfigs = Date.now();
         // awaitFirstValidation:true blocks until the no-op validator
         // promotes the tenant to 'healthy'. Without it the first request

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/operator-unit.json",
   "title": "Operator Unit",
-  "description": "Operator-owned buying context used to distinguish business units, agency seats, or platform accounts beneath one operator domain. The id is stable identity in the operator's namespace; name is mutable display metadata and never participates in account identity.",
+  "description": "Operator-owned buying context, such as a business unit, agency seat, or platform account beneath one operator domain. On an account, it is an account attribute. id is the operator-assigned identifier and filters a natural-key lookup. name is display metadata and never filters.",
   "x-entity": "operator_unit",
   "type": "object",
   "properties": {
@@ -17,7 +17,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 200,
-      "description": "Human-readable seat or business-unit name, such as Nova EMEA. This label may change and is not part of the natural account key."
+      "description": "Human-readable seat or business-unit name, such as Nova EMEA. This display label may change and never filters a natural-key lookup."
     }
   },
   "required": ["id"],

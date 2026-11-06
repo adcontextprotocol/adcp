@@ -12,8 +12,7 @@
     "alternatives_unavailable",
     "source_unavailable",
     "hold_unavailable",
-    "batch_aborted",
-    "definition_changed"
+    "batch_aborted"
   ],
   "enumDescriptions": {
     "commercially_declined": "The seller understood terms requested through the free-text ask but declined to offer them. An unmet typed constraint or product change always uses constraint_unsatisfiable instead, whether the seller cannot or will not meet it.",
@@ -23,7 +22,6 @@
     "alternatives_unavailable": "The seller produced fewer distinct draft alternatives than requested.",
     "source_unavailable": "The source proposal was not found, visible, or eligible for revision by this caller.",
     "hold_unavailable": "The seller declined or failed to reserve inventory for this finalize entry, or declined to extend the hold on this extend_hold entry, whether from sell-through since drafting, from hold policy such as a concurrent-hold cap or an extension limit (the committed proposal's hold_policy.extendable is false or absent, or no later expires_at fits within hold_placed_at plus hold_policy.max_total_duration), or because it cannot honor the draft's hold_policy.min_duration (including before an installment booking deadline or change cutoff). A failed extend_hold leaves the source proposal and its hold unchanged. Valid only for an entry whose effective policy holds inventory; a seller MUST NOT return it for an entry whose effective policy is terms-only: a draft whose hold_policy.available is false, or a draft without hold_policy at a seller declaring hold_semantics terms_only in get_adcp_capabilities. An extend_hold against a committed proposal that holds no inventory fails at task level with INVALID_STATE instead.",
-    "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize or extend_hold batch failed; the entry itself was otherwise eligible. An entry whose effective policy is terms-only returns it when a sibling failed for a non-hold reason or, in a batch that also contains holdable entries, when a holdable sibling returned hold_unavailable. When every entry in the batch is terms-only, no sibling can fail for a hold reason.",
-    "definition_changed": "At finalize, one or more third-party-published definitions pinned in the source proposal's commercial_terms.definition_pins[] no longer resolve to their pinned content_digest. Valid only on an unable result carrying drifted_pins[]; no hold is taken. The buyer refines the proposal to obtain fresh pins before finalizing again."
+    "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize or extend_hold batch failed; the entry itself was otherwise eligible. An entry whose effective policy is terms-only returns it when a sibling failed for a non-hold reason or, in a batch that also contains holdable entries, when a holdable sibling returned hold_unavailable. When every entry in the batch is terms-only, no sibling can fail for a hold reason."
   }
 }

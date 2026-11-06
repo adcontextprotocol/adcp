@@ -22,6 +22,7 @@ import type {
   GovernanceActionFlight,
   SessionState,
 } from './types.js';
+import { servesReleaseBefore } from './types.js';
 import { canonicalize, type BrandReference } from '@adcp/sdk';
 import {
   getSession,
@@ -1821,7 +1822,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       ) {
         return { errors: [{ code: 'CONFLICT', message: 'The seller reused statement_id for a different governed action or delivery statement.' }] };
       }
-      return buildCheckResponse(priorStatement);
+      return buildCheckResponse(priorStatement, governanceServedVersion(ctx));
     }
     const periodAlreadyClosed = [...session.governanceOutcomes.values()].some(outcome => {
       const outcomePeriod = (outcome.delivery as {
@@ -1888,7 +1889,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       timestamp: new Date().toISOString(),
     };
     session.governanceChecks.set(checkId, check);
-    return buildCheckResponse(check);
+    return buildCheckResponse(check, governanceServedVersion(ctx));
   }
 
   const ownerOrDelegated = authenticatedCaller === plan.ownerAgentUrl
@@ -2727,7 +2728,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   };
 
   session.governanceChecks.set(checkId, check);
-  return buildCheckResponse(check);
+  return buildCheckResponse(check, governanceServedVersion(ctx));
 }
 
 export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
@@ -2888,7 +2889,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
           }],
         };
       }
-      return { ...(replay.response ?? { outcome_id: replay.outcomeId }), replayed: true };
+      return withOutcomeEnvelopeStatus({ ...(replay.response ?? { outcome_id: replay.outcomeId }), replayed: true });
     }
   }
 
@@ -3024,7 +3025,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
       if (priorObservation.requestPayloadHash !== requestPayloadHash) {
         return { errors: [{ code: 'CONFLICT', message: 'The buyer reused observation_id with different delivery evidence.' }] };
       }
-      return { ...(priorObservation.response ?? { outcome_id: priorObservation.outcomeId }), replayed: true };
+      return withOutcomeEnvelopeStatus({ ...(priorObservation.response ?? { outcome_id: priorObservation.outcomeId }), replayed: true });
     }
     const observationPeriod = (delivery as {
       reporting_period?: { start?: unknown; end?: unknown };
@@ -3340,9 +3341,6 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   const response: Record<string, unknown> = {
     outcome_id: outcomeId,
     outcome_state: outcomeStateValue,
-    // Legacy training callers consumed `status`; retain it during 3.x while
-    // the modern schema uses outcome_state to avoid envelope collisions.
-    status: outcomeStateValue,
     ...(committedBudget > 0 && { committed_budget: committedBudget }),
     ...(findings.length > 0 && {
       findings: findings.map(f => ({
@@ -3393,7 +3391,18 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
 
   session.governanceOutcomes.set(outcomeId, outcomeState);
 
-  return response;
+  return withOutcomeEnvelopeStatus(response);
+}
+
+/**
+ * A report_plan_outcome response as the handler returns it: the task status
+ * `completed`, with the outcome in `outcome_state`. Stored responses can
+ * predate this shape (a legacy `status` copy), so a replay is normalized the
+ * same way. served-outcome-status.ts projects it onto a served 3.0.
+ */
+function withOutcomeEnvelopeStatus(response: Record<string, unknown>): Record<string, unknown> {
+  const { status: _storedStatus, ...body } = response;
+  return { ...body, status: 'completed' };
 }
 
 function buildAdjustmentPlanSummary(
@@ -4300,11 +4309,33 @@ function buildExplanation(
   return `Governance check completed with status: ${status}.`;
 }
 
-function buildCheckResponse(check: GovernanceCheckState) {
+/**
+ * 3.0 and 3.1 require `expires_at` on a `conditions` verdict as well as an
+ * approval; 3.2 dropped it for conditions. The window is the one the
+ * approval would carry. Only the response carries it: a conditions verdict
+ * never authorizes execution.
+ */
+/** The release a check_governance response is shaped to. */
+function governanceServedVersion(ctx: TrainingContext): string | undefined {
+  return ctx.storyboardCompat?.version === '3.0' ? '3.0' : ctx.servedAdcpVersion;
+}
+
+function legacyConditionsExpiry(check: GovernanceCheckState, servedAdcpVersion: string | undefined): string | undefined {
+  if (check.status !== 'conditions' || check.expiresAt || !servesReleaseBefore(servedAdcpVersion, 3, 2)) return undefined;
+  const issuedAt = Date.parse(check.timestamp);
+  if (!Number.isFinite(issuedAt)) return undefined;
+  const window = check.binding === 'proposed' ? 15 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+  return new Date(issuedAt + window).toISOString();
+}
+
+function buildCheckResponse(check: GovernanceCheckState, servedAdcpVersion?: string) {
+  const conditionsExpiry = legacyConditionsExpiry(check, servedAdcpVersion);
   return {
     check_id: check.checkId,
     check_type: check.binding === 'proposed' ? 'intent' : 'execution',
-    status: check.status,
+    // The task status; the outcome is `verdict` (served-outcome-status.ts
+    // projects it onto a served 3.0).
+    status: 'completed',
     verdict: check.status,
     ...(check.binding === 'proposed' && { plan_id: check.planId }),
     ...(check.budgetPeriodId && { budget_period_id: check.budgetPeriodId }),
@@ -4331,6 +4362,7 @@ function buildCheckResponse(check: GovernanceCheckState) {
     }),
     ...(check.consultationContext && { consultation_context: check.consultationContext }),
     ...(check.expiresAt && { expires_at: check.expiresAt }),
+    ...(conditionsExpiry && { expires_at: conditionsExpiry }),
     ...(check.phase === 'delivery' && check.status === 'approved' && {
       next_check: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     }),
