@@ -152,7 +152,7 @@
 #   never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | field_excludes_runner | webhook_receiver | multi_agent |
+#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | field_excludes_runner | test_kit_format_catalog_runner | webhook_receiver | multi_agent |
 #   trusted_match_publisher_auth_runner | property_list_reference_runner (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
@@ -163,6 +163,13 @@
 #   behavior, or omit the field entirely."
 #
 #   Values and availability:
+#
+#     test_kit_format_catalog_runner — intrinsic support for the explicit offline
+#                    legacy-format catalog form of $build_assets_from_format
+#                    described below. Storyboards using that form MUST declare
+#                    this requirement. Older runners report requirement_unmet
+#                    before fixture mutation. Availability means syntax support,
+#                    not that the operator supplied a matching declaration.
 #
 #     collect_product_pages_runner — intrinsic support for the opt-in wholesale
 #                    product-page collector. No operator configuration is needed.
@@ -1184,6 +1191,32 @@
 #   text semantics from a slot-id substring or populate an unmapped slot (for
 #   example, `legal`, `disclaimer`, or `alt_text`) from an arbitrary fallback
 #   category.
+#
+#   Offline legacy declarations: to test a media-buy-only seller without imposing
+#   list_creative_formats on it, the directive MAY instead use this object form:
+#     $build_assets_from_format:
+#       format_id: "$context.legacy_format_id"
+#       catalog: test_kit
+#   The wrapper MUST contain exactly those two keys, and the storyboard MUST
+#   require test_kit_format_catalog_runner. The captured value MUST be a valid
+#   complete FormatId. The operator supplies test_kit.creative_formats as an
+#   array of full core/format.json declarations obtained from their declaring
+#   agents. Each entry MUST include an explicit assets array (empty is allowed),
+#   valid slot declarations and unique asset identifiers. These are fixture
+#   inputs, not seller responses or seeds; runners MUST NOT overwrite discovery
+#   context or the seller's catalog with them, or fetch any reference implicitly.
+#
+#   Match the entire format_id by structural JSON equality after canonicalizing
+#   agent_url per the URL canonicalization rules. Preserve every other field,
+#   including width, height, duration_ms, pixel_ratio and extension parameters.
+#   Do not instantiate a template, override dimensions, or match by slug alone.
+#   An absent catalog or absent exact match is fixture_unavailable, naming
+#   "format declaration" as the unavailable slot and "format" as its type.
+#   Malformed catalogs, duplicate exact matches and malformed captured references
+#   are harness authoring errors, not fixture_unavailable. Unresolved context
+#   remains a prerequisite/harness error; it is not evidence of a catalog gap.
+#   Unsupported declared constraints are fixture_unavailable. The ordinary
+#   preflight and whole-storyboard termination rules below apply to this form.
 #
 #   Asset-fixture coverage exception: when the captured format is valid but the
 #   runner cannot populate a required slot from the test kit — including an
