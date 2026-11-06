@@ -51,6 +51,8 @@ function normalizationReason(error: unknown): NormalizationReason | 'unknown_str
 
 export const GOOGLE_ROUTER_MODEL = 'gemini-3.7-flash';
 export const GOOGLE_DIRECT_FULL_SUITE_MODEL = 'gemini-3.8-flash';
+/** Google's documented replacement returned for production 3.7 requests. */
+export const GOOGLE_RESPONSE_REDIRECT_MODEL = 'gemini-3.8-flash';
 const GOOGLE_ROUTER_REVIEWED_REVISIONS = new Set([
   'gemini-3.7-flash-20260801',
 ]);
@@ -540,6 +542,15 @@ export class GoogleGenerateContentProvider implements ModelProvider {
   readonly capabilities = GOOGLE_GENERATE_CONTENT_CAPABILITIES;
   private readonly transport: GoogleGenerateContentTransport;
   private readonly directFullSuiteScope: boolean;
+  private acceptResponseRedirect = false;
+
+  /** Accept only the documented 3.7 -> 3.8 redirect for live responses.
+   * Default/evaluation adapters retain their frozen identity contract. */
+  static forProductionResponses(apiKey: string, transport?: GoogleGenerateContentTransport): GoogleGenerateContentProvider {
+    const provider = new GoogleGenerateContentProvider(apiKey, transport);
+    provider.acceptResponseRedirect = true;
+    return provider;
+  }
 
   constructor(
     apiKey: string,
@@ -640,7 +651,10 @@ export class GoogleGenerateContentProvider implements ModelProvider {
         'Google response normalization failed');
       throw createModelProviderAdapterError('adapter_response_normalization');
     }
-    if (!googleReturnedModelIdentityMatches(request.model, normalized.model)) {
+    const productionRedirect = this.acceptResponseRedirect
+      && request.model === GOOGLE_ROUTER_MODEL
+      && normalized.model === GOOGLE_RESPONSE_REDIRECT_MODEL;
+    if (!productionRedirect && !googleReturnedModelIdentityMatches(request.model, normalized.model)) {
       throw new UnexpectedModelIdentityError('google', request.model, normalized.model);
     }
     yield { type: 'response_start', provider: this.id, model: normalized.model, id: normalized.id };

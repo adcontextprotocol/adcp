@@ -103,11 +103,12 @@ export function classifyProviderFailure(
   const codes = codeFromError(error);
   const hasCode = (...values: string[]) => values.some(value => codes.includes(value));
 
-  const billingExhausted = provider === 'anthropic'
+  // Payment-required receipts remain actionable when adapters hide provider text.
+  const billingExhausted = status === 402 || (provider === 'anthropic'
     ? /credit balance is too low|plans?\s*&\s*billing/.test(message)
     : provider === 'openai'
       ? hasCode('insufficient_quota', 'billing_hard_limit_reached')
-      : false;
+      : false);
   if (billingExhausted) return { category: 'billing_exhausted', ...(status && { status }) };
 
   if (status === 429 || hasCode('rate_limit_error', 'rate_limit_exceeded')) {
