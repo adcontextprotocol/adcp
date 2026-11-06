@@ -87,6 +87,9 @@ jobs:
       - name: Language-tag schema reference guard
         run: npm run test:language-tag-refs
 
+      - name: Schema ownership guard (no new cross-domain $refs)
+        run: npm run test:schema-ownership
+
       - name: Additive-minor schema guard (no new non-additive changes)
         # On pull requests the baseline may only shrink relative to the
         # target branch's copy.
