@@ -404,12 +404,12 @@ describe('training account change feed', () => {
     ]));
   });
 
-  it('does not share change history when two principals reuse one wire account id', () => {
+  it('does not share change history when two principals reuse one wire account id', async () => {
     const accountId = 'acc_colliding_wire_id';
     const principalA: TrainingContext = { mode: 'open', principal: 'test:collision-a' };
     const principalB: TrainingContext = { mode: 'open', principal: 'test:collision-b' };
     for (const [ctx, domain] of [[principalA, 'alpha.example'], [principalB, 'beta.example']] as const) {
-      expect(seedAccountFixture({
+      expect((await seedAccountFixture({
         params: {
           account_id: accountId,
           fixture: {
@@ -418,7 +418,7 @@ describe('training account change feed', () => {
             sandbox: true,
           },
         },
-      }, ctx).success).toBe(true);
+      }, ctx)).success).toBe(true);
     }
 
     const bCheckpoint = call(

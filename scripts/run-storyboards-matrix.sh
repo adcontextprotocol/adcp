@@ -326,7 +326,7 @@ REQUIRED_EXACT_CURRENT_SALES=(
   # deterministic branches (separate-account refusal, matched, buyer sign-up).
   "account_requests:36:3"
   # Experimental 3.3 reporting subscriptions over the sandbox clock.
-  "media_buy_seller/reporting_subscription_coverage:36:1"
+  "media_buy_seller/reporting_subscription_coverage:46:1"
   "media_buy_seller/reporting_subscription_capacity:16:0"
   # Experimental 3.3 holds over seeded hold policies. The hold_extension
   # skips are the extend_hold steps the @adcp/sdk runner cannot send yet

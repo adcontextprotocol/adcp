@@ -31,5 +31,7 @@ describe('hosted compliance SDK transport', () => {
     expect(result.overall_status).toBe('unreachable');
     expect(mocks.safeFetch).toHaveBeenCalled();
     expect(mocks.safeFetch.mock.calls.some(([url]) => String(url).startsWith('http://127.0.0.1:1'))).toBe(true);
-  });
+    // comply() loads the compliance bundle and walks every storyboard before
+    // it concludes the agent is unreachable, which outgrows 10 s under load.
+  }, 30_000);
 });

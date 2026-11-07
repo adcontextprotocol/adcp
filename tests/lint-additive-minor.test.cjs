@@ -11,6 +11,8 @@
  */
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -28,7 +30,9 @@ const {
   historyPairs,
   lintAdditiveMinor,
   recordedCorrections,
+  readBaselineAtRef,
 } = require('../scripts/lint-additive-minor.cjs');
+const { fixtureEnv, gitFixture } = require('./helpers/git-object-fixture.cjs');
 
 /** A small, valid schema tree. Each test clones it and changes one thing. */
 function fixture() {
@@ -1039,4 +1043,194 @@ test('the repository source passes against the recorded baseline', () => {
   const result = lintAdditiveMinor();
   assert.equal(result.ok, true, result.errors.join('\n'));
   if (!result.skipped) assert.ok(result.filesCompared > 500, 'expected the lint to see the released tree');
+});
+
+// The shrink-only check may be skipped only when the baseline is genuinely
+// absent from the ref's tree. Failed or malformed reads must throw.
+test('readBaselineAtRef returns null only for a baseline absent from the tree', () => {
+  const calls = [];
+  const absent = (args) => { calls.push(args); return ''; };
+  assert.strictEqual(readBaselineAtRef('origin/main', '/repo', absent), null);
+  assert.strictEqual(calls.length, 1, 'absence is decided by the tree lookup alone');
+  assert.strictEqual(calls[0][0], 'ls-tree');
+});
+
+test('readBaselineAtRef parses a present, readable baseline', () => {
+  const runGit = (args) => {
+    if (args[0] === 'ls-tree') return `${args[args.length - 1]}\0`;
+    return JSON.stringify({ base: '3.2.8', entries: [] });
+  };
+  assert.deepStrictEqual(readBaselineAtRef('origin/main', '/repo', runGit), { base: '3.2.8', entries: [] });
+});
+
+test('readBaselineAtRef throws when a present baseline cannot be read', () => {
+  const runGit = (args) => {
+    if (args[0] === 'ls-tree') return `${args[args.length - 1]}\0`;
+    throw new Error('fatal: could not fetch blob from promisor remote');
+  };
+  assert.throws(() => readBaselineAtRef('origin/main', '/repo', runGit), /promisor remote/);
+});
+
+test('readBaselineAtRef throws when a present baseline is not valid JSON', () => {
+  const runGit = (args) => (args[0] === 'ls-tree' ? `${args[args.length - 1]}\0` : '{ not json');
+  assert.throws(() => readBaselineAtRef('origin/main', '/repo', runGit), /present but is not valid JSON/);
+});
+
+test('readBaselineAtRef throws when the tree lookup itself fails', () => {
+  const runGit = () => { throw new Error('fatal: Not a valid object name origin/nope'); };
+  assert.throws(() => readBaselineAtRef('origin/nope', '/repo', runGit), /Not a valid object name/);
+});
+
+test('readBaselineAtRef throws when a present baseline is valid JSON but not a baseline', () => {
+  for (const text of ['null', 'false', '0', '""', '{}', '[]', '{"entries":{}}']) {
+    const runGit = (args) => (args[0] === 'ls-tree' ? `${args[args.length - 1]}\0` : text);
+    assert.throws(
+      () => readBaselineAtRef('origin/main', '/repo', runGit),
+      /present but invalid: baseline must be an object with an entries array/,
+      `present baseline ${text} must not read as absent`
+    );
+  }
+});
+
+test('readBaselineAtRef still returns a base baseline whose entries have problems', () => {
+  // checkAgainstBaseline tolerates entry-level problems in the previous
+  // baseline (for example a kind renamed on the PR branch); only the shape fails.
+  const value = { base: '3.2.8', entries: [{ file: 'core/a.json', kind: 'retired-kind' }] };
+  const runGit = (args) => (args[0] === 'ls-tree' ? `${args[args.length - 1]}\0` : JSON.stringify(value));
+  assert.deepStrictEqual(readBaselineAtRef('origin/main', '/repo', runGit), value);
+});
+
+// Real git objects, no stubs: the blob or the containing tree is deleted after
+// the commit, the way a failed lazy fetch leaves a blobless clone.
+const BASELINE_FIXTURE_PATH = 'scripts/lint-additive-minor-baseline.json';
+
+test('readBaselineAtRef (real repo) returns null when the baseline is absent from the tree', () => {
+  const fixture = gitFixture({ filePath: 'scripts/other.json', content: '{}' });
+  try {
+    assert.strictEqual(readBaselineAtRef('HEAD', fixture.repo, fixture.runGit), null);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('readBaselineAtRef (real repo) reads a present baseline', () => {
+  const fixture = gitFixture({ filePath: BASELINE_FIXTURE_PATH, content: '{"base":"3.2.8","entries":[]}' });
+  try {
+    assert.deepStrictEqual(readBaselineAtRef('HEAD', fixture.repo, fixture.runGit), { base: '3.2.8', entries: [] });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('readBaselineAtRef (real repo) throws when the baseline blob is unavailable', () => {
+  const fixture = gitFixture({ filePath: BASELINE_FIXTURE_PATH, content: '{"base":"3.2.8","entries":[]}', missing: 'blob' });
+  try {
+    assert.throws(() => readBaselineAtRef('HEAD', fixture.repo, fixture.runGit));
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('readBaselineAtRef (real repo) throws when the scripts/ tree is unavailable', () => {
+  const fixture = gitFixture({ filePath: BASELINE_FIXTURE_PATH, content: '{"base":"3.2.8","entries":[]}', missing: 'tree' });
+  try {
+    assert.throws(() => readBaselineAtRef('HEAD', fixture.repo, fixture.runGit));
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('readBaselineAtRef (real repo) throws when the committed baseline is JSON null', () => {
+  const fixture = gitFixture({ filePath: BASELINE_FIXTURE_PATH, content: 'null' });
+  try {
+    assert.throws(() => readBaselineAtRef('HEAD', fixture.repo, fixture.runGit), /present but invalid/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+// The real-git fixture itself must stay inside its own temp repo even when the
+// caller runs inside a git hook (inherited GIT_INDEX_FILE / GIT_DIR) or has
+// global config with hooks or signing. Every repo here is a disposable mkdtemp.
+function withEnv(overrides, fn) {
+  const saved = {};
+  for (const key of Object.keys(overrides)) {
+    saved[key] = process.env[key];
+    process.env[key] = overrides[key];
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+function parentRepo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-fixture-parent-'));
+  const run = (args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: fixtureEnv() });
+  run(['init', '-q']);
+  fs.writeFileSync(path.join(dir, 'parent.txt'), 'parent\n');
+  run(['add', 'parent.txt']);
+  return { dir, run, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+
+const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+
+test('fixtureEnv drops every inherited GIT_* variable and ignores global and system config', () => {
+  withEnv({ GIT_INDEX_FILE: '/nope/index', GIT_DIR: '/nope', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.hooksPath', GIT_CONFIG_VALUE_0: '/nope' }, () => {
+    const env = fixtureEnv();
+    for (const key of ['GIT_INDEX_FILE', 'GIT_DIR', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0']) {
+      assert.equal(env[key], undefined, `${key} must not reach the fixture`);
+    }
+    assert.equal(env.GIT_CONFIG_NOSYSTEM, '1');
+    assert.equal(env.GIT_CONFIG_GLOBAL, os.devNull);
+    assert.equal(env.HOME, process.env.HOME, 'HOME is left alone');
+  });
+});
+
+test('gitFixture leaves the parent index untouched under an inherited GIT_INDEX_FILE and GIT_DIR', () => {
+  const parent = parentRepo();
+  const index = path.join(parent.dir, '.git', 'index');
+  const before = { sha: sha(index), files: parent.run(['ls-files']) };
+  let fixture;
+  try {
+    withEnv({ GIT_INDEX_FILE: index, GIT_DIR: path.join(parent.dir, '.git'), GIT_WORK_TREE: parent.dir }, () => {
+      fixture = gitFixture({ filePath: 'scripts/fixture-only.json', content: '{}' });
+    });
+    assert.equal(sha(index), before.sha, 'parent index bytes unchanged');
+    assert.equal(parent.run(['ls-files']), before.files);
+    assert.equal(before.files, 'parent.txt\n');
+    assert.equal(fixture.runGit(['ls-files']), 'scripts/fixture-only.json\n', 'the fixture committed into its own repo');
+    assert.ok(fixture.repo.startsWith(os.tmpdir()), 'fixture lives in its own temp dir');
+  } finally {
+    fixture?.cleanup();
+    parent.cleanup();
+  }
+});
+
+test('gitFixture ignores caller global config, hooks and signing', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-fixture-config-'));
+  const hooks = path.join(home, 'hooks');
+  const marker = path.join(home, 'hook-ran');
+  fs.mkdirSync(hooks);
+  for (const hook of ['pre-commit', 'commit-msg', 'post-commit']) {
+    fs.writeFileSync(path.join(hooks, hook), `#!/bin/sh\necho ${hook} >> "${marker}"\nexit 1\n`, { mode: 0o755 });
+  }
+  const config = path.join(home, 'gitconfig');
+  fs.writeFileSync(config, `[core]\n\thooksPath = ${hooks}\n[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = /nonexistent-gpg\n`);
+  let fixture;
+  try {
+    withEnv({ GIT_CONFIG_GLOBAL: config, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.hooksPath', GIT_CONFIG_VALUE_0: hooks }, () => {
+      fixture = gitFixture({ filePath: 'scripts/fixture-only.json', content: '{}' });
+    });
+    // Signing with a missing gpg program would have failed the commit.
+    assert.equal(fixture.runGit(['log', '--format=%G?', '-1']).trim(), 'N', 'the fixture commit is unsigned');
+    assert.equal(fs.existsSync(marker), false, 'no caller hook ran');
+  } finally {
+    fixture?.cleanup();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });

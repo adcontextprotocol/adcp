@@ -12,10 +12,6 @@
       "$ref": "/schemas/core/version-envelope.json"
     },
     {
-      "if": { "required": ["opportunity"] },
-      "then": { "required": ["proposal_id"] }
-    },
-    {
       "if": { "required": ["bidding"] },
       "then": {
         "properties": {
@@ -85,20 +81,9 @@
     },
     "opportunity": {
       "allOf": [
-        { "$ref": "/schemas/core/opportunity-context.json" },
-        {
-          "properties": { "status": { "const": "closed" } },
-          "not": { "required": ["later_proposals"] },
-          "if": {
-            "properties": { "status": { "const": "closed" } },
-            "required": ["status"]
-          },
-          "then": {
-            "properties": { "close_reason": { "const": "accepted_with_seller" } }
-          }
-        }
+        { "$ref": "/schemas/core/opportunity-context.json" }
       ],
-      "description": "Optional planning-cycle closure. Sellers infer successful proposal execution as closed with close_reason accepted_with_seller when status is omitted; when status is present it MUST be closed with that reason. If the proposal was issued under an opportunity_id, a supplied ID MUST match it."
+      "description": "Optional planning-cycle context. In AdCP 3.3 and later, explicit packages may carry opportunity_id for correlation only: status, close_reason, close_detail, and later_proposals MUST be omitted, and the buy MUST NOT change opportunity status or consent. The opaque ID is buyer-assigned; sellers MAY correlate messages with the same ID only within the same seller and buyer account and MUST NOT use it for authorization or cross-account linking. Buyers send this explicit-package context only to sellers advertising the negotiated release that supports it. In proposal mode, sellers infer successful execution as closed with close_reason accepted_with_seller when status is omitted; when status is present it MUST be closed with that reason. If the proposal was issued under an opportunity_id, a supplied ID MUST match it."
     },
     "total_budget": {
       "type": "object",
@@ -352,6 +337,16 @@
     {
       "title": "Explicit packages with fixed allocation",
       "properties": {
+        "opportunity": {
+          "not": {
+            "anyOf": [
+              { "required": ["status"] },
+              { "required": ["close_reason"] },
+              { "required": ["close_detail"] },
+              { "required": ["later_proposals"] }
+            ]
+          }
+        },
         "budget_allocation": {
           "properties": {
             "mode": {
@@ -396,6 +391,16 @@
     {
       "title": "Explicit packages with seller-optimized allocation",
       "properties": {
+        "opportunity": {
+          "not": {
+            "anyOf": [
+              { "required": ["status"] },
+              { "required": ["close_reason"] },
+              { "required": ["close_detail"] },
+              { "required": ["later_proposals"] }
+            ]
+          }
+        },
         "budget_allocation": {
           "properties": {
             "mode": {
@@ -420,6 +425,19 @@
     },
     {
       "title": "Committed proposal execution",
+      "properties": {
+        "opportunity": {
+          "properties": { "status": { "const": "closed" } },
+          "not": { "required": ["later_proposals"] },
+          "if": {
+            "properties": { "status": { "const": "closed" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "close_reason": { "const": "accepted_with_seller" } }
+          }
+        }
+      },
       "required": [
         "proposal_id",
         "total_budget"

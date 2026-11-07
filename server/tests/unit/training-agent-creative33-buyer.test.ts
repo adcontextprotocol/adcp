@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { ADCPMultiAgentClient, type CreativeManifest } from '@adcp/sdk';
 import { InMemoryStateStore } from '@adcp/sdk/server';
 import { mountCreative33Sandbox } from '../../src/training-agent/creative33/router.js';
+import { ensureCreative33SchemaBundle } from '../../src/training-agent/creative33/schema.js';
 import { clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 
 type Json = Record<string, unknown>;
@@ -36,6 +37,7 @@ describe('published SDK buyer journeys on the frozen creative 3.3 beta', () => {
     server = app.listen(0, '127.0.0.1');
     await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    ensureCreative33SchemaBundle();
     agent = ADCPMultiAgentClient.simple(`${base}/beta/3.3/creative/mcp`, {
       authToken: 'buyer-flow-test', adcpVersion: '3.3.0-beta.1', wireAdcpVersion: '3.3-beta.1', timeout: 15000,
     }).agent('default-agent');

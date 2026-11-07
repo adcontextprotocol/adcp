@@ -80,7 +80,7 @@
         "unauthorized_at": {
           "type": "string",
           "format": "date-time",
-          "description": "When the caller's authority for the account ended. Nothing is delivered for periods ending after it, including on retries."
+          "description": "When the caller's authority for the account ended: the revocation, or the reduction of its grant to allowed_tasks without get_reporting_status. Nothing is delivered for periods ending after it, including on retries."
         },
         "last_owed_period_end": {
           "type": "string",
@@ -201,7 +201,7 @@
     },
     "accounts_unauthorized": {
       "type": "array",
-      "description": "Accounts this subscription covered whose authority the caller has since lost, in account_id byte order, so a revoked grant reads differently from a seller that stopped publishing. At most 1000 are listed inline; accounts_unauthorized_count gives the total, and the rest are read through get_principal reporting_subscription_page. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at; after that it drops, and a later re-grant is a fresh coverage start from authorized_at with no gap claimed. Every addition or removal fires principal.changed with reason reporting_subscription_changed.",
+      "description": "Accounts this subscription covered whose authority the caller has since lost, in account_id byte order, so a revoked grant reads differently from a seller that stopped publishing. A grant reduced to allowed_tasks without get_reporting_status is such a loss, listed from the reduction; a reduced grant that still lists get_reporting_status is not. At most 1000 are listed inline; accounts_unauthorized_count gives the total, and the rest are read through get_principal reporting_subscription_page. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant, including when get_reporting_status is added back to a reduced grant, and is otherwise retained for status_retention_days after unauthorized_at; after that it drops, and a later re-grant is a fresh coverage start from authorized_at with no gap claimed. Every addition or removal fires principal.changed with reason reporting_subscription_changed.",
       "items": { "$ref": "#/definitions/ReportingSubscriptionUnauthorizedAccount" },
       "maxItems": 1000
     }

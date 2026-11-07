@@ -479,6 +479,22 @@
     },
     {
       "if": {
+        "properties": {
+          "media_buy": { "required": ["supported_match_keys"] }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.match_keys" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "allOf": [
           {
             "properties": {
@@ -2546,6 +2562,17 @@
           },
           "additionalProperties": true
         },
+        "supported_match_keys": {
+          "type": "array",
+          "x-added-in": "3.3.0",
+          "x-status": "experimental",
+          "description": "Seller-wide identifiers the seller resolves, with the scopes and uses each supports. Product.identity.match_keys overrides this for its product and MUST be covered here. A uid_type listed for audience_include or audience_exclude also appears in audience_targeting.supported_uid_types, one listed for conversion_attribution in conversion_tracking.supported_uid_types, and every scope of a frequency_cap key in frequency_capping.supported_per_units, when those lists are present. A change is a material capability change: it advances adcp.capability_changes.capabilities_version and fires capabilities.changed with /media_buy/supported_match_keys in changed_paths. Requires media_buy.match_keys in experimental_features.",
+          "items": {
+            "$ref": "/schemas/core/match-key.json"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        },
         "event_source_archive": {
           "type": "boolean",
           "description": "Whether this seller supports the per-source `archived` field on `sync_event_sources` request items. When true, `archived: true` archives an event source and `archived: false` undoes it. When false or absent, the seller MUST reject a request that sends `archived` with `UNSUPPORTED_FEATURE`, so a buyer never mistakes an ignored field for an archive.",
@@ -3206,6 +3233,12 @@
           "description": "When true, this agent hosts a creative library and supports list_creatives and creative_id references in build_creative. Creative agents with a library should also implement the accounts protocol (sync_accounts / list_accounts) so buyers can establish access.",
           "default": false
         },
+        "supports_provenance": {
+          "type": "boolean",
+          "description": "When true, this seller supports provenance policy enforcement on sync_creatives: it publishes applicable creative_policy requirements and accepted_verifiers on products, enforces those requirements per creative, and verifies claims against its own trusted verifier allowlist when a policy calls for verification. Merely hosting a creative library or retaining provenance metadata does not imply this capability. False or absent makes provenance-enforcement conformance storyboards not applicable; it does not exempt a seller from enforcing any provenance policy it publishes.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "stable_creative_ids": {
           "type": "boolean",
           "description": "When true, this agent gives every creative that entered its library outside sync_creatives (seller UI or API, automation, or another system) a creative_id that is stable for the creative's lifetime and unique within the account, so a buyer connecting to an existing advertiser can reference those creatives in later requests. The agent MUST keep such IDs stable, MUST NOT reuse a creative_id a buyer has used on the account, and under sync_creatives delete_missing MUST NOT archive those creatives. Requires has_creative_library: true. When false or absent, sellers SHOULD follow the same rules but buyers MUST NOT rely on them.",
@@ -3241,7 +3274,7 @@
         },
         "supports_assignment_trackers": {
           "type": "boolean",
-          "description": "When true, this agent accepts trackers on creative assignments in create_media_buy, update_media_buy, and sync_creatives, fires them in addition to the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits, and returns the assignment-scoped tracker list in list_creatives and get_media_buys readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "description": "When true, this agent accepts trackers on creative assignments in create_media_buy, update_media_buy, and sync_creatives, fires them in addition to the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits where the format declares tracker slots, and returns the assignment-scoped tracker list in list_creatives and get_media_buys readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
           "default": false,
           "x-added-in": "3.3.0"
         },

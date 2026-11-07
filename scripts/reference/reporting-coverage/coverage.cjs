@@ -12,7 +12,8 @@
  *   owed(buy, offering, period) =
  *       cutover    -- the side that owns the period, between its handoffs
  *     ∩ authority  -- authorization chains, gaps between grants
- *     ∩ confirmed  -- ends after confirmed_at
+ *     ∩ confirmed  -- ends after confirmed_at, and after the added_at of a
+ *                     package resolving the offering (a per-package confirmed_at)
  *     ∩ flight     -- overlaps the flight in effect at the period end
  *     ∩ ¬excepted  -- no excluded[] or gaps[] entry covers its start
  *     ∩ resolved   -- has ended by now; not zero-length
@@ -26,8 +27,9 @@
  *   static/schemas/source/core/account-authorization.json authorized_at
  *   docs/media-buy/task-reference/get_reporting_status.mdx#subscription-coverage
  *
- * The model is a test oracle, not a library: it favors obviousness over speed,
- * and it carries only the time zones in tzdata.json.
+ * The model is a test oracle, not a library: it favors obviousness over speed.
+ * It carries the whole pinned IANA tzdata release (tzdata.json), so every zone
+ * and link name works.
  *
  * Input and output shapes are those of the vectors in
  * static/compliance/source/test-vectors/reporting-subscriptions/ (see
@@ -75,7 +77,6 @@ function byteCompare(a, b) {
 function checkZone(name, label, used) {
   // reporting-schedule.json iana_timezone: a recognized IANA zone name or link; a numeric offset is not one.
   if (!tz.isIanaName(name)) throw new CoverageInputError('invalid_timezone', `${label}: ${JSON.stringify(name)} is not an IANA time zone`);
-  if (!tz.hasZone(name)) throw new Error(`${label}: ${name} is valid but not in the reference model's pinned subset; add it to tzdata.json`);
   used.add(name);
   return name;
 }
@@ -386,8 +387,10 @@ function exceptionWindows(coverage) {
 
 /**
  * resolvingPackages: the buy's packages that resolve the offering on the side
- * that owns the period. A package_ids window removes the period only when it
- * names every one of them.
+ * that owns the period and are owed it (it ends after their confirmed_at or
+ * added_at). A package_ids window removes the period only when it names every
+ * one of them, so a package added later keeps the buy covered only for the
+ * periods it is owed.
  */
 function excepted(windows, buyId, offeringId, period, resolvingPackages) {
   return windows.some(window =>
@@ -497,13 +500,26 @@ function sideAt(t, ctx, buy) {
 }
 
 /**
+ * When a package joined the buy's coverage: the buy's confirmed_at, or the package's added_at when that is later.
+ * get_media_buys packages[].added_at: "a package added to a buy after its confirmed_at ... behaves as if the buy were
+ * confirmed at added_at"; absent, the package was part of the buy when it was confirmed. An unconfirmed buy has
+ * none (it is not covered).
+ */
+function packageConfirmedAt(buy, pkg) {
+  if (buy.confirmed_at === undefined || buy.confirmed_at === null) return null;
+  const confirmedAt = instant(buy.confirmed_at, `${buy.media_buy_id}.confirmed_at`);
+  if (pkg.added_at === undefined) return confirmedAt;
+  return Math.max(confirmedAt, instant(pkg.added_at, `${buy.media_buy_id}.packages[${pkg.package_id}].added_at`));
+}
+
+/**
  * The offerings one package resolves to under a version at instant t. The pair resolves once, at the later of
- * accepted_at and confirmed_at, among the offerings available then; an offering added later never re-resolves it.
- * Withdrawal of a resolved offering is the one resolution change within a version: the package re-resolves among
- * the offerings available at withdrawn_at.
+ * accepted_at and the package's confirmed_at (the buy's, or its added_at when later), among the offerings available
+ * then; an offering added later never re-resolves it. Withdrawal of a resolved offering is the one resolution change
+ * within a version: the package re-resolves among the offerings available at withdrawn_at.
  */
 function stickyResolution(pkg, version, buy, ctx, t) {
-  const confirmedAt = buy.confirmed_at ? instant(buy.confirmed_at, `${buy.media_buy_id}.confirmed_at`) : version.acceptedAt;
+  const confirmedAt = packageConfirmedAt(buy, pkg) ?? version.acceptedAt;
   let at = Math.max(version.acceptedAt, confirmedAt);
   let resolved = resolvePackage(pkg, version, ctx.offeringsById, at);
   for (;;) {
@@ -554,6 +570,7 @@ function expectedSubscriptionPeriods(input) {
   for (const buy of input.buys) {
     mentioned.push(instant(buy.start_time, 'start_time'));
     if (buy.confirmed_at) mentioned.push(instant(buy.confirmed_at, 'confirmed_at'));
+    for (const pkg of buy.packages) if (pkg.added_at !== undefined) mentioned.push(instant(pkg.added_at, 'added_at'));
   }
   const longest = Math.max(DAY, ...input.offerings.map(o => {
     try {
@@ -596,7 +613,8 @@ function expectedSubscriptionPeriods(input) {
     seenBuys.add(buy.media_buy_id);
     // coverage: "Covered buys are the confirmed media buys in that account the caller can see"
     if (buy.confirmed_at === undefined || buy.confirmed_at === null) continue;
-    const confirmedAt = instant(buy.confirmed_at, `${buy.media_buy_id}.confirmed_at`);
+    // Per package, the instant from which it is owed periods: confirmed_at, or a later added_at.
+    const packageConfirmed = new Map(buy.packages.map(pkg => [pkg.package_id, packageConfirmedAt(buy, pkg)]));
     const flightAt = flightTimeline(buy);
 
     const sides = changes.map(t => ({ t, side: sideAt(t, ctx, buy) }));
@@ -654,14 +672,18 @@ function expectedSubscriptionPeriods(input) {
         }
         periods.sort((a, b) => a.start - b.start);
         for (const period of periods) {
+          // "that end after the buy's confirmed_at", per package: a package added after confirmation is owed the
+          // periods that end after its added_at, the one containing it in full. The buy owes a period for the
+          // offering when one of the packages resolving it is owed that period.
+          const owing = new Set([...(side.packagesByOffering.get(offeringId) ?? [])].filter(id => period.end > packageConfirmed.get(id)));
           const owed =
             period.start >= floor && period.start < until && // cutover: owned by this side
             period.start < period.end && // "A period whose start and end coincide ... is never owed"
             period.end <= now && // only resolved periods
             authorized(chains, period, input.backfill_on_regrant === true) &&
-            period.end > confirmedAt && // "that end after the buy's confirmed_at"
+            owing.size > 0 && // "that end after the buy's confirmed_at", or after a later package's added_at
             overlapsFlight(period, flightAt(period.end)) && // "scope_resolved_at is the period end"
-            !excepted(windows, buy.media_buy_id, offeringId, period, side.packagesByOffering.get(offeringId) ?? new Set());
+            !excepted(windows, buy.media_buy_id, offeringId, period, owing);
           if (owed) {
             rows.push({
               subscription_version: side.version.number,

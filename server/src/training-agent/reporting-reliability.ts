@@ -467,6 +467,8 @@ interface ReportingLedger {
   pageCursors: Map<string, StoredPageCursor>;
   /** Natural account references retained with the ledger for cache-loss recovery. */
   accountRefs: AccountRef[];
+  /** In-memory equivalent of the separate account_state database column. */
+  accountState?: Record<string, unknown>;
 }
 
 /** Immutable record committed at revision publication, never recomputed on read. */
@@ -495,11 +497,67 @@ function recordReportingRevisionReadForTesting(
 }
 
 const ledgers = new Map<string, ReportingLedger>();
-const reportingAccountBindings = new Map<string, {
+interface ReportingAccountBinding {
   accountId: string;
   account: AccountRef;
   accountState?: Record<string, unknown>;
-}>();
+}
+
+type ReportingAccountState = Record<string, unknown>
+  | ((existing: ReportingAccountBinding | undefined) => Record<string, unknown>);
+
+const reportingAccountBindings = new Map<string, ReportingAccountBinding>();
+
+function evictReportingAccounts(principal: string, accountIds: Set<string>): void {
+  for (const [key, binding] of reportingAccountBindings) {
+    if (key.startsWith(`${principal}\u001f`) && accountIds.has(binding.accountId)) reportingAccountBindings.delete(key);
+  }
+  for (const id of accountIds) ledgers.delete(callerScope(principal, id));
+}
+
+/** Remove only controller-created fixtures owned by this caller and seed session. */
+export async function clearSeededReportingAccountsForSessionDurably(
+  principal: string | undefined,
+  sessionKey: string,
+): Promise<string[]> {
+  const owner = principal && principal.length > 0 ? principal : 'anonymous';
+  if (!isDatabaseInitialized()) {
+    const ids = [...ledgers].flatMap(([key, ledger]) => {
+      const [storedOwner, id] = key.split('\u001f');
+      return storedOwner === owner && ledger.accountState?.seedFixtureSessionKey === sessionKey ? [id] : [];
+    });
+    evictReportingAccounts(owner, new Set(ids));
+    return ids;
+  }
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `${owner}\u001fseed-fixtures\u001f${sessionKey}`,
+    ]);
+    const { rows } = await client.query<{ account_id: string }>(
+      `SELECT account_id FROM training_reporting_ledgers
+       WHERE principal_scope = $1 AND account_state->>'seedFixtureSessionKey' = $2 ORDER BY account_id`,
+      [owner, sessionKey],
+    );
+    // Normal account writers take the account lock before the row lock too.
+    for (const row of rows) {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${owner}\u001f${row.account_id}`]);
+    }
+    const removed = await client.query<{ account_id: string }>(
+      `DELETE FROM training_reporting_ledgers
+       WHERE principal_scope = $1 AND account_state->>'seedFixtureSessionKey' = $2 RETURNING account_id`,
+      [owner, sessionKey],
+    );
+    await client.query('COMMIT');
+    const ids = removed.rows.map(row => row.account_id);
+    evictReportingAccounts(owner, new Set(ids));
+    return ids;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { client.release(); }
+}
 
 function cacheReportingAccountBinding(
   principalScope: string,
@@ -518,13 +576,6 @@ function cacheReportingAccountBinding(
     ...(preservedAccountState && { accountState: structuredClone(preservedAccountState) }),
   };
   reportingAccountBindings.set(scopeKey, binding);
-  if (account.brand && account.sandbox === true) {
-    const { sandbox: _sandboxAssertion, ...buyerAccount } = account;
-    reportingAccountBindings.set(
-      `${principalScope}\u001f${accountScopeFromRef(buyerAccount)}`,
-      { ...binding, account: structuredClone(buyerAccount) },
-    );
-  }
   reportingAccountBindings.set(idKey, binding);
 }
 
@@ -654,18 +705,39 @@ export async function withDurableReportingLedger<T>(
   persist: boolean,
   operation: () => T | Promise<T>,
   account?: AccountRef,
-  accountState?: Record<string, unknown>,
+  accountState?: ReportingAccountState,
+  seedSessionKey?: string,
 ): Promise<T> {
   const principalScope = principal && principal.length > 0 ? principal : 'anonymous';
   if (!isDatabaseInitialized()) {
-    const result = await operation();
+    let existing: ReportingAccountBinding | undefined;
+    if (typeof accountState === 'function') {
+      for (const [key, ledger] of ledgers) {
+        const [owner, storedId] = key.split('\u001f');
+        if (owner !== principalScope || !storedId) continue;
+        const reference = ledger.accountRefs.find(ref => storedId === accountId
+          || (account && accountScopeFromRef(ref) === accountScopeFromRef(account)));
+        if (reference) {
+          existing = { accountId: storedId, account: reference, accountState: ledger.accountState };
+          break;
+        }
+      }
+    }
+    const nextAccountState = typeof accountState === 'function' ? accountState(existing) : accountState;
+    // Synchronous operations (including fixture binding) commit without an
+    // intervening yield, so competing in-memory seeds cannot both claim a key.
+    const pending = operation();
+    const asynchronous = pending !== null && (typeof pending === 'object' || typeof pending === 'function')
+      && 'then' in pending && typeof pending.then === 'function';
+    const result = asynchronous ? await pending : pending;
     if (account) {
       const ledger = ledgerFor(principal, accountId);
       if (!ledger.accountRefs.some(reference => accountScopeFromRef(reference) === accountScopeFromRef(account))) {
         ledger.accountRefs.push(structuredClone(account));
       }
+      if (persist && nextAccountState) ledger.accountState = structuredClone(nextAccountState);
     }
-    if (persist && account) cacheReportingAccountBinding(principalScope, accountId, account, accountState);
+    if (persist && account) cacheReportingAccountBinding(principalScope, accountId, account, nextAccountState);
     return result;
   }
   const cacheKey = callerScope(principal, accountId);
@@ -673,15 +745,21 @@ export async function withDurableReportingLedger<T>(
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
+    if (seedSessionKey !== undefined) {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `${principalScope}\u001fseed-fixtures\u001f${seedSessionKey}`,
+      ]);
+    }
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
       [`${principalScope}\u001f${accountId}`],
     );
     const { rows } = await client.query<{
       ledger: SerializedReportingLedger | string;
+      account_ref: AccountRef | string | null;
       account_state: Record<string, unknown> | string | null;
     }>(
-      `SELECT ledger, account_state
+      `SELECT ledger, account_ref, account_state
          FROM training_reporting_ledgers
         WHERE principal_scope = $1 AND account_id = $2
         FOR UPDATE`,
@@ -691,6 +769,14 @@ export async function withDurableReportingLedger<T>(
     const storedAccountState = typeof rows[0]?.account_state === 'string'
       ? JSON.parse(rows[0].account_state) as Record<string, unknown>
       : rows[0]?.account_state ?? undefined;
+    const storedAccount = typeof rows[0]?.account_ref === 'string'
+      ? JSON.parse(rows[0].account_ref) as AccountRef
+      : rows[0]?.account_ref ?? undefined;
+    // Resolve fixture state from the locked row, never a process cache or a
+    // second connection. Throwing here rolls back before any binding is written.
+    const nextAccountState = typeof accountState === 'function'
+      ? accountState(storedAccount && { accountId, account: storedAccount, accountState: storedAccountState })
+      : accountState;
     ledgers.set(cacheKey, stored
       ? deserializeLedger(typeof stored === 'string' ? JSON.parse(stored) as SerializedReportingLedger : stored)
       : emptyLedger());
@@ -718,13 +804,13 @@ export async function withDurableReportingLedger<T>(
           JSON.stringify(serializeLedger(ledgerFor(principal, accountId))),
           account ? accountScopeFromRef(account) : null,
           account ? JSON.stringify(account) : null,
-          accountState ? JSON.stringify(accountState) : null,
+          nextAccountState ? JSON.stringify(nextAccountState) : null,
         ],
       );
     }
     await client.query('COMMIT');
     if (persist && account) {
-      cacheReportingAccountBinding(principalScope, accountId, account, accountState ?? storedAccountState);
+      cacheReportingAccountBinding(principalScope, accountId, account, nextAccountState ?? storedAccountState);
     }
     return result;
   } catch (error) {
@@ -740,15 +826,17 @@ export async function withDurableReportingLedger<T>(
 export async function resolveReportingAccountDurably(
   principal: string | undefined,
   account: AccountRef,
+  fresh = false,
 ): Promise<{ accountId: string; account: AccountRef; accountState?: Record<string, unknown> } | undefined> {
   const principalScope = principal && principal.length > 0 ? principal : 'anonymous';
   const scope = accountScopeFromRef(account);
   const cached = reportingAccountBindings.get(`${principalScope}\u001f${scope}`);
-  if (cached) return structuredClone(cached);
+  const durable = isDatabaseInitialized();
+  if (cached && !fresh && (!durable || !cached.accountState?.seedFixtureSessionKey)) return structuredClone(cached);
   // The ledger serializes natural references with the account state. This
   // in-process scan is also the deterministic cache-loss path used by direct
   // tests; deployed callers take the identical durable DB lookup below.
-  for (const [key, ledger] of ledgers) {
+  for (const [key, ledger] of durable ? [] : ledgers) {
     const [storedPrincipal, accountId] = key.split('\u001f');
     if (storedPrincipal !== principalScope || !accountId) continue;
     // Mirror the DB lookup below: an account_id reference matches by id.
@@ -757,9 +845,13 @@ export async function resolveReportingAccountDurably(
       : account.account_id === accountId
         ? ledger.accountRefs.find(reference => reference.account_id === undefined)
         : undefined;
-    if (storedAccount) return { accountId, account: structuredClone(storedAccount) };
+    if (storedAccount) return {
+      accountId,
+      account: structuredClone(storedAccount),
+      ...(ledger.accountState && { accountState: structuredClone(ledger.accountState) }),
+    };
   }
-  if (!isDatabaseInitialized()) return undefined;
+  if (!durable) return undefined;
   const lookupById = account.account_id !== undefined;
   const { rows } = await getPool().query<{
     account_id: string;
@@ -772,7 +864,10 @@ export async function resolveReportingAccountDurably(
     [principalScope, lookupById ? account.account_id : scope],
   );
   const row = rows[0];
-  if (!row?.account_ref) return undefined;
+  if (!row?.account_ref) {
+    if (cached) evictReportingAccounts(principalScope, new Set([cached.accountId]));
+    return undefined;
+  }
   const storedAccount = typeof row.account_ref === 'string'
     ? JSON.parse(row.account_ref) as AccountRef
     : row.account_ref;
@@ -803,6 +898,12 @@ export async function listReportingAccountsDurably(
         WHERE principal_scope = $1 AND account_ref IS NOT NULL`,
       [principalScope],
     );
+    const retained = new Set(rows.map(row => row.account_id));
+    const stale = new Set([...reportingAccountBindings]
+      .filter(([key, binding]) => key.startsWith(`${principalScope}\u001f`)
+        && binding.accountState?.seedFixtureSessionKey && !retained.has(binding.accountId))
+      .map(([, binding]) => binding.accountId));
+    evictReportingAccounts(principalScope, stale);
     return rows.flatMap(row => {
       if (!row.account_ref) return [];
       const account = typeof row.account_ref === 'string'
@@ -825,7 +926,10 @@ export async function listReportingAccountsDurably(
     const [storedPrincipal, accountId] = key.split('\u001f');
     if (storedPrincipal !== principalScope || !accountId || unique.has(accountId)) continue;
     const account = ledger.accountRefs[0];
-    if (account) unique.set(accountId, { accountId, account: structuredClone(account) });
+    if (account) unique.set(accountId, {
+      accountId, account: structuredClone(account),
+      ...(ledger.accountState && { accountState: structuredClone(ledger.accountState) }),
+    });
   }
   return structuredClone([...unique.values()]);
 }
@@ -4077,14 +4181,19 @@ export async function replaceReportingConfigurationsDurably(
   }, account, accountState);
 }
 
-/** Persist authoritative account ownership even when reporting is unconfigured. */
+/**
+ * Persist authoritative account ownership even when reporting is unconfigured.
+ * A state resolver validates immutable fixtures against the locked binding and
+ * can retain its full state; throwing refuses the write before acknowledgement.
+ */
 export async function bindReportingAccountDurably(
   principal: string | undefined,
   accountId: string,
   account: AccountRef,
-  accountState?: Record<string, unknown>,
+  accountState?: ReportingAccountState,
+  seedSessionKey?: string,
 ): Promise<void> {
-  await withDurableReportingLedger(principal, accountId, true, () => undefined, account, accountState);
+  await withDurableReportingLedger(principal, accountId, true, () => undefined, account, accountState, seedSessionKey);
 }
 
 /** Capture accepted-buy applicability before live catalog/session state can change. */

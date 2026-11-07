@@ -146,6 +146,17 @@ describe('deriveVerificationStatus', () => {
     expect(result.roles[0].passing).toEqual(['sales-broadcast-tv']);
   });
 
+  it('counts a passing sales-fixed-rate claim toward the media-buy badge', () => {
+    const result = deriveVerificationStatus(
+      ['sales-fixed-rate'],
+      [makeStatus('sales_fixed_rate', 'passing')],
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.roles[0].role).toBe('media-buy');
+    expect(result.roles[0].passing).toEqual(['sales-fixed-rate']);
+  });
+
   it('does not issue a badge when no declared specialisms are known to the catalog', () => {
     const declared = ['fake-specialism-1', 'fake-specialism-2'];
     const statuses: StoryboardStatusEntry[] = [];
@@ -233,6 +244,16 @@ describe('derivePublicComplianceEligibility', () => {
       eligible: false,
       blockers: [{ code: 'storyboards_partial' }],
     });
+  });
+
+  it('makes a seller whose only claim is sales-fixed-rate eligible for the media-buy role', () => {
+    const result = derivePublicComplianceEligibility(
+      ['sales-fixed-rate'],
+      [makeStatus('sales_fixed_rate', 'passing')],
+    );
+
+    expect(result.blockers).toEqual([]);
+    expect(result.roles['media-buy']).toEqual({ eligible: true, blockers: [] });
   });
 
   it('does not invent a role for unknown specialisms and still explains ineligibility', () => {

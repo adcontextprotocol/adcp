@@ -21,6 +21,11 @@ against something neither of them wrote.
   dispatched. It also gives the fix the message ends with, and the SDK classes.
   `expected_error` in a case is one of its `COVERAGE_INPUT_*` codes with a
   `detail`.
+- `offering-checks.json` holds the seller-side offering checks an SDK runs
+  before it enables subscriptions, with their codes from `error-codes.json`
+  (`SUBSCRIPTIONS_REQUIRE_STANDARD_DIMENSIONS`,
+  `SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY`).
+  `scripts/reference/reporting-coverage/offering-checks.cjs` reproduces them.
 - `reason-codes.json` freezes why a period is or isn't owed: the fixed rule
   order (`scope`, `authorization`, `version`, `activity`, `offering`,
   `flight`, `confirmation`, `exception`, `gap`, `cutover`, `timezone`), each
@@ -76,8 +81,11 @@ pinned release first.
 
 The reference model does not use ICU, `Intl`, Temporal, TZif files, or the
 host's zoneinfo. It evaluates the zic source lines of the pinned release
-itself, from `scripts/reference/reporting-coverage/tzdata.json`. The test
-checks that evaluation against zic(8) output for the same release.
+itself, from `scripts/reference/reporting-coverage/tzdata.json`, which carries
+the release's whole default build: every Zone, Rule, and Link, so any IANA
+zone or link name works. The test checks that evaluation against zic(8) for
+every zone from 1970 through 2040, using a per-zone digest of zic's offset
+changes that `extract-tzdata.cjs` records when it regenerates the file.
 
 ## Wiring a vector into an SDK test
 
@@ -97,10 +105,10 @@ For each case:
 
 | Group | What the cases check |
 |---|---|
-| Start bound and flights | The later of `accepted_at` and `authorized_at`, the confirmation period owed in full, the stop-time period owed in full, cancellation (including delivery through a notice period to `cancellation_effective_at`), completion, empty flights, late confirmation, and flight values as of each period end (extension and reinstatement never add an elapsed period). |
+| Start bound and flights | The later of `accepted_at` and `authorized_at`, the confirmation period owed in full, packages added after confirmation (`added_at`: mid-period, before confirmation, on a boundary, inside a 25-hour day, resolution at `added_at`, and added then removed by a `package_ids` exclusion), the stop-time period owed in full, cancellation (including delivery through a notice period to `cancellation_effective_at`), completion, empty flights, late confirmation, and flight values as of each period end (extension and reinstatement never add an elapsed period). |
 | Cutovers | New versions on aligned and misaligned schedules, a billing cutover that owes a stub period, a version change on a boundary, two cutovers inside one period, deactivation, reactivation (including after a schedule change made while inactive), and resolution changes. Compound changes at one instant: a version change with a timezone change, a reactivation, a deactivation, or a revocation. |
-| Authority | Revocation, re-grant with and without `backfill_on_regrant`, expired `accounts_unauthorized` entries, a re-grant exactly at the retention limit, and chains of three and four grants. |
+| Authority | Revocation, a grant reduced without `get_reporting_status` (a loss of authority) and restored (a re-grant), a reduced grant that keeps it, re-grant with and without `backfill_on_regrant`, expired `accounts_unauthorized` entries, a re-grant exactly at the retention limit, and chains of three and four grants. |
 | Exceptions | `excluded[]` and `gaps[]` remove periods by start, offering-scoped entries (including `max_accounts` capacity on offerings with different boundaries), `package_ids` entries (which remove a buy's periods for an offering only when they name every package resolving it), precedence, and an account removed in place (its pre-removal periods stay owed). |
 | Selection | `exact`, `finest`, and `all`, byte-order ties, unmapped and unknown dimensions, finality, purpose, duration, destination, product eligibility, per-product resolution, and `period_timezone` matching. |
-| Period generation | DST gaps and folds at midnight (America/Santiago, America/Havana, Africa/Cairo), day starts that nest PT24H and PT2H in a day whose midnight does not exist, Australia/Lord_Howe's 30-minute DST, sub-daily local periods in Asia/Singapore and Asia/Kathmandu, a skipped civil date (Pacific/Apia), PT24H against P1D, utc sub-daily periods counted from 1970, month-end clamps from 31st and February 29 anchors, P3M, weeks (P7D, starting Thursday from the 1970 origin), and years. |
-| Input errors | Numeric offsets, missing zones, a missing `previous_timezone`, missing `standard_dimensions`, a missing retention window, P1W (the duration pattern has no W), and invalid local durations. |
+| Period generation | DST gaps and folds at midnight (America/Santiago, America/Havana, Africa/Cairo), day starts that nest PT24H and PT2H in a day whose midnight does not exist, Australia/Lord_Howe's 30-minute DST, Pacific/Auckland's September spring forward, Pacific/Chatham's UTC+12:45 hourly periods across its DST start, Asia/Kolkata's UTC+05:30 days, America/Mexico_City before and after Mexico abolished DST in 2022, sub-daily local periods in Asia/Singapore and Asia/Kathmandu, a skipped civil date (Pacific/Apia), PT24H against P1D, utc sub-daily periods counted from 1970, month-end clamps from 31st and February 29 anchors, P3M, weeks (P7D, starting Thursday from the 1970 origin), and years. |
+| Input errors | Numeric offsets, missing zones, a missing `previous_timezone`, missing `standard_dimensions`, a missing retention window, P1W (the duration pattern has no W), and invalid local durations (a mixed `P1DT12H` also fails schema validation; under `utc` it is valid). |

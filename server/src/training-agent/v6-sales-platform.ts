@@ -87,6 +87,7 @@ import {
   withDurableReportingLedger,
 } from './reporting-reliability.js';
 import {
+  flushDirtySessions,
   getSession,
   registerSharedPublicBrandPartition,
   runWithAccountIdAliasScope,
@@ -102,6 +103,7 @@ import {
   taskRegistryScopeFromContext,
 } from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
+import { validateProductDiscoverySourceInput } from './source-schema.js';
 import { finishCollectionRead, prepareCollectionRead, runCollectionRead } from './collections/include-collections.js';
 import {
   withHoldsAcceptProposal,
@@ -1685,6 +1687,17 @@ export class TrainingSalesPlatform
           this.storyboardCompat,
         )
         : withCurrentAccountScope(requestWithRawSelectors, ctx.account, ctx.input);
+      // The routed SDK path bypasses the legacy dispatcher's canonical
+      // validation; discovery schemas alone do not enforce purchase branches.
+      if ((args as unknown as Record<string, unknown>).opportunity !== undefined) {
+        const validationError = validateProductDiscoverySourceInput(
+          'create-media-buy-request',
+          args as unknown as Record<string, unknown>,
+        );
+        if (validationError) {
+          throw new AdcpError('INVALID_REQUEST', { ...validationError, recovery: 'correctable' });
+        }
+      }
       const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
@@ -1713,6 +1726,13 @@ export class TrainingSalesPlatform
       const platformResult = translateV5Result<CreateMediaBuyHandlerResult>(
         canonicalMediaBuyPlatformResult(v5Result),
       );
+      if ('media_buy_id' in platformResult && typeof platformResult.media_buy_id === 'string') {
+        // The tenant transport's fallback flush runs after the MCP response.
+        // Commit this synchronous buy before the SDK publishes its result so
+        // the next controller request can read it on another web process.
+        // Session persistence and SDK replay publication remain separate.
+        await flushDirtySessions();
+      }
       // SDK 14 intentionally keeps synchronous terminal responses silent in
       // AdCP 3.2. Released 3.0 storyboards, however, require the historical
       // inline completion callback. Emit only on that compatibility surface,

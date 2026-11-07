@@ -55,6 +55,7 @@ import {
   UnsupportedReportingFeatureError,
   bindReportingAccountDurably,
   clearReportingReliabilityStore,
+  clearSeededReportingAccountsForSessionDurably,
   listReportingAccountsDurably,
   projectedReportingConfigurationStates,
   replaceReportingConfigurationsDurably,
@@ -139,6 +140,8 @@ interface SyncAccountInput {
 }
 
 interface AccountState {
+  /** Trusted controller seed origin, never projected onto the wire. */
+  seedFixtureSessionKey?: string;
   /** Internal seller scope. Equal wire IDs do not imply shared access. */
   changeScopeId: string;
   accountId: string;
@@ -635,11 +638,12 @@ export async function rehydrateAccountById(
   principal: string | undefined,
   accountId: string,
 ): Promise<void> {
-  if (findAccountByIdAcrossSessions(accountId, principal)) return;
+  const local = findAccountByIdAcrossSessions(accountId, principal);
+  if (local && !local.seedFixtureSessionKey) return;
   if (getComplianceAccounts().some(account => account.account_id === accountId)) return;
   let binding: Awaited<ReturnType<typeof resolveReportingAccountDurably>>;
   try {
-    binding = await resolveReportingAccountDurably(principal, { account_id: accountId });
+    binding = await resolveReportingAccountDurably(principal, { account_id: accountId }, Boolean(local?.seedFixtureSessionKey));
   } catch (err) {
     // Fail closed. Without the binding the id would key its opaque partition:
     // a read would miss the account's state, and a write would be stranded
@@ -651,9 +655,13 @@ export async function rehydrateAccountById(
       message: 'Account state is temporarily unavailable. Retry the request.',
     });
   }
-  if (!binding || binding.accountId !== accountId) return;
+  if (!binding || binding.accountId !== accountId) {
+    if (local?.seedFixtureSessionKey) evictSeededAccountViews(principal, new Set([accountId]));
+    return;
+  }
   const state = accountStateFromReportingBinding(binding, principal, new Date().toISOString());
   if (!state) return;
+  if (state.seedFixtureSessionKey) evictSeededAccountViews(principal, new Set([accountId]));
   getAccountMap(sessionKeyFromArgs({ brand: state.brand }, 'open'), principal).set(accountKey(
     state.brand,
     state.operator,
@@ -747,8 +755,28 @@ export function clearProcessLocalAccountStore(): void {
   clearSharedAccountResources();
 }
 
-/** Clear only the process-local account view owned by one caller session. */
-export function clearAccountStoreForSession(sessionKey: string, principal?: string): void {
+function evictSeededAccountViews(principal: string | undefined, accountIds: Set<string>): void {
+  const prefix = `${principalScope(principal)}\u001f`;
+  for (const [scope, accounts] of accountStore) {
+    if (!scope.startsWith(prefix)) continue;
+    for (const [key, account] of accounts) {
+      if (account.seedFixtureSessionKey && accountIds.has(account.accountId)) accounts.delete(key);
+    }
+  }
+}
+
+/** A complete durable inventory replaces every seeded alias, including IDs
+ * retained with new state by another web, before local views are merged. */
+function discardCachedSeededAccountViews(principal: string | undefined): void {
+  evictSeededAccountViews(principal, new Set(accountsForPrincipal(principal)
+    .filter(account => account.seedFixtureSessionKey)
+    .map(account => account.accountId)));
+}
+
+/** Reset fixture-origin bindings, then the caller's process-local session view. */
+export async function clearAccountStoreForSession(sessionKey: string, principal?: string): Promise<void> {
+  const ids = await clearSeededReportingAccountsForSessionDurably(principal, sessionKey);
+  evictSeededAccountViews(principal, new Set(ids));
   accountStore.delete(scopedStoreKey(sessionKey, principal));
 }
 
@@ -1300,7 +1328,12 @@ export async function isNaturalAccountRefProvisioned(
       account.currency,
       account.sandbox,
       account.timezone,
-    )) return true;
+    )) {
+      if (!account.seedFixtureSessionKey) return true;
+      const binding = await resolveReportingAccountDurably(principal, ref, true);
+      if (binding?.accountId !== account.accountId) evictSeededAccountViews(principal, new Set([account.accountId]));
+      return binding !== undefined;
+    }
   }
   for (const fixture of getComplianceAccounts()) {
     if (sameScope(
@@ -1400,10 +1433,12 @@ export function resolveAccountBrandForRef(
   return undefined;
 }
 
-export function seedAccountFixture(
+class SeedAccountConflictError extends Error {}
+
+export async function seedAccountFixture(
   args: ToolArgs,
   ctx: TrainingContext,
-): { success: boolean; message?: string; error?: string; error_detail?: string } {
+): Promise<{ success: boolean; message?: string; error?: string; error_detail?: string }> {
   const identityError = durableAccountIdentityError(ctx);
   if (identityError) {
     return {
@@ -1458,7 +1493,8 @@ export function seedAccountFixture(
   const existing = accounts.get(key)
     ?? findAccountByIdAcrossSessions(accountId, ctx.principal);
 
-  const state: AccountState = {
+  let state: AccountState = {
+    seedFixtureSessionKey: sessionKey,
     changeScopeId: principalAccountChangeScope(ctx.principal, accountId),
     accountId,
     brand: brand as { domain: string; brand_id?: string; countries?: string[]; name?: string },
@@ -1479,21 +1515,50 @@ export function seedAccountFixture(
     syncedAt: now,
   };
 
-  if (existing) {
-    const existingComparable = JSON.stringify(accountStateToWire(existing));
-    const nextComparable = JSON.stringify(accountStateToWire(state));
-    if (existingComparable !== nextComparable) {
+  const fixtureWire = JSON.stringify(accountStateToWire(state));
+  let replayed = false;
+  const preserveMatchingState = (prior: AccountState): Record<string, unknown> => {
+    if (accountScopeFromRef(reportingAccountRef(prior)) !== key
+      || JSON.stringify(accountStateToWire(prior)) !== fixtureWire) {
+      throw new SeedAccountConflictError();
+    }
+    replayed = true;
+    // Preserve revision, governance and other non-fixture settings on replay.
+    state = structuredClone(prior);
+    return state as unknown as Record<string, unknown>;
+  };
+  try {
+    await bindReportingAccountDurably(ctx.principal, accountId, reportingAccountRef(state), binding => {
+      if (binding) {
+        if (binding.accountId !== accountId || accountScopeFromRef(binding.account) !== key || !binding.accountState) {
+          throw new SeedAccountConflictError();
+        }
+        return preserveMatchingState(binding.accountState as unknown as AccountState);
+      }
+      // A missing locked row can be a reset from another web process. Its
+      // tagged local copy is not authority to reject or resurrect that fixture.
+      if (existing && !existing.seedFixtureSessionKey) return preserveMatchingState(existing);
+      return state as unknown as Record<string, unknown>;
+    }, sessionKey);
+  } catch (error) {
+    const scopeConflict = error !== null && typeof error === 'object'
+      && 'code' in error && error.code === '23505'
+      && 'constraint' in error && error.constraint === 'training_reporting_ledgers_principal_scope_unique';
+    if (error instanceof SeedAccountConflictError || scopeConflict) {
       return {
         success: false,
         error: 'INVALID_STATE',
         error_detail: `account_id "${accountId}" was already seeded with a different fixture - seed_account is idempotent`,
       };
     }
-    return { success: true, message: `account_id "${accountId}" already seeded with the same fixture` };
+    throw error;
   }
 
-  accounts.set(key, state);
-  return { success: true, message: `Account "${accountId}" seeded` };
+  evictSeededAccountViews(ctx.principal, new Set([accountId]));
+  getAccountMap(sessionKey, ctx.principal).set(key, state);
+  return { success: true, message: replayed
+    ? `account_id "${accountId}" already seeded with the same fixture`
+    : `Account "${accountId}" seeded` };
 }
 
 // Compliance fixture pool — used when the session has no synced accounts, so
@@ -1853,6 +1918,11 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         continue;
       }
       const durableReportingAccount = await resolveReportingAccountDurably(ctx.principal, input.account);
+      const localAccount = findAccountByRef(accounts, input.account)
+        ?? (input.account.account_id ? findAccountByIdAcrossSessions(input.account.account_id, ctx.principal) : undefined);
+      if (localAccount?.seedFixtureSessionKey) {
+        evictSeededAccountViews(ctx.principal, new Set([localAccount.accountId]));
+      }
       const existing = findAccountByRef(accounts, input.account)
         ?? (input.account.account_id ? findAccountByIdAcrossSessions(input.account.account_id, ctx.principal) : undefined)
         ?? (input.account.account_id ? findComplianceAccountById(input.account.account_id, now) : undefined)
@@ -2163,6 +2233,10 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       ctx.principal,
       requestedReportingAccount,
     );
+    const localAccount = accounts.get(key);
+    if (localAccount?.seedFixtureSessionKey) {
+      evictSeededAccountViews(ctx.principal, new Set([localAccount.accountId]));
+    }
     const existing = accounts.get(key)
       ?? (durableReportingAccount
         ? accountStateFromReportingBinding(durableReportingAccount, ctx.principal, now)
@@ -2233,6 +2307,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 
     const previousWire = existing ? JSON.stringify(accountStateToWire(existing)) : undefined;
     const state: AccountState = {
+      ...(existing?.seedFixtureSessionKey && { seedFixtureSessionKey: existing.seedFixtureSessionKey }),
       changeScopeId: existing?.changeScopeId
         ?? principalAccountChangeScope(ctx.principal, accountId),
       accountId,
@@ -2424,7 +2499,9 @@ export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): 
   if (identityError) return identityError;
   const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
   const accountMap = getAccountMap(sessionKey, ctx.principal);
-  for (const binding of await listReportingAccountsDurably(ctx.principal)) {
+  const bindings = await listReportingAccountsDurably(ctx.principal);
+  discardCachedSeededAccountViews(ctx.principal);
+  for (const binding of bindings) {
     const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
     if (!restored) continue;
     accountMap.set(accountKey(
@@ -2960,9 +3037,11 @@ export async function recordCallerAccountGrant(principal: string | undefined, ac
 
 /** Every account the caller holds, live or durably bound. */
 export async function callerAccountStates(ctx: TrainingContext): Promise<AccountState[]> {
+  const bindings = await listReportingAccountsDurably(ctx.principal);
+  discardCachedSeededAccountViews(ctx.principal);
   const byId = new Map(accountsForPrincipal(ctx.principal).map(account => [account.accountId, account]));
-  for (const binding of await listReportingAccountsDurably(ctx.principal)) {
-    if (byId.has(binding.accountId)) continue;
+  for (const binding of bindings) {
+    if (byId.has(binding.accountId) && !byId.get(binding.accountId)?.seedFixtureSessionKey) continue;
     const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
     if (restored) byId.set(restored.accountId, restored);
   }
@@ -2972,11 +3051,15 @@ export async function callerAccountStates(ctx: TrainingContext): Promise<Account
 /** The account the caller holds under `accountId`, loaded into its live map. */
 export async function findCallerAccount(ctx: TrainingContext, accountId: string): Promise<AccountState | undefined> {
   const live = findAccountByIdAcrossSessions(accountId, ctx.principal);
-  if (live) return live;
-  const binding = await resolveReportingAccountDurably(ctx.principal, { account_id: accountId });
-  if (!binding || binding.accountId !== accountId) return undefined;
+  if (live && !live.seedFixtureSessionKey) return live;
+  const binding = await resolveReportingAccountDurably(ctx.principal, { account_id: accountId }, Boolean(live?.seedFixtureSessionKey));
+  if (!binding || binding.accountId !== accountId) {
+    if (live?.seedFixtureSessionKey) evictSeededAccountViews(ctx.principal, new Set([accountId]));
+    return undefined;
+  }
   const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
   if (!restored) return undefined;
+  if (restored.seedFixtureSessionKey) evictSeededAccountViews(ctx.principal, new Set([accountId]));
   const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
   getAccountMap(sessionKey, ctx.principal).set(accountKey(
     restored.brand,

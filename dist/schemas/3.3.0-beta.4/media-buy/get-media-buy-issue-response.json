@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/media-buy/get-media-buy-issue-response.json",
+  "title": "Get Media Buy Issue Response",
+  "x-added-in": "3.3.0",
+  "description": "Stored issue snapshot or terminal task error, never both. The issue status is a domain lifecycle distinct from completion of the reporting/read task.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "found"
+        },
+        "issue": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/media-buy-issue.json"
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+        }
+      },
+      "required": [
+        "outcome",
+        "issue"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "failed"
+        },
+        "errors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+        }
+      },
+      "required": [
+        "outcome",
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "issue"
+        ]
+      }
+    }
+  ],
+  "discriminator": {
+    "propertyName": "outcome"
+  }
+}

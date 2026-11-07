@@ -284,9 +284,11 @@ function salesComplyScenarios(
   const withChangeFeed = supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...current, 'expire_account_change_cursor']
     : current;
-  // Experimental 3.3: grants, account timezone, and the sandbox clock.
+  // Experimental 3.3: grants, account timezone, and the sandbox clock. A
+  // seller that lists the probe MUST also list reset_state, which unpins the
+  // clock and undoes the probe's changes before each storyboard.
   const withAccounts33 = supportsAccountSurfaces33(servedVersion)
-    ? [...withChangeFeed, 'reporting_subscription_probe']
+    ? [...withChangeFeed, 'reporting_subscription_probe', 'reset_state']
     : withChangeFeed;
   // Experimental 3.3 collection cards: change cards to drive card webhooks.
   return supportsCollections33(servedVersion)
@@ -608,8 +610,7 @@ function tenantMcpHandler(
       }
 
       if (
-        storyboardCompat?.version !== '3.0'
-        && OPERATOR_UNIT_BRIDGE_TENANTS.has(resolved.tenantId)
+        OPERATOR_UNIT_BRIDGE_TENANTS.has(resolved.tenantId)
         && req.body?.method === 'tools/call'
         && req.body?.params?.name === 'comply_test_controller'
         && req.body.params.arguments
@@ -629,6 +630,18 @@ function tenantMcpHandler(
         delete ext.__training_operator_unit;
         if (account && typeof account === 'object' && !Array.isArray(account)) {
           const bridgedAccount = { ...account as Record<string, unknown> };
+          if (bridgedAccount.operator_unit !== undefined && (
+            !isValidOperatorUnit(bridgedAccount.operator_unit)
+            || storyboardCompat?.version === '3.0'
+            || explicitlyRequestsPreOperatorUnitVersion(controllerArgs)
+          )) {
+            res.json({
+              jsonrpc: '2.0',
+              id: req.body.id ?? null,
+              error: { code: -32602, message: 'account.operator_unit must be valid and requires AdCP 3.2 or later.' },
+            });
+            return;
+          }
           if (
             isValidOperatorUnit(bridgedAccount.operator_unit)
             && !explicitlyRequestsPreOperatorUnitVersion(controllerArgs)
@@ -1431,6 +1444,9 @@ function projectTenantCapabilities(
       structured.creative = {
         ...creative,
         bills_through_adcp: false,
+        // The seller publishes creative policies and enforces provenance
+        // during sync_creatives. Older release shapes omit this 3.3 flag below.
+        supports_provenance: true,
         supported_formats: supportedFormats,
         preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',

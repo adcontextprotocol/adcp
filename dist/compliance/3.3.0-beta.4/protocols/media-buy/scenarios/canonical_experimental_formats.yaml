@@ -1,0 +1,190 @@
+id: media_buy_seller/canonical_experimental_formats
+version: 1.0.0
+title: Seller preserves experimental canonical image formats
+category: media_buy_seller
+summary: Verifies a seeded experimental canonical image formats declaration only after native catalog discovery establishes that optional format family.
+track: products
+introduced_in: "3.1"
+requires:
+  - controller
+  - collect_product_pages_runner
+requires_all_capabilities:
+  - path: media_buy.buying_modes
+    contains: wholesale
+  - path: compliance_testing.scenarios
+    contains: seed_product
+required_tools:
+  - get_products
+  - comply_test_controller
+narrative: This optional experimental canonical image formats slice discovers a matching native declaration before seeding its deterministic fixture. A valid no-match is a fixture_unsatisfied coverage gap. It does not suppress the independent image and named-format compatibility scenario or require any reporting vendor metrics. Discovery and accepted fixture failures remain conformance failures.
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - exposes_canonical_formats
+  examples:
+    - A seller publishing experimental canonical image declarations
+caller:
+  role: buyer_agent
+  example: Compliance test harness
+prerequisites:
+  description: Wholesale discovery must expose native experimental canonical image formats support. The controller seeds the matching fixture only after that support is established.
+  test_kit: test-kits/acme-outdoor.yaml
+  controller_seeding: true
+context:
+  account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_canonical_experimen-959b68ca
+    sandbox: true
+fixtures:
+  accounts:
+    - account_id: acct_canonical_experimental_formats_sandbox
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: pinnacle-agency.example
+        operator_unit:
+          id: compliance-media_buy_seller_canonical_experimen-959b68ca
+        billing: operator
+        status: active
+        sandbox: true
+  products:
+    - product_id: native_experimental_format_support
+fixture_resolution:
+  products:
+    - handle: native_experimental_format_support
+      allow_reuse: true
+      strategies:
+        - discover
+      match:
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /channels
+          operator: contains_all
+          value:
+            - display
+        - path: /format_options
+          operator: any_match
+          where:
+            - path: /format_kind
+              operator: equals
+              value: image
+            - path: /experimental
+              operator: equals
+              value: true
+phases:
+  - id: seed_supported_canonical_fixtures
+    title: Prepare the supported experimental canonical image formats fixture
+    steps:
+      - id: seed_canonical_formats_experimental_display
+        title: Seed canonical_formats_experimental_display
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_experimen-959b68ca
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: canonical_formats_experimental_display
+            fixture:
+              name: Canonical Formats Experimental Display
+              description: Seeded wholesale product for experimental canonical declaration visibility.
+              publisher_properties:
+                - publisher_domain: outdoormagazine.example
+                  selection_type: all
+              channels:
+                - display
+              delivery_type: non_guaranteed
+              format_options:
+                - format_kind: image
+                  format_option_id: canonical_formats_experimental_image_mrec
+                  display_name: Canonical Formats Experimental Image MREC
+                  experimental: true
+                  params:
+                    width: 300
+                    height: 250
+                    max_file_size_kb: 200
+                    image_formats:
+                      - jpg
+                      - png
+                    ssl_required: true
+                    asset_source: buyer_uploaded
+                    buyer_asset_acceptance: accepted
+                    composition_model: deterministic
+                    slots:
+                      - asset_group_id: image_main
+                        asset_type: image
+                        required: true
+                  canonical_formats_only: true
+              pricing_options:
+                - pricing_option_id: canonical_formats_experimental_cpm
+                  pricing_model: cpm
+                  currency: USD
+                  floor_price: 9
+              reporting_capabilities:
+                available_reporting_frequencies:
+                  - daily
+                expected_delay_minutes: 60
+                timezone: UTC
+                supports_webhooks: false
+                available_metrics:
+                  - impressions
+                  - clicks
+                  - spend
+                date_range_support: date_range
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The controller accepts the supported compatibility fixture
+  - id: canonical_product_discovery
+    title: Read the experimental canonical image formats declaration
+    steps:
+      - id: get_seeded_experimental_product
+        title: Read experimental declarations
+        narrative: Read the seeded canonical-only image product and preserve its experimental declaration without requiring a named-format projection.
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: Return the seeded experimental image declaration on its own product, independent of catalog order and named-format support.
+        sample_request:
+          buying_mode: wholesale
+          filters:
+            channels:
+              - display
+            delivery_type: non_guaranteed
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_experimen-959b68ca
+            sandbox: true
+          context:
+            correlation_id: canonical_experimental_formats--get_seeded_experimental_product
+        validations:
+          - check: response_schema
+            description: Response matches get-products-response.json schema
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: canonical_formats_experimental_display
+              format_options:
+                - format_kind: image
+                  experimental: true
+                  canonical_formats_only: true
+            description: The seeded product retains its format contract regardless of catalog or format ordering
+        collect_product_pages: true

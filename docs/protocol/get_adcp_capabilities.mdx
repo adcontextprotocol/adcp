@@ -837,6 +837,44 @@ narrow it. Root caps are max-impression-only in 3.2; package caps may also use
 suppression. Scope is determined by field location, not by a `FrequencyCap`
 discriminator.
 
+#### supported_match_keys (experimental)
+
+`media_buy.supported_match_keys` lists the identifiers the seller resolves,
+the entity scopes each resolves at, and the uses each supports. Sellers using
+it list `media_buy.match_keys` in `experimental_features`. A product's
+`identity.match_keys` overrides it for that product. See
+[Match keys and cross-publisher frequency capping](/docs/media-buy/specification#match-keys-and-cross-publisher-frequency-capping-experimental)
+for the full rules, including how a buyer decides whether two sellers' keys
+can count toward the same cross-seller cap.
+
+```json
+{
+  "media_buy": {
+    "supported_match_keys": [
+      {
+        "uid_type": "maid",
+        "vendor": { "domain": "example-graph.com" },
+        "scopes": ["devices", "households"],
+        "uses": ["audience_exclude", "frequency_cap", "identity_match"],
+        "property_types": ["mobile_app", "ctv_app"]
+      },
+      {
+        "uid_type": "publisher_first_party",
+        "scopes": ["cookies"],
+        "uses": ["audience_include", "audience_exclude", "frequency_cap"],
+        "property_types": ["website"]
+      }
+    ]
+  }
+}
+```
+
+A change to this list, for example after a browser release blocks a
+resolution vendor, is a material capability change. It advances
+`adcp.capability_changes.capabilities_version` and fires
+`capabilities.changed` with `/media_buy/supported_match_keys` in
+`changed_paths`.
+
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
 
@@ -1522,8 +1560,9 @@ Creative protocol capabilities. Only present if `creative` is in `supported_prot
 |-------|------|-------------|
 | `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements and validate them against its canonical supported-format declarations. |
 | `has_creative_library` | boolean | When `true`, the agent exposes reusable [`sync_creatives`](/docs/creative/task-reference/sync_creatives) and `list_creatives` library operations. |
+| `supports_provenance` | boolean | Added in 3.3; defaults to `false`. Opts in to product provenance policy enforcement and trusted-verifier handling on `sync_creatives`. A creative library alone does not imply support. Sellers that omit this flag or set it to `false` skip the provenance storyboards. Any provenance policy a seller publishes still applies. |
 | `stable_creative_ids` | boolean | When `true`, every creative that entered the library outside [`sync_creatives`](/docs/creative/task-reference/sync_creatives#seller-assigned-creative-ids) gets a seller-assigned `creative_id` that stays the same for the creative's lifetime, is unique within the account, and never reuses a buyer's ID, and `delete_missing` never archives those creatives. Lets a buyer that connects to an advertiser with existing creatives reference them reliably. Requires `has_creative_library: true`. When `false` or absent, sellers SHOULD follow the same rules but buyers MUST NOT rely on them. |
-| `supports_assignment_trackers` | boolean | Added in 3.3; defaults to `false`. When `true`, accepts assignment-scoped `trackers` in create/update media buy and sync assignment requests, fires them alongside the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits, and returns the assignment tracker list in readback. Requires `has_creative_library: true`. When `false` or absent, buyers MUST NOT send the field and the agent MUST reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Independent of landing-page override support. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers). |
+| `supports_assignment_trackers` | boolean | Added in 3.3; defaults to `false`. When `true`, accepts assignment-scoped `trackers` in create/update media buy and sync assignment requests, fires them alongside the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits where the format declares tracker slots, and returns the assignment tracker list in readback. Requires `has_creative_library: true`. When `false` or absent, buyers MUST NOT send the field and the agent MUST reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Independent of landing-page override support. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers). |
 | `supports_revisions` | boolean | When `true`, the library accepts buyer-authored immutable `revision_id` values and preserves them through sync echo, current readback, review attribution, and revision-homogeneous delivery rows. Requires `has_creative_library: true`. Does not imply revision history, rollback, or staged activation. |
 | `supports_assignment_landing_page` | boolean | Added in 3.3; defaults to `false`. When `true`, accepts assignment-scoped `landing_page_url` in create/update media buy and sync assignment requests, serves the override or rejects the assignment, and reports the effective destination in assignment readback. Requires `has_creative_library: true`. When `false` or absent, buyers MUST NOT send the field and the agent MUST reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages). |
 | `live_updates` | object | Experimental; added in 3.3. Which kinds of change (`click_through`, `trackers`, `asset_content`, `format`) the agent applies in place to a live creative under the same `creative_id`, and how the creative serves while each is decided: `uninterrupted`, `staged` (the prior version serves until the change is approved; `on_rejection` is `keeps_prior` or `stops`), or `paused_for_review`. A floor: listed kinds are accepted on every live creative in the listed mode or a less disruptive one. Optional `max_propagation_seconds` bounds how long a prior version may still serve after a change applies. A declaring agent refuses other changes with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported) and answers the exact outcome of one change on a [`sync_creatives` `dry_run`](/docs/creative/task-reference/sync_creatives#live-creative-updates). Requires `has_creative_library: true`. See [Live creative updates](/docs/creative/task-reference/sync_creatives#live-creative-updates). |

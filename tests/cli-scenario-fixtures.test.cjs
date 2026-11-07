@@ -99,6 +99,41 @@ for (const name of ['provenance_enforcement', 'provenance_audit_observation', 'p
   });
 }
 
+test('canonical product probes bind their fixtures to the complete product-target sandbox account', () => {
+  const storyboard = YAML.parse(fs.readFileSync(path.join(
+    __dirname, '../static/compliance/source/universal/canonical-format-validate-input.yaml'
+  ), 'utf8'));
+  const account = storyboard.context.account;
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  assert.equal(validateAccountRef(account), true, ajv.errorsText(validateAccountRef.errors));
+  assert.equal(account.sandbox, true);
+  const productIds = new Set(storyboard.fixtures.products.map(product => product.product_id));
+  const probes = storyboard.phases.flatMap(phase => phase.steps)
+    .filter(step => step.sample_request?.targets?.some(target => target.kind === 'product' && productIds.has(target.id)));
+  assert.equal(probes.length, 2, 'both missing-slot and nondeterministic probes must read the seeded product');
+  for (const step of probes) assert.deepEqual(step.sample_request.account, account, step.id);
+});
+
+test('vendor-metric catalog setup and both compatibility branches share the fixture sandbox account', () => {
+  const storyboard = YAML.parse(fs.readFileSync(path.join(SCENARIOS, 'vendor_metric_catalog_precondition.yaml'), 'utf8'));
+  const account = storyboard.context.account;
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  assert.equal(validateAccountRef(account), true, ajv.errorsText(validateAccountRef.errors));
+  assert.equal(account.sandbox, true);
+  const steps = storyboard.phases.flatMap(phase => phase.steps);
+  const provision = steps.find(step => step.task === 'sync_accounts').sample_request.accounts[0];
+  const identity = {
+    brand: provision.brand,
+    operator: provision.operator,
+    ...(Object.hasOwn(provision, 'operator_unit') ? { operator_unit: provision.operator_unit } : {}),
+    sandbox: provision.sandbox,
+  };
+  assert.deepEqual(identity, account);
+  const uses = steps.filter(step => ['comply_test_controller', 'create_media_buy'].includes(step.task));
+  assert.equal(uses.length, 3, 'catalog seed and both accept/reject branches must share scope');
+  for (const step of uses) assert.deepEqual(step.sample_request.account, account, step.id);
+});
+
 // One canonical discovery now decides between all three canonical shapes, so the gate
 // and the buy are always the same observation. Only the legacy path reads separately.
 function discoveryKey(request) {
@@ -624,4 +659,386 @@ test('inline creatives: narrowing legacy discovery by format_kinds costs a legac
   const coverage = phases.flatMap(phase => phase.steps).find(step => step.task === 'assert_contribution');
   assert.equal(coverage.passed, false, 'the conformant seller fails the coverage gate');
   assert.equal(result.overall_passed, false);
+});
+
+// deterministic_testing seeds `test-product` / `test-pricing` and consumes them as
+// Acme Outdoor buying through Pinnacle, but its deterministic_account phase also
+// provisions an unrelated test.example account through sync_accounts. Without a
+// top-level context.account nothing names which of the two owns the fixtures, so
+// accountless controller calls fall back to the run-scoped default and a
+// fail-closed seeder has no single owner to write to. The installed SDK still seeds
+// under the run-scoped default; newer runners (verified on 17.0.0-beta.15) seed
+// under context.account, which the static test below pins to the consuming account.
+const DETERMINISTIC_TESTING = path.join(
+  __dirname,
+  '../static/compliance/source/universal/deterministic-testing.yaml'
+);
+const FIXTURE_CONSUMER = {
+  brand: { domain: 'acmeoutdoor.example' },
+  operator: 'pinnacle-agency.example',
+};
+const PROVISIONED = { brand: { domain: 'test.example' }, operator: 'test.example' };
+
+// Drive the authored storyboard through the installed SDK runner against a stub
+// seller that accepts every call except the authored negative paths, so every
+// phase reaches its controller steps.
+// Validations are stripped because the stub returns minimal payloads; only the
+// wire requests the runner builds are under test here.
+async function runDeterministicTesting({ omitPhases = [] } = {}) {
+  const storyboard = loadStoryboardFile(DETERMINISTIC_TESTING);
+  storyboard.phases = storyboard.phases.filter(phase => !omitPhases.includes(phase.id));
+  const refusals = new Set();
+  for (const phase of storyboard.phases) {
+    for (const step of phase.steps) {
+      step.validations = [];
+      if (step.expect_error) refusals.add(`deterministic_testing--${step.id}`);
+    }
+  }
+  const calls = [];
+  const client = {
+    executeTask: async (task, request) => {
+      calls.push({ task, request: structuredClone(request) });
+      // Refuse exactly the negative-path steps, as a conformant controller would.
+      if (refusals.has(request.context?.correlation_id)) {
+        return { success: false, error: 'INVALID_TRANSITION', data: { context: request.context, success: false } };
+      }
+      const data = {
+        context: request.context,
+        success: true,
+        supported_protocols: ['media_buy', 'creative'],
+        scenarios: [
+          'seed_product',
+          'seed_pricing_option',
+          'force_account_status',
+          'force_media_buy_status',
+          'force_creative_status',
+          'simulate_delivery',
+          'simulate_budget_spend',
+        ],
+        accounts: [{ account_id: 'acct_provisioned', ...PROVISIONED }],
+        media_buy_id: 'mb_deterministic',
+        creatives: [{ creative_id: 'cr_deterministic' }],
+      };
+      return { success: true, status: 'completed', data };
+    },
+  };
+  const tools = [
+    'comply_test_controller',
+    'get_adcp_capabilities',
+    'sync_accounts',
+    'list_accounts',
+    'create_media_buy',
+    'get_media_buys',
+    'get_media_buy_delivery',
+    'sync_creatives',
+  ];
+  const result = await runStoryboard('https://seller.example/mcp', storyboard, {
+    protocol: 'mcp',
+    agentTools: tools,
+    _client: client,
+    _profile: { name: 'deterministic seller', tools },
+  });
+  // Every step that ran must pass, so no controller step is silently skipped. Only
+  // the SI phase is skipped: the stub advertises no si_* tools, and SI carries no account.
+  const steps = result.phases.flatMap(phase => phase.steps);
+  assert.deepEqual(steps.filter(step => !step.passed && !step.skipped).map(step => step.step_id), []);
+  assert.deepEqual(
+    [...new Set(steps.filter(step => step.skipped).map(step => step.phase_id))],
+    ['deterministic_session']
+  );
+  const stepOf = call => (call.request.context?.correlation_id ?? '').replace(/^deterministic_testing--/, '');
+  // Negative-path steps are sent as authored, without account enrichment, so they
+  // say nothing about which owner the runner resolves.
+  const enriched = calls.filter(call => !refusals.has(call.request.context?.correlation_id));
+  return { storyboard, calls, enriched, stepOf };
+}
+
+test('deterministic_testing names the fixture-consuming account as its fixture owner', () => {
+  const storyboard = YAML.parse(fs.readFileSync(DETERMINISTIC_TESTING, 'utf8'));
+  assert.equal(storyboard.prerequisites.controller_seeding, true);
+  const owner = storyboard.context?.account;
+  assert.ok(owner, 'a controller-seeded storyboard with two account identities must name its fixture owner');
+  const validateAccountRef = ajv.getSchema('/schemas/core/account-ref.json');
+  assert.equal(validateAccountRef(owner), true, ajv.errorsText(validateAccountRef.errors));
+  assert.deepEqual(owner, { ...FIXTURE_CONSUMER, sandbox: true });
+
+  // The owner is the account that actually buys the seeded product.
+  const productIds = new Set(storyboard.fixtures.products.map(product => product.product_id));
+  const steps = storyboard.phases.flatMap(phase => phase.steps);
+  const consumers = steps.filter(step =>
+    (step.sample_request?.packages ?? []).some(pkg => productIds.has(pkg.product_id))
+  );
+  assert.equal(consumers.length, 3, 'state-machine, delivery and budget buys all consume the seeded product');
+  for (const step of consumers) assert.deepEqual(step.sample_request.account, FIXTURE_CONSUMER, step.id);
+
+  const resourceControls = storyboard.phases
+    .filter(phase => ['deterministic_media_buy', 'deterministic_creative', 'deterministic_delivery', 'deterministic_budget'].includes(phase.id))
+    .flatMap(phase => phase.steps)
+    .filter(step => step.task === 'comply_test_controller' &&
+    ['force_media_buy_status', 'force_creative_status', 'simulate_delivery', 'simulate_budget_spend'].includes(step.sample_request?.scenario)
+  );
+  assert.equal(resourceControls.length, 10, 'all Acme lifecycle controls, including negative paths, must be scoped');
+  for (const step of resourceControls) assert.deepEqual(step.sample_request.account, owner, step.id);
+
+  // Account provisioning keeps its own, deliberately different identity.
+  const provisioning = steps.filter(step => step.task === 'sync_accounts');
+  assert.equal(provisioning.length, 1);
+  const row = provisioning[0].sample_request.accounts[0];
+  assert.deepEqual({ brand: row.brand, operator: row.operator }, PROVISIONED);
+  assert.notDeepEqual({ brand: row.brand, operator: row.operator }, FIXTURE_CONSUMER);
+});
+
+test('deterministic_testing controller calls resolve to the fixture owner while provisioning stays test.example', async () => {
+  const { storyboard, calls, enriched, stepOf } = await runDeterministicTesting();
+  const owner = { ...FIXTURE_CONSUMER, sandbox: true };
+
+  // A controller call that authors only `sandbox: true` resolves to the fixture
+  // owner instead of the run-scoped default identity.
+  const validationSteps = storyboard.phases
+    .find(phase => phase.id === 'controller_validation')
+    .steps.map(step => step.id);
+  const controllerChecks = enriched.filter(
+    call => call.task === 'comply_test_controller' && validationSteps.includes(stepOf(call))
+  );
+  assert.deepEqual(controllerChecks.map(stepOf), ['list_scenarios']);
+  for (const call of controllerChecks) assert.deepEqual(call.request.account, owner, stepOf(call));
+
+  // sync_accounts still provisions its authored, unrelated identity.
+  const provisioning = calls.filter(call => call.task === 'sync_accounts');
+  assert.equal(provisioning.length, 1);
+  const [row] = provisioning[0].request.accounts;
+  assert.deepEqual({ brand: row.brand, operator: row.operator }, PROVISIONED);
+});
+
+// The runner rebinds context.account to whatever account the deterministic_account
+// phase's sync_accounts call returns, for the rest of the run; that is how its
+// force_account_status steps reach the provisioned account. Omitting the phase
+// keeps independent coverage of the declared fixture owner without provisioning.
+// The strict account-isolation regression below retains provisioning and verifies
+// later resource controls still target Acme.
+test('deterministic_testing force and simulate calls retain the fixture owner without provisioning', async () => {
+  const { calls, enriched, stepOf } = await runDeterministicTesting({ omitPhases: ['deterministic_account'] });
+  const owner = { ...FIXTURE_CONSUMER, sandbox: true };
+  const scenarios = ['force_media_buy_status', 'force_creative_status', 'simulate_delivery', 'simulate_budget_spend'];
+  const directives = enriched.filter(
+    call => call.task === 'comply_test_controller' && scenarios.includes(call.request.scenario)
+  );
+  for (const scenario of scenarios) {
+    assert.ok(directives.some(call => call.request.scenario === scenario), `${scenario} must be exercised`);
+  }
+  for (const call of directives) {
+    assert.deepEqual(call.request.account, owner, `${stepOf(call)} (${call.request.scenario})`);
+  }
+  // The buys those directives act on take their sandbox flag from the same owner.
+  const buys = enriched.filter(call => call.task === 'create_media_buy');
+  assert.equal(buys.length, 3);
+  for (const call of buys) assert.deepEqual(call.request.account, owner, stepOf(call));
+  assert.equal(calls.some(call => call.task === 'sync_accounts'), false);
+});
+
+// Keep the provisioning phase in this regression: sync_accounts deliberately
+// selects Test for account-state controls, while later resources belong to Acme.
+// The negative control removes only their authored identity, reproducing the
+// cross-account NOT_FOUND that an identity-insensitive seller would conceal.
+async function runDeterministicAccountIsolation({ removeResourceScope = false, removeListFilter = false, accountNamespace = false } = {}) {
+  const storyboard = loadStoryboardFile(DETERMINISTIC_TESTING);
+  const selected = new Map([
+    ['deterministic_account', ['sync_accounts_for_state', 'list_accounts_for_state', 'force_account_suspended', 'force_account_active']],
+    ['deterministic_media_buy', ['create_media_buy', 'force_media_buy_active']],
+    ['deterministic_delivery', ['create_media_buy_for_delivery', 'simulate_delivery']],
+  ]);
+  if (accountNamespace) {
+    for (const phaseId of [...selected.keys()]) if (phaseId !== 'deterministic_account') selected.delete(phaseId);
+  }
+  storyboard.phases = storyboard.phases
+    .filter(phase => selected.has(phase.id))
+    .map(phase => ({ ...phase, steps: phase.steps.filter(step => selected.get(phase.id).includes(step.id)) }));
+  for (const [phaseId, stepIds] of selected) {
+    assert.deepEqual(storyboard.phases.find(phase => phase.id === phaseId).steps.map(step => step.id), stepIds);
+  }
+  if (removeListFilter) {
+    delete storyboard.phases.find(phase => phase.id === 'deterministic_account').steps.find(step => step.id === 'list_accounts_for_state').sample_request.account;
+  }
+  if (removeResourceScope) {
+    for (const phase of storyboard.phases) {
+      for (const step of phase.steps) {
+        if (['force_media_buy_active', 'simulate_delivery'].includes(step.id)) {
+          step.sample_request.account = { sandbox: true };
+        }
+      }
+    }
+  }
+
+  const owner = { ...FIXTURE_CONSUMER, sandbox: true };
+  const provisioned = { ...PROVISIONED, sandbox: true };
+  const accountKey = account => JSON.stringify({ brand: account?.brand, operator: account?.operator, sandbox: account?.sandbox });
+  const accounts = new Map([['acct_acme', { account_id: 'acct_acme', name: 'Acme sandbox', ...owner, status: 'active' }]]);
+  if (accountNamespace) accounts.set('acct_existing', { account_id: 'acct_existing', name: 'Existing sandbox', sandbox: true, status: 'active' });
+  const currentAccount = accountNamespace ? { account_id: 'acct_existing', sandbox: true } : provisioned;
+  const currentAccountId = accountNamespace ? 'acct_existing' : 'acct_provisioned';
+  const callerContext = accountNamespace ? { account: { account_id: 'acct_existing' } } : {};
+  const callerContextBefore = structuredClone(callerContext);
+  const storyboardBefore = structuredClone(storyboard);
+  const buys = new Map();
+  const calls = [];
+  const schemas = { sync_accounts: 'account/sync-accounts', list_accounts: 'account/list-accounts', create_media_buy: 'media-buy/create-media-buy', comply_test_controller: 'compliance/comply-test-controller' };
+  let accountStatus = 'active';
+  const scenarios = ['seed_product', 'seed_pricing_option', 'force_account_status', 'force_media_buy_status', 'simulate_delivery'];
+  const client = {
+    executeTask: async (task, request) => {
+      const call = { task, request: structuredClone(request) };
+      calls.push(call);
+      const validateRequest = ajv.getSchema(`/schemas/${schemas[task]}-request.json`);
+      assert.ok(validateRequest, `missing ${task} request validator`);
+      assert.equal(validateRequest(request), true, ajv.errorsText(validateRequest.errors));
+      let data;
+      let success = true;
+      if (task === 'sync_accounts') {
+        const [account] = request.accounts;
+        assert.deepEqual({ brand: account.brand, operator: account.operator, sandbox: account.sandbox }, provisioned);
+        const created = { account_id: 'acct_provisioned', name: 'Test sandbox', ...provisioned, status: 'active' };
+        accounts.set(created.account_id, created);
+        data = { accounts: [{ ...created, action: 'created' }] };
+      } else if (task === 'list_accounts') {
+        const visible = [...accounts.values()];
+        const rows = request.account ? visible.filter(row => request.account.account_id ? row.account_id === request.account.account_id : accountKey(row) === accountKey(request.account)) : visible;
+        data = { accounts: rows };
+      } else if (task === 'create_media_buy') {
+        assert.deepEqual(request.account, owner, 'authored buys must consume Acme fixtures');
+        const mediaBuyId = `mb_isolation_${buys.size + 1}`;
+        buys.set(mediaBuyId, { owner: accountKey(request.account), status: 'pending_start' });
+        data = {
+          media_buy_id: mediaBuyId,
+          media_buy_status: 'pending_start',
+          confirmed_at: '2026-01-01T00:00:00Z',
+          revision: 1,
+          packages: [{ package_id: `pkg_isolation_${buys.size}` }],
+        };
+      } else {
+        assert.equal(task, 'comply_test_controller');
+        const params = request.params ?? {};
+        if (request.scenario === 'list_scenarios') data = { success: true, scenarios };
+        else if (['seed_product', 'seed_pricing_option'].includes(request.scenario)) {
+          // Fixture owner declaration is pinned above; this regression isolates
+          // resource control scoping after sync_accounts selects another account.
+          data = { success: true };
+        } else if (request.scenario === 'force_account_status') {
+          if (JSON.stringify(request.account) !== JSON.stringify(currentAccount) || params.account_id !== currentAccountId) {
+            success = false;
+            data = { success: false, error: 'NOT_FOUND', error_detail: 'Controller account scope and account ID do not identify the provisioned Test account' };
+          } else {
+            data = { success: true, previous_state: accountStatus, current_state: params.status };
+            accountStatus = params.status;
+          }
+        } else {
+          assert.ok(['force_media_buy_status', 'simulate_delivery'].includes(request.scenario));
+          const buy = buys.get(params.media_buy_id);
+          assert.ok(buy, 'controller must reference a buy this strict seller actually created');
+          if (accountKey(request.account) !== buy.owner) {
+            success = false;
+            data = { success: false, error: 'NOT_FOUND', error_detail: 'Media buy belongs to another sandbox account' };
+          } else if (request.scenario === 'force_media_buy_status') {
+            data = { success: true, previous_state: buy.status, current_state: params.status };
+            buy.status = params.status;
+          } else data = { success: true, simulated: { impressions: params.impressions, clicks: params.clicks } };
+        }
+      }
+      data.context = request.context;
+      data.status = success ? 'completed' : 'failed';
+      const validateResponse = ajv.getSchema(`/schemas/${schemas[task]}-response.json`);
+      assert.ok(validateResponse, `missing ${task} response validator`);
+      assert.equal(validateResponse(data), true, ajv.errorsText(validateResponse.errors));
+      call.response = structuredClone(data);
+      return { success, status: data.status, ...(success ? {} : { error: 'NOT_FOUND' }), data };
+    },
+  };
+  const tools = ['comply_test_controller', 'sync_accounts', 'list_accounts', 'create_media_buy'].filter(task => !accountNamespace || task !== 'sync_accounts');
+  const result = await runStoryboard('https://seller.example/mcp', storyboard, {
+    protocol: 'mcp',
+    context: callerContext,
+    agentTools: tools,
+    _client: client,
+    _profile: {
+      name: 'strict account-aware deterministic seller',
+      tools,
+      raw_capabilities: {
+        supported_protocols: ['media_buy'],
+        account: { require_operator_auth: accountNamespace },
+        compliance_testing: { scenarios },
+      },
+    },
+  });
+  assert.deepEqual(callerContext, callerContextBefore, 'runner must not mutate caller-selected account context');
+  assert.deepEqual(storyboard, storyboardBefore, 'full-object substitution must not mutate authored requests');
+  return { calls, result };
+}
+
+test('deterministic_testing retains resource ownership after provisioning another account', async () => {
+  const positive = await runDeterministicAccountIsolation();
+  const steps = positive.result.phases.flatMap(phase => phase.steps);
+  assert.deepEqual(steps.filter(step => !step.passed && !step.skipped).map(step => step.step_id), []);
+  assert.equal(steps.filter(step => step.skipped).length, 0, 'all eight authored steps must execute');
+  const authoredIds = ['sync_accounts_for_state', 'list_accounts_for_state', 'force_account_suspended', 'force_account_active', 'create_media_buy', 'force_media_buy_active', 'create_media_buy_for_delivery', 'simulate_delivery'];
+  assert.deepEqual(steps.filter(step => authoredIds.includes(step.step_id)).map(step => step.step_id), authoredIds);
+  const controls = positive.calls.filter(call => ['force_media_buy_status', 'simulate_delivery'].includes(call.request.scenario));
+  assert.deepEqual(controls.map(call => call.request.scenario), ['force_media_buy_status', 'simulate_delivery']);
+  for (const call of controls) assert.deepEqual(call.request.account, { ...FIXTURE_CONSUMER, sandbox: true });
+  const accountControls = positive.calls.filter(call => call.request.scenario === 'force_account_status');
+  assert.equal(accountControls.length, 2);
+  for (const call of accountControls) {
+    assert.deepEqual(call.request.account, { ...PROVISIONED, sandbox: true });
+    assert.equal(call.request.params.account_id, 'acct_provisioned');
+  }
+  const lists = positive.calls.filter(call => call.task === 'list_accounts');
+  assert.equal(lists.length, 1);
+  assert.deepEqual(lists[0].request.account, { ...PROVISIONED, sandbox: true });
+  assert.deepEqual(lists[0].response.accounts.map(account => account.account_id), ['acct_provisioned']);
+
+  const negative = await runDeterministicAccountIsolation({ removeResourceScope: true });
+  const failed = negative.result.phases.flatMap(phase => phase.steps).filter(step => !step.passed && !step.skipped);
+  assert.deepEqual(failed.map(step => step.step_id), ['force_media_buy_active', 'simulate_delivery']);
+  for (const call of negative.calls.filter(call => ['force_media_buy_status', 'simulate_delivery'].includes(call.request.scenario))) {
+    assert.deepEqual(call.request.account, { ...PROVISIONED, sandbox: true }, 'removing authored scope must reproduce the wrong owner');
+  }
+});
+
+
+test('deterministic_testing exact account listing prevents unrelated visible accounts from supplying its state target', async () => {
+  const negative = await runDeterministicAccountIsolation({ removeListFilter: true });
+  const failed = negative.result.phases.flatMap(phase => phase.steps).filter(step => !step.passed && !step.skipped);
+  assert.deepEqual(failed.map(step => step.step_id), ['force_account_suspended']);
+  const reactivation = negative.result.phases.flatMap(phase => phase.steps).find(step => step.step_id === 'force_account_active');
+  assert.equal(reactivation.skipped, true, 'runner must skip reactivation after the failed suspension');
+  const list = negative.calls.find(call => call.task === 'list_accounts');
+  assert.equal(list.request.account, undefined, 'negative control removes only the authored exact-account filter');
+  assert.deepEqual(list.response.accounts.map(account => account.account_id), ['acct_acme', 'acct_provisioned']);
+  const accountControls = negative.calls.filter(call => call.request.scenario === 'force_account_status');
+  assert.equal(accountControls.length, 1);
+  for (const call of accountControls) {
+    assert.deepEqual(call.request.account, { ...PROVISIONED, sandbox: true }, 'controller account stays Test');
+    assert.equal(call.request.params.account_id, 'acct_acme', 'unfiltered first row incorrectly supplies Acme account ID');
+    assert.equal(call.response.error, 'NOT_FOUND', 'strict seller refuses the mismatched scope and ID');
+  }
+});
+
+
+test('deterministic_testing filters the effective account ID when buyer provisioning is not applicable', async () => {
+  const { calls, result } = await runDeterministicAccountIsolation({ accountNamespace: true });
+  const steps = result.phases.flatMap(phase => phase.steps);
+  assert.deepEqual(steps.filter(step => !step.passed && !step.skipped).map(step => step.step_id), []);
+  const skipped = steps.filter(step => step.skipped);
+  assert.deepEqual(skipped.map(step => step.step_id), ['sync_accounts_for_state']);
+  assert.equal(skipped[0].skip_reason, 'not_applicable');
+  assert.equal(calls.some(call => call.task === 'sync_accounts'), false);
+  const lists = calls.filter(call => call.task === 'list_accounts');
+  assert.equal(lists.length, 1);
+  assert.deepEqual(lists[0].request.account, { account_id: 'acct_existing' }, 'full-object reference must use the caller-selected ID, not the storyboard seed default');
+  assert.deepEqual(lists[0].response.accounts.map(account => account.account_id), ['acct_existing']);
+  const controls = calls.filter(call => call.request.scenario === 'force_account_status');
+  assert.equal(controls.length, 2);
+  for (const call of controls) {
+    assert.deepEqual(call.request.account, { account_id: 'acct_existing', sandbox: true });
+    assert.equal(call.request.params.account_id, 'acct_existing');
+    assert.equal(call.response.success, true);
+  }
 });

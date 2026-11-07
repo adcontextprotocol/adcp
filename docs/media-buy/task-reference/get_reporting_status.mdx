@@ -693,6 +693,18 @@ owed that period in full, as the account-level ledger includes any buy confirmed
 period's end: a buy confirmed at 10:00 on its start day owes that whole day on a daily
 feed, and one confirmed on November 12 owes all of November on a monthly billing feed.
 The period containing the stop time is also owed in full.
+
+**Packages added later.** A package added to a buy after its `confirmed_at` carries
+`added_at` on [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), and
+`added_at` is that package's own `confirmed_at`. Each package is owed from the later of
+the buy's `confirmed_at` and its `added_at` (just `confirmed_at` when `added_at` is
+absent, meaning the package was part of the buy when it was confirmed). The buy owes a
+period of a resolved offering when the period ends after that instant for at least one
+package that resolves the offering. So the period containing a package's `added_at` is
+owed in full for it, earlier periods are owed only through packages the buy already
+had, and adding a package is never a cutover. A package added while the buy awaited
+confirmation is owed from `confirmed_at`, like the rest.
+
 A buy whose cancellation stops delivery mid-period owes that period and none after it, and a buy whose delivery stops before its flight starts owes nothing. A buy confirmed on
 November 1 with a December 1 start owes nothing before December 1. Every buy has an
 `end_time`, so there is no open-ended case.
@@ -723,13 +735,14 @@ listed.
 
 Resolution is from the wire as well. Each package on `get_media_buys` carries
 `reporting_delivery_offering_ids`, the offerings it can satisfy, fixed when the package
-is confirmed. Each offering publishes `available_from` and `withdrawn_at`. An offering
+is confirmed (at its `added_at` for a package added later). Each offering publishes `available_from` and `withdrawn_at`. An offering
 is a candidate only between them, and its withdrawal is a resolution change, a cutover
 at `withdrawn_at`. A withdrawn offering stays in the capabilities catalog while any
 obligation that resolved it is retained, so its schedule stays readable.
 
 So a buyer derives every expected period from its own visible buys (`confirmed_at`,
-`start_time`, `end_time`, `cancellation_effective_at`, `completed_at`, `flight_history`), the subscription's
+`start_time`, `end_time`, `cancellation_effective_at`, `completed_at`, `flight_history`,
+and each package's `added_at`), the subscription's
 `accepted_at`, the account's `authorized_at`, and the offering's published schedule.
 It then subtracts the exceptions below. A period that remains is owed: a missing
 report there is the seller's to explain.
@@ -800,7 +813,9 @@ stub when E isn't an incoming boundary.
   `until` are the E instants.
 - **Resolution change.** Resolution is per package and fixed for a (buy, version) pair
   from when the pair first resolves, at the later of the version's `accepted_at` and the
-  buy's `confirmed_at`. A newly added offering never changes it. Within a version only
+  package's own `confirmed_at`: the buy's, or the package's `added_at` when later, so a
+  package added later resolves among the offerings available then. A newly added
+  offering never changes it. Within a version only
   withdrawal of the resolved offering does: the package re-resolves, the old offering
   is outgoing and the new one incoming, so the change never touches a period already
   started.
@@ -879,8 +894,12 @@ effect. `action_required` entries are account-level only. An entry without `medi
 An entry with `package_ids` (reason `offering_unsupported` or `overridden`) removes only
 those packages from the buy's coverage: the buy stays covered for its other packages.
 When the entry names every package of the buy that resolves an offering (with
-`offering_id`, that offering), nothing keeps the buy covered for it, so the buy's
-periods for that offering that start in `[from, until)` are not owed.
+`offering_id`, that offering) and is owed the period, nothing keeps the buy covered for
+it, so the buy's periods for that offering that start in `[from, until)` are not owed.
+A package added later is owed only the periods that end after its `added_at`, so it
+keeps the buy covered from then on, and not for earlier periods. Adding and removing
+packages therefore compose: a package counts from its `added_at` until an entry naming
+it takes it out.
 
 | `reason` | Removes periods because |
 |---|---|
@@ -911,9 +930,10 @@ creates obligations for that account and purpose; a replaced subscription record
 ### When authorization ends
 
 An account is covered only while the principal is authorized for it. Caller isolation
-does not change: once the principal loses authority, this task treats the account as
-unknown, like any unauthorized identifier. The revocation is reported in the caller's
-own subscription state instead: [`get_principal`](/docs/protocol/get_principal) lists
+does not change: once the principal's grant is revoked, this task treats the account
+as unknown, like any unauthorized identifier (a grant reduced without
+`get_reporting_status` is refused instead; see below). The loss is reported in the
+caller's own subscription state instead: [`get_principal`](/docs/protocol/get_principal) lists
 the account under the subscription's `accounts_unauthorized[]` with `unauthorized_at`,
 `last_owed_period_end`, and the withheld periods. A revoked grant therefore reads
 differently from a seller that stopped publishing, without disclosing current account
@@ -924,8 +944,8 @@ data.
 - **Periods already owed.** Periods that ended at or before `unauthorized_at` but were
   not yet delivered are withheld and counted in `withheld_period_count`. They are
   never missing and never count as `delayed` or `action_required` against the seller.
-- **Receipts and statuses.** Access means access. After `unauthorized_at`, the
-  account is unavailable to every task, including
+- **Receipts and statuses.** Access means access. After a revocation's
+  `unauthorized_at`, the account is unavailable to every task, including
   [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)
   and [`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
 - **Partial grants.** Coverage depends only on `get_reporting_status` in
@@ -935,6 +955,17 @@ data.
   [`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient),
   not as an unknown identifier. A billing obligation the buyer can't receipt stays
   receipt-pending, and the missing receipt is the buyer's, never a seller delay.
+- **Reduced grants without `get_reporting_status`.** A grant reduced to an
+  `allowed_tasks` list that omits `get_reporting_status` ends the principal's authority
+  for reporting exactly as a revocation does, at the instant of the reduction. The
+  account is listed under `accounts_unauthorized[]` with `unauthorized_at` set to the
+  reduction, nothing is delivered for periods ending after it, and owed periods that
+  ended by then and were not delivered are withheld. The account stays visible to the
+  tasks the grant still lists, so this task refuses it with
+  [`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient)
+  rather than as unknown. Adding `get_reporting_status` back is a re-grant, under the
+  re-grant rules below. A reduced grant that still lists `get_reporting_status` is not
+  a loss of authority.
 - **Winding down instead of revoking.** A seller that wants a buyer to finish
   reconciling after a relationship ends, for example after an agency change, keeps
   a reduced grant instead of revoking: an `authorization` whose `allowed_tasks`

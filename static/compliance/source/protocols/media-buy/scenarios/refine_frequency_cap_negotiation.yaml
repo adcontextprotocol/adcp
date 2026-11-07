@@ -119,7 +119,13 @@ fixtures:
       channels: ["display"]
       format_options:
         - format_option_id: "native_article"
-          format_kind: "native"
+          format_kind: "native_in_feed"
+          params:
+            title_max_chars: 90
+            body_text_max_chars: 140
+            main_image_sizes:
+              - width: 1200
+                height: 627
   pricing_options:
     - product_id: "fcap_video_q4"
       pricing_option_id: "cpm_video"

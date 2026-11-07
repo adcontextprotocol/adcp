@@ -966,3 +966,117 @@ test('next_expected_at and frozen periods are defined for owed sets', () => {
   assert.match(response['x-adcp-validation'].subscription_coverage, /final in a snapshot whose ledger_as_of is later than period\.end/);
   assert.match(response['x-adcp-validation'].subscription_coverage, /a period ending at or after ledger_as_of is not frozen/);
 });
+
+// 3.3.0-beta.4 coverage fixes.
+
+test('destination_overrides items declare their fields at the top level, for code generators', () => {
+  // json-schema-to-typescript and datamodel-codegen read a sibling anyOf, oneOf, allOf, or not as the item's
+  // type and drop the declared properties, so the SDKs generated {} for each override. The rules stay, as one
+  // if/then/else that the generators ignore.
+  for (const [file, keys] of [
+    ['core/reporting-subscription.json', ['properties', 'destination_overrides', 'items']],
+  ]) {
+    const item = keys.reduce((o, k) => o[k], read(file));
+    assert.equal(item.type, 'object', file);
+    assert.deepEqual(Object.keys(item.properties).sort(), ['account_ids', 'destination_id', 'operator_domains', 'path_template'], file);
+    for (const keyword of ['anyOf', 'oneOf', 'allOf', 'not', '$ref']) assert.equal(item[keyword], undefined, `${file}: ${keyword} at the item level`);
+    assert.equal(item.additionalProperties, false, file);
+  }
+  const vs = validate('/schemas/core/reporting-subscription.json');
+  const accept = [
+    [{ account_ids: ['acc_nova'], destination_id: 'x' }, 'one account, flat path'],
+    [{ account_ids: ['acc_nova'], destination_id: 'x', path_template: 'nova/{period_start}' }, 'one account, own template'],
+    [{ account_ids: ['a', 'b'], destination_id: 'x', path_template: 'p/{account_id}' }, 'several accounts, partitioned'],
+    [{ operator_domains: ['b.example'], destination_id: 'x' }, 'operator, inherited template'],
+    [{ operator_domains: ['b.example'], destination_id: 'x', path_template: 'p/{account_id}' }, 'operator, partitioned'],
+  ];
+  const reject = [
+    [{ destination_id: 'x' }, 'no selector'],
+    [{ account_ids: ['a'], operator_domains: ['b.example'], destination_id: 'x' }, 'two selectors'],
+    [{ account_ids: ['a', 'b'], destination_id: 'x', path_template: 'flat' }, 'several accounts, not partitioned'],
+    [{ operator_domains: ['b.example'], destination_id: 'x', path_template: 'flat' }, 'operator, not partitioned'],
+    [{ account_ids: ['a'], destination_id: 'x', extra: true }, 'unknown field'],
+  ];
+  for (const [override, label] of accept) assert.ok(vs({ ...allAccounts, destination_overrides: [override] }), `${label}: ${JSON.stringify(vs.errors)}`);
+  for (const [override, label] of reject) assert.equal(vs({ ...allAccounts, destination_overrides: [override] }), false, label);
+});
+
+test('the schema refuses exactly the mixed durations the period rule refuses under a local alignment', () => {
+  const { parseDuration, localCalendar, utcCalendar, billingCalendar } = require(path.join(ROOT, 'scripts/reference/reporting-coverage/calendar.cjs'));
+  const schedule = validate('/schemas/core/reporting-schedule.json');
+  const offering = validate('/schemas/core/reporting-schedule-offering.json');
+  const extras = {
+    utc: [{}, {}],
+    account_timezone: [{}, {}],
+    source_timezone: [{ period_timezone: 'America/New_York' }, { period_timezone_policy: 'fixed', period_timezone: 'America/New_York' }],
+    billing_cycle: [
+      { period_anchor: '2026-01-01T00:00:00Z', period_timezone: 'America/New_York' },
+      { period_anchor_policy: 'fixed', period_anchor: '2026-01-01T00:00:00Z', period_timezone: 'America/New_York' },
+    ],
+  };
+  // Durations whose time part, when alone, divides 24 hours, so only the mixing rule decides.
+  const durations = ['P1D', 'P7D', 'P1M', 'P3M', 'P1Y', 'PT1H', 'PT15M', 'PT24H', 'P1DT0H', 'P0DT12H', 'P0Y0M1DT0H0M0S', 'P0DT0H30M',
+    'P1DT12H', 'P1MT1H', 'P1YT1S', 'P1DT1M', 'P0Y1DT1H', 'P2DT0H30M'];
+  const mixed = new Set(['P1DT12H', 'P1MT1H', 'P1YT1S', 'P1DT1M', 'P0Y1DT1H', 'P2DT0H30M']);
+  for (const duration of durations) {
+    const d = parseDuration(duration);
+    assert.equal(d.hasDate && d.hasTime, mixed.has(duration), `${duration}: the fixture marks mixing as the model reads it`);
+    for (const [alignment, [installed, advertised]] of Object.entries(extras)) {
+      // What the reference model accepts for this alignment.
+      let modelAccepts = true;
+      try {
+        if (alignment === 'utc') utcCalendar(duration);
+        else if (alignment === 'billing_cycle') billingCalendar(duration, 'America/New_York', Date.UTC(2026, 0, 1));
+        else localCalendar(duration, 'America/New_York');
+      } catch (error) {
+        assert.equal(error.detail, 'invalid_period_duration', duration);
+        modelAccepts = false;
+      }
+      const base = { period_duration: duration, alignment, delivery_sla: 'PT6H' };
+      assert.equal(schedule({ ...base, ...installed }), modelAccepts, `reporting-schedule ${alignment} ${duration}: ${JSON.stringify(schedule.errors)}`);
+      assert.equal(offering({ ...base, ...advertised }), modelAccepts, `reporting-schedule-offering ${alignment} ${duration}: ${JSON.stringify(offering.errors)}`);
+    }
+  }
+  // utc keeps mixed durations: "With those alignments" names only the local ones.
+  assert.ok(schedule({ period_duration: 'P1DT12H', alignment: 'utc', delivery_sla: 'PT6H' }));
+  assert.match(read('core/reporting-schedule.json')['x-adcp-validation'].period_generation, /cannot mix non-zero date and time components \(P1DT12H; P1DT0H is a date duration\)/);
+});
+
+test('a package added after confirmation carries added_at, its own confirmed_at for coverage', () => {
+  const field = read('media-buy/get-media-buys-response.json').properties.media_buys.items.properties.packages.items.properties.added_at;
+  assert.equal(field.format, 'date-time');
+  assert.equal(field['x-status'], 'experimental');
+  assert.equal(field['x-added-in'], '3.3.0');
+  assert.match(field.description, /It is the package's own confirmed_at for reporting-subscription coverage/);
+  assert.match(field.description, /Absent means the package was part of the buy when it was confirmed/);
+  assert.match(field.description, /MUST include it on every package added after the buy's confirmed_at/);
+  const rule = read('core/reporting-subscription.json')['x-adcp-validation'];
+  assert.match(rule.coverage, /added_at is that package's own confirmed_at/);
+  assert.match(rule.coverage, /adding a package is never a cutover/);
+  assert.match(rule.coverage, /A package_ids exception removes a period when it names every package that resolves the offering and is owed that period/);
+  assert.match(rule.selection, /at the later of the version's accepted_at and the package's own confirmed_at \(the buy's confirmed_at, or the package's added_at when later\)/);
+  assert.match(read('core/reporting-subscription-coverage.json').properties.excluded.items.properties.package_ids.description, /does not keep the buy covered for earlier periods/);
+});
+
+test('a grant reduced without get_reporting_status is a loss of authority; one that keeps it is not', () => {
+  const rule = read('core/reporting-subscription.json')['x-adcp-validation'].coverage;
+  assert.match(rule, /A grant reduced to allowed_tasks without get_reporting_status ends the caller's authority for reporting exactly as a revocation does, at the instant of the reduction/);
+  assert.match(rule, /lists the account in accounts_unauthorized with that instant as unauthorized_at/);
+  assert.match(rule, /Adding get_reporting_status back to the grant is a re-grant/);
+  assert.match(rule, /A reduced grant that still lists get_reporting_status is not a loss of authority/);
+  const state = read('core/reporting-subscription-state.json');
+  assert.match(state.properties.accounts_unauthorized.description, /A grant reduced to allowed_tasks without get_reporting_status is such a loss, listed from the reduction/);
+  assert.match(state.definitions.ReportingSubscriptionUnauthorizedAccount.properties.unauthorized_at.description, /the reduction of its grant to allowed_tasks without get_reporting_status/);
+  assert.match(read('core/account-authorization.json').properties.regranted_at.description, /adding get_reporting_status back is a re-grant/);
+});
+
+test('the account_id key rule has its own seller error code', () => {
+  const codes = JSON.parse(fs.readFileSync(path.join(ROOT, 'static/compliance/source/test-vectors/reporting-subscriptions/error-codes.json'), 'utf8')).codes;
+  const entry = codes.find(code => code.code === 'SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY');
+  assert.ok(entry);
+  assert.equal(entry.raised_by, 'seller');
+  assert.equal(entry.recovery, 'correctable');
+  assert.deepEqual(entry.sdk_classes, { typescript: 'PlatformConfigError', python: 'ReliableReportingConfigurationError' });
+  assert.match(read('core/reporting-delivery-offering.json')['x-adcp-validation'].subscription_rows, /SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY/);
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].destination, /SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY/);
+});

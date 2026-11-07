@@ -23,6 +23,7 @@
  *   availability   available_from / withdrawn_at on offerings
  *   tz_cutover     account timezone change (timezone_cutovers)
  *   membership     in-place account_ids / exclude_account_ids edits (excluded_by_buyer)
+ *   added_package  a package added after (or before) the buy's confirmed_at (added_at)
  *   invalid        an input an SDK must refuse (bad duration, zone, missing field)
  *
  * Instants are drawn near boundaries (UTC midnights, local midnights, DST
@@ -70,7 +71,11 @@ function rng(seed) {
 }
 
 const DST_ZONES = ['America/Santiago', 'America/Havana', 'Africa/Cairo', 'Australia/Lord_Howe'];
-const OTHER_ZONES = ['America/New_York', 'America/Los_Angeles', 'Asia/Kathmandu', 'Asia/Singapore', 'Asia/Tokyo', 'Pacific/Apia'];
+const OTHER_ZONES = [
+  'America/New_York', 'America/Los_Angeles', 'Asia/Kathmandu', 'Asia/Singapore', 'Asia/Tokyo', 'Pacific/Apia',
+  // Southern-hemisphere DST, a UTC+12:45 zone with DST at 02:45, a half-hour zone, and a zone that dropped DST in 2022.
+  'Australia/Sydney', 'Pacific/Auckland', 'Pacific/Chatham', 'Asia/Kolkata', 'America/Mexico_City',
+];
 const ALL_ZONES = [...DST_ZONES, ...OTHER_ZONES];
 
 const FLAVORS = [
@@ -87,6 +92,7 @@ const FLAVORS = [
   ['availability', 2],
   ['tz_cutover', 2],
   ['membership', 2],
+  ['added_package', 2],
   ['invalid', 1],
 ];
 
@@ -348,6 +354,12 @@ function generateScenario(seed) {
       // A package with no offerings owes nothing; keep that rare.
       if (ids.length === 0 && r.bool(0.9)) ids = [r.pick(offerings).offering_id];
       packages.push({ package_id: `pkg_${p + 1}`, reporting_delivery_offering_ids: ids });
+    }
+    if (has('added_package') && r.bool(0.8)) {
+      // A package added later is owed from its added_at, the one before confirmation from confirmed_at.
+      const ids = offerings.filter(() => r.bool(0.7)).map(o => o.offering_id);
+      const addedAt = r.weighted([[at(-0.4, 0.3), 4], [start - r.int(1, 48) * HOUR, 1]]);
+      packages.push({ package_id: `pkg_${packages.length + 1}`, reporting_delivery_offering_ids: ids.length ? ids : [r.pick(offerings).offering_id], added_at: iso(addedAt) });
     }
     // Late confirmation lands inside the flight, so it trims rather than empties it.
     const late = start + Math.min(r.int(1, 72) * HOUR, Math.max(HOUR, Math.round((end - start) / 2)));

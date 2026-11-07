@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/property/create-property-list-response.json",
+  "title": "Create Property List Response",
+  "description": "Response payload for create_property_list task",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "list": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/property/property-list.json",
+      "description": "The created property list"
+    },
+    "auth_token": {
+      "type": "string",
+      "description": "Read-only bearer credential shareable with receivers to call get_property_list for this list_id, including all pages, in place of normal agent credentials. MUST NOT authorize other lists or mutations. Store this; it is only returned at creation time."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "list",
+    "auth_token"
+  ],
+  "additionalProperties": true
+}

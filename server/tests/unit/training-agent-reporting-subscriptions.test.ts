@@ -61,7 +61,10 @@ async function seedBuy(accountId: string, buy: Json): Promise<void> {
       accountRef: { account_id: accountId },
       status: 'active',
       currency: 'USD',
-      packages: [{ packageId: 'pkg_1', productId: PRODUCT_ID, budget: 1000, pricingOptionId: 'po', paused: false, startTime: buy.start_time, endTime: buy.end_time, creativeAssignments: [] }],
+      packages: [{
+        packageId: 'pkg_1', productId: PRODUCT_ID, budget: 1000, pricingOptionId: 'po', paused: false, startTime: buy.start_time, endTime: buy.end_time, creativeAssignments: [],
+        ...(buy.package_added_at && { addedAt: buy.package_added_at }),
+      }],
       startTime: buy.start_time,
       endTime: buy.end_time,
       revision: 1,
@@ -173,7 +176,10 @@ describe('reporting subscriptions: coverage', () => {
     });
     await advance('2030-06-04T12:00:00Z');
     const changed = await probe({ operation: 'set_account_timezone', account_id: accountId, timezone: 'America/Los_Angeles' });
-    expect(changed.simulated.timezone_cutovers).toEqual([{ offering_id: 'analytics-daily-account-tz', effective_at: '2030-06-05T04:00:00.000Z' }]);
+    expect(changed.simulated.changed_at).toBe('2030-06-04T12:00:00.000Z');
+    expect(changed.simulated.timezone_cutovers).toEqual([{
+      offering_id: 'analytics-daily-account-tz', previous_timezone: 'America/New_York', timezone: 'America/Los_Angeles', effective_at: '2030-06-05T04:00:00.000Z',
+    }]);
     await advance('2030-06-10T12:00:00Z');
     const result = await view(accountId);
     expect(result.coverage[0].timezone_cutovers).toEqual([{
@@ -212,6 +218,53 @@ describe('reporting subscriptions: coverage', () => {
     ]);
     // Withheld periods are due at the re-grant plus the SLA.
     expect(result.records[2].expected_at).toBe('2030-06-08T17:00:00.000Z');
+  });
+
+  it('treats a grant reduced without get_reporting_status as a loss of authority, and restoring it as a re-grant', async () => {
+    await advance('2030-06-01T00:00:00Z');
+    const accountId = await openAccount();
+    await sync([daily()]);
+    await seedBuy(accountId, {
+      media_buy_id: 'mb_reduced', confirmed_at: '2030-06-01T12:00:00Z', start_time: '2030-06-02T04:00:00Z', end_time: '2030-06-20T04:00:00Z',
+    });
+    await advance('2030-06-05T12:00:00Z');
+    // A wind-down grant that keeps get_reporting_status is not a loss of authority.
+    await probe({ operation: 'reduce_grant', account_id: accountId, allowed_tasks: ['get_reporting_status', 'sync_reporting_receipts', 'sync_reporting_status'] });
+    expect((await readPrincipal()).result.configuration.reporting_subscriptions[0].accounts_unauthorized).toBeUndefined();
+    // Dropping get_reporting_status is: listed from the reduction, like a revocation.
+    await advance('2030-06-05T13:00:00Z');
+    await probe({ operation: 'reduce_grant', account_id: accountId, allowed_tasks: ['list_accounts', 'get_media_buys'] });
+    const reduced = (await readPrincipal()).result.configuration.reporting_subscriptions[0];
+    expect(reduced).toMatchObject({
+      accounts_unauthorized_count: 1,
+      accounts_unauthorized: [{ account_id: accountId, unauthorized_at: '2030-06-05T13:00:00.000Z', last_owed_period_end: '2030-06-05T04:00:00Z', withheld_period_count: 3 }],
+    });
+    // Adding get_reporting_status back within retention continues the chain.
+    await advance('2030-06-08T13:00:00Z');
+    await probe({ operation: 'reduce_grant', account_id: accountId, allowed_tasks: ['get_media_buys', 'get_reporting_status', 'list_accounts'] });
+    expect((await readPrincipal()).result.configuration.reporting_subscriptions[0].accounts_unauthorized).toBeUndefined();
+    await advance('2030-06-12T12:00:00Z');
+    const result = await view(accountId);
+    expect(result.coverage[0].gaps).toEqual([{ from: '2030-06-05T04:00:00.000Z', until: '2030-06-09T04:00:00.000Z', reason: 'unauthorized' }]);
+    expect(starts(result.records)).toEqual([
+      '2030-06-02T04:00:00Z', '2030-06-03T04:00:00Z', '2030-06-04T04:00:00Z',
+      '2030-06-09T04:00:00Z', '2030-06-10T04:00:00Z', '2030-06-11T04:00:00Z',
+    ]);
+    expect(result.records[2].expected_at).toBe('2030-06-08T17:00:00.000Z');
+  });
+
+  it('owes a package added after confirmation from the period containing its added_at', async () => {
+    await advance('2030-06-01T00:00:00Z');
+    const accountId = await openAccount();
+    await sync([daily()]);
+    await seedBuy(accountId, {
+      media_buy_id: 'mb_added', confirmed_at: '2030-06-01T12:00:00Z', start_time: '2030-06-02T04:00:00Z', end_time: '2030-06-08T04:00:00Z',
+      package_added_at: '2030-06-04T18:00:00Z',
+    });
+    await advance('2030-06-10T12:00:00Z');
+    const result = await view(accountId);
+    // June 4 in New York runs 04:00Z to 04:00Z and contains added_at; it is owed in full.
+    expect(starts(result.records)).toEqual(['2030-06-04T04:00:00Z', '2030-06-05T04:00:00Z', '2030-06-06T04:00:00Z', '2030-06-07T04:00:00Z']);
   });
 
   it('admits at most max_accounts, in authorized_at order, and keeps admission sticky', async () => {

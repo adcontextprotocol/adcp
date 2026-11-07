@@ -284,7 +284,7 @@
             "grants": {
               "type": "array",
               "minItems": 1,
-              "description": "The caller's authority over the account, oldest first: intervals during which its authorization lists get_reporting_status. Each grant but the last has unauthorized_at (from accounts_unauthorized). A re-grant at or before the previous unauthorized_at carries the wire's chain-start authorized_at, so its re-grant instant is unknown and only the seller's gaps[] say what the interruption removed. A later re-grant before unauthorized_at plus status_retention_days continues the chain; otherwise it starts a new one.",
+              "description": "The caller's authority over the account, oldest first: intervals during which its authorization lists get_reporting_status. A grant reduced to allowed_tasks without get_reporting_status ends an interval at the reduction, exactly like a revocation (the accounts_unauthorized entry's unauthorized_at), and adding get_reporting_status back is a re-grant. Each grant but the last has unauthorized_at (from accounts_unauthorized). A re-grant at or before the previous unauthorized_at carries the wire's chain-start authorized_at, so its re-grant instant is unknown and only the seller's gaps[] say what the interruption removed. A later re-grant before unauthorized_at plus status_retention_days continues the chain; otherwise it starts a new one.",
               "items": {
                 "type": "object",
                 "required": [
@@ -367,6 +367,10 @@
                         "type": "string"
                       },
                       "description": "The package's product reporting_capabilities.reporting_delivery_offering_ids."
+                    },
+                    "added_at": {
+                      "$ref": "#/definitions/instant",
+                      "description": "The package's added_at from get_media_buys: when it was added to the buy, for a package added after confirmed_at. It is the package's own confirmed_at: the package is owed the periods that end after the later of confirmed_at and added_at, and resolves at the later of the version's accepted_at and that instant. Absent: the package was part of the buy when it was confirmed."
                     }
                   },
                   "additionalProperties": false
@@ -544,7 +548,8 @@
         "REPORTING_STORAGE_NOT_DURABLE",
         "REPORTING_SCHEMA_BEHIND",
         "SUBSCRIPTIONS_REQUIRE_STANDARD_DIMENSIONS",
-        "SUBSCRIPTION_ROSTER_UNAVAILABLE"
+        "SUBSCRIPTION_ROSTER_UNAVAILABLE",
+        "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY"
       ],
       "description": "The frozen SDK error codes in error-codes.json."
     },
@@ -577,6 +582,7 @@
         "outside_flight",
         "after_stop",
         "before_confirmation",
+        "before_package_added",
         "excluded:capacity",
         "excluded:overridden",
         "excluded:action_required",

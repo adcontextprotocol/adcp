@@ -17,6 +17,10 @@
   "required": ["period_duration", "alignment", "delivery_sla"],
   "allOf": [
     {
+      "if": { "properties": { "alignment": { "enum": ["account_timezone", "source_timezone", "billing_cycle"] } }, "required": ["alignment"] },
+      "then": { "properties": { "period_duration": { "anyOf": [{ "pattern": "^P(?:0+[YMD])*T" }, { "pattern": "^P[^T]*(?:T(?:0+[HMS])*)?$" }] } } }
+    },
+    {
       "if": { "properties": { "alignment": { "const": "billing_cycle" } }, "required": ["alignment"] },
       "then": {
         "required": ["period_anchor_policy"],

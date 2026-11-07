@@ -3,7 +3,7 @@ version: "1.0.0"
 introduced_in: "3.3"
 title: "Reporting subscription coverage over time"
 category: media_buy_seller
-summary: "Registers a principal-level reporting subscription and drives it over a sandbox clock: several periods, a version cutover onto misaligned boundaries, deactivation and reactivation, a wind-down grant, revocation and re-grant within and after retention, and an account timezone change across a DST transition. At each read the owed periods computed from wire state must equal the seller's obligations."
+summary: "Registers a principal-level reporting subscription and drives it over a sandbox clock: several periods, a version cutover onto misaligned boundaries, deactivation and reactivation, a wind-down grant, revocation and re-grant within and after retention, an account timezone change across a DST transition, and a grant reduced without get_reporting_status and then restored. At each read the owed periods computed from wire state must equal the seller's obligations."
 track: media_buy
 
 requires_all_capabilities:
@@ -46,7 +46,8 @@ narrative: |
   - deactivates and reactivates it. Periods that started before deactivation
     stay owed; nothing that starts while it is inactive is.
   - reduces the grant to the reconciliation tasks. The account stays covered,
-    and a dropped task is refused with SCOPE_INSUFFICIENT.
+    is not listed under accounts_unauthorized, and a dropped task is refused
+    with SCOPE_INSUFFICIENT.
   - revokes the grant. The account is unknown to get_reporting_status and is
     listed under accounts_unauthorized. A re-grant within status_retention_days
     continues the chain (authorized_at stays, regranted_at records it); without
@@ -56,6 +57,11 @@ narrative: |
   - changes the account's timezone across the November DST transition. Periods
     switch at the first old-timezone boundary at or after the change, listed in
     timezone_cutovers.
+  - reduces the grant to tasks without get_reporting_status. That is a loss of
+    authority like a revocation: the account is listed under
+    accounts_unauthorized from the reduction, and get_reporting_status refuses
+    it with SCOPE_INSUFFICIENT. Adding get_reporting_status back is a re-grant
+    that continues the chain.
 
   `owed_periods_match` comes from the @adcp/sdk runner. Until a released
   runner implements it, it grades not_applicable; the steps also carry
@@ -78,9 +84,11 @@ prerequisites:
     The seller advertises media_buy.reporting_delivery.subscriptions, the
     media_buy.reporting_subscriptions feature, and the reporting_subscription_probe
     controller scenario, and offers an hourly UTC pacing feed and a daily
-    account-timezone analytics feed (API-delivered) on its products. The
-    sandbox clock starts before 2030-06-01, so the account's grant begins
-    before the subscription's first version. A per-run operator unit keeps the
+    account-timezone analytics feed (API-delivered) on its products. It also
+    offers reset_state, which the runner calls before the storyboard: that
+    unpins the sandbox clock so it reads the seller's wall clock, before
+    2030-06-01, and the account's grant begins before the subscription's first
+    version. A per-run operator unit keeps the
     account fresh. No test kit is declared, so the runner sends the brand the
     steps author.
 
@@ -117,6 +125,10 @@ phases:
           - check: field_present
             path: "media_buy.reporting_delivery.offerings[0].standard_dimensions"
             description: "Offerings publish their breakdown in the standard vocabulary"
+          - check: field_contains
+            path: "compliance_testing.scenarios[*]"
+            value: "reset_state"
+            description: "A seller with the reporting_subscription_probe also offers reset_state, which unpins the sandbox clock"
 
       - id: open_coverage_account
         title: "Open a sandbox account in New York time"
@@ -564,6 +576,22 @@ phases:
             value: "active"
             description: "Coverage depends on get_reporting_status in the grant alone"
 
+      - id: wind_down_is_not_a_loss
+        title: "The wind-down grant is not a loss of authority"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        stateful: false
+        sample_request: {}
+        validations:
+          - check: response_schema
+            description: "The readback matches get-principal-response.json"
+          - check: field_value_or_absent
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized_count"
+            value: 0
+            description: "A reduced grant that still lists get_reporting_status leaves the account out of accounts_unauthorized"
+
       - id: receipts_refused_under_wind_down
         title: "A task the grant drops is refused, not unknown"
         task: sync_reporting_receipts
@@ -932,6 +960,9 @@ phases:
           params:
             operation: "advance_time"
             target_time: "2030-11-04T18:00:00Z"
+        context_outputs:
+          - name: timezone_change_now
+            path: "simulated.simulated_now"
         validations:
           - check: field_value
             path: "success"
@@ -954,10 +985,27 @@ phases:
             account_id: "$context.coverage_account_id"
             timezone: "America/Los_Angeles"
         validations:
+          - check: response_schema
+            description: "The result matches SetAccountTimezoneResult"
+          - check: field_equals_context
+            path: "simulated.account_id"
+            context_key: "coverage_account_id"
+            description: "The change names the account it acted on"
           - check: field_value
             path: "simulated.previous_timezone"
             value: "America/New_York"
             description: "The change reports the previous zone"
+          - check: field_value
+            path: "simulated.timezone"
+            value: "America/Los_Angeles"
+            description: "The change reports the new zone"
+          - check: field_equals_context
+            path: "simulated.changed_at"
+            context_key: "timezone_change_now"
+            description: "The change applies at the current sandbox instant"
+          - check: field_present
+            path: "simulated.timezone_cutovers[0].effective_at"
+            description: "The change previews the cutover instant of each account-timezone offering"
 
       - id: read_timezone_account
         title: "list_accounts shows the new timezone"
@@ -1033,3 +1081,202 @@ phases:
             path: "periods[*].period.start"
             value: "2030-11-05T08:00:00Z"
             description: "Los Angeles days start at Los Angeles midnight; 05:00Z to 08:00Z is owed under neither zone"
+
+  - id: reduced_grant_loses_authority
+    title: "A grant reduced without get_reporting_status is a loss of authority"
+    depends_on: [fresh_chain_after_retention]
+    steps:
+      - id: advance_to_reduction
+        title: "Advance to November 10"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-11-10T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: reduce_without_reporting
+        title: "Reduce the grant to tasks without get_reporting_status"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "reduce_grant"
+            account_id: "$context.coverage_account_id"
+            allowed_tasks: ["list_accounts", "get_media_buys"]
+        context_outputs:
+          - name: grant_reduced_at
+            path: "simulated.simulated_now"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller reduces the grant"
+          - check: field_value
+            path: "simulated.simulated_now"
+            value: "2030-11-10T12:00:00.000Z"
+            description: "The reduction applies on the sandbox clock"
+
+      - id: reduced_is_listed
+        title: "The subscription lists the account as unauthorized from the reduction"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        stateful: false
+        sample_request: {}
+        validations:
+          - check: response_schema
+            description: "The readback matches get-principal-response.json"
+          - check: field_equals_context
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized[0].account_id"
+            context_key: "coverage_account_id"
+            description: "Dropping get_reporting_status is a loss of authority, listed like a revocation"
+          - check: field_equals_context
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized[0].unauthorized_at"
+            context_key: "grant_reduced_at"
+            description: "Authority ends at the reduction"
+          - check: field_value
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized_count"
+            value: 1
+            description: "The total is present with the list"
+
+      - id: reduced_is_refused
+        title: "get_reporting_status refuses the account, not as unknown"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "summary"
+          delivery_config_ids: ["coverage-feed"]
+        validations:
+          - check: error_code
+            value: "SCOPE_INSUFFICIENT"
+            description: "The account stays visible to the tasks the grant lists, so get_reporting_status is refused as outside the grant"
+
+      - id: advance_before_restore
+        title: "Advance two days"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "advance_time"
+            target_time: "2030-11-12T12:00:00Z"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The sandbox clock advances"
+
+      - id: restore_get_reporting_status
+        title: "Add get_reporting_status back to the grant"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+            sandbox: true
+          scenario: "reporting_subscription_probe"
+          params:
+            operation: "reduce_grant"
+            account_id: "$context.coverage_account_id"
+            allowed_tasks: ["list_accounts", "get_media_buys", "get_reporting_status"]
+        validations:
+          - check: field_contains
+            path: "simulated.allowed_tasks[*]"
+            value: "get_reporting_status"
+            description: "The applied grant lists get_reporting_status again"
+
+      - id: restored_authorization
+        title: "Restoring get_reporting_status is a re-grant"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+        validations:
+          - check: field_value
+            path: "accounts[0].authorization.authorized_at"
+            value: "2030-10-25T12:00:00.000Z"
+            description: "Within status_retention_days the re-grant continues the chain, so authorized_at stays"
+          - check: field_value
+            path: "accounts[0].authorization.regranted_at"
+            value: "2030-11-12T12:00:00.000Z"
+            description: "regranted_at records the restoration"
+
+      - id: restored_is_cleared
+        title: "The account leaves accounts_unauthorized"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        stateful: false
+        sample_request: {}
+        validations:
+          - check: response_schema
+            description: "The readback matches get-principal-response.json"
+          - check: field_value_or_absent
+            path: "result.configuration.reporting_subscriptions[0].accounts_unauthorized_count"
+            value: 0
+            description: "A re-grant removes the entry"
+
+      - id: restored_is_covered
+        title: "The account is readable and covered again"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.coverage_account_id"
+          view: "periods"
+          delivery_config_ids: ["coverage-feed"]
+          pagination:
+            max_results: 100
+        validations:
+          - check: response_schema
+            description: "The periods view matches get-reporting-status-response.json"
+          - check: owed_periods_match
+            subscription_id: "coverage-feed"
+            description: "The owed set computed from wire state equals the seller's obligations"
+            severity: advisory
+            expires_after_version: "17.0.0"
+          - check: field_value
+            path: "subscription_coverage[0].status"
+            value: "active"
+            description: "The subscription covers the account again"

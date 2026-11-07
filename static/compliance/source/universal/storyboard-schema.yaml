@@ -152,7 +152,7 @@
 #   never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | webhook_receiver | multi_agent |
+#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | field_excludes_runner | test_kit_format_catalog_runner | webhook_receiver | multi_agent |
 #   trusted_match_publisher_auth_runner | property_list_reference_runner (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
@@ -164,11 +164,26 @@
 #
 #   Values and availability:
 #
+#     test_kit_format_catalog_runner — intrinsic support for the explicit offline
+#                    legacy-format catalog form of $build_assets_from_format
+#                    described below. Storyboards using that form MUST declare
+#                    this requirement. Older runners report requirement_unmet
+#                    before fixture mutation. Availability means syntax support,
+#                    not that the operator supplied a matching declaration.
+#
 #     collect_product_pages_runner — intrinsic support for the opt-in wholesale
 #                    product-page collector. No operator configuration is needed.
 #                    A storyboard using collect_product_pages MUST declare this
 #                    requirement so older runners report requirement_unmet before
 #                    fixture mutation instead of silently checking only one page.
+#
+#     field_excludes_runner — runner support for the field_excludes negative
+#                    membership check. A storyboard using that check MUST declare
+#                    this requirement. Runners that cannot execute it report
+#                    requirement_unmet before fixture mutation. A harness may
+#                    satisfy it with the public assertion API while its SDK lacks
+#                    a native implementation, provided full-run and standalone
+#                    step grading both enforce the authored exclusion.
 #
 #     controller   — gate on agent advertising comply_test_controller.
 #                    Available when the agent's get_adcp_capabilities response
@@ -1177,6 +1192,32 @@
 #   example, `legal`, `disclaimer`, or `alt_text`) from an arbitrary fallback
 #   category.
 #
+#   Offline legacy declarations: to test a media-buy-only seller without imposing
+#   list_creative_formats on it, the directive MAY instead use this object form:
+#     $build_assets_from_format:
+#       format_id: "$context.legacy_format_id"
+#       catalog: test_kit
+#   The wrapper MUST contain exactly those two keys, and the storyboard MUST
+#   require test_kit_format_catalog_runner. The captured value MUST be a valid
+#   complete FormatId. The operator supplies test_kit.creative_formats as an
+#   array of full core/format.json declarations obtained from their declaring
+#   agents. Each entry MUST include an explicit assets array (empty is allowed),
+#   valid slot declarations and unique asset identifiers. These are fixture
+#   inputs, not seller responses or seeds; runners MUST NOT overwrite discovery
+#   context or the seller's catalog with them, or fetch any reference implicitly.
+#
+#   Match the entire format_id by structural JSON equality after canonicalizing
+#   agent_url per the URL canonicalization rules. Preserve every other field,
+#   including width, height, duration_ms, pixel_ratio and extension parameters.
+#   Do not instantiate a template, override dimensions, or match by slug alone.
+#   An absent catalog or absent exact match is fixture_unavailable, naming
+#   "format declaration" as the unavailable slot and "format" as its type.
+#   Malformed catalogs, duplicate exact matches and malformed captured references
+#   are harness authoring errors, not fixture_unavailable. Unresolved context
+#   remains a prerequisite/harness error; it is not evidence of a catalog gap.
+#   Unsupported declared constraints are fixture_unavailable. The ordinary
+#   preflight and whole-storyboard termination rules below apply to this form.
+#
 #   Asset-fixture coverage exception: when the captured format is valid but the
 #   runner cannot populate a required slot from the test kit — including an
 #   unsupported asset type, an unknown text-slot semantic, or no image fixture
@@ -1736,6 +1777,14 @@
 #                use `[*]` segments and passes when any resolved value matches
 #                `value` or one of `allowed_values`; object/array expectations
 #                are matched as deep subsets),
+#                "field_excludes" (wildcard-aware negative membership check;
+#                passes when none of the resolved values matches `value` or any
+#                `allowed_values`, using the same deep-subset matching as
+#                field_contains. An empty array passes. Pair with field_present
+#                when a nonempty result is required. This tests exclusion of a
+#                negative control without limiting the number of valid results.
+#                Storyboards using this check MUST require field_excludes_runner
+#                so an unsupported runner skips before seeding),
 #                "array_length" (asserts exact array cardinality with `value`,
 #                or an inclusive range with `min` / `max`),
 #                "all_fields_present" (every item of an array carries a field;
@@ -2054,16 +2103,40 @@
 #       entry (excluded[], gaps[], timezone_cutovers[]).
 #   It applies the coverage rule of core/reporting-subscription.json (the rule
 #   the canonical vectors in test-vectors/reporting-subscriptions/ pin) with
-#   now = ledger_as_of, and keeps periods that start at or after
-#   scope.ledger_retained_from and fall inside the request's period when one is
-#   set. It passes when the owed set equals the response's obligations whose
-#   delivery_config_id is the subscription_id: one obligation per
-#   (delivery_config_version, offering_id, period.start, period.end), with the
-#   same media_buy_ids and stub flag, compared as instants. A response with
-#   pagination.has_more true fails as unverifiable; request a page large enough
-#   for the window. Runners that do not implement the check grade it
-#   not_applicable (forward compatibility); storyboards declare it advisory
-#   until runner support ships.
+#   now = ledger_as_of, then compares the two sets over one window.
+#
+#   Comparison window. The window starts at the later of:
+#     - the expected start: the request's period.start when one is set;
+#       otherwise the window has no lower bound here and every period the
+#       coverage rule owes from the subscription's first version on counts;
+#     - the retention bound: scope.ledger_retained_from from this response,
+#       the earliest period boundary the seller still retains after purging
+#       older history, capped at ledger_as_of minus status_retention_days
+#       (exact 86,400-second days). The seller keeps obligation metadata
+#       queryable for at least status_retention_days, so a
+#       ledger_retained_from later than that instant does not move the
+#       window start past it.
+#   The end of the window is unchanged: the coverage rule with now =
+#   ledger_as_of decides which periods are owed so far, and when the request
+#   sets a period only periods that fall inside it are compared. Only periods
+#   that start at or after the window start are compared, on both sides: an
+#   owed period that starts before the window start is not required, and an
+#   obligation the seller returns for a period that starts before it is
+#   ignored, not counted as unexpected. Inside the window an obligation the
+#   coverage rule does not owe is still a mismatch. A seller that purged
+#   history beyond its retention therefore passes, and one that purged inside
+#   it fails on the periods it no longer returns.
+#
+#   Within the window the check passes when the owed set equals the
+#   response's obligations whose delivery_config_id is the subscription_id:
+#   one obligation per (delivery_config_version, offering_id, period.start,
+#   period.end), with the same media_buy_ids and stub flag, compared as
+#   instants. A response with pagination.has_more true fails as
+#   unverifiable; request a page large enough for the window. Failure output
+#   reports the window start and which bound set it (expected_start,
+#   ledger_retained_from, or retention_cap). Runners that do not implement
+#   the check grade it not_applicable (forward compatibility); storyboards
+#   declare it advisory until runner support ships.
 #
 #   Fields:
 #     check: owed_periods_match

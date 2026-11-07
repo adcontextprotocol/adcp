@@ -768,6 +768,11 @@ export class CrawlerService {
       assertExecutionLock();
       await this.scanBrandsForDomains(brandDomains, assertExecutionLock);
 
+      // Brands that name a house without a published brand.json get their
+      // verdict from stored records, after the scan has refreshed the houses.
+      assertExecutionLock();
+      await this.computeUnpublishedHouseRelationshipTrust();
+
       return result;
     } catch (error) {
       log.error({ err: error }, 'Crawl failed');
@@ -923,7 +928,7 @@ export class CrawlerService {
           // origin evidence, including central hosting on a third-party CDN.
           // Only the exact AAO-hosted pointer may also promote ownership.
           await this.brandDb.updateHostedBrand(hosted.id, {
-            ...(pointsToAaoHostedBrand ? { domain_verified: true } : {}),
+            ...(pointsToAaoHostedBrand ? { verified_by_brand_json_pointer: true as const } : {}),
             origin_validated: true,
           });
           if (pointsToAaoHostedBrand && !hosted.domain_verified) {
@@ -942,13 +947,25 @@ export class CrawlerService {
         ? this.stripLegacyCompatibilityMetadata(result.raw_data as Record<string, unknown>)
         : undefined;
       manifestPersisted = Boolean(manifest);
-      await this.brandDb.upsertDiscoveredBrand({
-        domain,
-        brand_name: brandName,
-        has_brand_manifest: Boolean(manifest),
-        brand_manifest: manifest,
-        source_type: 'brand_json',
-      });
+      // A verified owner's record refuses discovered-brand writes, but a
+      // document served from the domain itself is the owner's own statement:
+      // it replaces the hosted record.
+      const ownerHosted = manifest ? await this.brandDb.getHostedBrandByDomain(domain) : null;
+      if (manifest && ownerHosted?.workos_organization_id && ownerHosted.domain_verified) {
+        await this.brandDb.updateHostedBrand(ownerHosted.id, {
+          brand_json: manifest,
+          brand_name: brandName,
+          origin_validated: true,
+        });
+      } else {
+        await this.brandDb.upsertDiscoveredBrand({
+          domain,
+          brand_name: brandName,
+          has_brand_manifest: Boolean(manifest),
+          brand_manifest: manifest,
+          source_type: 'brand_json',
+        });
+      }
 
       // Extract properties from brand.json and upsert into catalog
       if (result.variant === 'house_portfolio' || result.variant === 'brand_canonical') {
@@ -1052,6 +1069,15 @@ export class CrawlerService {
           }
         }),
       );
+    }
+  }
+
+  private async computeUnpublishedHouseRelationshipTrust(): Promise<void> {
+    try {
+      const updated = await this.brandDb.computeUnpublishedHouseRelationshipTrust();
+      log.info({ updated }, 'Computed relationship trust for unpublished house links');
+    } catch (err) {
+      log.warn({ err }, 'Failed to compute relationship trust for unpublished house links');
     }
   }
 

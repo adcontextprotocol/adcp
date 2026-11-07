@@ -25,6 +25,8 @@ export interface AssignmentOperationOptions {
   creativeStatus: (creativeId: string) => string | undefined;
   /** Product-format check for a creative newly placed on a package. */
   validateForPackage: (creativeId: string, pkg: PackageState) => Promise<string | undefined>;
+  /** Tracker-slot allocation for the trackers an assignment would carry. */
+  validateTrackers?: (creativeId: string, pkg: PackageState, trackers: ReadonlyArray<Record<string, unknown>>) => string | undefined;
 }
 
 export interface AssignmentOperationPlan {
@@ -125,6 +127,12 @@ export async function planAssignmentOperations(
           .filter(key => op[key] !== undefined)
           .map(key => [key, structuredClone(op[key])]),
       );
+      const trackersAfter = (settings.trackers ?? (existing >= 0 ? rows[existing].trackers : undefined)) as
+        ReadonlyArray<Record<string, unknown>> | undefined;
+      const slotProblem = settings.trackers !== undefined || existing < 0
+        ? trackersAfter && options.validateTrackers?.(creativeId, pkg, trackersAfter)
+        : undefined;
+      if (slotProblem) return { errors: [error('VALIDATION_ERROR', slotProblem, `${at}.trackers`)] };
       if (existing >= 0) {
         const before = JSON.stringify(rows[existing]);
         rows[existing] = { ...rows[existing], ...settings };
@@ -159,6 +167,10 @@ export async function planAssignmentOperations(
         transferred.placement_ids = structuredClone(op.placement_ids);
         delete transferred.placement_refs;
       }
+      // Transferred trackers must fit the replacement's own tracker occupancy.
+      const transferredTrackers = transferred.trackers as ReadonlyArray<Record<string, unknown>> | undefined;
+      const slotProblem = transferredTrackers && options.validateTrackers?.(creativeId, pkg, transferredTrackers);
+      if (slotProblem) return { errors: [error('VALIDATION_ERROR', slotProblem, `${at}.creative_id`)] };
       if (replacedId === creativeId) {
         // Replacing a creative with itself only applies supplied overrides.
         if (JSON.stringify(transferred) !== JSON.stringify(rows[replacedIndex])) {
@@ -225,4 +237,57 @@ export function assignmentReadbackFields(
 
 export function assignmentRow(pkg: PackageState, creativeId: string): Record<string, unknown> | undefined {
   return (pkg.creativeAssignmentDetails as AssignmentRow[] | undefined)?.find(row => row.creative_id === creativeId);
+}
+
+export interface TrackerSlot {
+  asset_group_id: string;
+  asset_type: string;
+  max?: number;
+}
+
+/** Which assignment-tracker events each canonical tracker slot accepts. A
+ * pixel_tracker slot outside this table accepts any event. */
+const TRACKER_SLOT_EVENTS: Record<string, (event: string) => boolean> = {
+  impression_tracker: event => event === 'impression',
+  click_tracker: event => event === 'click',
+  viewability_tracker: event => event.startsWith('viewable_') || event === 'audible_video_complete',
+};
+
+export function isTrackerSlot(slot: TrackerSlot): boolean {
+  return slot.asset_type === 'pixel_tracker' || slot.asset_group_id in TRACKER_SLOT_EVENTS;
+}
+
+/**
+ * Allocate assignment trackers to the format's declared tracker slots, after
+ * the creative's own tracker assets (`occupancy`) keep theirs. Each tracker
+ * takes one occurrence of a compatible slot; event-specific slots are tried
+ * before generic ones. Returns a reason when no valid allocation exists.
+ * A format that declares no tracker slot makes no slot claim (the canonical
+ * image tracking model fires trackers through macros), so nothing is refused.
+ */
+export function trackerAllocationProblem(
+  slots: ReadonlyArray<TrackerSlot>,
+  occupancy: Readonly<Record<string, number>>,
+  trackers: ReadonlyArray<Record<string, unknown>>,
+): string | undefined {
+  const trackerSlots = slots.filter(isTrackerSlot);
+  if (trackerSlots.length === 0) return undefined;
+  const remaining = new Map(trackerSlots.map(slot => [
+    slot.asset_group_id,
+    slot.max === undefined ? Number.POSITIVE_INFINITY : slot.max - (occupancy[slot.asset_group_id] ?? 0),
+  ]));
+  const ordered = [...trackerSlots].sort((a, b) =>
+    Number(b.asset_group_id in TRACKER_SLOT_EVENTS) - Number(a.asset_group_id in TRACKER_SLOT_EVENTS));
+  for (const tracker of trackers) {
+    const event = String(tracker.event === 'custom' ? 'custom' : tracker.event);
+    const slot = ordered.find(candidate => {
+      const accepts = TRACKER_SLOT_EVENTS[candidate.asset_group_id];
+      return (accepts ? accepts(event) : true) && (remaining.get(candidate.asset_group_id) ?? 0) > 0;
+    });
+    if (!slot) {
+      return `No declared tracker slot has room for a ${event} tracker; the format's tracker slots are full or none accepts this event.`;
+    }
+    remaining.set(slot.asset_group_id, (remaining.get(slot.asset_group_id) ?? 0) - 1);
+  }
+  return undefined;
 }

@@ -44,7 +44,7 @@ import {
   TRAINING_REPORTING_MANAGED_OFFERING,
   TRAINING_REPORTING_RECONCILED_OFFERING,
 } from './reporting-reliability.js';
-import { STATUS_RETENTION_DAYS, type GrantRecord, type TimezoneChange } from './account-sandbox.js';
+import { STATUS_RETENTION_DAYS, reportingLostAt, type GrantRecord, type TimezoneChange } from './account-sandbox.js';
 
 type Json = Record<string, unknown>;
 
@@ -363,7 +363,7 @@ export interface CoverageBuy {
   end_time: string;
   canceled_at?: string;
   completed_at?: string;
-  packages: Array<{ package_id: string; reporting_delivery_offering_ids: string[] }>;
+  packages: Array<{ package_id: string; reporting_delivery_offering_ids: string[]; added_at?: string }>;
 }
 
 export interface CoverageContext {
@@ -820,9 +820,10 @@ export function coverageForAccount(
       obligations = result.expected_obligations;
     }
 
-    // Lost authority.
+    // Lost authority: a revocation, or a grant reduced without
+    // get_reporting_status, which ends reporting authority the same way.
     let unauthorized: SubscriptionAccountCoverage['unauthorized'];
-    const lostAt = account.grant?.unauthorized_at;
+    const lostAt = reportingLostAt(account.grant);
     if (lostAt) {
       const lostMs = Date.parse(lostAt);
       const owedBefore = obligations.filter(obligation => Date.parse(obligation.period_end) <= lostMs);

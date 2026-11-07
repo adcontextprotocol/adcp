@@ -5,12 +5,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const YAML = require('yaml');
-const { runStoryboard } = require('@adcp/sdk/testing');
+const { runCatalogReportingStoryboard: runStoryboard } = require('../server/src/compliance/catalog-reporting-runner.ts');
 
 const source = path.join(__dirname, '..', 'static', 'compliance', 'source',
   'protocols', 'media-buy', 'scenarios', 'product_filter_behavior.yaml');
 
-async function runFilters({ buyingModes, nativeGuaranteed = false, ignoreDeliveryIn, injectGuaranteedSeed = false } = {}) {
+async function runFilters({ buyingModes, nativeGuaranteed = false, ignoreDeliveryIn, injectGuaranteedSeed = false, extraMatching = false, ignoreChannels = false } = {}) {
   const storyboard = YAML.parse(fs.readFileSync(source, 'utf8'));
   for (const phase of storyboard.phases) {
     for (const step of phase.steps) {
@@ -24,6 +24,10 @@ async function runFilters({ buyingModes, nativeGuaranteed = false, ignoreDeliver
     product_id: 'unsupported-guaranteed-seed', delivery_type: 'guaranteed', channels: ['olv'],
   });
   const catalog = new Map();
+  if (extraMatching) catalog.set('another-storyboard-olv', {
+    product_id: 'another-storyboard-olv', delivery_type: 'non_guaranteed', channels: ['olv'],
+    pricing_options: [{ pricing_option_id: 'another-cpm', pricing_model: 'cpm', currency: 'USD', floor_price: 9 }],
+  });
   if (nativeGuaranteed) catalog.set('native-guaranteed-olv', {
     product_id: 'native-guaranteed-olv', delivery_type: 'guaranteed', channels: ['olv'],
     pricing_options: [{ pricing_option_id: 'native-guaranteed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 15 }],
@@ -63,7 +67,7 @@ async function runFilters({ buyingModes, nativeGuaranteed = false, ignoreDeliver
       if (request.buying_mode !== 'brief') assert.ok(buyingModes?.includes(request.buying_mode));
       const products = [...catalog.values()].filter(product => {
         if (request.buying_mode === 'refine' && product.product_id !== request.refine[0].product_id) return false;
-        if (request.filters.channels && !request.filters.channels.some(channel => product.channels.includes(channel))) return false;
+        if (!ignoreChannels && request.filters.channels && !request.filters.channels.some(channel => product.channels.includes(channel))) return false;
         if (request.buying_mode !== ignoreDeliveryIn && request.filters.delivery_type !== product.delivery_type) return false;
         return true;
       });
@@ -116,6 +120,18 @@ test('native guaranteed products satisfy negative-delivery probes without being 
       assert.equal(responses[i].products[0].product_id, 'native-guaranteed-olv');
     }
   }
+});
+
+test('additional matching inventory and catalog order do not imply a filter failure', async () => {
+  const { result, responses } = await runFilters({ buyingModes: ['brief', 'wholesale', 'refine'], extraMatching: true });
+  assert.equal(result.overall_passed, true, JSON.stringify(failures(result)));
+  assert.equal(responses[0].products.length, 2);
+});
+
+test('the display negative control is rejected even after additional matching inventory', async () => {
+  const { result } = await runFilters({ buyingModes: ['brief', 'wholesale'], extraMatching: true, ignoreChannels: true });
+  assert.equal(result.overall_passed, false);
+  assert.ok(failures(result).some(step => step.validations.some(check => check.check === 'field_excludes' && !check.passed)));
 });
 
 test('ignoring delivery in brief or wholesale leaks an actual auction fixture and fails', async t => {

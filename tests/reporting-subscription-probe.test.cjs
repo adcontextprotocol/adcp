@@ -68,3 +68,49 @@ test('results are simulation responses and the scenario is documented', () => {
   for (const op of ['revoke_grant', 'regrant', 'reduce_grant', 'set_account_timezone', 'advance_time']) assert.match(doc, new RegExp(`\\*\\*${op}\\*\\*`), op);
   assert.match(doc, /only on the authenticated caller's own\ngrant/);
 });
+
+test('set_account_timezone returns SetAccountTimezoneResult', () => {
+  const cutover = { offering_id: 'analytics_daily_api', previous_timezone: 'America/New_York', timezone: 'America/Los_Angeles', effective_at: '2030-11-05T05:00:00Z' };
+  const result = simulated => ({ status: 'completed', success: true, simulated });
+  const changed = {
+    simulated_now: '2030-11-04T18:00:00Z',
+    account_id: 'acc_sandbox',
+    previous_timezone: 'America/New_York',
+    timezone: 'America/Los_Angeles',
+    changed_at: '2030-11-04T18:00:00Z',
+    timezone_cutovers: [cutover],
+  };
+  assert.ok(response(result(changed)), JSON.stringify(response.errors));
+  // Naming the current zone changes nothing: no changed_at, no cutover.
+  const unchanged = { simulated_now: '2030-11-05T18:00:00Z', account_id: 'acc_sandbox', previous_timezone: 'America/Los_Angeles', timezone: 'America/Los_Angeles', timezone_cutovers: [] };
+  assert.ok(response(result(unchanged)), JSON.stringify(response.errors));
+  const { changed_at: _changedAt, ...withoutChangedAt } = changed;
+  const bad = [
+    ['without account_id', (({ account_id: _a, ...rest }) => rest)(changed)],
+    ['without timezone', (({ timezone: _t, ...rest }) => rest)(changed)],
+    ['without timezone_cutovers', (({ timezone_cutovers: _c, ...rest }) => rest)(withoutChangedAt)],
+    ['a cutover without offering_id', { ...changed, timezone_cutovers: [(({ offering_id: _o, ...rest }) => rest)(cutover)] }],
+    ['a cutover without previous_timezone', { ...changed, timezone_cutovers: [(({ previous_timezone: _p, ...rest }) => rest)(cutover)] }],
+    ['a cutover with a field coverage does not define', { ...changed, timezone_cutovers: [{ ...cutover, changed_at: '2030-11-04T18:00:00Z' }] }],
+    ['changed_at that is not an instant', { ...changed, changed_at: 'yesterday' }],
+  ];
+  for (const [name, simulated] of bad) assert.equal(response(result(simulated)), false, name);
+
+  const res = read('compliance/comply-test-controller-response.json');
+  const def = res.definitions.SetAccountTimezoneResult;
+  assert.equal(def['x-added-in'], '3.3.0');
+  assert.equal(def['x-status'], 'experimental');
+  const doc = fs.readFileSync(path.join(ROOT, 'docs/building/by-layer/L3/comply-test-controller.mdx'), 'utf8');
+  assert.match(doc, /`set_account_timezone` returns `SetAccountTimezoneResult`/);
+});
+
+test('reset_state resets the probe clock and probe state', () => {
+  const req = read('compliance/comply-test-controller-request.json');
+  assert.match(req.properties.scenario.description, /a seller that lists reporting_subscription_probe MUST also list reset_state, which MUST unpin the caller's sandbox clock/);
+  const doc = fs.readFileSync(path.join(ROOT, 'docs/building/by-layer/L3/comply-test-controller.mdx'), 'utf8');
+  assert.match(doc, /### `reset_state`/);
+  assert.match(doc, /A seller that lists `reporting_subscription_probe` MUST also\s+list `reset_state`/);
+  assert.match(doc, /unpin the sandbox clock\. Until the next `advance_time`, `simulated_now` reads the\s+seller's wall clock/);
+  // A reset returns the SeedSuccess shape.
+  assert.ok(response({ status: 'completed', success: true }), JSON.stringify(response.errors));
+});

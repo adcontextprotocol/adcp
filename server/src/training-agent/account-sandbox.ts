@@ -12,8 +12,13 @@
  *   chain start (`authorized_at`), the latest re-grant in the chain
  *   (`regranted_at`), a revocation (`unauthorized_at`), and an optional reduced
  *   `allowed_tasks`. A revoked account is unknown to every task but the
- *   controller. The grant history is kept so coverage can be computed as a
- *   chain of grants, as `core/account-authorization.json` describes.
+ *   controller. A grant reduced to tasks without `get_reporting_status` ends
+ *   the caller's authority for reporting at the reduction
+ *   (`reporting_unauthorized_at`), as a revocation does, though the account
+ *   stays visible to the tasks the grant lists; adding `get_reporting_status`
+ *   back is a re-grant. The grant history (intervals of reporting authority)
+ *   is kept so coverage can be computed as a chain of grants, as
+ *   `core/account-authorization.json` describes.
  * - **Timezone changes.** Each change of an account's timezone, so
  *   account-timezone reporting periods can cut over (`timezone_cutovers`).
  *
@@ -45,8 +50,12 @@ export interface GrantRecord {
   unauthorized_at?: string;
   /** Reduced grant. Absent means the full default grant. */
   allowed_tasks?: string[];
+  /** Present while a reduced grant omits get_reporting_status: when it was
+   * reduced. A loss of authority for reporting, like a revocation. */
+  reporting_unauthorized_at?: string;
   read_only?: boolean;
-  /** Every grant interval, oldest first, across chains. */
+  /** Every interval of reporting authority (the grant listed
+   * get_reporting_status and was not revoked), oldest first, across chains. */
   history: GrantInterval[];
 }
 
@@ -214,6 +223,28 @@ export function revokeGrant(doc: SandboxDocument, accountId: string, nowIso: str
   return grant;
 }
 
+/** When the caller's authority for reporting on the account ended, while it
+ * is lost: the earlier of a revocation and a reduction that dropped
+ * get_reporting_status. */
+export function reportingLostAt(grant: GrantRecord | undefined): string | undefined {
+  const lost = [grant?.unauthorized_at, grant?.reporting_unauthorized_at].filter((value): value is string => value !== undefined);
+  if (lost.length === 0) return undefined;
+  return lost.reduce((earliest, value) => (Date.parse(value) < Date.parse(earliest) ? value : earliest));
+}
+
+/** Restore reporting authority at `nowIso`: a re-grant that continues the
+ * chain within status_retention_days of the loss, or starts a new one. */
+function resumeReporting(grant: GrantRecord, lostAt: string, nowIso: string): 'continued' | 'new' {
+  grant.history.push({ authorized_at: nowIso });
+  if (Date.parse(nowIso) < Date.parse(lostAt) + STATUS_RETENTION_DAYS * DAY_MS) {
+    grant.regranted_at = nowIso;
+    return 'continued';
+  }
+  grant.authorized_at = nowIso;
+  delete grant.regranted_at;
+  return 'new';
+}
+
 export function regrantGrant(
   doc: SandboxDocument,
   accountId: string,
@@ -221,23 +252,16 @@ export function regrantGrant(
 ): { grant: GrantRecord; chain: 'continued' | 'new' } {
   const created = ensureGrant(doc, accountId, nowIso);
   const grant = grantFor(doc, accountId)!;
+  const lostAt = reportingLostAt(grant);
   // A re-grant restores the full grant.
   delete grant.allowed_tasks;
   delete grant.read_only;
-  if (created || grant.unauthorized_at === undefined) {
+  delete grant.unauthorized_at;
+  delete grant.reporting_unauthorized_at;
+  if (created || lostAt === undefined) {
     return { grant, chain: created ? 'new' : 'continued' };
   }
-  const revokedMs = Date.parse(grant.unauthorized_at);
-  const nowMs = Date.parse(nowIso);
-  delete grant.unauthorized_at;
-  grant.history.push({ authorized_at: nowIso });
-  if (nowMs < revokedMs + STATUS_RETENTION_DAYS * DAY_MS) {
-    grant.regranted_at = nowIso;
-    return { grant, chain: 'continued' };
-  }
-  grant.authorized_at = nowIso;
-  delete grant.regranted_at;
-  return { grant, chain: 'new' };
+  return { grant, chain: resumeReporting(grant, lostAt, nowIso) };
 }
 
 export function reduceGrant(
@@ -250,6 +274,19 @@ export function reduceGrant(
   const grant = grantFor(doc, accountId)!;
   grant.allowed_tasks = [...new Set(allowedTasks)].sort();
   grant.read_only = false;
+  // Reporting authority follows get_reporting_status: dropping it is a loss of
+  // authority at the reduction, exactly like a revocation; adding it back is a
+  // re-grant (reporting-subscription.json coverage).
+  const reports = grant.allowed_tasks.includes('get_reporting_status');
+  if (!reports && grant.reporting_unauthorized_at === undefined) {
+    grant.reporting_unauthorized_at = nowIso;
+    const last = grant.history[grant.history.length - 1];
+    if (last && last.unauthorized_at === undefined) last.unauthorized_at = nowIso;
+  } else if (reports && grant.reporting_unauthorized_at !== undefined) {
+    const lostAt = grant.reporting_unauthorized_at;
+    delete grant.reporting_unauthorized_at;
+    resumeReporting(grant, lostAt, nowIso);
+  }
   return grant;
 }
 

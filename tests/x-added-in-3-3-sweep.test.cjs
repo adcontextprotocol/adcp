@@ -42,6 +42,8 @@ const WHOLE_FILE_3_3 = [
   'core/reporting-subscription-state.json',
   'core/reporting-subscription-coverage.json',
   'enums/reporting-dimension.json',
+  'core/match-key.json',
+  'enums/match-key-use.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -134,15 +136,22 @@ const PROPERTIES_3_3 = [
   ['core/media-buy.json', ['properties', 'flight_history']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'flight_history']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'packages', 'items', 'properties', 'reporting_delivery_offering_ids']],
+  ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'packages', 'items', 'properties', 'added_at']],
   ['core/reporting-delivery-offering.json', ['properties', 'available_from']],
   ['core/reporting-delivery-offering.json', ['properties', 'withdrawn_at']],
   ['core/reporting-consumer-status.json', ['properties', 'offering_id']],
   ['media-buy/get-reporting-status-response.json', ['properties', 'scope', 'properties', 'delivery_config_generations', 'items', 'properties', 'offering_id']],
   ['compliance/comply-test-controller-request.json', ['properties', 'params', 'properties', 'allowed_tasks']],
   ['compliance/comply-test-controller-request.json', ['properties', 'params', 'properties', 'timezone']],
+  ['compliance/comply-test-controller-response.json', ['definitions', 'SetAccountTimezoneResult']],
+  ['compliance/comply-test-controller-response.json', ['definitions', 'SetAccountTimezoneResult', 'properties', 'changed_at']],
+  ['compliance/comply-test-controller-response.json', ['definitions', 'SetAccountTimezoneResult', 'properties', 'timezone_cutovers']],
   ['core/reporting-delivery-offering.json', ['properties', 'standard_dimensions']],
   ['core/reporting-delivery-offering.json', ['properties', 'unmapped_dimensions']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']],
+  ['core/product-identity.json', ['properties', 'match_keys']],
+  ['trusted-match/provider-registration.json', ['properties', 'match_keys']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'supported_match_keys']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

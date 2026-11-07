@@ -4,8 +4,8 @@
  * periods a subscription owes with the same model the canonical vectors are
  * checked against, rather than a third implementation of the rule.
  *
- * The model is a CommonJS test oracle carrying a pinned IANA tzdata subset
- * (tzdata.json). It runs from server/src/training-agent during development
+ * The model is a CommonJS test oracle carrying the whole pinned IANA tzdata
+ * release (tzdata.json), so every zone and link name works. It runs from server/src/training-agent during development
  * and tests, and from dist/training-agent in the built image, which copies
  * scripts/reference/reporting-coverage alongside dist.
  */
@@ -110,7 +110,7 @@ export function isCoverageInputError(error: unknown): error is Error & { code: s
   return error instanceof load().model.CoverageInputError;
 }
 
-/** Whether the model's pinned tzdata carries the zone. */
+/** Whether the model's pinned tzdata carries the zone: every IANA zone and link name. */
 export function coverageModelHasZone(zone: string): boolean {
   const { tz } = load();
   return zone === 'UTC' || zone === 'Etc/UTC' || (tz.isIanaName(zone) && tz.hasZone(zone));
