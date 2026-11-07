@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { isRegistryDomain } from '../server/src/services/registry-domain.js';
 import { CatalogResolveRequestSchema } from '../server/src/schemas/catalog-resolve.js';
 
@@ -88,4 +88,45 @@ describe('property identifier hostnames', () => {
       expect(CatalogResolveRequestSchema.safeParse({ ...body, sandbox }).success).toBe(false);
     }
   });
+});
+
+describe('identifier single definition across the four $ref sites', () => {
+  const schemaAt = (path: string) => JSON.parse(readFileSync(`${schemaRoot}/${path}`, 'utf8'));
+  const compiler = new Ajv({ strict: false, loadSchema: async uri => schemaAt(uri.replace('/schemas/', '').split('#')[0]) });
+  addFormats(compiler);
+  const itemSites = ['core/property.json', 'core/placement.json', 'core/placement-definition.json', 'core/canonical-placement.json'];
+  const sites: Record<string, Awaited<ReturnType<typeof compiler.compileAsync>>> = {};
+  beforeAll(async () => {
+    for (const site of itemSites) {
+      sites[site] = await compiler.compileAsync({ $ref: `/schemas/${site}#/properties/identifiers/items` });
+    }
+  });
+
+  it.each([{ type: 'domain', value: 'a.com', foo: 1 }, { type: 'venue_id', value: '1', x: 1 }])(
+    'accepts extra keys at the canonical identifier and at every ref site: %j', identifier => {
+      expect(validate(identifier)).toBe(true);
+      for (const site of itemSites) expect(sites[site](identifier), site).toBe(true);
+    },
+  );
+
+  it.each(['Example.com', 'example.com.', 'example.com:8080', 'https://example.com', 'my_site.example.com'])(
+    'rejects hostname %s under type domain at every $ref site', value => {
+      for (const site of itemSites) expect(sites[site]({ type: 'domain', value }), `${site}: ${value}`).toBe(false);
+    },
+  );
+
+  it.each([
+    {}, { type: 'domain' }, { value: 'a.com' }, { type: 'domain', value: 1 }, { type: 'not_a_type', value: 'a' },
+    { type: 'venue_id', value: null }, 'a.com', null, [],
+  ])('rejects structurally invalid identifier %j at the canonical identifier and every $ref site', identifier => {
+    expect(validate(identifier)).toBe(false);
+    for (const site of itemSites) expect(sites[site](identifier), site).toBe(false);
+  });
+
+  it.each([{ type: 'screen_id', value: 'space:1234931339' }, { type: 'venue_id', value: 'geopath:30961' }])(
+    'accepts authority-prefixed placement values with non-domain types: %j', identifier => {
+      expect(validate(identifier)).toBe(true);
+      for (const site of itemSites) expect(sites[site](identifier), site).toBe(true);
+    },
+  );
 });

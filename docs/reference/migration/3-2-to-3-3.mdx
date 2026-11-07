@@ -16,7 +16,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 Read these first:
 
 - [Required to claim 3.3 behavior](#required-to-claim-3-3-behavior): rules that narrow what a conformant implementation may do, including [unsupported webhook HMAC and batch bodies](#webhook-signing-mode-and-batch-bodies), [responses that conform to the served release](#responses-conform-to-the-served-release), [refinement that carries compliance forward](#refinement-carries-compliance-forward), [bounded counterparty-asserted domain lists](#counterparty-asserted-domain-lists-are-bounded), [seller revisions that advance on every committed change](#seller-revisions-advance-on-every-committed-change), [flight start for committed buys only](#flight-start-activates-committed-buys-only), [flat totals for multi-qualifier metrics](#multi-qualifier-metrics-omit-flat-totals), [enforceable domain identifiers](#property-domain-identifiers-have-an-enforceable-format), [property list references through AdCP tasks](#property-list-references-resolve-through-adcp-tasks), and [dual emission of platform IDs](#platform-ids-are-emitted-under-both-names), [`request_account` as the single account write](#request_account-is-the-single-account-write-where-supported), [the protocol envelope on every task response](#every-task-response-composes-the-protocol-envelope), [major-only requests served the oldest release](#a-major-only-request-is-served-the-oldest-supported-release), [closed schemas that stay closed](#closed-schemas-stay-closed-within-a-major), and [capabilities bounded by structure](#capabilities-are-bounded-by-structure).
-- [Brand JSON size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib), [audience match counts](#audience-match-counts-may-be-absent), and the [4 MiB response-size default](#client-response-size-default-rises-to-4-mib): three loosened guarantees, so a 3.2 peer can reject or misread what a 3.3 peer sends.
+- [Brand JSON size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib), [audience match counts](#audience-match-counts-may-be-absent), the [4 MiB response-size default](#client-response-size-default-rises-to-4-mib), and the [open identifier definition](#property-domain-identifiers-have-an-enforceable-format): four loosened guarantees, so a 3.2 peer can reject or misread what a 3.3 peer sends.
 - [Recommended: bound agent response size](#recommended-bound-agent-response-size): a new SHOULD that tightens what an adopting buyer accepts.
 - [Send only to 3.3 peers](#send-only-to-3-3-peers): new fields a 3.2 validator rejects.
 - [Deprecations](#deprecations): `seller_id` on event source and audience results, `principal_kind` and `expected_principal_kind` on the principal tasks, the natural-key account reference after provisioning, the account identity-rekey machinery (`identity_updates`, `operator_identity`, `ACCOUNT_MOVED`, `ACCOUNT_IDENTITY_CONFLICT`, `stable_account_id`), and condition (b) of `request_signature_required`; removal no earlier than 4.0.
@@ -49,7 +49,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 19 | SDK and codegen maintainers | Make `impressions` optional on delivery row types (#8108). |
 | 20 | Sellers and buyers using accounts | Sellers return and accept `account_id` everywhere, and treat countries, currency, timezone, sandbox, and `operator_unit` as account attributes. Buyers store `account_id` and send it instead of the deprecated natural-key reference. |
 | 21 | Media-buy sellers and signals resellers | Stop mirroring counterparty `adagents.json` into `publisher_domains` / `data_provider_domains`; truncate and flag incomplete rather than exceed the new bounds. Buyers: never deny on absence from either list. |
-| 22 | Property list issuers, receivers, and SDK maintainers | Validate domain identifiers, support MCP reference resolution with list-scoped bearer credentials, and fetch every page before applying a list. |
+| 22 | Property list issuers, receivers, `adagents.json` publishers and sellers emitting placements, and SDK maintainers | Validate domain identifiers, support MCP reference resolution with list-scoped bearer credentials, and fetch every page before applying a list. |
 | 23 | Sellers and buyers of event sources and audiences | Sellers emit `platform_id` and the deprecated `seller_id` with identical values; buyers prefer `platform_id`. |
 | 24 | Sellers with a media-buy, account or creative revision | Advance it on every committed change from any origin, including `sync_creatives` assignments and ingested connected-platform changes; add `origin` to `history` entries; optionally return `seller_revision` on `list_creatives`. |
 | 25 | Buyers that update media buys | Pass the latest `revision`, and expect `CONFLICT` after a seller or connected-platform change; re-read and retry. |
@@ -193,6 +193,42 @@ See [Roster coverage](/docs/media-buy/product-discovery/media-products#roster-co
 ASCII hostnames with at least two labels, labels of at most 63 characters, and
 a hostname of at most 253 characters. IDNs use lowercase A-label/punycode form.
 Only `domain` permits a leading `*.`. Existing matching rules are unchanged.
+
+The rule also applies to newly covered sites, not only to property-list inputs.
+Newly covered sites include `properties[].identifiers` in `adagents.json` (via
+`core/property.json`), inline agent properties in `adagents.json`
+(`inline_properties`, via `core/property.json`), adagents placement definitions
+(`core/placement-definition.json`), `placements[].identifiers` in `get_products`
+(`core/placement.json`), canonical product placements
+(`core/canonical-placement.json`), and registry events and `property-error`
+(via `core/property.json`). It fires only for `type: domain` or `subdomain`.
+
+**The identifier definition is now one open schema.** The four inline copies
+now `$ref` `core/identifier.json`, and that definition is opened with an
+explicit `additionalProperties: true`. Canonical consumers that previously
+rejected an extra key in an identifier (for example `{type, value, vlaue}`) now
+accept it. This is a loosening: a 3.2 peer, or any peer on an older release,
+that validates strictly can reject or misread an extra key a 3.3 producer sends.
+
+The loosening applies at every site that references `core/identifier.json`,
+including the ones that already referenced it: delivery metrics
+(`core/property-delivery-metrics.json` and its collection, installment, and
+placement variants), `core/creative-variant.json`, `core/registry-event.json`,
+and the `property/` list schemas (`base-property-source`, `delivery-record`,
+`get-property-list-response`, `property-list-filters`, `validation-result`).
+[DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)
+treats this opening as non-breaking, but it permits no additions within 3.x and
+it is not one of the recorded corrections. DR-0019 asks that a loosening name
+the unknown-key lint that replaces closed validation. That lint is not part of this release, so a misspelled key in an
+identifier validates and is ignored.
+
+**Where rejection applies.** The `value` rule is unchanged: an invalid value
+MUST cause rejection of the containing request, and a fetched document or
+snapshot that carries one is rejected atomically. This release does not specify
+how a receiver handles an invalid value inside a `get_products` response or a
+registry event. A receiver that rejects a bad `adagents.json` domain is
+recoverable only by the publisher fixing the file; a buyer cannot repair it on
+the publisher's behalf.
 
 **Before:** the bare string schema accepted `Example.com`, `example.com.`, and
 `https://www.example.com/path`, so a buyer could submit an exclusion the seller
@@ -502,7 +538,7 @@ New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_
 
 ## What can fail validation
 
-A schema-valid 3.2 message stays schema-valid under 3.3 except for the [domain identifier constraints](#property-domain-identifiers-have-an-enforceable-format) (mixed-case, trailing-dot, and URL-shaped `domain` / `subdomain` values are now rejected) and names 3.3 now defines:
+A schema-valid 3.2 message stays schema-valid under 3.3 except for the [domain identifier constraints](#property-domain-identifiers-have-an-enforceable-format) (mixed-case, trailing-dot, and URL-shaped `domain` / `subdomain` values are now schema-invalid at property-list, `adagents.json` (including inline agent properties), placement, registry-event, and `property-error` identifier sites) and names 3.3 now defines:
 
 - `adcp.implementation` in `get_adcp_capabilities`: previously an open extension point, now the SDK implementation shape. Migrate to it or to a vendor-owned `ext` namespace.
 - `media_buy.features.catalog_ingestion`: previously any boolean was admissible; it is now an object that requires `catalog_management: true`.
@@ -529,6 +565,7 @@ These change generated types or bundle shape without changing what a conformant 
 - **Spot rows (#8017).** `by_spot[].aired_at` is required only on `aired` and `makegood` rows and on rows without `spot_status`.
 - **Settings-update entries.** The `sync_accounts` `SettingsUpdateMode` branch permits `brand`, `operator_unit`, `currency`, `timezone`, and `billing`, so generated settings-update types gain those five fields. `operator` stays forbidden.
 - **New shared schemas.** `core/audience-size.json`, and the enums `spot-status`, `daypart-time-granularity`, `audience-size-precision`, and `audience-match-rate-basis`.
+- **`Identifier` is unified across property and placement identifiers.** The four `identifiers` item schemas (`core/property.json`, `core/placement.json`, `core/placement-definition.json`, `core/canonical-placement.json`) `$ref` `core/identifier.json`. Expected effect (not yet confirmed against SDK generator output; re-confirm on regeneration): the canonical's generated `extra` policy changes from `forbid` to `allow`, sites already `allow` stay `allow`, TS bundles gain an exported `Identifier`, and no classes are renamed.
 - **Conformance vector re-code (#8066, 3.2.4).** Request-signing `negative/026-non-ascii-host` now expects `request_target_uri_malformed` at step 10, not `request_signature_header_malformed`. Verifiers that matched the old code must update.
 
 ## Adopt by capability
