@@ -2009,7 +2009,8 @@ test("required overlay requirements exclude seller limit fields", async () => {
     "seller maxima are response-only"
   );
   // The requirements container is open (a correction under DR-0036). An unknown
-  // hard requirement still isn't ignored: matching fails closed on it.
+  // hard requirement still isn't ignored: matching fails closed on it. The
+  // functional case is in server/tests/unit/training-agent.test.ts.
   assert.equal(
     validate({ future_unknown_dimension: true }),
     true,
