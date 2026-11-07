@@ -173,6 +173,40 @@ describe('applyVerifiedBrandClaim', () => {
     expect(second?.domain_verified).toBe(true);
   });
 
+  it('keeps the organization\'s own manifest when it re-verifies a row it already holds', async () => {
+    await pool.query(
+      `INSERT INTO brands (domain, workos_organization_id, brand_manifest, source_type, review_status,
+         is_public, has_brand_manifest, domain_verified, domain_verification_method)
+       VALUES ($1, $2, $3, 'enriched', 'approved', TRUE, TRUE, FALSE, 'manual')`,
+      [TEST_DOMAIN, ORG_A, JSON.stringify({ name: 'Own Brand' })],
+    );
+    await brandDb.applyVerifiedBrandClaim(TEST_DOMAIN, ORG_A, 'dns');
+    const row = await pool.query<{ brand_manifest: Record<string, unknown>; has_brand_manifest: boolean; domain_verification_method: string }>(
+      'SELECT brand_manifest, has_brand_manifest, domain_verification_method FROM brands WHERE domain = $1',
+      [TEST_DOMAIN],
+    );
+    expect(row.rows[0]).toEqual({
+      brand_manifest: { name: 'Own Brand' },
+      has_brand_manifest: true,
+      domain_verification_method: 'dns',
+    });
+  });
+
+  it('starts a new owner fresh even when the prior owner\'s row was not orphaned', async () => {
+    await pool.query(
+      `INSERT INTO brands (domain, workos_organization_id, brand_manifest, source_type, review_status,
+         is_public, has_brand_manifest, domain_verified)
+       VALUES ($1, $2, $3, 'community', 'approved', TRUE, TRUE, FALSE)`,
+      [TEST_DOMAIN, ORG_A, JSON.stringify({ name: 'Prior Owner Brand' })],
+    );
+    await brandDb.applyVerifiedBrandClaim(TEST_DOMAIN, ORG_B, 'dns');
+    const row = await pool.query<{ brand_manifest: Record<string, unknown>; workos_organization_id: string }>(
+      'SELECT brand_manifest, workos_organization_id FROM brands WHERE domain = $1',
+      [TEST_DOMAIN],
+    );
+    expect(row.rows[0]).toEqual({ brand_manifest: {}, workos_organization_id: ORG_B });
+  });
+
   it('preserves the prior manifest when adoptPriorManifest is true', async () => {
     await pool.query(
       `INSERT INTO brands (

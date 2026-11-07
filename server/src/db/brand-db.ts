@@ -939,8 +939,16 @@ export class BrandDatabase {
     // Qualify with `brands.` so the ON CONFLICT branch isn't ambiguous —
     // unqualified `brand_manifest` could refer to EXCLUDED or the existing
     // row, and Postgres rejects the query.
-    const manifestSet = adopt ? 'brands.brand_manifest' : `'{}'::jsonb`;
-    const hasManifestSet = adopt ? 'brands.has_brand_manifest' : 'FALSE';
+    // Starting fresh protects against a new owner inheriting someone else's
+    // identity. An organization re-verifying a row it already holds (for
+    // example, upgrading an administrator-added domain to DNS) keeps it.
+    const keepsOwnManifest = `(brands.workos_organization_id = $2 AND NOT brands.manifest_orphaned)`;
+    const manifestSet = adopt
+      ? 'brands.brand_manifest'
+      : `CASE WHEN ${keepsOwnManifest} THEN brands.brand_manifest ELSE '{}'::jsonb END`;
+    const hasManifestSet = adopt
+      ? 'brands.has_brand_manifest'
+      : `CASE WHEN ${keepsOwnManifest} THEN brands.has_brand_manifest ELSE FALSE END`;
     const result = await query<HostedBrand>(
       `INSERT INTO brands (
          domain, workos_organization_id, brand_manifest, has_brand_manifest,
