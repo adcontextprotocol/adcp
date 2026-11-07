@@ -8,6 +8,7 @@
   "definitions": {
     "domain": {
       "type": "string",
+      "maxLength": 253,
       "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
       "description": "A lowercase DNS host name (internationalized names in punycode)."
     },
@@ -19,6 +20,7 @@
     },
     "namespaced_token": {
       "type": "string",
+      "maxLength": 4096,
       "pattern": "^[a-z0-9-]+:[a-z0-9_.-]+$",
       "description": "A '<namespace>:<name>' token. Each namespace is defined by the protocol that owns it (e.g. 'adcp:' by AdCP). Consumers MUST ignore tokens in namespaces they do not implement."
     },
@@ -130,6 +132,7 @@
         },
         "roles": {
           "type": "array",
+          "maxItems": 100,
           "description": "What this agent does, as namespaced roles.",
           "items": {
             "$ref": "#/definitions/role"
@@ -139,6 +142,7 @@
         },
         "protocols": {
           "type": "array",
+          "maxItems": 32,
           "description": "Transport protocols the endpoint speaks. Informational.",
           "items": {
             "type": "string",
@@ -151,13 +155,16 @@
         },
         "id": {
           "type": "string",
+          "maxLength": 255,
           "description": "Operator-chosen identifier for logging and routing. Not an identity input."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 2000
         },
         "countries": {
           "type": "array",
+          "maxItems": 32,
           "description": "ISO 3166-1 alpha-2 country codes where this agent operates. Omit for global.",
           "items": {
             "type": "string",
@@ -177,6 +184,7 @@
                   "properties": {
                     "available_uses": {
                       "type": "array",
+                      "maxItems": 32,
                       "items": {
                         "$ref": "/schemas/enums/right-use.json"
                       },
@@ -184,6 +192,7 @@
                     },
                     "right_types": {
                       "type": "array",
+                      "maxItems": 32,
                       "items": {
                         "$ref": "/schemas/enums/right-type.json"
                       },
@@ -235,6 +244,7 @@
         },
         "agents": {
           "type": "array",
+          "maxItems": 100,
           "description": "Optional narrowing to specific agents the grantee runs. When absent, any agent that resolves to the grantee acts under the grant.",
           "items": {
             "$ref": "#/definitions/granted_agent"
@@ -243,6 +253,7 @@
         },
         "scopes": {
           "type": "array",
+          "maxItems": 32,
           "items": {
             "$ref": "#/definitions/scope"
           },
@@ -251,6 +262,7 @@
         },
         "countries": {
           "type": "array",
+          "maxItems": 32,
           "description": "ISO 3166-1 alpha-2 country codes where the grant applies. Omit for global.",
           "items": {
             "type": "string",
@@ -280,9 +292,11 @@
                   "properties": {
                     "brands": {
                       "type": "array",
+                      "maxItems": 100,
                       "description": "Brand IDs from this organization's brand.json that the grant covers. ['*'] or omitted means every brand the grantor owns. On a grantee's own grant to an intermediary, the IDs are those of the brands in the grant it received.",
                       "items": {
                         "type": "string",
+                        "maxLength": 255,
                         "pattern": "^([a-z0-9_]+|\\*)$"
                       },
                       "minItems": 1
@@ -373,6 +387,7 @@
               "properties": {
                 "identity_relying_parties": {
                   "type": "array",
+                  "maxItems": 100,
                   "description": "Verified-identity relying parties this organization operates (TMP Identity Match attestation provenance). Intended to move here from brand.json in a future release; brand.json is unchanged in 3.3. Experimental.",
                   "items": {
                     "$ref": "/schemas/core/identity-relying-party.json"
@@ -398,7 +413,8 @@
       "description": "Pointer for hosted records (a managed network, a platform, AAO hosting). The organization is still the host that served this pointer. Verifiers follow at most one hop, with zero HTTP redirects, and MUST NOT follow a second pointer. Hosts serving records on an organization's behalf MUST only serve records the organization controls.",
       "properties": {
         "$schema": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 2048
         },
         "authoritative_location": {
           "$ref": "#/definitions/https_url",
@@ -419,10 +435,12 @@
       "title": "Trust Record",
       "properties": {
         "$schema": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 2048
         },
         "version": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 64
         },
         "last_updated": {
           "type": "string",
@@ -430,6 +448,7 @@
         },
         "agents": {
           "type": "array",
+          "maxItems": 100,
           "description": "Agents this organization runs.",
           "items": {
             "$ref": "#/definitions/agent"
@@ -437,6 +456,7 @@
         },
         "grants": {
           "type": "array",
+          "maxItems": 500,
           "description": "Authority this organization delegates to others.",
           "items": {
             "$ref": "#/definitions/grant"
@@ -449,6 +469,7 @@
         },
         "acknowledgements": {
           "type": "array",
+          "maxItems": 500,
           "description": "Inline acknowledgements. Mutually exclusive with acknowledgements_url. Organizations acknowledging more than a few hundred grants SHOULD use acknowledgements_url so the key-resolution fetch stays small.",
           "items": {
             "$ref": "#/definitions/acknowledgement"

@@ -23,6 +23,7 @@
         },
         "account_id": {
           "type": "string",
+          "maxLength": 255,
           "minLength": 1,
           "description": "The account whose timezone the call set, as params.account_id named it.",
           "x-entity": "account"
@@ -48,6 +49,7 @@
         },
         "timezone_cutovers": {
           "type": "array",
+          "maxItems": 100,
           "x-status": "experimental",
           "x-added-in": "3.3.0",
           "description": "The cutovers the change records, shaped as get_reporting_status subscription_coverage[].timezone_cutovers[] entries: one per account_timezone-aligned offering the seller offers, each naming offering_id, previous_timezone, timezone, and effective_at, the end of that offering's last old-timezone period that started before changed_at. Coverage lists the same instants for the offerings a subscription covers, and MAY merge entries that share boundaries into one without offering_id. Empty when the call changed nothing or the seller offers no account_timezone-aligned offering.",

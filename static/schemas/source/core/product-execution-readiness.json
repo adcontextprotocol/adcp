@@ -11,6 +11,7 @@
     },
     "requirements": {
       "type": "array",
+      "maxItems": 100,
       "description": "Readiness of each declared `execution_requirements[]` entry, once each. A seller that did not evaluate one reports it `unknown` with `unknown_reason: not_evaluated`.",
       "items": {
         "$ref": "/schemas/core/execution-requirement-readiness.json"

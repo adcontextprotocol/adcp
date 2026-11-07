@@ -28,6 +28,7 @@
     },
     "countries": {
       "type": "array",
+      "maxItems": 32,
       "description": "ISO 3166-1 alpha-2 country codes this provider serves. The router filters Identity Match providers by the request's country field. MUST be present and non-empty when identity_match is true.",
       "items": {
         "type": "string",
@@ -37,6 +38,7 @@
     },
     "uid_types": {
       "type": "array",
+      "maxItems": 32,
       "description": "Identity types this provider can resolve. The router selects Identity Match providers whose uid_types overlaps with any uid_type in the request's identities array. MUST be present and non-empty when identity_match is true.",
       "items": {
         "$ref": "/schemas/enums/uid-type.json"

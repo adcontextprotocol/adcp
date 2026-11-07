@@ -199,7 +199,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // (#8717) reach the controller on top of the beta.4 coverage fixes (#8718,
 // trimmed to 1_374_852); the controller measures 1_375_833 bytes, bound at
 // 1_376_000.
-const PARITY_COMPILE_LIMIT = 1_376_000;
+// The 3.3 bounds slice (#8512) adds maxItems/maxLength to the new and
+// experimental fields in the controller closure: 1_375_833 -> 1_377_055 bytes
+// measured against main, bound at 1_378_000.
+const PARITY_COMPILE_LIMIT = 1_378_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

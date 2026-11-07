@@ -7,6 +7,7 @@
   "properties": {
     "refused_changes": {
       "type": "array",
+      "maxItems": 32,
       "items": { "$ref": "/schemas/enums/creative-change-kind.json" },
       "minItems": 1,
       "uniqueItems": true,
@@ -14,7 +15,8 @@
     },
     "live_package_ids": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "x-entity": "package" },
+      "maxItems": 1000,
+      "items": { "type": "string", "maxLength": 255, "minLength": 1, "x-entity": "package" },
       "uniqueItems": true,
       "description": "Packages in the caller's account on which the creative is live. These are the packages on which to replace it."
     }

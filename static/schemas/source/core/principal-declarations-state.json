@@ -16,6 +16,7 @@
     },
     "selected_async_adcp_version": {
       "type": "string",
+      "maxLength": 64,
       "pattern": "^\\d+\\.\\d+$",
       "description": "The single AdCP minor version the seller will use for asynchronous payload shapes toward this principal. MUST be a member of accepted.async_adcp_versions and MUST be present whenever that set is non-empty, so the buyer knows the exact payload contract rather than inferring it from the intersection."
     },

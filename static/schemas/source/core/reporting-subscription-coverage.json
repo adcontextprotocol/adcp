@@ -36,6 +36,7 @@
     },
     "excluded": {
       "type": "array",
+      "maxItems": 100,
       "description": "Exceptions that remove periods. An entry without media_buy_id applies to the whole account. Opening or closing one fires principal.changed with reason reporting_subscription_changed. Retained for status_retention_days after until. When the account's covered offerings have different period boundaries, the seller lists one entry per offering_id, each with that offering's cutover instants, as for gaps and timezone_cutovers.",
       "items": {
         "type": "object",
@@ -85,6 +86,7 @@
     },
     "timezone_cutovers": {
       "type": "array",
+      "maxItems": 100,
       "description": "Account timezone changes affecting account_timezone-aligned periods, retained for status_retention_days. A cutover: periods under the old timezone are owed when they start before the change, so they end by effective_at; periods under the new timezone are owed when they start at or after effective_at. Any stretch from effective_at to the first new-timezone boundary is owed under neither, except on a billing offering, where it is owed as one stub period [effective_at, first new-timezone boundary) whose obligation carries stub true, so no billable hour goes unreported. Period boundaries differ between offerings, so when the account's covered offerings have different boundaries the seller lists one entry per offering_id; an entry without offering_id applies to every offering on the account.",
       "items": {
         "type": "object",
@@ -100,6 +102,7 @@
     },
     "gaps": {
       "type": "array",
+      "maxItems": 100,
       "description": "Intervals between a loss of authority and re-grant that the seller did not backfill (backfill_on_regrant false or absent). Periods starting in [from, until) are not owed. With backfill_on_regrant true no gap is recorded. A re-grant after the accounts_unauthorized entry expired is a fresh coverage start from authorized_at, with no gap. Retained for status_retention_days after until. Period boundaries differ between offerings, so when the account's covered offerings have different boundaries the seller lists one entry per offering_id, each with that offering's boundaries; an entry without offering_id applies to every offering on the account.",
       "items": {
         "type": "object",

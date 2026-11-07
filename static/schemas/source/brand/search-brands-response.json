@@ -11,6 +11,7 @@
       "properties": {
         "brand_id": {
           "type": "string",
+          "maxLength": 255,
           "description": "Brand identifier. Pass to get_brand_identity or get_rights for the next step.",
           "x-entity": "advertiser_brand"
         },
@@ -20,10 +21,12 @@
           "properties": {
             "domain": {
               "type": "string",
+              "maxLength": 253,
               "description": "House domain (e.g., acme-corp.com). For mutually confirmed relationships (relationship_trust = mutual or inline) this domain is trust-extending. For one-sided or unconfirmed claims see also claimed_house_domain."
             },
             "name": {
               "type": "string",
+              "maxLength": 255,
               "description": "House display name"
             }
           },
@@ -52,25 +55,30 @@
         },
         "claimed_house_domain": {
           "type": "string",
+          "maxLength": 253,
           "description": "Canonical domain of the house this brand self-declares as its parent. Not trust-extending on its own. Present for leaf_only and unverifiable trust states where the brand has made a claim that could not be or has not been reciprocated."
         },
         "names": {
           "type": "array",
+          "maxItems": 32,
           "description": "Localized brand names with BCP 47 locale code keys (e.g., 'en_US', 'fr_CA').",
           "items": {
             "type": "object",
             "minProperties": 1,
             "additionalProperties": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 500
             }
           }
         },
         "description": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Brand description"
         },
         "industries": {
           "type": "array",
+          "maxItems": 81,
           "items": {
             "$ref": "/schemas/enums/advertiser-industry.json"
           },
@@ -89,6 +97,7 @@
         },
         "logos": {
           "type": "array",
+          "maxItems": 100,
           "description": "Standard-resolution logos for display during discovery. High-res variants are gated behind get_brand_identity with account authorization.",
           "items": {
             "type": "object",
@@ -141,12 +150,14 @@
           "properties": {
             "available_uses": {
               "type": "array",
+              "maxItems": 32,
               "items": {
                 "$ref": "/schemas/enums/right-use.json"
               }
             },
             "countries": {
               "type": "array",
+              "maxItems": 32,
               "description": "Countries where rights are available (ISO 3166-1 alpha-2). If omitted, rights are available worldwide.",
               "items": {
                 "type": "string",
@@ -155,6 +166,7 @@
             },
             "excluded_countries": {
               "type": "array",
+              "maxItems": 32,
               "description": "Countries excluded from availability (ISO 3166-1 alpha-2)",
               "items": {
                 "type": "string",
@@ -179,6 +191,7 @@
       "properties": {
         "brands": {
           "type": "array",
+          "maxItems": 1000,
           "description": "Brand stubs matching the query, ranked by relevance",
           "items": {
             "$ref": "#/definitions/SearchBrandResult"
@@ -210,6 +223,7 @@
       "properties": {
         "errors": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "$ref": "/schemas/core/error.json"
           },

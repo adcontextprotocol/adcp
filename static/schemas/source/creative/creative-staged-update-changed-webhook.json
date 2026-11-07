@@ -40,11 +40,13 @@
     },
     "account_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Seller's identifier for the account this creative belongs to.",
       "x-entity": "account"
     },
     "creative_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Seller's identifier for the creative whose staged update was decided. References the same id space as `list_creatives` / `sync_creatives` responses.",
       "x-entity": "creative"
     },

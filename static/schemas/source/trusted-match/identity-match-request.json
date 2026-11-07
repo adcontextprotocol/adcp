@@ -13,6 +13,7 @@
     },
     "adcp_version": {
       "type": "string",
+      "maxLength": 64,
       "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin. Inlined here (rather than via core/version-envelope.json allOf) so this schema can keep `additionalProperties: false` — the privacy boundary on this endpoint is contract-bearing.",
       "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
     },
@@ -31,11 +32,13 @@
     },
     "protocol_version": {
       "type": "string",
+      "maxLength": 64,
       "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",
       "default": "1.0"
     },
     "request_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Unique request identifier. MUST NOT correlate with any context match request_id."
     },
     "seller_agent_url": {
@@ -51,6 +54,7 @@
         "properties": {
           "user_token": {
             "type": "string",
+            "maxLength": 4096,
             "description": "Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII."
           },
           "uid_type": {
@@ -67,15 +71,18 @@
               },
               "scheme": {
                 "type": "string",
+                "maxLength": 500,
                 "description": "Proof scheme and version, e.g. \"world_id_v4\". Selects how `proof` is verified."
               },
               "relying_party_id": {
                 "type": "string",
+                "maxLength": 255,
                 "x-entity": "identity_relying_party",
                 "description": "Relying-party id the proof was minted for. The receiver checks this against the relying_party_id's published owner (brand.json `identity_relying_parties[]`) so a forwarded proof cannot be replayed under a different owner."
               },
               "action": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Issuer action/scope the proof was bound to (e.g. \"humanity-check-for-ads\")."
               },
               "claims": {
@@ -99,6 +106,7 @@
               },
               "signal_binding": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Hash of the signal the proof commits to. The receiver MUST verify it matches the context the receiver expects (e.g. a buyer-issued nonce or the request_id) and that the attestation is within its freshness window; this, plus nullifier-reuse tracking, is the replay defense."
               },
               "proof": {
@@ -140,14 +148,17 @@
         },
         "tcf_consent": {
           "type": "string",
+          "maxLength": 4096,
           "description": "IAB TCF v2.2 consent string. Present when gdpr is true."
         },
         "gpp": {
           "type": "string",
+          "maxLength": 4096,
           "description": "IAB Global Privacy Platform string."
         },
         "us_privacy": {
           "type": "string",
+          "maxLength": 16,
           "deprecated": true,
           "description": "US Privacy string (CCPA). Deprecated in favor of GPP but still widely used."
         }
@@ -156,9 +167,11 @@
     },
     "package_ids": {
       "type": "array",
+      "maxItems": 100,
       "description": "Optional. When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, the composition of `package_ids` MUST be statistically independent of the current placement — sending only the page-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets. Two acceptable modes: (a) **all-active** — include every active package this buyer has at this publisher; (b) **fuzzed** — include a random sample of active packages, optionally padded with synthetic non-existent IDs, drawn from a distribution that does not depend on the current placement. The buyer's silent-drop behavior on unknown IDs (specified below) is what makes synthetic-ID padding safe — they do not affect the response shape and cannot leak registry membership. When both `seller_agent_url` and `package_ids` are present, the buyer evaluates against the intersection of its registered active set and `package_ids`; IDs in `package_ids` that the buyer has not registered for this seller MUST be silently ignored (not surfaced as errors) to avoid leaking registry membership back to the publisher.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "maxLength": 255
       },
       "minItems": 1
     },
