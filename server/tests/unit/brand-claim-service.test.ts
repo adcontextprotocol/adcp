@@ -265,6 +265,7 @@ describe('issueDomainChallenge', () => {
           id: 'dom_v',
           domain: DOMAIN,
           state: 'verified',
+          verificationStrategy: 'dns',
           verificationToken: null,
           verificationPrefix: null,
         }],
@@ -303,6 +304,100 @@ describe('issueDomainChallenge', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.already_verified).toBe(true);
+  });
+
+  describe('a domain an administrator marked verified', () => {
+    const manualDomain = {
+      id: 'dom_manual',
+      domain: DOMAIN,
+      state: 'verified',
+      verificationStrategy: 'manual',
+      verificationToken: null,
+      verificationPrefix: null,
+    };
+    const created = {
+      id: 'dom_dns',
+      state: 'pending',
+      verificationStrategy: 'dns',
+      verificationToken: 'tok_dns',
+      verificationPrefix: '_workos-challenge',
+    };
+
+    it('explains the trade-off instead of replacing it unasked', async () => {
+      const workos = makeWorkos({ getOrganization: vi.fn().mockResolvedValue({ domains: [manualDomain] }) });
+      const result = await issueDomainChallenge({
+        workos: workos as any, brandDb: makeBrandDb(), orgId: ORG, rawDomain: DOMAIN,
+      });
+      expect(result).toMatchObject({ ok: false, code: 'manual_domain_upgrade' });
+      expect(workos.organizationDomains.deleteOrganizationDomain).not.toHaveBeenCalled();
+      expect(workos.organizationDomains.createOrganizationDomain).not.toHaveBeenCalled();
+    });
+
+    it('replaces it with a DNS challenge when the caller confirms', async () => {
+      const workos = makeWorkos({
+        getOrganization: vi.fn().mockResolvedValue({ domains: [manualDomain] }),
+        createOrganizationDomain: vi.fn().mockResolvedValue(created),
+      });
+      const result = await issueDomainChallenge({
+        workos: workos as any, brandDb: makeBrandDb(), orgId: ORG, rawDomain: DOMAIN, replaceManualDomain: true,
+      });
+      expect(workos.organizationDomains.deleteOrganizationDomain).toHaveBeenCalledWith('dom_manual');
+      expect(workos.organizationDomains.createOrganizationDomain).toHaveBeenCalledWith({ organizationId: ORG, domain: DOMAIN });
+      expect(result).toMatchObject({
+        ok: true,
+        already_verified: false,
+        verification_strategy: 'dns',
+        dns_record_name: `_workos-challenge.${DOMAIN}`,
+        dns_record_value: 'tok_dns',
+      });
+    });
+
+    it('reports a failed replacement without creating a challenge', async () => {
+      const workos = makeWorkos({
+        getOrganization: vi.fn().mockResolvedValue({ domains: [manualDomain] }),
+        deleteOrganizationDomain: vi.fn().mockRejectedValue(new Error('boom')),
+      });
+      const result = await issueDomainChallenge({
+        workos: workos as any, brandDb: makeBrandDb(), orgId: ORG, rawDomain: DOMAIN, replaceManualDomain: true,
+      });
+      expect(result).toMatchObject({ ok: false, code: 'workos_error' });
+      expect(workos.organizationDomains.createOrganizationDomain).not.toHaveBeenCalled();
+    });
+
+    it('leaves it alone when the registry already holds proof for this organization', async () => {
+      const workos = makeWorkos({ getOrganization: vi.fn().mockResolvedValue({ domains: [manualDomain] }) });
+      const brandDb = makeBrandDb({
+        getHostedBrandByDomain: vi.fn().mockResolvedValue({
+          brand_domain: DOMAIN,
+          workos_organization_id: ORG,
+          domain_verified: true,
+          domain_verification_method: 'member_email',
+          manifest_orphaned: false,
+        }),
+      });
+      const result = await issueDomainChallenge({
+        workos: workos as any, brandDb, orgId: ORG, rawDomain: DOMAIN, replaceManualDomain: true,
+      });
+      expect(result).toMatchObject({ ok: true, already_verified: true });
+      expect(workos.organizationDomains.deleteOrganizationDomain).not.toHaveBeenCalled();
+    });
+
+    it('counts a row verified before methods were recorded as unproven', async () => {
+      const workos = makeWorkos({ getOrganization: vi.fn().mockResolvedValue({ domains: [manualDomain] }) });
+      const brandDb = makeBrandDb({
+        getHostedBrandByDomain: vi.fn().mockResolvedValue({
+          brand_domain: DOMAIN,
+          workos_organization_id: ORG,
+          domain_verified: true,
+          domain_verification_method: null,
+          manifest_orphaned: false,
+        }),
+      });
+      const result = await issueDomainChallenge({
+        workos: workos as any, brandDb, orgId: ORG, rawDomain: DOMAIN,
+      });
+      expect(result).toMatchObject({ ok: false, code: 'manual_domain_upgrade' });
+    });
   });
 
   it('disambiguates 422 collision via organization_domain_already_used code', async () => {

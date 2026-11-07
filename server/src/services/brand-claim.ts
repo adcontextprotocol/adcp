@@ -38,6 +38,7 @@ export type IssueChallengeResult =
     }
   | { ok: false; code: 'invalid_domain'; message: string }
   | { ok: false; code: 'collision'; message: string }
+  | { ok: false; code: 'manual_domain_upgrade'; message: string }
   | { ok: false; code: 'workos_error'; message: string }
   // Kept for API compatibility with older callers. Current WorkOS Domain
   // Verification may return no verification_prefix, which means the TXT
@@ -103,13 +104,22 @@ function trimVerifyAttempts(now: number) {
   }
 }
 
+/** Methods that prove control of a domain (see BrandDatabase.syncBrandDomainFromWorkos). */
+const PROOF_METHODS = new Set(['dns', 'brand_json', 'member_email']);
+
 export async function issueDomainChallenge(input: {
   workos: WorkOS;
   brandDb: BrandDatabase;
   orgId: string;
   rawDomain: string;
+  /**
+   * Replace a domain an administrator marked verified in WorkOS (strategy
+   * `manual`) with a DNS challenge. The domain stops being a verified domain
+   * of the organization until the DNS record verifies, so callers must ask.
+   */
+  replaceManualDomain?: boolean;
 }): Promise<IssueChallengeResult> {
-  const { workos, brandDb, orgId, rawDomain } = input;
+  const { workos, brandDb, orgId, rawDomain, replaceManualDomain = false } = input;
   if (!rawDomain) {
     return { ok: false, code: 'invalid_domain', message: 'domain is required' };
   }
@@ -130,8 +140,13 @@ export async function issueDomainChallenge(input: {
   // prior owner. If the row is owned by the caller's org or there's no
   // manifest, the adopt decision doesn't apply.
   let priorManifestExists = false;
+  let registryHoldsProof = false;
   try {
     const existingBrand = await brandDb.getHostedBrandByDomain(domain);
+    registryHoldsProof = !!existingBrand
+      && existingBrand.workos_organization_id === orgId
+      && existingBrand.domain_verified
+      && PROOF_METHODS.has(existingBrand.domain_verification_method ?? '');
     if (existingBrand && existingBrand.manifest_orphaned === true) {
       const manifest = existingBrand.brand_json as Record<string, unknown> | null | undefined;
       priorManifestExists = !!manifest && Object.keys(manifest).length > 0;
@@ -153,7 +168,30 @@ export async function issueDomainChallenge(input: {
     if (existingDomain) {
       const verified = isVerifiedState(existingDomain.state);
       const tokenMissing = !existingDomain.verificationToken;
-      if (!verified && tokenMissing) {
+      // An administrator's assertion is not proof of control. Unless the
+      // registry already holds proof for this org, offer to replace it with
+      // a DNS challenge.
+      const unprovenManual = verified
+        && workosDomainVerificationStrategy(existingDomain.verificationStrategy) === 'manual'
+        && !registryHoldsProof;
+      if (unprovenManual && !replaceManualDomain) {
+        return {
+          ok: false,
+          code: 'manual_domain_upgrade',
+          message: `${domain} was added to this organization by an AgenticAdvertising.org administrator, which does not prove control of the domain. To verify it by DNS, issue the challenge again with replace_manual_domain set to true. Until the DNS record is verified, ${domain} stops being a verified domain of this organization: people with email addresses on it are not added automatically, and agents cannot be newly registered on it.`,
+        };
+      }
+      if (unprovenManual) {
+        logger.info({ orgId, domain, existingDomainId: existingDomain.id },
+          'brand-claim: replacing administrator-asserted domain with a DNS challenge');
+        try {
+          await workos.organizationDomains.deleteOrganizationDomain(existingDomain.id);
+        } catch (err) {
+          logger.error({ err, orgId, domain, existingDomainId: existingDomain.id }, 'brand-claim: failed to delete administrator-asserted org-domain');
+          return { ok: false, code: 'workos_error', message: 'Failed to replace the administrator-added domain with a DNS challenge. Try again or contact support.' };
+        }
+        // Fall through to the create branch below.
+      } else if (!verified && tokenMissing) {
         logger.warn(
           { orgId, domain, existingDomainId: existingDomain.id, state: String(existingDomain.state) },
           'brand-claim: existing org-domain has null verificationToken; deleting to recreate',
@@ -325,7 +363,7 @@ export async function verifyDomainChallenge(input: {
     return {
       ok: false,
       code: 'manual_domain',
-      message: `${domain} was marked verified by an AgenticAdvertising.org administrator, which does not prove control of the domain. Point ${domain}/.well-known/brand.json at the hosted brand record, or sign in with a verified email address on ${domain}.`,
+      message: `${domain} was marked verified by an AgenticAdvertising.org administrator, which does not prove control of the domain. Verify it by DNS (issue the challenge again with replace_manual_domain set to true), point ${domain}/.well-known/brand.json at the hosted brand record, or sign in with a verified email address on ${domain}.`,
     };
   }
 
