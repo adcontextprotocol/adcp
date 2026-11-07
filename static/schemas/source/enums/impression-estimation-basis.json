@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/impression-estimation-basis.json",
+  "title": "Impression Estimation Basis",
+  "description": "Methodology tier of a DOOH audience figure: what kind of number `impressions` is when it is `plays × audience multiplier`. Tier, not provider and not instrument: the currency or seller model is named by `measurement_source`, the instrument by the vendor metric that `basis_metric` points to. A row whose plays were estimated on different tiers does not pick one of them, nor `hybrid`: it reports `impression_basis_breakdown` instead. Values MAY be added in later minor releases; a client on an older schema version SHOULD treat a value it does not recognize like `seller_modeled`.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": [
+    "currency_measured",
+    "seller_modeled",
+    "sensor_measured",
+    "hybrid"
+  ],
+  "enumDescriptions": {
+    "currency_measured": "The published estimate of an audience-measurement currency for the unit and period, named by `measurement_source`. Applies whether or not the currency calibrates its own model with sensors.",
+    "seller_modeled": "The seller's own model: a traffic study, a venue-attendance factor, historical footfall, or an audience figure the seller declares per screen or per hour. Also the tier of the plays a sensor-equipped screen estimates while its sensor is not reporting.",
+    "sensor_measured": "Audience observed at play time by an on-site sensor (presence detection, people counting, WiFi or BLE presence, turnstile, ticketing). Measured, not modeled, though the sensor has its own error. The sensor's figure SHOULD be reported as the vendor metric `basis_metric` points to.",
+    "hybrid": "A seller-owned model calibrated by seller-operated sensors, for example sensor counts on some screens scaling a seller traffic study across a network. Never a published currency figure, and never a mere mix of plays estimated on different tiers, which `impression_basis_breakdown` reports. Rows on this tier SHOULD carry `calculation_notes`."
+  }
+}

@@ -1606,6 +1606,10 @@
           "$ref": "/schemas/enums/delivery-projection-basis.json",
           "description": "Class of method behind a delivery projection (trailing_daily_avg, trailing_hourly_avg, platform_model, seller_defined)"
         },
+        "impression-estimation-basis": {
+          "$ref": "/schemas/enums/impression-estimation-basis.json",
+          "description": "Methodology tier of a DOOH audience figure (currency_measured, seller_modeled, sensor_measured, hybrid)"
+        },
         "forecast-method": {
           "$ref": "/schemas/enums/forecast-method.json",
           "description": "Method used to produce a delivery forecast (estimate, modeled, guaranteed)"

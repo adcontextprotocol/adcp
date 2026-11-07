@@ -1,0 +1,79 @@
+{
+  "status": "completed",
+  "reporting_period": {
+    "start": "2026-10-05T00:00:00Z",
+    "end": "2026-11-04T00:00:00Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [{
+    "media_buy_id": "mb_acme_outdoor_metro",
+    "status": "active",
+    "totals": {
+      "impressions": 1349353,
+      "spend": 10794.82,
+      "plays": 86072,
+      "dooh_metrics": {
+        "screens_used": 256,
+        "audience_multiplier": 15.68,
+        "impression_basis_breakdown": [
+          { "impression_basis": "sensor_measured", "plays": 21340, "impressions": 397808, "audience_multiplier": 18.64 },
+          { "impression_basis": "seller_modeled", "plays": 64732, "impressions": 951545, "audience_multiplier": 14.7 }
+        ]
+      }
+    },
+    "by_package": [{
+      "package_id": "pkg_metro_loop",
+      "pricing_model": "cpm",
+      "rate": 8,
+      "currency": "USD",
+      "impressions": 1349353,
+      "spend": 10794.82,
+      "plays": 86072,
+      "dooh_metrics": {
+        "screens_used": 256,
+        "audience_multiplier": 15.68,
+        "impression_basis_breakdown": [
+          { "impression_basis": "sensor_measured", "plays": 21340, "impressions": 397808, "audience_multiplier": 18.64 },
+          { "impression_basis": "seller_modeled", "plays": 64732, "impressions": 951545, "audience_multiplier": 14.7 }
+        ]
+      },
+      "by_placement": [
+        {
+          "placement_id": "concourse_screens",
+          "impressions": 510333,
+          "spend": 4082.66,
+          "plays": 27805,
+          "dooh_metrics": {
+            "screens_used": 85,
+            "audience_multiplier": 18.35,
+            "impression_basis_breakdown": [
+              { "impression_basis": "sensor_measured", "plays": 21340, "impressions": 397808, "audience_multiplier": 18.64 },
+              { "impression_basis": "seller_modeled", "plays": 6465, "impressions": 112525, "audience_multiplier": 17.41 }
+            ],
+            "basis_metric": { "vendor": { "domain": "metro-media.example" }, "metric_id": "people_counted" },
+            "calculation_notes": "Sensor-equipped screens: the audience counted at each play. Plays while a screen's sensor had not reported for 24 hours use the screen's declared hourly audience."
+          },
+          "vendor_metric_values": [{
+            "vendor": { "domain": "metro-media.example" },
+            "metric_id": "people_counted",
+            "value": 397808,
+            "unit": "persons",
+            "measurable_plays": 21340,
+            "vendor_relationship": "first_party"
+          }]
+        },
+        {
+          "placement_id": "platform_screens",
+          "impressions": 839020,
+          "spend": 6712.16,
+          "plays": 58267,
+          "dooh_metrics": {
+            "screens_used": 171,
+            "impression_basis": "seller_modeled",
+            "audience_multiplier": 14.4
+          }
+        }
+      ]
+    }]
+  }]
+}

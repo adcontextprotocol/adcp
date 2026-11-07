@@ -29,6 +29,29 @@
       "$ref": "/schemas/enums/availability-status.json",
       "description": "Bookability of the inventory this row describes, as of the forecast's generated_at. Most meaningful on rows with a time dimension in an availability forecast (forecast_range_unit 'availability'). This is a snapshot, not a hold: valid_until bounds freshness, and proposal finalization or purchase remains the commitment boundary. When omitted, the row makes no bookability claim. 'unavailable' rows may carry empty metrics."
     },
+    "impression_basis": {
+      "$ref": "/schemas/enums/impression-estimation-basis.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.dooh_impression_basis). On a DOOH point that forecasts `impressions` from `plays`, the methodology tier the forecast uses, when it is the same for every expected play. When the point covers plays expected on different tiers, omit it and report `impression_basis_breakdown`. Lets forecast and delivery reconcile on the same declaration. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`."
+    },
+    "audience_multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.dooh_impression_basis). The planning multiplier of a DOOH point: the `impressions / plays` the forecast applies, so `metrics.impressions.mid ≈ metrics.plays.mid × audience_multiplier`. A declaration, not a forecastable metric, so it sits outside `metrics`."
+    },
+    "impression_basis_breakdown": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.dooh_impression_basis). For a DOOH point covering plays expected on different tiers, one entry per tier with the expected plays and impressions behind the point's midpoints. A point reports either `impression_basis` or this breakdown.",
+      "items": {
+        "$ref": "/schemas/core/impression-basis-breakdown-entry.json"
+      },
+      "minItems": 1
+    },
     "metrics": {
       "type": "object",
       "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes; vendor metrics use vendor_metric_values. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
