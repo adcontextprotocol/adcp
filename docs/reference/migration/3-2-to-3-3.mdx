@@ -385,13 +385,15 @@ A request that carries `adcp_major_version` and no `adcp_version` is served the 
 
 A schema that any stable release of a major published closed (`additionalProperties: false` or `unevaluatedProperties: false`) stays closed until the next major. No later minor or patch adds a property to it, even for peers that negotiated the newer minor, and even for an experimental field ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), status: proposed, awaiting working-group ratification). Corrections and named exceptions are the only departures. A correction changes a schema to match what the published text of the major already says. It either opens a schema that the published text keeps open, or applies a bound or a required name that the published text already sets. The 3.3 corrections reopen the 3.2 proposal flow, compose the envelope on every response with `status` required, reject an empty `task_id`, and bound the task-level `message`. Each ships in 3.3 and in a 3.2.x patch. A named exception lets a closed request schema accept a named property that requires a capability the receiver declares.
 
-Three more 3.3 corrections apply a bound that the published text sets at every site of a concept ([#8536](https://github.com/adcontextprotocol/adcp/pull/8536)). They ship in 3.3 only, not in a 3.2.x patch:
+Five more 3.3 corrections apply a bound or a rule that the published text sets for a concept to the sites that lacked it ([#8536](https://github.com/adcontextprotocol/adcp/pull/8536)). They ship in 3.3 only, not in a 3.2.x patch:
 
 - **A domain name is at most 253 characters.** RFC 1035 sets the limit, and 3.2.8 published it on `upstream_source_domain`. Every domain name site references `core/domain-name.json`, which carries it.
 - **A timezone identifier is 1 to 255 characters**, as 3.2.8 published `core/iana-timezone.json`. Every timezone site references that schema.
 - **A concept that was bounded at some sites carries that bound at every site:** `proposal_id`, `catalog_id`, `account_id`, `media_buy_id`, the creative `evaluation_id`, `cancellation_reason`, signal `name` and `description`, webhook `token`, seller `suggestions`, and the `request_proposals` rejection `reason`. Each bound is the one 3.2.8 published, except the 255 characters of `media_buy_id`, which 3.3.0-beta.2 through beta.4 published on `predecessor_media_buy_id`.
+- **`governance_context` is printable ASCII on every request**, as 3.2.8's `core/protocol-envelope.json` published it. Every request references `core/governance-context.json`, which carries the rule.
+- **An MRAID version is 2.0 or 3.0 at every site**, as 3.2.8's `html5` format published `mraid_version`. `mraid_versions` in `get_adcp_capabilities` no longer accepts other versions.
 
-No conforming peer sends a value outside these bounds.
+No conforming peer sends a value that the first four reject. A `governance_context` is passed verbatim from a `check_governance` response, which 3.2.8 published as printable ASCII. A seller that lists another MRAID version in `mraid_versions` removes it; the `html5` format accepts no other version.
 
 What this means for 3.3 adopters:
 
