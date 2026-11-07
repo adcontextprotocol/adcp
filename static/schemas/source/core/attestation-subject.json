@@ -36,7 +36,7 @@
         "agent_url": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+          "pattern": "^https://",
           "description": "Canonical HTTPS endpoint of the agent the claim concerns."
         },
         "ext": {

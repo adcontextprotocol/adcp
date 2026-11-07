@@ -376,9 +376,8 @@ keeps health unchanged, no health-transition notification is required. Polling
 remains authoritative in either case.
 
 `operations_contact` is human-facing metadata: surface it to an
-operator, never dereference it or treat it as an AdCP endpoint. Its URL is
-constrained to the same hardened public-origin shape as the offering document
-URIs, so it cannot name a loopback host, an IP literal, or a credentialed link.
+operator, never dereference it or treat it as an AdCP endpoint. Its URL is an
+HTTPS page and never a credentialed link, including one with userinfo.
 
 ### Silence is counted, not escalated
 
