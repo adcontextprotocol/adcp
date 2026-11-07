@@ -1,5 +1,5 @@
 {
-  "$comment": "Corrections that DR-0036 records. A minor or patch release may change a closed schema only to make it accept what the published spec text already required before that release. Each entry names a schema location by document and JSON pointer, the property the correction lets in (* reopens the whole schema), the stable release it lands in, the source text that required it (a repository path and a quote from it), and the reason. The additive-minor check accepts exactly these additions. Each entry must also appear in the correction tables of DR-0036.",
+  "$comment": "Corrections and named exceptions under DR-0036. Each entry is one change that a minor or patch release of the major may make although the additive-minor rules forbid it. It names a schema location by document and JSON pointer; the change, which is a property the schema lets in (* opens the whole schema), a bound and its value, or a required name; the stable release it lands in; the published text it rests on, as a repository path and a quote from it; and the reason. The additive-minor check accepts exactly these changes. A PR that adds an entry is reviewed against DR-0036.",
   "decision": "DR-0036",
   "corrections": [
     {
@@ -11,7 +11,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/request-proposals-request.json",
@@ -22,7 +22,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/refine-proposals-request.json",
@@ -33,7 +33,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/buy-products-request.json",
@@ -44,7 +44,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/accept-proposal-request.json",
@@ -55,7 +55,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/decline-proposals-request.json",
@@ -66,7 +66,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/control-media-buy-request.json",
@@ -77,7 +77,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/list-products-response.json",
@@ -88,7 +88,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/request-proposals-response.json",
@@ -99,7 +99,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
     },
     {
       "file": "media-buy/refine-proposals-response.json",
@@ -110,7 +110,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
     },
     {
       "file": "media-buy/refine-proposals-response.json",
@@ -121,7 +121,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "A Class B schema without an escape hatch is a defect."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Result row, one outcome per source proposal. It is not a join-key object, and it has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Result row, one outcome per source proposal. It is not a join-key object, and it has no ext."
     },
     {
       "file": "media-buy/decline-proposals-response.json",
@@ -132,7 +132,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -143,7 +143,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -154,7 +154,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -165,7 +165,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -176,7 +176,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -187,7 +187,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -198,7 +198,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "core/canonical-proposal.json",
@@ -209,7 +209,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for a proposal's commercial terms, lineage, status, and narrative. It has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container for a proposal's commercial terms, lineage, status, and narrative. It has no ext."
     },
     {
       "file": "core/canonical-product.json",
@@ -220,7 +220,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Resource: the product, not a row. The product schema it parallels is open."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Resource: the product, not a row. The product schema it parallels is open."
     },
     {
       "file": "media-buy/product-discovery-criteria.json",
@@ -231,7 +231,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for the discovery filters of list_products, request_proposals and refine_proposals."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container for the discovery filters of list_products, request_proposals and refine_proposals."
     },
     {
       "file": "media-buy/proposal-refinement.json",
@@ -242,7 +242,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "A Class B schema without an escape hatch is a defect."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Request row for one refinement instruction. It is not a join-key object, and it has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Request row for one refinement instruction. It is not a join-key object, and it has no ext."
     },
     {
       "file": "media-buy/package-control.json",
@@ -253,7 +253,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "A Class B schema without an escape hatch is a defect."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Request row for one package's controls. It is not a join-key object, and it has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Request row for one package's controls. It is not a join-key object, and it has no ext."
     },
     {
       "file": "core/opportunity-context.json",
@@ -264,7 +264,106 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for buyer context in a planning cycle. Its opportunity_id is opaque, not a join key. It has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container for buyer context in a planning cycle. Its opportunity_id is opaque, not a join key. It has no ext."
+    },
+    {
+      "file": "core/daypart-target.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "A Class B schema without an escape hatch is a defect."
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Row for one daypart window. It is not a join-key object, and it has no ext. The root oneOf still rejects a window that mixes whole hours with clock times."
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container for a buyer's targeting requirements. A requirement the seller does not recognize still does not match."
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "/definitions/daypartRequirement/anyOf/1",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container branch for the structured daypart requirement inside the requirements container."
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "/properties/demographics/anyOf/1",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container branch for the structured demographics requirement inside the requirements container."
+    },
+    {
+      "file": "core/targeting-overlay-support.json",
+      "pointer": "/definitions/daypartSupport/anyOf/1",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Capability block for a product's structured daypart support."
+    },
+    {
+      "file": "core/spot-reporting-capability.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Capability block for a product's spot-level reporting. It has no ext."
+    },
+    {
+      "file": "core/canonical-reporting-capabilities.json",
+      "pointer": "",
+      "property": "*",
+      "release": "3.3.0",
+      "source": {
+        "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
+        "quote": "Response roots, capability blocks, and container objects stay open"
+      },
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Capability block for a canonical product's reporting. It has no ext."
+    },
+    {
+      "file": "creative/sync-creatives-request.json",
+      "pointer": "/properties/assignment_operations/items/oneOf/0",
+      "property": "trackers",
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/creative/sync-creatives-request.json",
+        "quote": "Requires creative.supports_assignment_trackers: true; buyers MUST NOT send this field otherwise"
+      },
+      "reason": "Named exception: the assign branch is a discriminated oneOf branch, DR-0019 class A, so it stays closed and takes only this name. Assignment trackers, which require the seller to declare creative.supports_assignment_trackers: true."
+    },
+    {
+      "file": "creative/sync-creatives-request.json",
+      "pointer": "/properties/assignment_operations/items/oneOf/0",
+      "property": "landing_page_url",
+      "release": "3.3.0",
+      "source": {
+        "path": "static/schemas/source/creative/sync-creatives-request.json",
+        "quote": "Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise"
+      },
+      "reason": "Named exception: the assign branch is a discriminated oneOf branch, DR-0019 class A, so it stays closed and takes only this name. The assignment landing page override, which requires the seller to declare creative.supports_assignment_landing_page: true."
     },
     {
       "file": "core/protocol-envelope.json",
@@ -276,7 +375,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The envelope's task_id, carried by every task response."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The envelope's task_id, carried by every task response."
     },
     {
       "file": "core/mcp-webhook-payload.json",
@@ -288,7 +387,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task a webhook notification reports on."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task a webhook notification reports on."
     },
     {
       "file": "core/tasks-get-request.json",
@@ -300,7 +399,7 @@
         "path": "static/schemas/source/core/tasks-get-request.json",
         "quote": "Unique identifier of the task to retrieve"
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get retrieves; it requires task_id."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get retrieves; it requires task_id."
     },
     {
       "file": "core/tasks-get-response.json",
@@ -312,7 +411,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get returns."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get returns."
     },
     {
       "file": "core/tasks-list-request.json",
@@ -324,7 +423,7 @@
         "path": "static/schemas/source/core/tasks-get-request.json",
         "quote": "Unique identifier of the task to retrieve"
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the tasks/list filter."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the tasks/list filter."
     },
     {
       "file": "core/tasks-list-response.json",
@@ -336,7 +435,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task tasks/list returns."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task tasks/list returns."
     },
     {
       "file": "protocol/get-task-status-request.json",
@@ -348,7 +447,7 @@
         "path": "static/schemas/source/core/tasks-get-request.json",
         "quote": "Unique identifier of the task to retrieve"
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task get_task_status retrieves; it requires task_id."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task get_task_status retrieves; it requires task_id."
     },
     {
       "file": "protocol/list-tasks-request.json",
@@ -360,7 +459,7 @@
         "path": "static/schemas/source/core/tasks-get-request.json",
         "quote": "Unique identifier of the task to retrieve"
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the list_tasks filter."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the list_tasks filter."
     },
     {
       "file": "protocol/list-tasks-response.json",
@@ -372,7 +471,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task list_tasks returns."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task list_tasks returns."
     },
     {
       "file": "core/compact-task-input-required.json",
@@ -383,7 +482,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "core/compact-task-working.json",
@@ -394,7 +493,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "creative/sync-creatives-async-response-input-required.json",
@@ -405,7 +504,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "creative/sync-creatives-async-response-working.json",
@@ -416,7 +515,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/accept-proposal-async-response-input-required.json",
@@ -427,7 +526,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/accept-proposal-async-response-working.json",
@@ -438,7 +537,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/accept-proposal-response.json",
@@ -449,7 +548,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/build-creative-async-response-input-required.json",
@@ -460,7 +559,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/build-creative-async-response-working.json",
@@ -471,7 +570,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/buy-products-async-response-input-required.json",
@@ -482,7 +581,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/buy-products-async-response-working.json",
@@ -493,7 +592,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/buy-products-response.json",
@@ -504,7 +603,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/control-media-buy-async-response-input-required.json",
@@ -515,7 +614,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/control-media-buy-async-response-working.json",
@@ -526,7 +625,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -537,7 +636,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/create-media-buy-async-response-input-required.json",
@@ -548,7 +647,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/create-media-buy-async-response-working.json",
@@ -559,7 +658,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/decline-proposals-async-response-input-required.json",
@@ -570,7 +669,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/decline-proposals-async-response-working.json",
@@ -581,7 +680,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/decline-proposals-response.json",
@@ -592,7 +691,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/get-products-async-response-input-required.json",
@@ -603,7 +702,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/get-products-async-response-working.json",
@@ -614,7 +713,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/list-products-response.json",
@@ -625,7 +724,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -636,7 +735,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/refine-proposals-async-response-input-required.json",
@@ -647,7 +746,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/refine-proposals-async-response-working.json",
@@ -658,7 +757,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/refine-proposals-response.json",
@@ -669,7 +768,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/request-proposals-async-response-input-required.json",
@@ -680,7 +779,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/request-proposals-async-response-working.json",
@@ -691,7 +790,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/request-proposals-response.json",
@@ -702,7 +801,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/sync-catalogs-async-response-input-required.json",
@@ -713,7 +812,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/sync-catalogs-async-response-working.json",
@@ -724,7 +823,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/update-media-buy-async-response-input-required.json",
@@ -735,7 +834,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/update-media-buy-async-response-working.json",
@@ -746,7 +845,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "signals/get-signals-async-response-working.json",
@@ -757,7 +856,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "core/protocol-envelope.json",
@@ -769,7 +868,7 @@
         "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
         "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
       },
-      "reason": "Correction (d) of DR-0036: the envelope's message, on every task response, refers to core/task-message.json, so it carries the 2,000-character bound that 3.2.7 published on the compact responses and the submitted payloads. One bound for every delivery path, at the same 2,000."
+      "reason": "Applies the bound the published text sets. The envelope's message, on every task response, refers to core/task-message.json, so it carries the 2,000-character bound that 3.2.7 published on the compact responses and the submitted payloads. One bound for every delivery path, at the same 2,000."
     },
     {
       "file": "core/mcp-webhook-payload.json",
@@ -781,7 +880,7 @@
         "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
         "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
       },
-      "reason": "Correction (d) of DR-0036: a webhook notification's message refers to core/task-message.json, so the bound does not depend on whether the task state arrives in a response or a webhook. The same 2,000 that 3.2.7 published on the compact responses."
+      "reason": "Applies the bound the published text sets. A webhook notification's message refers to core/task-message.json, so the bound does not depend on whether the task state arrives in a response or a webhook. The same 2,000 that 3.2.7 published on the compact responses."
     },
     {
       "file": "core/response.json",
@@ -793,7 +892,7 @@
         "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
         "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
       },
-      "reason": "Correction (d) of DR-0036: the response wrapper's message refers to core/task-message.json, so the wrapper carries the same 2,000-character bound as the envelope."
+      "reason": "Applies the bound the published text sets. The response wrapper's message refers to core/task-message.json, so the wrapper carries the same 2,000-character bound as the envelope."
     }
   ]
 }

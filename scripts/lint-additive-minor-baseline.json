@@ -31,20 +31,6 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "core/daypart-target.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property end_time added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/daypart-target.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property start_time added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "core/media-buy-available-action.json",
       "pointer": "",
       "kind": "property-added-to-closed",
@@ -150,73 +136,10 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "core/spot-reporting-capability.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property available_statuses added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/spot-reporting-capability.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property supports_break_position added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/targeting-overlay-requirements.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property collection_lists added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/targeting-overlay-requirements.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property collection_lists_exclude added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/targeting-overlay-requirements.json",
-      "pointer": "/definitions/daypartRequirement/anyOf/1",
-      "kind": "property-added-to-closed",
-      "detail": "property time_granularity added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/targeting-overlay-requirements.json",
-      "pointer": "/properties/demographics/anyOf/1",
-      "kind": "property-added-to-closed",
-      "detail": "property gender added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "core/targeting-overlay-support.json",
-      "pointer": "/definitions/daypartSupport/anyOf/1",
-      "kind": "property-added-to-closed",
-      "detail": "property time_granularity added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "core/x-entity-types.json",
       "pointer": "",
       "kind": "enum-value-removed",
       "detail": "value \"evaluator\" removed",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "creative/sync-creatives-request.json",
-      "pointer": "/properties/assignment_operations/items/oneOf/0",
-      "kind": "property-added-to-closed",
-      "detail": "property landing_page_url added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "creative/sync-creatives-request.json",
-      "pointer": "/properties/assignment_operations/items/oneOf/0",
-      "kind": "property-added-to-closed",
-      "detail": "property trackers added",
       "reason": "pending WG decision"
     },
     {
