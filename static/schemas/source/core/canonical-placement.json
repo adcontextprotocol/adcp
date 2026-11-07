@@ -25,7 +25,7 @@
         "city": { "type": "string", "description": "City name." },
         "region": { "type": "string", "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
         "postal_code": { "type": "string", "description": "Postal or ZIP code." },
-        "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
+        "country": { "$ref": "/schemas/core/country-code.json", "description": "ISO 3166-1 alpha-2 country code." }
       },
       "additionalProperties": false
     },
@@ -35,15 +35,11 @@
       "description": "Disclosed geographic location of an installed DOOH/OOH placement, for buyer planning, mapping, and verification. Location metadata only: missing, imprecise, or later-corrected coordinates MUST NOT change placement_id or identifiers[]. All fields optional; disclose what the seller actually knows.",
       "properties": {
         "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
+          "$ref": "/schemas/core/latitude.json",
           "description": "Latitude in decimal degrees (WGS 84)."
         },
         "lon": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
+          "$ref": "/schemas/core/longitude.json",
           "description": "Longitude in decimal degrees (WGS 84). Uses `lon`, matching OpenRTB 2.6 and OpenOOH geo field naming used by DOOH data partners and measurement currencies, rather than this spec's general targeting.json `lng` convention."
         },
         "address": { "$ref": "#/definitions/CanonicalDoohAddress" }
@@ -93,13 +89,13 @@
     }
   },
   "properties": {
-    "kind": { "type": "string", "enum": ["publisher_ref", "seller_inline"] },
-    "placement_id": { "type": "string", "minLength": 1, "x-entity": "placement" },
-    "publisher_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "description": "For publisher_ref, the adagents.json publisher namespace. For seller_inline, optional inventory-publisher attribution only." },
+    "kind": { "$ref": "/schemas/enums/placement-authority.json" },
+    "placement_id": { "$ref": "/schemas/core/placement-id.json" },
+    "publisher_domain": { "$ref": "/schemas/core/domain-name.json", "description": "For publisher_ref, the adagents.json publisher namespace. For seller_inline, optional inventory-publisher attribution only." },
     "seller_agent": { "$ref": "/schemas/core/seller-agent-ref.json", "description": "Defining sales agent for seller_inline identity. Recommended for new declarations; optional only to preserve legacy product-context placements." },
-    "name": { "type": "string", "minLength": 1 },
+    "name": { "$ref": "/schemas/core/placement-name.json" },
     "description": { "type": "string" },
-    "mode": { "type": "string", "enum": ["targetable", "included"] },
+    "mode": { "$ref": "/schemas/enums/product-placement-mode.json" },
     "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "format_options": {
       "type": "array",

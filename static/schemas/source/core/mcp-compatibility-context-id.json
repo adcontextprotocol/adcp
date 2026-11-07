@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/mcp-compatibility-context-id.json",
+  "title": "MCP Compatibility Context ID",
+  "description": "MCP compatibility field for a conversation context. Servers ignore the value.",
+  "type": "string",
+  "minLength": 1
+}

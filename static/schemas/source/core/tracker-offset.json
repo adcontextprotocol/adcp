@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/tracker-offset.json",
+  "title": "Tracker Offset",
+  "description": "VAST or DAAST tracking event offset, as a timecode in HH:MM:SS or HH:MM:SS.mmm form or a percentage of 0 to 100.",
+  "type": "string",
+  "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
+}

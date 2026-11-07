@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/webhook-operation-id.json",
+  "title": "Webhook Operation ID",
+  "description": "Buyer-supplied correlation identifier of a webhook registration. The seller echoes it verbatim in every payload.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/delivery-period-state.json",
+  "title": "Delivery Period State",
+  "description": "Whether a governance reporting period remains actionable.",
+  "type": "string",
+  "enum": [
+    "open",
+    "closed"
+  ]
+}

@@ -10,18 +10,13 @@
     "ReportingSubscriptionExclusionReason": {
       "title": "Reporting Subscription Exclusion Reason",
       "x-adcp-model-context-inline": true,
-      "type": "string",
-      "enum": ["offering_unsupported", "capacity", "overridden", "excluded_by_buyer", "action_required"],
+      "$ref": "/schemas/enums/reporting-subscription-exclusion-reason.json",
       "description": "offering_unsupported: no offering matching the selector is available on this account's or buy's products. capacity: refused for a seller limit such as max_accounts. overridden: the caller's own sync_accounts delivery config, or its own account_ids subscription replacing an all-accounts one, takes this account and feed_purpose; or, at buy level with package_ids, another of its pacing or analytics subscriptions with a lower subscription_id resolved the same offering for those packages. excluded_by_buyer: the buyer took the account out, in place, by listing it in exclude_account_ids or removing it from account_ids, or it joined account_ids after the version's accepted_at (reporting-subscription.json membership). action_required: the account is not served until pending_action completes; account-level only."
     }
   },
   "properties": {
     "subscription_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "x-entity": "reporting_subscription"
+      "$ref": "/schemas/core/reporting-subscription-id.json"
     },
     "subscription_version": { "type": "integer", "minimum": 1 },
     "status": {
@@ -40,7 +35,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "offering_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The offering whose periods this exception removes, when the account's covered offerings have different period boundaries; from and until are then that offering's cutover instants. Absent: the exception applies to every offering on the account (or buy, with media_buy_id)." },
+          "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "description": "The offering whose periods this exception removes, when the account's covered offerings have different period boundaries; from and until are then that offering's cutover instants. Absent: the exception applies to every offering on the account (or buy, with media_buy_id)." },
           "media_buy_id": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" },
           "reason": { "$ref": "#/definitions/ReportingSubscriptionExclusionReason" },
           "from": { "type": "string", "format": "date-time", "description": "Cutover instant: periods starting at or after it are removed." },
@@ -57,7 +52,7 @@
             "description": "The caller's own sync_accounts delivery config or subscription that takes this account; never another principal's. Present when and only when reason is overridden.",
             "properties": {
               "subscription_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_subscription" },
-              "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_delivery_config" }
+              "delivery_config_id": { "$ref": "/schemas/core/reporting-delivery-config-id.json" }
             },
             "minProperties": 1,
             "maxProperties": 1,
@@ -89,10 +84,10 @@
       "items": {
         "type": "object",
         "properties": {
-          "offering_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The offering whose account_timezone periods this cutover applies to, when covered offerings have different boundaries. Absent: every account_timezone offering on the account." },
-          "previous_timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The IANA timezone in effect before the change. Sellers MUST include it: the account's current timezone already shows the new zone, so a buyer cannot otherwise recover the old schedule." },
+          "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "description": "The offering whose account_timezone periods this cutover applies to, when covered offerings have different boundaries. Absent: every account_timezone offering on the account." },
+          "previous_timezone": { "$ref": "/schemas/core/iana-timezone.json", "description": "The IANA timezone in effect before the change. Sellers MUST include it: the account's current timezone already shows the new zone, so a buyer cannot otherwise recover the old schedule." },
           "effective_at": { "type": "string", "format": "date-time", "description": "End of the last old-timezone period that started before the change." },
-          "timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The account's new IANA timezone, as list_accounts shows it." }
+          "timezone": { "$ref": "/schemas/core/iana-timezone.json", "description": "The account's new IANA timezone, as list_accounts shows it." }
         },
         "required": ["effective_at", "timezone"],
         "additionalProperties": false
@@ -104,7 +99,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "offering_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The offering whose boundaries from and until use, when covered offerings have different boundaries. Absent: the gap applies to every offering on the account." },
+          "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "description": "The offering whose boundaries from and until use, when covered offerings have different boundaries. Absent: the gap applies to every offering on the account." },
           "from": { "type": "string", "format": "date-time", "description": "Last period boundary at or before unauthorized_at." },
           "until": { "type": "string", "format": "date-time", "description": "First period boundary at or after the re-grant, authorization.regranted_at." },
           "reason": { "type": "string", "enum": ["unauthorized"] }

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/host-receipt-status.json",
+  "title": "Host Receipt Status",
+  "description": "Whether a host accepted declared sponsored context.",
+  "type": "string",
+  "enum": [
+    "accepted",
+    "rejected"
+  ]
+}

@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+Name repeated scalar subschemas (#8525). The currency code, country code, idempotency key, domain name, and HTTPS URL each move into a titled `core/` document, and the sites that stated them inline now `$ref` that document. Each site keeps its own `description` and other annotations. The same applies to every other scalar constraint that repeats, such as digests, versions, geographic codes, entity identifiers, numeric ranges, and enums: a constraint that repeats across documents moves to `core/` or `enums/`, and one that repeats inside a document moves to that document's `definitions`. A site moves only when the sites mean one concept and state identical constraints. There is no exception list: a site that means something else gets a named schema of its own. Apart from the two enum widenings in the separate changeset, no document's accepted set changes: `npm run test:schema-extraction` resolves every added `$ref` and compares the result with the base document.

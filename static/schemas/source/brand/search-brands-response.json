@@ -78,13 +78,7 @@
           "description": "Brand industries, following the advertiser-industry taxonomy"
         },
         "keller_type": {
-          "type": "string",
-          "enum": [
-            "master",
-            "sub_brand",
-            "endorsed",
-            "independent"
-          ],
+          "$ref": "/schemas/enums/brand-architecture-type.json",
           "description": "Brand architecture type: master (primary brand of house), sub_brand (carries parent name), endorsed (independent identity backed by parent), independent (operates separately)"
         },
         "logos": {
@@ -99,33 +93,15 @@
                 "description": "URL to the logo asset"
               },
               "orientation": {
-                "type": "string",
-                "enum": [
-                  "square",
-                  "horizontal",
-                  "vertical",
-                  "stacked"
-                ],
+                "$ref": "/schemas/enums/logo-orientation.json",
                 "description": "Logo aspect ratio orientation"
               },
               "background": {
-                "type": "string",
-                "enum": [
-                  "dark-bg",
-                  "light-bg",
-                  "transparent-bg"
-                ],
+                "$ref": "/schemas/enums/logo-background.json",
                 "description": "Background compatibility"
               },
               "variant": {
-                "type": "string",
-                "enum": [
-                  "primary",
-                  "secondary",
-                  "icon",
-                  "wordmark",
-                  "full-lockup"
-                ],
+                "$ref": "/schemas/enums/logo-variant.json",
                 "description": "Logo variant type"
               }
             },
@@ -149,16 +125,14 @@
               "type": "array",
               "description": "Countries where rights are available (ISO 3166-1 alpha-2). If omitted, rights are available worldwide.",
               "items": {
-                "type": "string",
-                "pattern": "^[A-Z]{2}$"
+                "$ref": "/schemas/core/country-code.json"
               }
             },
             "excluded_countries": {
               "type": "array",
               "description": "Countries excluded from availability (ISO 3166-1 alpha-2)",
               "items": {
-                "type": "string",
-                "pattern": "^[A-Z]{2}$"
+                "$ref": "/schemas/core/country-code.json"
               }
             }
           },

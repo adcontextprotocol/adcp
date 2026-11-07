@@ -25,7 +25,7 @@
         "city": { "type": "string", "description": "City name." },
         "region": { "type": "string", "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
         "postal_code": { "type": "string", "description": "Postal or ZIP code." },
-        "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
+        "country": { "$ref": "/schemas/core/country-code.json", "description": "ISO 3166-1 alpha-2 country code." }
       },
       "additionalProperties": false
     },
@@ -35,15 +35,11 @@
       "description": "Disclosed geographic location of an installed DOOH/OOH placement, for buyer planning, mapping, and verification. Location metadata only: missing, imprecise, or later-corrected coordinates MUST NOT change placement_id or identifiers[]. All fields optional; disclose what the seller actually knows. Network products where per-screen location is not disclosed should use the product-level dooh_inventory_summary aggregate instead.",
       "properties": {
         "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
+          "$ref": "/schemas/core/latitude.json",
           "description": "Latitude in decimal degrees (WGS 84)."
         },
         "lon": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
+          "$ref": "/schemas/core/longitude.json",
           "description": "Longitude in decimal degrees (WGS 84). Uses `lon`, matching OpenRTB 2.6 and OpenOOH geo field naming used by DOOH data partners and measurement currencies, rather than this spec's general targeting.json `lng` convention."
         },
         "address": { "$ref": "#/definitions/ProductDoohAddress" }
@@ -94,8 +90,7 @@
   },
   "properties": {
     "kind": {
-      "type": "string",
-      "enum": ["publisher_ref", "seller_inline"],
+      "$ref": "/schemas/enums/placement-authority.json",
       "description": "Placement authority discriminator. `publisher_ref` is publisher-catalog identity; `seller_inline` is sales-agent-authored identity."
     },
     "placement_id": {
@@ -104,8 +99,7 @@
       "x-entity": "placement"
     },
     "publisher_domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "For publisher_ref, the domain whose adagents.json declares the placement and part of canonical identity. For seller_inline, optional inventory-publisher attribution only; it does not grant the seller authority to mint IDs in that publisher's catalog namespace."
     },
     "seller_agent": {
@@ -121,8 +115,7 @@
       "description": "Detailed description of where and how the placement appears"
     },
     "mode": {
-      "type": "string",
-      "enum": ["targetable", "included"],
+      "$ref": "/schemas/enums/product-placement-mode.json",
       "description": "Required product-level relationship to this placement. targetable means the buyer may include the publisher-scoped ref in targeting_overlay.placement_selection; a creative may be routed there only after it is purchased. included means fixed product inventory: it cannot be independently selected, but across discovery, create, and update a selected request exactly equal to the product's complete included placement set is an inherent restatement and may be echoed on the package without overlay_support.placement_selection. A product containing any included placement MUST NOT declare overlay_support.placement_selection; partial selection requires a separately selectable product configuration. During the migration window ending 2026-11-25, buyers MAY tolerate legacy products that omit mode and treat them as targetable; after that date buyers SHOULD fail closed."
     },
     "tags": {

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-local-id.json",
+  "title": "Signal Local ID",
+  "description": "Identifier of a signal within its publisher's signal set or a data provider's catalog. Pair it with the namespace that issued it.",
+  "type": "string",
+  "pattern": "^[a-zA-Z0-9_-]+$"
+}

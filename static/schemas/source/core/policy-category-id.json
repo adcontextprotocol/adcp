@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/policy-category-id.json",
+  "title": "Policy Category ID",
+  "description": "Identifier of a registry policy category definition.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*$",
+  "x-entity": "governance_policy_category"
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/measurement-source.json",
+  "title": "Measurement Source",
+  "description": "Third-party measurement provider whose data produced audience numbers.",
+  "type": "string",
+  "maxLength": 64,
+  "pattern": "^[a-z0-9_]+$"
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/custom-acceptance-requirement-id.json",
+  "title": "Custom Acceptance Requirement ID",
+  "description": "Identifier of a custom acceptance requirement, as opposed to a stable acceptance criterion.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_.:-]*$"
+}

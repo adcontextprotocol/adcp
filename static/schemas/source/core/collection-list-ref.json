@@ -11,10 +11,8 @@
       "description": "URL of the agent managing the collection list"
     },
     "list_id": {
-      "type": "string",
-      "description": "Identifier for the collection list within the agent",
-      "minLength": 1,
-      "x-entity": "collection_list"
+      "$ref": "/schemas/core/collection-list-id.json",
+      "description": "Identifier for the collection list within the agent"
     },
     "auth_token": {
       "type": "string",

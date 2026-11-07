@@ -5,12 +5,12 @@
   "description": "Exact reference to a reusable acceptance profile embedded in a version-pinned shared policy-registry entry. Sellers add separate local profiles to narrow it; they do not copy and mutate a registry profile under the same identity.",
   "type": "object",
   "properties": {
-    "policy_id": { "type": "string", "minLength": 1, "x-entity": "governance_registry_policy" },
+    "policy_id": { "$ref": "/schemas/core/governance-policy-id.json", "x-entity": "governance_registry_policy" },
     "policy_version": { "type": "string", "minLength": 1 },
-    "policy_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-    "profile_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "acceptance_policy_profile" },
+    "policy_digest": { "$ref": "/schemas/core/sha256-digest.json" },
+    "profile_id": { "$ref": "/schemas/core/acceptance-policy-profile-id.json" },
     "profile_version": { "type": "string", "minLength": 1 },
-    "profile_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+    "profile_digest": { "$ref": "/schemas/core/sha256-digest.json" }
   },
   "required": ["policy_id", "policy_version", "policy_digest", "profile_id", "profile_version", "profile_digest"],
   "x-adcp-validation": {

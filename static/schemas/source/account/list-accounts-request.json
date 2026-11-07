@@ -16,15 +16,7 @@
       "description": "Optional account filter. Use `account_id` to retrieve one known seller/storefront account, or the natural key (`brand` + `operator`, narrowed by any of `brand.countries`, `operator_unit`, `currency`, `timezone`, and `sandbox`, matched as in account-ref.json) to find buyer-declared accounts and their account_id values. When present, the seller returns every matching account visible to the authenticated caller; unlike an account reference on other tasks, several matches are not an error."
     },
     "status": {
-      "type": "string",
-      "enum": [
-        "active",
-        "pending_approval",
-        "rejected",
-        "payment_required",
-        "suspended",
-        "closed"
-      ],
+      "$ref": "/schemas/enums/account-status.json",
       "description": "Filter accounts by status. Omit to return accounts in all statuses."
     },
     "pagination": {
@@ -63,10 +55,8 @@
       "description": "When true, request recent webhook delivery attempts for each returned account in account.webhook_activity[]. Sellers MAY omit webhook_activity if they do not expose this debug log; when present, three-state semantics match the shared webhook_activity[] contract."
     },
     "webhook_activity_limit": {
-      "type": "integer",
+      "$ref": "/schemas/core/webhook-activity-limit.json",
       "description": "Maximum number of webhook_activity[] records to return per account when include_webhook_activity is true.",
-      "minimum": 1,
-      "maximum": 200,
       "default": 50
     },
     "context": {

@@ -13,11 +13,8 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. `event_source_id` gives resource-level dedup per source, but the sync envelope emits audit events and can trigger downstream pixel provisioning — this key prevents those side effects from firing twice on retry. Also serves as a request ID on discovery-only calls (when `event_sources` is omitted). MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for at-most-once execution. `event_source_id` gives resource-level dedup per source, but the sync envelope emits audit events and can trigger downstream pixel provisioning — this key prevents those side effects from firing twice on retry. Also serves as a request ID on discovery-only calls (when `event_sources` is omitted). MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
@@ -51,8 +48,7 @@
             "type": "array",
             "description": "ISO 4217 currencies this source accepts for monetary custom_data values. Required for a source used by canonical ROAS. Once declared, log_event monetary records for this source MUST include a currency from this list. Sources omitting the field retain legacy event compatibility but are ineligible for canonical ROAS. One source may list multiple currencies; each media buy consumes only records matching its own currency and no conversion occurs.",
             "items": {
-              "type": "string",
-              "pattern": "^[A-Z]{3}$"
+              "$ref": "/schemas/core/currency-code.json"
             },
             "minItems": 1,
             "uniqueItems": true

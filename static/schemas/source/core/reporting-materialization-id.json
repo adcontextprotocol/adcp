@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-materialization-id.json",
+  "title": "Reporting Materialization ID",
+  "description": "Identifier of one materialization of a reporting revision at a destination.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+  "x-entity": "reporting_materialization"
+}

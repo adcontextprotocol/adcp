@@ -3,12 +3,13 @@ import { resolve } from 'node:path';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
+import { addNamedScalarSchemas } from '../../../tests/helpers/named-scalar-schemas.cjs';
 
 const schema = JSON.parse(readFileSync(
   resolve(__dirname, '../../../static/schemas/source/core/verification-token-claims.json'),
   'utf8',
 ));
-const ajv = new Ajv({ strict: false, allErrors: true });
+const ajv = addNamedScalarSchemas(new Ajv({ strict: false, allErrors: true }));
 addFormats(ajv);
 const validate = ajv.compile(schema);
 

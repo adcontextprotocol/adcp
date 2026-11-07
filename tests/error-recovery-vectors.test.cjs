@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
+const { addNamedScalarSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const RECOVERY_VALUES = new Set(['transient', 'correctable', 'terminal']);
@@ -17,7 +18,7 @@ const requestSigningErrorCodes = readJson(
   'static/schemas/source/enums/request-signing-error-code.json',
 );
 const fixture = readJson('static/compliance/source/test-vectors/error-recovery/vectors.json');
-const validateError = new Ajv({ allErrors: true, strict: false }).compile(errorSchema);
+const validateError = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(errorSchema);
 const errorGuide = fs.readFileSync(
   path.join(ROOT, 'docs/building/by-layer/L3/error-handling.mdx'),
   'utf8',

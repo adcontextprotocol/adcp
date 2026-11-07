@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/media-buy-issue-category.json",
+  "title": "Media Buy Issue Category",
+  "description": "Category of a media buy issue.",
+  "type": "string",
+  "enum": [
+    "malicious_creative",
+    "wrong_creative",
+    "brand_safety",
+    "tracking",
+    "delivery",
+    "other"
+  ]
+}

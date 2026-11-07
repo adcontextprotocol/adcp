@@ -28,6 +28,7 @@ const reasonCodes = JSON.parse(fs.readFileSync(path.join(SET, 'reason-codes.json
 const tzdata = JSON.parse(fs.readFileSync(path.join(REFERENCE, 'tzdata.json'), 'utf8'));
 const tz = require(path.join(REFERENCE, 'tz.cjs'));
 const { expectedSubscriptionPeriods, instant } = require(path.join(REFERENCE, 'coverage.cjs'));
+const { addNamedScalarSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 function loadAjv() {
   const ajv = new Ajv({ allErrors: true, strict: false, verbose: true });
@@ -213,8 +214,9 @@ test('reason-codes.json is well formed: unique codes, known rules, one owed defa
     assert.ok(reasonCodes.reasons.some(reason => reason.rule === rule), `rule ${rule} has no reason`);
   }
   const wireReasons = JSON.parse(fs.readFileSync(path.join(ROOT, 'static/schemas/source/core/reporting-subscription-coverage.json'), 'utf8'))
-    .definitions.ReportingSubscriptionExclusionReason.enum;
-  assert.deepEqual(sorted(reasonCodes.reasons.filter(r => r.code.startsWith('excluded:')).map(r => r.code.slice('excluded:'.length))), sorted(wireReasons));
+    .definitions.ReportingSubscriptionExclusionReason;
+  const wireReasonValues = resolveScalar(wireReasons).enum;
+  assert.deepEqual(sorted(reasonCodes.reasons.filter(r => r.code.startsWith('excluded:')).map(r => r.code.slice('excluded:'.length))), sorted(wireReasonValues));
   const gapReasons = JSON.parse(fs.readFileSync(path.join(ROOT, 'static/schemas/source/core/reporting-subscription-coverage.json'), 'utf8'))
     .properties.gaps.items.properties.reason.enum;
   assert.deepEqual(sorted(reasonCodes.reasons.filter(r => r.code.startsWith('gap:')).map(r => r.code.slice('gap:'.length))), sorted(gapReasons));

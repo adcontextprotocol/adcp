@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/proposal-terms-digest.json",
+  "title": "Proposal Terms Digest",
+  "description": "Digest of a proposal's commercial_terms: the sha256: prefix followed by the unpadded base64url SHA-256 of their RFC 8785 JCS serialization.",
+  "type": "string",
+  "pattern": "^sha256:[A-Za-z0-9_-]{43}$"
+}

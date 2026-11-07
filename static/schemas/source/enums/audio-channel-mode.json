@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audio-channel-mode.json",
+  "title": "Audio Channel Mode",
+  "description": "Audio channel mode: mono or stereo.",
+  "type": "string",
+  "enum": [
+    "mono",
+    "stereo"
+  ]
+}

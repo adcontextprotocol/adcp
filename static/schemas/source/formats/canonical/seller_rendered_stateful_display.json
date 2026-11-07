@@ -46,8 +46,7 @@
         "type": "object",
         "properties": {
           "state_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/canvas-state-id.json",
             "description": "Stable identifier used by `state_canvases[].state_id` and `state_click_urls[].state_id`."
           },
           "anchoring": {
@@ -58,7 +57,7 @@
           "slot_bindings": {
             "type": "array",
             "uniqueItems": true,
-            "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+            "items": { "$ref": "/schemas/core/asset-group-id.json" },
             "description": "Asset group IDs rendered in this state (components mode). Makes the template executable: given components and bindings, assembly is deterministic. Every value MUST resolve to a declared slot. Omitted means all supplied component slots may render."
           },
           "motion": {
@@ -79,8 +78,7 @@
               "type": "object",
               "properties": {
                 "breakpoint_id": {
-                  "type": "string",
-                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "$ref": "/schemas/core/canvas-breakpoint-id.json",
                   "description": "Stable identifier used by `state_canvases[].breakpoint_id`."
                 },
                 "width": { "type": "integer", "minimum": 1 },
@@ -111,8 +109,7 @@
                   "description": "Height as a percentage of the viewport (topscroll 80%, mobile skin panel 15%). Fluid; cannot be targeted by `rendered_canvases` supply."
                 },
                 "canvas_aspect_ratio": {
-                  "type": "string",
-                  "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+                  "$ref": "/schemas/core/aspect-ratio.json",
                   "description": "Aspect ratio the rendered canvas maintains across the size range (IAB flexible units, ratio-bucket responsive). When both fixed `width` and `height` are declared, the ratio MUST be consistent with them."
                 }
               },
@@ -146,8 +143,7 @@
       }
     },
     "initial_state_id": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
+      "$ref": "/schemas/core/canvas-state-id.json",
       "description": "State rendered when the unit first becomes visible. MUST resolve to `states[].state_id`; for a single-state unit it MUST equal the sole state."
     },
     "reveal": {
@@ -164,17 +160,14 @@
         "type": "object",
         "properties": {
           "transition_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/display-transition-id.json",
             "description": "Stable transition identifier for preview and reporting."
           },
           "from_state_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "$ref": "/schemas/core/canvas-state-id.json"
           },
           "to_state_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "$ref": "/schemas/core/canvas-state-id.json"
           },
           "trigger": {
             "type": "string",
@@ -214,9 +207,7 @@
             "description": "Duration of a seller-rendered animated transition."
           },
           "scroll_threshold_percent": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100,
+            "$ref": "/schemas/core/percentage.json",
             "description": "Viewport/page scroll threshold that starts a `scroll_threshold` transition."
           },
           "scroll_reference": {
@@ -225,15 +216,11 @@
             "description": "Reference frame for scroll percentages. Progress is `scroll_offset / max(scroll_extent - viewport_extent, 1) * 100`, measured on either the page document or the nearest seller-declared containing scroller."
           },
           "scroll_start_percent": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100,
+            "$ref": "/schemas/core/percentage.json",
             "description": "Start of the bounded scroll interval for a `scroll_progress` transition."
           },
           "scroll_end_percent": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100,
+            "$ref": "/schemas/core/percentage.json",
             "description": "End of the bounded scroll interval for a `scroll_progress` transition. MUST be greater than `scroll_start_percent`."
           },
           "preserve_playback": {
@@ -247,7 +234,7 @@
           {
             "properties": {
               "trigger": { "type": "string", "const": "timer" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "delay_ms"],
             "not": { "anyOf": [{ "required": ["input"] }, { "required": ["media_event"] }, { "required": ["scroll_reference"] }, { "required": ["scroll_threshold_percent"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }] }
@@ -255,7 +242,7 @@
           {
             "properties": {
               "trigger": { "type": "string", "const": "in_view_timer" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "delay_ms"],
             "not": { "anyOf": [{ "required": ["input"] }, { "required": ["media_event"] }, { "required": ["scroll_reference"] }, { "required": ["scroll_threshold_percent"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }] }
@@ -264,7 +251,7 @@
             "properties": {
               "trigger": { "type": "string", "const": "scroll_threshold" },
               "input": { "type": "string", "const": "scroll" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "input", "scroll_reference", "scroll_threshold_percent"],
             "not": { "anyOf": [{ "required": ["delay_ms"] }, { "required": ["media_event"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }] }
@@ -281,7 +268,7 @@
           {
             "properties": {
               "trigger": { "type": "string", "const": "user_action" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "input"],
             "not": { "anyOf": [{ "required": ["delay_ms"] }, { "required": ["media_event"] }, { "required": ["scroll_reference"] }, { "required": ["scroll_threshold_percent"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }, { "required": ["direction"] }] }
@@ -289,7 +276,7 @@
           {
             "properties": {
               "trigger": { "type": "string", "const": "media_event" },
-              "transition_mode": { "type": "string", "enum": ["instant", "animated"] }
+              "transition_mode": { "$ref": "/schemas/enums/transition-mode.json" }
             },
             "required": ["trigger", "media_event"],
             "not": { "anyOf": [{ "required": ["input"] }, { "required": ["delay_ms"] }, { "required": ["scroll_reference"] }, { "required": ["scroll_threshold_percent"] }, { "required": ["scroll_start_percent"] }, { "required": ["scroll_end_percent"] }, { "required": ["direction"] }] }
@@ -299,8 +286,7 @@
       }
     },
     "clickthrough": {
-      "type": "string",
-      "enum": ["required", "optional", "none"],
+      "$ref": "/schemas/enums/clickthrough-policy.json",
       "default": "required",
       "description": "Destination policy. `required` (default): manifest MUST supply `landing_page_url`. `optional`: click-optional units (in-feed brand units) may omit it. `none`: unit is non-clickable; manifests MUST NOT supply `landing_page_url` or `state_click_urls`. Per-state overrides via `state_click_urls` entries carrying `state_id`; `landing_page_url` is the fallback for unlisted states."
     },
@@ -329,8 +315,7 @@
     },
     "duration_ms_exact": { "type": "integer", "minimum": 1 },
     "aspect_ratio": {
-      "type": "string",
-      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "$ref": "/schemas/core/aspect-ratio.json",
       "description": "Embedded-video aspect ratio."
     },
     "containers": {

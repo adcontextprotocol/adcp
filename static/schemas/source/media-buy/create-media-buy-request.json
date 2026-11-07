@@ -50,18 +50,12 @@
   "x-governed-commitment": { "scope": "always" },
   "properties": {
     "governance_context": {
-      "type": "string",
-      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account."
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "plan_id": {
       "type": "string",
@@ -95,9 +89,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         }
       },
       "required": [
@@ -116,8 +109,7 @@
       "description": "Optional max-impression cap using one counter across explicit packages. Requires advertised aggregate_frequency_capping and compatible media_buy_support on every product; otherwise sellers MUST reject with UNSUPPORTED_FEATURE before any mutation and MUST NOT silently drop, soften, or clamp the cap. Omit when executing proposal_id because accepted terms are authoritative."
     },
     "budget_cap_timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Optional shared IANA day boundary override for all caps. Requires buyer_timezone_override; otherwise rejected with UNSUPPORTED_FEATURE. When omitted, budget_capping.timezone_basis selects Account.timezone or the advertised fixed_timezone."
     },
     "budget_allocation": {
@@ -151,10 +143,7 @@
     "predecessor_media_buy_id": {
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "media_buy",
+      "$ref": "/schemas/core/media-buy-id.json",
       "description": "Media buy this one succeeds (renewal, migration, or sunset). Forward-only: set once at creation; the predecessor is never modified. MUST be an existing buy of the same seller and account, else `MEDIA_BUY_NOT_FOUND`. Requires `lineage_reason`. See the Media Buy Lineage section of the media-buy specification. Experimental in AdCP 3.3: sellers that implement it list `media_buy.lineage` in `experimental_features`, buyers send it only to sellers that do, and a seller that cannot record it rejects the request with `UNSUPPORTED_FEATURE`."
     },
     "lineage_reason": {
@@ -177,10 +166,8 @@
           "description": "ISO 8601 timestamp when the IO was accepted"
         },
         "signatory": {
-          "type": "string",
-          "description": "Who accepted the IO — agent identifier or human name",
-          "minLength": 1,
-          "maxLength": 250
+          "$ref": "/schemas/core/io-signatory.json",
+          "description": "Who accepted the IO — agent identifier or human name"
         },
         "signature_id": {
           "type": "string",
@@ -199,15 +186,11 @@
       "description": "Purchase order number for tracking"
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the create success response and subsequent get_media_buys reads. This display label is not an identifier or financial reference."
     },
     "agency_estimate_number": {
-      "type": "string",
-      "maxLength": 100,
+      "$ref": "/schemas/core/agency-estimate-number.json",
       "description": "Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency's media plan and billing system. Travels with the order and creative traffic identifiers through the transaction lifecycle."
     },
     "start_time": {
@@ -247,14 +230,12 @@
       "description": "Optional webhook configuration for content artifact delivery. Used by governance agents to validate content adjacency. Seller pushes artifacts to this endpoint; orchestrator forwards to governance agent for validation.",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
+          "$ref": "/schemas/core/webhook-url.json",
           "description": "Webhook endpoint URL for artifact delivery"
         },
         "token": {
-          "type": "string",
-          "description": "Optional client-provided token. The seller echoes it verbatim in every delivery. A receiver MUST NOT treat a valid token echo as a substitute for verifying the delivery's signature.",
-          "minLength": 16
+          "$ref": "/schemas/core/webhook-token.json",
+          "description": "Optional client-provided token. The seller echoes it verbatim in every delivery. A receiver MUST NOT treat a valid token echo as a substitute for verifying the delivery's signature."
         },
         "authentication": {
           "type": "object",
@@ -272,9 +253,8 @@
               "maxItems": 1
             },
             "credentials": {
-              "type": "string",
-              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
-              "minLength": 32
+              "$ref": "/schemas/core/auth-credential.json",
+              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding."
             }
           },
           "required": [
@@ -306,9 +286,7 @@
           "x-added-in": "3.3.0"
         },
         "sampling_rate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
+          "$ref": "/schemas/core/fraction.json",
           "description": "Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sample. Default: 1.0"
         }
       },

@@ -8,9 +8,7 @@
     {
       "properties": {
         "account_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "account"
+          "$ref": "/schemas/core/account-id.json"
         }
       },
       "required": ["account_id"],
@@ -22,8 +20,7 @@
           "$ref": "/schemas/core/brand-key.json"
         },
         "operator": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "$ref": "/schemas/core/domain-name.json",
           "x-entity": "operator"
         },
         "operator_unit": {
@@ -31,13 +28,11 @@
           "description": "Optional operator-owned business unit, agency seat, or platform account. An account attribute: id acts as a lookup filter; name is display metadata and never filters."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 transaction currency when the advertiser object is currency-bound. An account attribute that acts as a lookup filter; all media buys on the account use it. Omit for per-media-buy currency selection."
         },
         "timezone": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Account timezone. An account attribute that acts as a lookup filter, sent only for buyer-selected account_fixed accounts."
         },
         "sandbox": {

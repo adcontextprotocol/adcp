@@ -22,22 +22,15 @@
             "x-entity": "media_buy"
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "pattern": "\\S",
+            "$ref": "/schemas/core/media-buy-name.json",
             "description": "Persisted human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. Sellers MUST include name when the media buy was created through AdCP with name. Sellers MAY omit it for media buys created outside AdCP or created without name. This display label is not an identifier or financial reference."
           },
           "accepted_proposal_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "x-entity": "proposal",
+            "$ref": "/schemas/core/proposal-id.json",
             "description": "Current accepted commercial snapshot for compact-lifecycle refinement. Updated atomically when an amendment or negotiated cancellation is accepted."
           },
           "accepted_proposal_terms_digest": {
-            "type": "string",
-            "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+            "$ref": "/schemas/core/proposal-terms-digest.json",
             "description": "Digest of the current accepted proposal commercial_terms."
           },
           "accepted_proposal": {
@@ -46,7 +39,7 @@
               {
                 "properties": {
                   "proposal_status": { "type": "string", "const": "accepted" },
-                  "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" }
+                  "media_buy_id": { "$ref": "/schemas/core/media-buy-id.json" }
                 },
                 "required": ["proposal_status", "media_buy_id", "accepted_at", "commercial_terms", "terms_digest"]
               }
@@ -103,9 +96,8 @@
             "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
           },
           "currency": {
-            "type": "string",
-            "description": "Single ISO 4217 denomination for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option on an AdCP-authored media buy MUST declare this currency. Legacy or externally-created mixed-currency buys must not expose canonical bidding until normalized or split.",
-            "pattern": "^[A-Z]{3}$"
+            "$ref": "/schemas/core/currency-code.json",
+            "description": "Single ISO 4217 denomination for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option on an AdCP-authored media buy MUST declare this currency. Legacy or externally-created mixed-currency buys must not expose canonical bidding until normalized or split."
           },
           "total_budget": {
             "type": "number",
@@ -122,7 +114,7 @@
             "description": "Current hard MediaBuy-level cap. Sellers MUST echo it whenever set, separately from package targeting-overlay caps."
           },
           "budget_cap_timezone": {
-            "type": "string",
+            "$ref": "/schemas/core/iana-timezone.json",
             "description": "IANA timezone defining the shared calendar-day boundary for every aggregate and package daily cap. Present whenever any daily cap is set on the media buy."
           },
           "budget_allocation": {
@@ -187,9 +179,8 @@
                 "description": "Which party initiated the cancellation."
               },
               "reason": {
-                "type": "string",
-                "description": "Reason the media buy was canceled.",
-                "maxLength": 500
+                "$ref": "/schemas/core/cancellation-reason.json",
+                "description": "Reason the media buy was canceled."
               }
             },
             "additionalProperties": false
@@ -301,9 +292,8 @@
                   "description": "What happened. Standard actions: created, activated, paused, resumed, canceled, rejected, completed, updated_budget, updated_dates, updated_packages, package_canceled, package_paused, package_resumed. Sellers MAY use additional platform-specific actions (e.g., creative_approved, targeting_updated) — use ext on the history entry for structured metadata about custom actions."
                 },
                 "summary": {
-                  "type": "string",
-                  "description": "Human-readable summary of the change (e.g., 'Budget increased from $5,000 to $7,500 on pkg_abc').",
-                  "maxLength": 500
+                  "$ref": "/schemas/core/change-summary.json",
+                  "description": "Human-readable summary of the change (e.g., 'Budget increased from $5,000 to $7,500 on pkg_abc')."
                 },
                 "package_id": {
                   "type": "string",
@@ -356,9 +346,8 @@
                   "description": "Current hard package spend ceiling per shared media-buy cap day, denominated in media_buy.currency. It is a subordinate ceiling, not a reserved allocation; media_buy.budget_cap_timezone defines the day boundary."
                 },
                 "currency": {
-                  "type": "string",
-                  "description": "Legacy/readback package denomination for buys created outside the canonical 3.2 path. For AdCP-authored media buys this MUST equal media_buy.currency; canonical package budget and BiddingPolicy values always use media_buy.currency. Snapshot currency may still identify externally reported spend denomination.",
-                  "pattern": "^[A-Z]{3}$"
+                  "$ref": "/schemas/core/currency-code.json",
+                  "description": "Legacy/readback package denomination for buys created outside the canonical 3.2 path. For AdCP-authored media buys this MUST equal media_buy.currency; canonical package budget and BiddingPolicy values always use media_buy.currency. Snapshot currency may still identify externally reported spend denomination."
                 },
                 "bid_price": {
                   "type": "number",
@@ -496,9 +485,8 @@
                       "description": "Which party initiated the package cancellation."
                     },
                     "reason": {
-                      "type": "string",
-                      "description": "Reason the package was canceled.",
-                      "maxLength": 500
+                      "$ref": "/schemas/core/cancellation-reason.json",
+                      "description": "Reason the package was canceled."
                     }
                   },
                   "additionalProperties": false
@@ -632,20 +620,14 @@
                         "properties": {
                           "indicator_types_evaluated": {
                             "items": {
-                              "enum": [
-                                "creative_fatigue",
-                                "creative_quality_opportunity"
-                              ]
+                              "$ref": "/schemas/enums/creative-indicator-type.json"
                             }
                           },
                           "indicators": {
                             "items": {
                               "properties": {
                                 "type": {
-                                  "enum": [
-                                    "creative_fatigue",
-                                    "creative_quality_opportunity"
-                                  ]
+                                  "$ref": "/schemas/enums/creative-indicator-type.json"
                                 }
                               }
                             }
@@ -683,7 +665,7 @@
                             "approval_scopes": {
                               "allOf": [
                                 { "contains": { "properties": { "approval_status": { "const": "approved" } } } },
-                                { "contains": { "properties": { "approval_status": { "enum": ["pending_review", "rejected"] } } } }
+                                { "contains": { "properties": { "approval_status": { "$ref": "/schemas/enums/creative-unapproved-status.json" } } } }
                               ]
                             }
                           }
@@ -767,9 +749,8 @@
                       "minimum": 0
                     },
                     "currency": {
-                      "type": "string",
-                      "description": "ISO 4217 currency code for spend in this snapshot. Optional when unchanged from package.currency or media_buy.currency.",
-                      "pattern": "^[A-Z]{3}$"
+                      "$ref": "/schemas/core/currency-code.json",
+                      "description": "ISO 4217 currency code for spend in this snapshot. Optional when unchanged from package.currency or media_buy.currency."
                     },
                     "clicks": {
                       "type": "number",
@@ -813,30 +794,14 @@
                   "properties": {
                     "indicator_types_evaluated": {
                       "items": {
-                        "enum": [
-                          "creative_diversity_low",
-                          "audience_saturation",
-                          "inventory_shortfall_forecast",
-                          "pacing_risk",
-                          "budget_constrained",
-                          "flight_extension_opportunity",
-                          "scale_budget_opportunity"
-                        ]
+                        "$ref": "#/definitions/package_indicator_type"
                       }
                     },
                     "indicators": {
                       "items": {
                         "properties": {
                           "type": {
-                            "enum": [
-                              "creative_diversity_low",
-                              "audience_saturation",
-                              "inventory_shortfall_forecast",
-                              "pacing_risk",
-                              "budget_constrained",
-                              "flight_extension_opportunity",
-                              "scale_budget_opportunity"
-                            ]
+                            "$ref": "#/definitions/package_indicator_type"
                           }
                         }
                       }
@@ -949,22 +914,14 @@
             "properties": {
               "indicator_types_evaluated": {
                 "items": {
-                  "enum": [
-                    "budget_constrained",
-                    "flight_extension_opportunity",
-                    "scale_budget_opportunity"
-                  ]
+                  "$ref": "#/definitions/media_buy_indicator_type"
                 }
               },
               "indicators": {
                 "items": {
                   "properties": {
                     "type": {
-                      "enum": [
-                        "budget_constrained",
-                        "flight_extension_opportunity",
-                        "scale_budget_opportunity"
-                      ]
+                      "$ref": "#/definitions/media_buy_indicator_type"
                     }
                   }
                 }
@@ -1039,5 +996,31 @@
   "required": [
     "media_buys"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "package_indicator_type": {
+      "title": "Package Indicator Type",
+      "description": "Indicator type that applies to a package.",
+      "type": "string",
+      "enum": [
+        "creative_diversity_low",
+        "audience_saturation",
+        "inventory_shortfall_forecast",
+        "pacing_risk",
+        "budget_constrained",
+        "flight_extension_opportunity",
+        "scale_budget_opportunity"
+      ]
+    },
+    "media_buy_indicator_type": {
+      "title": "Media Buy Indicator Type",
+      "description": "Indicator type that applies to a whole media buy.",
+      "type": "string",
+      "enum": [
+        "budget_constrained",
+        "flight_extension_opportunity",
+        "scale_budget_opportunity"
+      ]
+    }
+  }
 }

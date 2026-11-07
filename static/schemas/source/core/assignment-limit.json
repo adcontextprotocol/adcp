@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/assignment-limit.json",
+  "title": "Assignment Limit",
+  "description": "Maximum number of assigned-package rows list_creatives returns for each creative before it sets assignments_truncated.",
+  "type": "integer",
+  "minimum": 1,
+  "maximum": 200
+}

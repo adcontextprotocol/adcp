@@ -219,9 +219,11 @@ export function loadProductDiscoveryInputSchema(fileName: string): JsonSchema {
 
 /** Load a canonical source schema for embedding in an MCP tool definition.
  * Keeping its $id intact makes local fragment references resolve against the
- * nested schema resource rather than the surrounding tool schema. */
+ * nested schema resource rather than the surrounding tool schema. References to
+ * other AdCP schemas, such as named scalar schemas, are bundled into its $defs,
+ * because tools/list consumers cannot resolve AdCP paths. */
 export function loadSourceSchema(relativePath: string): JsonSchema {
-  return structuredClone(readSchema(relativePath));
+  return bundleSchema(structuredClone(readSchema(relativePath)));
 }
 
 /** The shared parsed source schema, for read-only walks. Callers must not

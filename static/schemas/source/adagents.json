@@ -13,9 +13,7 @@
           "description": "JSON Schema identifier for this adagents.json file"
         },
         "authoritative_location": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL of the authoritative adagents.json file. When present, this file is a reference and the authoritative location contains the actual agent authorization data. Because one deploy can change authorization across every publisher in the network, validators MUST cap response size, refuse redirects on the fetch, enforce short timeouts, and serve the previously cached file on transient 5xx. Two-tier size cap: pointer files served at `/.well-known/adagents.json` use the general 5 MB SSRF cap; dereferenced authoritative files (this URL's response, after the indirection) use a recommended 20 MB cap because the origin has explicitly opted in to fanning out across a publisher network. See docs/governance/property/managed-networks#security-considerations."
         },
         "last_updated": {
@@ -42,10 +40,8 @@
           "description": "Contact information for the entity managing this adagents.json file (may be publisher or third-party operator)",
           "properties": {
             "name": {
-              "type": "string",
-              "description": "Name of the entity managing this file (e.g., 'Meta Advertising Operations', 'Clear Channel Digital')",
-              "minLength": 1,
-              "maxLength": 255
+              "$ref": "/schemas/core/contact-name.json",
+              "description": "Name of the entity managing this file (e.g., 'Meta Advertising Operations', 'Clear Channel Digital')"
             },
             "email": {
               "type": "string",
@@ -55,9 +51,8 @@
               "maxLength": 255
             },
             "domain": {
-              "type": "string",
-              "description": "Primary domain of the entity managing this file",
-              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              "$ref": "/schemas/core/domain-name.json",
+              "description": "Primary domain of the entity managing this file"
             },
             "seller_id": {
               "type": "string",
@@ -108,9 +103,8 @@
             "type": "object",
             "properties": {
               "publisher_domain": {
-                "type": "string",
-                "description": "Publisher domain being revoked. Matches against the same canonicalized form used in `publisher_properties[].publisher_domain`.",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                "$ref": "/schemas/core/domain-name.json",
+                "description": "Publisher domain being revoked. Matches against the same canonicalized form used in `publisher_properties[].publisher_domain`."
               },
               "revoked_at": {
                 "type": "string",
@@ -176,8 +170,7 @@
                     "description": "Optional only for an AgenticAdvertising.org community-registry format entry fetched from the configured registry origin. Points to a pinned browser-ESM OSS renderer package export that provides a non-authoritative reference presentation. Registry review and contract fixtures bind the named export to the enclosing format's input contract (its canonical format kind, manifest shape, constraints, and declared macros); renderer package versions and format revisions have independent lifecycles. Display metadata and property scope do not affect that compatibility binding. Non-JavaScript clients use hosted preview_creative or display the manifest. Publisher-origin catalogs and seller product declarations do not use this field: publishers describe placement-specific chrome with placements[].presentation_ref and grant route-specific preview authority with placements[].preview_provider."
                   },
                   "format_revision": {
-                    "type": "string",
-                    "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)$",
+                    "$ref": "/schemas/core/format-revision.json",
                     "description": "Registry-managed revision of this community format entry's input contract. Required when reference_renderer is present, but independent of any reference-renderer package version or legacy reference_renderer.format_revision annotation. A contract update may retain an existing renderer pin when that export still passes the updated declaration's contract fixtures."
                   }
                 },
@@ -191,9 +184,7 @@
           "minItems": 1
         },
         "superseded_by": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "Optional pointer indicating this adagents.json file has been superseded by another adagents.json at a different URL. Used by the AAO community-mirror lifecycle: when a platform (e.g., Meta) adopts AdCP and publishes its own adagents.json at `<platform-domain>/.well-known/adagents.json`, the AAO mirror file at `creative.adcontextprotocol.org/translated/<platform>/adagents.json` sets `superseded_by` to the platform-hosted URL. Buyer SDKs encountering a file with `superseded_by` SHOULD short-circuit and re-fetch from the named URL rather than serving stale content from the mirror. The mirror SHOULD continue serving with `superseded_by` set for ≥1 minor release after platform adoption so buyer caches keyed on the mirror URL get an explicit migration signal rather than a silent break."
         },
         "tags": {
@@ -290,12 +281,7 @@
                     "uniqueItems": true
                   },
                   "delegation_type": {
-                    "type": "string",
-                    "enum": [
-                      "direct",
-                      "delegated",
-                      "ad_network"
-                    ],
+                    "$ref": "/schemas/enums/delegation-type.json",
                     "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
                   },
                   "exclusive": {
@@ -306,8 +292,7 @@
                     "type": "array",
                     "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{2}$"
+                      "$ref": "/schemas/core/country-code.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true
@@ -376,12 +361,7 @@
                     "uniqueItems": true
                   },
                   "delegation_type": {
-                    "type": "string",
-                    "enum": [
-                      "direct",
-                      "delegated",
-                      "ad_network"
-                    ],
+                    "$ref": "/schemas/enums/delegation-type.json",
                     "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
                   },
                   "exclusive": {
@@ -392,8 +372,7 @@
                     "type": "array",
                     "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{2}$"
+                      "$ref": "/schemas/core/country-code.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true
@@ -462,12 +441,7 @@
                     "uniqueItems": true
                   },
                   "delegation_type": {
-                    "type": "string",
-                    "enum": [
-                      "direct",
-                      "delegated",
-                      "ad_network"
-                    ],
+                    "$ref": "/schemas/enums/delegation-type.json",
                     "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
                   },
                   "exclusive": {
@@ -478,8 +452,7 @@
                     "type": "array",
                     "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{2}$"
+                      "$ref": "/schemas/core/country-code.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true
@@ -548,12 +521,7 @@
                     "uniqueItems": true
                   },
                   "delegation_type": {
-                    "type": "string",
-                    "enum": [
-                      "direct",
-                      "delegated",
-                      "ad_network"
-                    ],
+                    "$ref": "/schemas/enums/delegation-type.json",
                     "description": "Commercial relationship for this inventory path. 'direct' means the publisher treats this as a direct way to buy from them, even if a third party operates the software. 'delegated' means the agent is authorized to sell on the publisher's behalf. 'ad_network' means the inventory is sold as part of a network/package context rather than as the publisher's direct endpoint."
                   },
                   "exclusive": {
@@ -564,8 +532,7 @@
                     "type": "array",
                     "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{2}$"
+                      "$ref": "/schemas/core/country-code.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true
@@ -605,8 +572,7 @@
                     "type": "array",
                     "description": "Signal IDs this agent is authorized to resell. Resolved against the top-level signals array in this file",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[a-zA-Z0-9_-]+$"
+                      "$ref": "/schemas/core/signal-local-id.json"
                     },
                     "minItems": 1
                   }
@@ -635,8 +601,7 @@
                     "type": "array",
                     "description": "Signal tags this agent is authorized for. Agent can resell all signals with these tags",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[a-z0-9_-]+$"
+                      "$ref": "/schemas/core/signal-tag.json"
                     },
                     "minItems": 1
                   }

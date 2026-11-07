@@ -28,8 +28,7 @@
           "description": "The receipt describes a property list."
         },
         "effect": {
-          "type": "string",
-          "enum": ["include", "exclude"],
+          "$ref": "/schemas/enums/inventory-list-effect.json",
           "description": "Whether matching properties were retained as an allowlist or removed as a blocklist."
         },
         "agent_url": {
@@ -38,10 +37,8 @@
           "description": "Agent URL from the effective property-list targeting reference."
         },
         "list_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Identifier from the effective property-list targeting reference.",
-          "x-entity": "property_list"
+          "$ref": "/schemas/core/property-list-id.json",
+          "description": "Identifier from the effective property-list targeting reference."
         },
         "resolved_at": {
           "type": "string",
@@ -93,8 +90,7 @@
           "description": "The receipt describes a collection list."
         },
         "effect": {
-          "type": "string",
-          "enum": ["include", "exclude"],
+          "$ref": "/schemas/enums/inventory-list-effect.json",
           "description": "Whether matching collections were retained as an allowlist or removed as a blocklist."
         },
         "agent_url": {
@@ -103,10 +99,8 @@
           "description": "Agent URL from the effective collection-list targeting reference."
         },
         "list_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Identifier from the effective collection-list targeting reference.",
-          "x-entity": "collection_list"
+          "$ref": "/schemas/core/collection-list-id.json",
+          "description": "Identifier from the effective collection-list targeting reference."
         },
         "resolved_at": {
           "type": "string",

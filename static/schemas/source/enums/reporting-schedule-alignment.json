@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/reporting-schedule-alignment.json",
+  "title": "Reporting Schedule Alignment",
+  "description": "Calendar that sets reporting period boundaries.",
+  "type": "string",
+  "enum": [
+    "utc",
+    "account_timezone",
+    "source_timezone",
+    "billing_cycle"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/representation-set-name.json",
+  "title": "Representation Set Name",
+  "description": "Buyer-authored name of a creative representation set revision.",
+  "type": "string",
+  "minLength": 1
+}

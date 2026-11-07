@@ -32,9 +32,7 @@
       "additionalProperties": true
     },
     "match_rate": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1,
+      "$ref": "/schemas/core/fraction.json",
       "description": "Fraction of events from this source that the seller successfully matched to ad interactions (0.0-1.0). Low match rates indicate weak user_match identifiers. Absent when the seller does not compute match rates."
     },
     "last_event_at": {

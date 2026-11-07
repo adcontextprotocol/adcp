@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-token.json",
+  "title": "Macro Token",
+  "description": "Exact byte-preserved macro token expression, including delimiters.",
+  "type": "string",
+  "minLength": 1
+}

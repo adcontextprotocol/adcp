@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/reporting-status-severity.json",
+  "title": "Reporting Status Severity",
+  "description": "Severity of a reporting health issue: delayed or action_required.",
+  "type": "string",
+  "enum": [
+    "delayed",
+    "action_required"
+  ]
+}

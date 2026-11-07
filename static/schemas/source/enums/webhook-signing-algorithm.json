@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/webhook-signing-algorithm.json",
+  "title": "Webhook Signing Algorithm",
+  "description": "Algorithm that signs webhooks: ed25519 or ecdsa-p256-sha256.",
+  "type": "string",
+  "enum": [
+    "ed25519",
+    "ecdsa-p256-sha256"
+  ]
+}

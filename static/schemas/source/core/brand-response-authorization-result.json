@@ -30,9 +30,7 @@
       "description": "JWS kid evaluated by the cross-check."
     },
     "jwks_uri": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "JWKS URI selected only from the matched brand.json agent entry, or its same-origin default."
     }
   },

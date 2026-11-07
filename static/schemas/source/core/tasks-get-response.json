@@ -71,9 +71,7 @@
       "description": "Progress information for long-running tasks",
       "properties": {
         "percentage": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
+          "$ref": "/schemas/core/percentage.json",
           "description": "Completion percentage (0-100)"
         },
         "current_step": {
@@ -144,11 +142,7 @@
             "description": "When this exchange occurred (ISO 8601)"
           },
           "type": {
-            "type": "string",
-            "enum": [
-              "request",
-              "response"
-            ],
+            "$ref": "/schemas/enums/history-entry-type.json",
             "description": "Whether this was a request from client or response from server"
           },
           "data": {

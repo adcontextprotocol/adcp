@@ -45,9 +45,7 @@
               "type": "array",
               "description": "Seller-scoped interval identifiers whose union produced applied.",
               "items": {
-                "type": "string",
-                "minLength": 1,
-                "x-entity": "demographic_interval_id"
+                "$ref": "#/definitions/demographic_interval_id"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -148,9 +146,7 @@
                       "type": "array",
                       "description": "Seller-scoped interval identifiers whose union produced applied.",
                       "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "x-entity": "demographic_interval_id"
+                        "$ref": "#/definitions/demographic_interval_id"
                       },
                       "minItems": 1,
                       "uniqueItems": true,
@@ -526,5 +522,14 @@
       { "required": ["buyer_approved"] }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "demographic_interval_id": {
+      "title": "Demographic Interval ID",
+      "description": "Seller-scoped identifier of one demographic interval used to execute an age or gender predicate.",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "demographic_interval_id"
+    }
+  }
 }

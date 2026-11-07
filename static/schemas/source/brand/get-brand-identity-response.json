@@ -61,13 +61,7 @@
           "description": "Brand industries."
         },
         "keller_type": {
-          "type": "string",
-          "enum": [
-            "master",
-            "sub_brand",
-            "endorsed",
-            "independent"
-          ],
+          "$ref": "/schemas/enums/brand-architecture-type.json",
           "description": "Brand architecture type: master (primary brand of house), sub_brand (carries parent name), endorsed (independent identity backed by parent), independent (operates separately)"
         },
         "logos": {
@@ -82,33 +76,15 @@
                 "description": "URL to the logo asset"
               },
               "orientation": {
-                "type": "string",
-                "enum": [
-                  "square",
-                  "horizontal",
-                  "vertical",
-                  "stacked"
-                ],
+                "$ref": "/schemas/enums/logo-orientation.json",
                 "description": "Logo aspect ratio orientation"
               },
               "background": {
-                "type": "string",
-                "enum": [
-                  "dark-bg",
-                  "light-bg",
-                  "transparent-bg"
-                ],
+                "$ref": "/schemas/enums/logo-background.json",
                 "description": "Background compatibility"
               },
               "variant": {
-                "type": "string",
-                "enum": [
-                  "primary",
-                  "secondary",
-                  "icon",
-                  "wordmark",
-                  "full-lockup"
-                ],
+                "$ref": "/schemas/enums/logo-variant.json",
                 "description": "Logo variant type"
               },
               "tags": {
@@ -144,14 +120,12 @@
             "primary": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -160,14 +134,12 @@
             "secondary": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -176,14 +148,12 @@
             "accent": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -192,14 +162,12 @@
             "background": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -208,14 +176,12 @@
             "text": {
               "oneOf": [
                 {
-                  "type": "string",
-                  "pattern": "^#[0-9A-Fa-f]{6}$"
+                  "$ref": "/schemas/core/hex-color.json"
                 },
                 {
                   "type": "array",
                   "items": {
-                    "type": "string",
-                    "pattern": "^#[0-9A-Fa-f]{6}$"
+                    "$ref": "/schemas/core/hex-color.json"
                   },
                   "minItems": 1
                 }
@@ -247,35 +213,24 @@
                         "type": "object",
                         "properties": {
                           "url": {
-                            "type": "string",
-                            "format": "uri",
-                            "pattern": "^https://",
+                            "$ref": "/schemas/core/https-url.json",
                             "description": "HTTPS URL to the font file"
                           },
                           "weight": {
-                            "type": "integer",
-                            "minimum": 100,
-                            "maximum": 900,
+                            "$ref": "/schemas/core/font-weight.json",
                             "description": "CSS numeric font-weight"
                           },
                           "weight_range": {
                             "type": "array",
                             "items": {
-                              "type": "integer",
-                              "minimum": 100,
-                              "maximum": 900
+                              "$ref": "/schemas/core/font-weight.json"
                             },
                             "minItems": 2,
                             "maxItems": 2,
                             "description": "Variable font weight axis range as [min, max]"
                           },
                           "style": {
-                            "type": "string",
-                            "enum": [
-                              "normal",
-                              "italic",
-                              "oblique"
-                            ],
+                            "$ref": "/schemas/enums/font-style.json",
                             "description": "CSS font-style"
                           }
                         },
@@ -289,8 +244,7 @@
                     "opentype_features": {
                       "type": "array",
                       "items": {
-                        "type": "string",
-                        "pattern": "^[a-z0-9]{4}$"
+                        "$ref": "/schemas/core/opentype-feature-tag.json"
                       },
                       "maxItems": 20,
                       "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum'])"
@@ -298,8 +252,7 @@
                     "fallbacks": {
                       "type": "array",
                       "items": {
-                        "type": "string",
-                        "maxLength": 100
+                        "$ref": "/schemas/core/font-family-name.json"
                       },
                       "maxItems": 10,
                       "description": "Ordered fallback font-family names for script coverage"
@@ -486,16 +439,14 @@
               "type": "array",
               "description": "Countries where rights are available (ISO 3166-1 alpha-2). If omitted, rights are available worldwide.",
               "items": {
-                "type": "string",
-                "pattern": "^[A-Z]{2}$"
+                "$ref": "/schemas/core/country-code.json"
               }
             },
             "excluded_countries": {
               "type": "array",
               "description": "Countries excluded from availability (ISO 3166-1 alpha-2)",
               "items": {
-                "type": "string",
-                "pattern": "^[A-Z]{2}$"
+                "$ref": "/schemas/core/country-code.json"
               }
             },
             "exclusivity_model": {
@@ -517,8 +468,7 @@
             "type": "object",
             "properties": {
               "publisher_domain": {
-                "type": "string",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                "$ref": "/schemas/core/domain-name.json",
                 "description": "Publisher namespace that declares the collection in its adagents.json"
               },
               "collection_id": {
@@ -554,22 +504,7 @@
           "type": "array",
           "description": "Fields available but not returned in this response due to authorization level. Tells the caller what they would gain by linking their account via sync_accounts. Values match the request fields enum.",
           "items": {
-            "type": "string",
-            "enum": [
-              "description",
-              "industries",
-              "keller_type",
-              "logos",
-              "colors",
-              "fonts",
-              "visual_guidelines",
-              "tone",
-              "tagline",
-              "voice_synthesis",
-              "assets",
-              "rights",
-              "collections"
-            ]
+            "$ref": "/schemas/enums/brand-identity-field.json"
           }
         },
         "context": {

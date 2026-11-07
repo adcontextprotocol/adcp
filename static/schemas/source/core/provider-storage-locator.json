@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/provider-storage-locator.json",
+  "title": "Provider Storage Locator",
+  "description": "Non-secret provider-native locator for stored reporting data, such as a bucket and prefix, dataset, table, or share. It never contains a credential or signed URL.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 2048
+}

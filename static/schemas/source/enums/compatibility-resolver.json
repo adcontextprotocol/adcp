@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/compatibility-resolver.json",
+  "title": "Compatibility Resolver",
+  "description": "Party that performed creative compatibility resolution.",
+  "type": "string",
+  "enum": [
+    "buyer",
+    "seller"
+  ]
+}

@@ -21,8 +21,7 @@
       "$ref": "/schemas/core/geo-place-system.json"
     },
     "system_version": {
-      "type": "string",
-      "minLength": 1
+      "$ref": "/schemas/core/geo-place-system-version.json"
     },
     "matches": {
       "type": "array",
@@ -31,8 +30,7 @@
       }
     },
     "next_cursor": {
-      "type": "string",
-      "minLength": 1
+      "$ref": "/schemas/core/page-cursor.json"
     }
   },
   "required": ["request", "system", "system_version", "matches"],
@@ -49,9 +47,9 @@
           "matches": {
             "items": {
               "properties": {
-                "value": { "pattern": "^[0-9]+$" },
+                "value": { "$ref": "#/definitions/numeric_place_value" },
                 "replaced_by_values": {
-                  "items": { "pattern": "^[0-9]+$" }
+                  "items": { "$ref": "#/definitions/numeric_place_value" }
                 }
               }
             }
@@ -60,5 +58,12 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "definitions": {
+    "numeric_place_value": {
+      "title": "Numeric Place Value",
+      "description": "Numeric place identifier, required for the geonames, google_ads, and microsoft_ads systems.",
+      "pattern": "^[0-9]+$"
+    }
+  }
 }

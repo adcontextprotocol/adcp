@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/voice-provider.json",
+  "title": "Voice Provider",
+  "description": "Text-to-speech vendor that renders a brand voice, such as elevenlabs.",
+  "type": "string",
+  "maxLength": 128
+}

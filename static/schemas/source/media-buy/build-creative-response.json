@@ -139,8 +139,7 @@
           "description": "Cost incurred for this build, denominated in currency. May be 0 for CPM-priced creatives where cost accrues at serve time rather than build time."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code for vendor_cost."
         },
         "consumption": {
@@ -207,8 +206,7 @@
                     "description": "Deprecated named-format correlation for a legacy target_format_ids request."
                   },
                   "capability_id": {
-                    "type": "string",
-                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "$ref": "/schemas/core/creative-capability-id.json",
                     "description": "Canonical creative capability this preview was generated through. Matches one requested target_capability_ids entry."
                   },
                   "renders": {
@@ -284,8 +282,7 @@
           "description": "Total cost incurred for this multi-format build, denominated in currency. May be 0 for CPM-priced creatives where cost accrues at serve time."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code for vendor_cost."
         },
         "consumption": {
@@ -426,8 +423,7 @@
                       "description": "Cost incurred for this variant leaf, denominated in currency. REQUIRED on every produced leaf whenever the build reports cost (the top-level aggregate `vendor_cost` is present) — leaves are the billing source of truth, and an untrafficked leaf is reconciled from this field alone (it never earns a `creative_id` / `report_usage` entry). A CPM-deferred leaf reports 0 here (a value, not an omission)."
                     },
                     "currency": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{3}$",
+                      "$ref": "/schemas/core/currency-code.json",
                       "description": "ISO 4217 currency code for vendor_cost. Co-required with vendor_cost."
                     },
                     "consumption": {
@@ -486,13 +482,11 @@
           "description": "Aggregate cost across all variant leaves, denominated in currency. MUST equal the sum of the per-leaf vendor_cost values (leaves are the source of truth). When present, every produced leaf MUST carry its own vendor_cost + currency (enforced) so the sum invariant is checkable; omit this aggregate only for a genuinely free build."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code for the aggregate vendor_cost."
         },
         "keep_mode_applied": {
-          "type": "string",
-          "enum": ["keep_all", "keep_one", "keep_some"],
+          "$ref": "/schemas/enums/variant-keep-mode.json",
           "description": "Echoes the `keep_mode` the agent applied (mirrors the request hint). Present when the request set `keep_mode`. `keep_mode` is advisory — it does not change what is produced or billed (you pay for every leaf in `variants[]`) — so this echo is the buyer's confirmation that the hint was received, the audit paper trail for a 'I asked for keep_one but was billed for N' dispute. Whether the agent acted on it shows in the `recommended`/`rank` it set on the leaves."
         },
         "selection_strategy_applied": {
@@ -568,7 +562,7 @@
             "conditions_total": { "type": "integer", "minimum": 1, "x-status": "experimental", "description": "Signal-fan-out conditions axis count (len(signal_conditions)). Present when signal_conditions was sent so leaves_total = items_to_produce × conditions_total × variants_per_item is legible before spend." },
             "variants_per_item": { "type": "integer", "minimum": 1, "description": "Alternatives per creative (max_variants)." },
             "leaves_total": { "type": "integer", "minimum": 0, "description": "Total billable leaves = items_to_produce × variants_per_item (× conditions_total when signal_conditions was sent — see conditions_total)." },
-            "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency for the cost band." },
+            "currency": { "$ref": "/schemas/core/currency-code.json", "description": "ISO 4217 currency for the cost band." },
             "cost_low": { "type": "number", "minimum": 0, "description": "Low end of the projected aggregate vendor_cost." },
             "cost_high": { "type": "number", "minimum": 0, "description": "High end. For basis \"fixed\" this equals cost_low (exact)." },
             "cost_expected": { "type": "number", "minimum": 0, "description": "Optional point estimate within the band." },

@@ -5,8 +5,8 @@
   "description": "Compact canonical creative-format declaration. Legacy named-format links are intentionally absent; params are validated against the canonical schema selected by format_kind without inlining every format union into product discovery. Format-option processing metadata such as macro_resolution_capabilities stays at this object's top level and is not part of canonical params.",
   "type": "object",
   "properties": {
-    "format_option_id": { "type": "string", "minLength": 1 },
-    "publisher_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+    "format_option_id": { "$ref": "/schemas/core/format-option-id.json" },
+    "publisher_domain": { "$ref": "/schemas/core/domain-name.json" },
     "tracker_execution_contract": {
       "$ref": "/schemas/core/tracker-execution-contract.json",
       "description": "Seller- or publisher-authored production commitment for first-class manifest tracker execution. Presence requires a stable format_option_id. Creative-agent projections MUST strip this authority-bearing field."
@@ -27,21 +27,19 @@
       "description": "When true, every technical creative-acceptance constraint for this declaration layer is expressed and omitted technical fields mean no constraint. When false or absent, omitted technical fields are undeclared and MUST NOT be inferred. The effective contract is complete only when every applicable declaration layer asserts true."
     },
     "display_name": { "type": "string", "minLength": 1 },
-    "sample_render_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "sample_render_url": { "$ref": "/schemas/core/https-url.json" },
     "applies_to_channels": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },
       "minItems": 1,
       "uniqueItems": true
     },
-    "seller_preference": { "type": "string", "enum": ["preferred", "accepted", "discouraged"] },
+    "seller_preference": { "$ref": "/schemas/enums/format-seller-preference.json" },
     "locale_policy": { "$ref": "/schemas/core/creative-locale-policy.json" },
     "canonical_formats_only": { "type": "boolean", "default": false },
     "experimental": { "type": "boolean", "default": false },
     "format_kind": {
-      "$comment": "Keep this enum inline for SDK code generation; tracker-execution-package-integration.test.cjs checks exact parity with canonical-format-kind.json.",
-      "type": "string",
-      "enum": ["image", "html5", "display_tag", "image_carousel", "video_hosted", "video_vast", "audio_hosted", "audio_vast", "audio_daast", "sponsored_placement", "native_in_feed", "responsive_creative", "agent_placement", "seller_rendered_stateful_display", "coordinated_placements", "custom"]
+      "$ref": "/schemas/core/canonical-format-kind.json"
     },
     "params": { "type": "object", "additionalProperties": true },
     "format_shape": { "type": "string", "minLength": 1 },

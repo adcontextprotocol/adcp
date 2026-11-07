@@ -15,13 +15,7 @@
       "type": "object",
       "properties": {
         "claim_type": {
-          "type": "string",
-          "enum": [
-            "subsidiary",
-            "parent",
-            "property",
-            "trademark"
-          ],
+          "$ref": "/schemas/enums/brand-claim-type.json",
           "description": "Echoes the request's claim_type for caller-side routing."
         },
         "verification_status": {
@@ -34,8 +28,7 @@
           "additionalProperties": true
         },
         "context_note": {
-          "type": "string",
-          "maxLength": 500,
+          "$ref": "/schemas/core/brand-claim-context-note.json",
           "description": "Public — free-text context the brand chooses to surface. For disputed/transferring, typically carries the rationale or transition details."
         },
         "context": {
@@ -138,13 +131,7 @@
       "description": "Canonical task-body success payload signed inside signed_response.payload.response. Excludes protocol/version envelope fields and signed_response itself.",
       "properties": {
         "claim_type": {
-          "type": "string",
-          "enum": [
-            "subsidiary",
-            "parent",
-            "property",
-            "trademark"
-          ]
+          "$ref": "/schemas/enums/brand-claim-type.json"
         },
         "verification_status": {
           "$ref": "/schemas/brand/verification-status.json"
@@ -154,8 +141,7 @@
           "additionalProperties": true
         },
         "context_note": {
-          "type": "string",
-          "maxLength": 500
+          "$ref": "/schemas/core/brand-claim-context-note.json"
         },
         "context": {
           "$ref": "/schemas/core/context.json"

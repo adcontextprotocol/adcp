@@ -19,17 +19,11 @@
             "description": "Matches when the purchase selects it."
           },
           "kind": {
-            "type": "string",
-            "enum": [
-              "fee",
-              "discount"
-            ],
+            "$ref": "#/definitions/adjustment_kind",
             "description": "fee adds to the running total, discount subtracts."
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64
+            "$ref": "/schemas/core/price-adjustment-name.json"
           },
           "rate": {
             "type": "number",
@@ -103,17 +97,11 @@
             ]
           },
           "kind": {
-            "type": "string",
-            "enum": [
-              "fee",
-              "discount"
-            ],
+            "$ref": "#/definitions/adjustment_kind",
             "description": "fee adds to the running total, discount subtracts."
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64
+            "$ref": "/schemas/core/price-adjustment-name.json"
           },
           "rate": {
             "type": "number",
@@ -167,17 +155,11 @@
             "const": "always"
           },
           "kind": {
-            "type": "string",
-            "enum": [
-              "fee",
-              "discount"
-            ],
+            "$ref": "#/definitions/adjustment_kind",
             "description": "fee adds to the running total, discount subtracts."
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64
+            "$ref": "/schemas/core/price-adjustment-name.json"
           },
           "rate": {
             "type": "number",
@@ -234,5 +216,16 @@
       "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST carrying resolved_fixed_price and resolved_price_breakdown."
     }
   },
-  "x-status": "experimental"
+  "x-status": "experimental",
+  "definitions": {
+    "adjustment_kind": {
+      "title": "Price Adjustment Kind",
+      "description": "Whether a price adjustment adds to the running total (fee) or subtracts from it (discount).",
+      "type": "string",
+      "enum": [
+        "fee",
+        "discount"
+      ]
+    }
+  }
 }

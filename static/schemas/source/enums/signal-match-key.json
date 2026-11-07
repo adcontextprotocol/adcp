@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-match-key.json",
+  "title": "Signal Match Key",
+  "description": "Key that an onboarder matches records on, such as email or mobile_id.",
+  "type": "string",
+  "enum": [
+    "name",
+    "address",
+    "email",
+    "postal",
+    "lat_long",
+    "mobile_id",
+    "cookie_id",
+    "ip",
+    "customer_id",
+    "phone"
+  ]
+}

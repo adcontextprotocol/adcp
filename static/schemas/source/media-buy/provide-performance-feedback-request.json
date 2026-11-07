@@ -16,11 +16,8 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for this logical assertion. MUST be unique per receiving agent to prevent cross-agent correlation; use a fresh UUID v4 for each new assertion. Retries use the same key and payload.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for this logical assertion. MUST be unique per receiving agent to prevent cross-agent correlation; use a fresh UUID v4 for each new assertion. Retries use the same key and payload."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

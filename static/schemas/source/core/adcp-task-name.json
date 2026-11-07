@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-task-name.json",
+  "title": "AdCP Task Name",
+  "description": "Canonical snake_case AdCP task name, such as create_media_buy.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*$"
+}

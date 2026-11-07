@@ -15,9 +15,8 @@
       "description": "Fixed cost regardless of delivery volume"
     },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code",
-      "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
     "fixed_price": {
@@ -45,10 +44,8 @@
           "description": "Discriminator identifying this as DOOH parameters"
         },
         "sov_percentage": {
-          "type": "number",
-          "description": "Guaranteed share of voice on a 0-100 percentage scale. To compare this contracted value with delivery dooh_metrics.sov_achieved, divide sov_percentage by 100. Share is time-weighted: the sum of the reserved segment durations divided by the full loop duration. On equal-duration loops this equals the slot-count ratio.",
-          "minimum": 0,
-          "maximum": 100
+          "$ref": "/schemas/core/percentage.json",
+          "description": "Guaranteed share of voice on a 0-100 percentage scale. To compare this contracted value with delivery dooh_metrics.sov_achieved, divide sov_percentage by 100. Share is time-weighted: the sum of the reserved segment durations divided by the full loop duration. On equal-duration loops this equals the slot-count ratio."
         },
         "slot_span": {
           "type": "integer",

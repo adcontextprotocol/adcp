@@ -15,9 +15,7 @@
       "$ref": "/schemas/enums/pending-action-kind.json"
     },
     "url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Where a human completes the action. Required when waiting_on is buyer. MAY be present when waiting_on is seller, for example to show review status."
     },
     "message": {

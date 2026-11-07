@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/catalog-generation.json",
+  "title": "Catalog Generation",
+  "description": "Opaque identifier of one generation of a catalog.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "x-entity": "catalog_generation"
+}

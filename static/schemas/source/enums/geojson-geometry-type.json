@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/geojson-geometry-type.json",
+  "title": "GeoJSON Geometry Type",
+  "description": "GeoJSON geometry type of an area.",
+  "type": "string",
+  "enum": [
+    "Polygon",
+    "MultiPolygon"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-resolution-message.json",
+  "title": "Macro Resolution Message",
+  "description": "Diagnostic text for one macro resolution preflight result.",
+  "type": "string",
+  "minLength": 1
+}

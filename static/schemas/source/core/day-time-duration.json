@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/day-time-duration.json",
+  "title": "Day-Time Duration",
+  "description": "ISO 8601 duration that uses only days, hours, minutes, and seconds, such as P2D or PT36H. It applies to a string that the enclosing schema declares.",
+  "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+}

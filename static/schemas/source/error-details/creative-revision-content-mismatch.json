@@ -6,9 +6,7 @@
   "type": "object",
   "properties": {
     "creative_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "creative"
+      "$ref": "/schemas/core/creative-id.json"
     },
     "revision_id": {
       "$ref": "/schemas/core/creative-revision-id.json"

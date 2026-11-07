@@ -8,12 +8,7 @@
     "values": {
       "type": "array",
       "items": {
-        "type": "string",
-        "enum": [
-          "female",
-          "male",
-          "non_binary"
-        ],
+        "$ref": "/schemas/enums/gender.json",
         "enumDescriptions": {
           "female": "Female gender category; distinct from sex recorded at birth.",
           "male": "Male gender category; distinct from sex recorded at birth.",

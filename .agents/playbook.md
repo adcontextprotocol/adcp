@@ -109,6 +109,7 @@ All documentation and examples MUST match JSON schemas in `static/schemas/source
   helper stubs, top-level `return`, TypeScript-only syntax in a `typescript`
   fence, or a flow the hosted test agent cannot serve). Say so in the prose
   right above the fence.
+- Before you declare a pattern, an enum, or bounds inline, look in `core/` and `enums/` and `$ref` the named schema, or put a constraint that repeats inside one document in its `definitions`. A value that means something else gets a named schema of its own. `npm run test:schema-named-constraints` fails on an inline copy or a repeat, and nothing opts a site out.
 - ID-bearing fields that can cross storyboard step boundaries must carry an `x-entity` annotation — see `docs/contributing/x-entity-annotation.md`. For bulk sweeps use `node scripts/add-x-entity-annotations.mjs` with `scripts/x-entity-field-map.json`.
 
 ### Expert Review Scenarios

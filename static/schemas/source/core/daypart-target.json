@@ -26,15 +26,13 @@
       "maximum": 24
     },
     "start_time": {
-      "type": "string",
-      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+      "$ref": "#/definitions/clock_time",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "description": "Experimental in AdCP 3.3. Start of the window (inclusive) as a 24-hour HH:MM civil clock time on the entry's timezone clock, such as '19:30'. Use for windows that do not fall on whole hours (linear TV programme junctions, quarter-hour schedules). Pair with end_time; mutually exclusive with start_hour and end_hour. A window whose end_time is earlier than its start_time crosses midnight and belongs to the day it starts on. A product accepts only the finest time granularity it declares in overlay_support.daypart_targets.time_granularity; sellers MUST reject, never round, a clock time the product does not honor."
     },
     "end_time": {
-      "type": "string",
-      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+      "$ref": "#/definitions/clock_time",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "description": "Experimental in AdCP 3.3. End of the window (exclusive) as a 24-hour HH:MM civil clock time, such as '23:00'. Pair with start_time; mutually exclusive with start_hour and end_hour. end_time earlier than start_time means the window crosses midnight and ends at end_time on the following civil day (for example, 22:00 to 02:00 runs from 22:00 on a listed day until 02:00 the next morning); '00:00' therefore ends the window at the midnight closing the start day. end_time MUST NOT equal start_time: a zero-length or full-day window is invalid, and a full day uses start_hour 0 with end_hour 24. Sellers MUST reject an equal pair with INVALID_REQUEST."
@@ -79,5 +77,13 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "definitions": {
+    "clock_time": {
+      "title": "Clock Time",
+      "description": "Civil clock time in 24-hour HH:MM form, from 00:00 to 23:59.",
+      "type": "string",
+      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    }
+  }
 }

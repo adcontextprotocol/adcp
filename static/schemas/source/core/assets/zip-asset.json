@@ -35,8 +35,7 @@
       "description": "Fallback image URL for environments that cannot render the bundled creative (e.g., non-HTML5 endpoints, ad blockers). Recommended for HTML5 banners."
     },
     "digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Optional SHA-256 content digest of the zip archive (sha256:<hex>) for integrity verification. Lets receivers detect tampered or stale archives."
     },
     "accessibility": {

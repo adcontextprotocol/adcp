@@ -10,16 +10,14 @@
   "type": "object",
   "properties": {
     "country": {
-      "type": "string",
-      "pattern": "^[A-Z]{2}$",
+      "$ref": "/schemas/core/country-code.json",
       "description": "ISO 3166-1 alpha-2 country code containing the place."
     },
     "system": {
       "$ref": "/schemas/core/geo-place-system.json"
     },
     "system_version": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/geo-place-system-version.json",
       "description": "Optional exact catalog version from the seller's declared supported_versions. When omitted, the seller applies catalog.current_version and MUST echo that version on persisted package state."
     },
     "place_type": {
@@ -60,8 +58,7 @@
         "properties": {
           "values": {
             "items": {
-              "type": "string",
-              "pattern": "^[0-9]+$"
+              "$ref": "/schemas/core/numeric-place-id.json"
             }
           }
         }

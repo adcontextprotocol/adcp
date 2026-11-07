@@ -36,9 +36,7 @@
           "description": "The issuer is an AdCP agent identified by its canonical HTTPS endpoint."
         },
         "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+          "$ref": "/schemas/core/canonical-https-url.json",
           "description": "Canonical HTTPS endpoint of the issuing agent. Evaluators compare it using AdCP URL canonicalization rules."
         },
         "ext": {
@@ -58,9 +56,7 @@
           "description": "The issuer is identified by a canonical HTTPS origin because no AdCP brand or agent identity applies."
         },
         "origin": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://[^/?#@]+$",
+          "$ref": "/schemas/core/https-origin.json",
           "description": "Canonical HTTPS origin with no path, query, fragment, or userinfo. This identifies the issuer; it does not authorize a fetch."
         },
         "ext": {

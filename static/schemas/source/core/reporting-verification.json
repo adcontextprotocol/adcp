@@ -28,7 +28,7 @@
             "properties": {
               "object_ref": { "$ref": "/schemas/core/reporting-file-object-ref.json" },
               "algorithm": { "type": "string", "const": "sha256" },
-              "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+              "value": { "$ref": "/schemas/core/sha256-hex-digest.json" }
             },
             "required": ["object_ref", "algorithm", "value"],
             "additionalProperties": false

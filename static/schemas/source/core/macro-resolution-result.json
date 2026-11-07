@@ -17,11 +17,11 @@
       "pattern": "^/",
       "description": "JSON Pointer to the asset carrying the declaration."
     },
-    "token": { "type": "string", "minLength": 1 },
+    "token": { "$ref": "/schemas/core/macro-token.json" },
     "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
     "dialect_namespace": { "type": "string", "format": "uri" },
-    "dialect_revision": { "type": "string", "minLength": 1 },
-    "dialect_semantic": { "type": "string", "minLength": 1 },
+    "dialect_revision": { "$ref": "/schemas/core/macro-dialect-revision.json" },
+    "dialect_semantic": { "$ref": "/schemas/core/macro-dialect-semantic.json" },
     "mapping_status": { "$ref": "/schemas/enums/macro-mapping-status.json" },
     "universal_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
     "operation": { "$ref": "/schemas/enums/macro-processing-operation.json" },
@@ -29,8 +29,7 @@
     "requested_encoding": { "$ref": "/schemas/core/macro-encoding.json" },
     "required": { "type": "boolean" },
     "unavailable_behavior": {
-      "type": "string",
-      "enum": ["preserve", "omit_parameter", "dialect_sentinel", "reject"]
+      "$ref": "/schemas/enums/macro-unavailable-behavior.json"
     },
     "status": {
       "type": "string",
@@ -42,7 +41,7 @@
       "items": { "$ref": "/schemas/core/macro-encoding.json" },
       "description": "Exact advertised profiles considered for this match, when relevant."
     },
-    "message": { "type": "string", "minLength": 1 }
+    "message": { "$ref": "/schemas/core/macro-resolution-message.json" }
   },
   "required": [
     "declaration_id",

@@ -7,19 +7,19 @@
   "properties": {
     "US": {
       "type": "array",
-      "items": { "enum": ["zip", "zip_plus_four"] },
+      "items": { "$ref": "/schemas/enums/us-postal-system.json" },
       "minItems": 1,
       "uniqueItems": true
     },
     "GB": {
       "type": "array",
-      "items": { "enum": ["outward", "full"] },
+      "items": { "$ref": "/schemas/enums/gb-postal-system.json" },
       "minItems": 1,
       "uniqueItems": true
     },
     "CA": {
       "type": "array",
-      "items": { "enum": ["fsa", "full"] },
+      "items": { "$ref": "/schemas/enums/ca-postal-system.json" },
       "minItems": 1,
       "uniqueItems": true
     },
@@ -85,13 +85,13 @@
   },
   "propertyNames": {
     "anyOf": [
-      { "pattern": "^[A-Z]{2}$" },
+      { "$ref": "/schemas/core/country-code.json" },
       { "$ref": "/schemas/enums/legacy-postal-system.json" }
     ]
   },
   "additionalProperties": {
     "type": "array",
-    "items": { "enum": ["postal_code", "custom"] },
+    "items": { "$ref": "/schemas/enums/other-postal-system.json" },
     "minItems": 1,
     "uniqueItems": true
   },

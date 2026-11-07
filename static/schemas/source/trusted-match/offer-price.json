@@ -12,9 +12,8 @@
       "minimum": 0
     },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code",
-      "pattern": "^[A-Z]{3}$",
       "default": "USD"
     },
     "model": {

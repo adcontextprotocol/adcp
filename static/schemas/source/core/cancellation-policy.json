@@ -19,9 +19,7 @@
           "description": "Fee calculation method. 'percent_remaining': percentage of remaining uncommitted spend. 'full_commitment': buyer owes the full committed budget regardless of delivery. 'fixed_fee': flat monetary amount. 'none': no financial fee (cancellation with notice is free)."
         },
         "rate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
+          "$ref": "/schemas/core/fraction.json",
           "description": "Fee rate as a decimal proportion of remaining committed spend. Required when type is 'percent_remaining' (e.g., 0.5 means 50% of remaining spend)."
         },
         "amount": {

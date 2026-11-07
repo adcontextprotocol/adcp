@@ -16,6 +16,33 @@
       "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["account", "fixed"]
+    },
+    "governance_enforcement_mode": {
+      "title": "Governance Enforcement Mode",
+      "description": "How a seller enforces governance on a task: signed_context or online_execution_check.",
+      "type": "string",
+      "enum": [
+        "signed_context",
+        "online_execution_check"
+      ]
+    },
+    "attestation_requirement": {
+      "title": "Attestation Requirement",
+      "description": "Whether a check needs a verified attestation: required or optional.",
+      "type": "string",
+      "enum": [
+        "optional",
+        "required"
+      ]
+    },
+    "hashed_identifier_type": {
+      "title": "Hashed Identifier Type",
+      "description": "Hashed identifier that a seller accepts: hashed_email or hashed_phone.",
+      "type": "string",
+      "enum": [
+        "hashed_email",
+        "hashed_phone"
+      ]
     }
   },
   "allOf": [
@@ -838,8 +865,7 @@
           "type": "array",
           "description": "Release-precision (VERSION.RELEASE) AdCP versions this seller speaks. Authoritative for buyer-side release pinning — buyers SHOULD declare `adcp_version` (release-precision string) on each request. Sellers downshift to the highest supported release ≤ the buyer's pin within the same major; cross-major mismatch returns VERSION_UNSUPPORTED. Pre-release tags (e.g. `\"3.1-beta\"`) hang off release.",
           "items": {
-            "type": "string",
-            "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+            "$ref": "/schemas/core/adcp-release-version.json",
             "x-max-length-4.0": 32
           },
           "minItems": 1,
@@ -847,9 +873,8 @@
           "x-max-items-4.0": 32
         },
         "build_version": {
-          "type": "string",
+          "$ref": "/schemas/core/adcp-build-version.json",
           "description": "Optional advisory metadata: full semver build identifier of the seller's deployment — MAJOR.MINOR.PATCH plus optional pre-release and build-metadata segments per semver §9–§10. Patches are not part of the wire contract — semver patch by definition introduces no contract change — but surfacing the build helps buyers triage incidents and bug reports against a specific seller deployment lineage. Buyers MUST NOT use this field for negotiation; use `supported_versions` (release-precision) instead.",
-          "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$",
           "examples": [
             "3.0.1",
             "3.1.2",
@@ -1013,16 +1038,12 @@
                 "type": "object",
                 "properties": {
                   "pattern": {
-                    "type": "string",
-                    "enum": ["file_transfer", "warehouse_materialization", "dataset_share"]
+                    "$ref": "/schemas/enums/reporting-delivery-pattern.json"
                   },
                   "transports": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64,
-                      "pattern": "^[a-z][a-z0-9_.-]*$"
+                      "$ref": "/schemas/core/reporting-transport.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true,
@@ -1032,8 +1053,7 @@
                   "formats": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "enum": ["jsonl", "csv", "parquet", "avro", "orc"]
+                      "$ref": "/schemas/enums/reporting-file-format.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true,
@@ -1042,10 +1062,7 @@
                   "access_modes": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64,
-                      "pattern": "^[a-z][a-z0-9_.-]*$"
+                      "$ref": "/schemas/core/reporting-access-mode.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true,
@@ -1126,10 +1143,8 @@
           "description": "Freshness metadata and optional invalidation webhooks for this `get_adcp_capabilities` document. Buyers and registries MAY cache capabilities for up to `cache_ttl_seconds` when present, SHOULD compare `capabilities_version` across refreshes when present, and SHOULD re-run `get_adcp_capabilities` after receiving a `capabilities.changed` webhook. This block describes the agent-wide capability document, not per-caller authorization or account-scoped settings. A material capability change is any externally advertised contract change that can affect routing, validation, conformance coverage, task availability, auth/account handling, sandbox support, billing support, reporting delivery methods, creative-library support, targeting support, protocol versions, or other buyer-visible feature gates. Non-contract operational changes that do not alter the response body do not require a revision or webhook fire.",
           "properties": {
             "capabilities_version": {
-              "type": "string",
-              "description": "Opaque revision token for the full capability document. Required when `notifications.supported: true` because `capabilities.changed` webhooks use this as the read-after-notify fence. Sellers SHOULD change this value whenever any material field in `get_adcp_capabilities` changes. Buyers MUST treat it as opaque and compare it only for equality.",
-              "minLength": 1,
-              "maxLength": 255
+              "$ref": "/schemas/core/capabilities-version.json",
+              "description": "Opaque revision token for the full capability document. Required when `notifications.supported: true` because `capabilities.changed` webhooks use this as the read-after-notify fence. Sellers SHOULD change this value whenever any material field in `get_adcp_capabilities` changes. Buyers MUST treat it as opaque and compare it only for equality."
             },
             "last_modified": {
               "type": "string",
@@ -1163,17 +1178,14 @@
                       "type": "array",
                       "description": "Agent-level notification types this seller can emit for capability changes. Currently only `capabilities.changed` is defined.",
                       "items": {
-                        "type": "string",
-                        "enum": ["capabilities.changed"]
+                        "$ref": "/schemas/enums/capability-change-event-type.json"
                       },
                       "minItems": 1,
                       "uniqueItems": true
                     },
                     "coalescence_window_seconds": {
-                      "type": "integer",
-                      "description": "Maximum coalescence window the seller applies before firing a `capabilities.changed` webhook after a burst of related capability edits. The default recommendation is at most 300 seconds; latency-sensitive deactivations SHOULD fire sooner.",
-                      "minimum": 0,
-                      "maximum": 86400
+                      "$ref": "/schemas/core/coalescence-window-seconds.json",
+                      "description": "Maximum coalescence window the seller applies before firing a `capabilities.changed` webhook after a burst of related capability edits. The default recommendation is at most 300 seconds; latency-sensitive deactivations SHOULD fire sooner."
                     }
                   },
                   "required": ["supported", "registration_task", "event_types"],
@@ -1243,7 +1255,7 @@
                       "task": { "type": "string", "const": "create_media_buy" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1257,7 +1269,7 @@
                       "task": { "type": "string", "const": "update_media_buy" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1271,7 +1283,7 @@
                       "task": { "type": "string", "const": "buy_products" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1285,7 +1297,7 @@
                       "task": { "type": "string", "const": "accept_proposal" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1299,7 +1311,7 @@
                       "task": { "type": "string", "const": "control_media_buy" },
                       "modes": {
                         "type": "array",
-                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "items": { "$ref": "#/definitions/governance_enforcement_mode" },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
                         "uniqueItems": true
@@ -1604,10 +1616,7 @@
                   "type": "array",
                   "description": "Resource families for which this seller can produce change records. Account-specific connected-source status and freshness are returned by list_account_changes.",
                   "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100,
-                    "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+                    "$ref": "/schemas/core/account-change-resource-type.json"
                   },
                   "minItems": 1,
                   "uniqueItems": true,
@@ -1726,14 +1735,11 @@
           "description": "Registry-backed seller acceptance-policy discovery. Presence means the seller publishes a versioned catalog; it does not claim that the seller evaluates acceptance_context during discovery. Discovery is advisory, exact task responses remain authoritative, and absent capability means support is unknown rather than unrestricted acceptance.",
           "properties": {
             "catalog_url": {
-              "type": "string",
-              "format": "uri",
-              "pattern": "^https://",
+              "$ref": "/schemas/core/https-url.json",
               "description": "HTTPS document that validates against acceptance-policy-catalog.json."
             },
             "catalog_digest": {
-              "type": "string",
-              "pattern": "^sha256:[a-f0-9]{64}$",
+              "$ref": "/schemas/core/sha256-digest.json",
               "description": "SHA-256 digest of the exact catalog representation fetched from catalog_url."
             },
             "default_profile_ids": {
@@ -1761,8 +1767,7 @@
           "type": "array",
           "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
           "items": {
-            "type": "string",
-            "enum": ["brief", "wholesale", "refine"]
+            "$ref": "/schemas/enums/buying-mode.json"
           },
           "minItems": 1,
           "uniqueItems": true,
@@ -1811,9 +1816,7 @@
               "description": "Experimental (media_buy.delegated_composition). What a successful finalize commits by default, for products and drafts that do not declare hold_policy (experimental, media_buy.hold_policy); it is not one setting for the whole agent. A product or draft hold_policy overrides it: a terms_only agent can hold specific products, and an inventory_hold agent can declare non-holdable ones. The rules apply per finalize entry, according to that entry's effective policy. inventory_hold (the default when absent): the seller reserves inventory for the committed proposal and reports its hold expiry; hold_unavailable and hold-driven batch_aborted are possible outcomes. terms_only: the seller commits commercial terms without placing an inventory hold — reservation is owned by the requesting side (delegated composition, where the requester owns the sellable catalog). For an entry whose effective policy is terms-only, the seller MUST NOT return hold_unavailable, and returns batch_aborted only when a sibling failed for a non-hold reason or, in a batch that also contains holdable entries, a holdable sibling returned hold_unavailable. Buyers integrating a terms_only seller perform their own availability control at acceptance. Because committed meant inventory reserved before this field existed, a seller MUST NOT return a committed proposal whose effective policy is terms-only to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
             },
             "max_alternatives": {
-              "type": "integer",
-              "minimum": 2,
-              "maximum": 10,
+              "$ref": "/schemas/core/proposal-alternative-count.json",
               "description": "Optional maximum alternatives.count the seller accepts, up to the protocol maximum of 10. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
             },
             "hold_extension": {
@@ -2154,8 +2157,7 @@
                   "type": "array",
                   "description": "MRAID versions supported for rich media mobile creatives",
                   "items": {
-                    "type": "string",
-                    "pattern": "^[0-9]+\\.[0-9]+$",
+                    "$ref": "/schemas/enums/mraid-version.json",
                     "x-max-length-4.0": 32
                   },
                   "x-max-items-4.0": 32
@@ -2397,8 +2399,7 @@
               "type": "array",
               "description": "Buyer policy modes the seller evaluates. A seller MUST NOT silently ignore a mode it does not list.",
               "items": {
-                "type": "string",
-                "enum": ["required", "preferred"]
+                "$ref": "/schemas/enums/audience-evidence-requirement-mode.json"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -2407,8 +2408,7 @@
               "type": "array",
               "description": "Evidence-presence semantics the seller supports.",
               "items": {
-                "type": "string",
-                "enum": ["required", "when_available"]
+                "$ref": "/schemas/enums/audience-evidence-presence.json"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -2426,8 +2426,7 @@
           "description": "Seller evaluation policy for portable rights-grant attestations carried on creative rights constraints. Presence requires adcp.attestations and the rights-grant claim URI in accepted_claim_types. The seller remains verifier-of-record and never treats verification_url or a buyer-authored evaluation as authorization.",
           "properties": {
             "requirement": {
-              "type": "string",
-              "enum": ["optional", "required"],
+              "$ref": "#/definitions/attestation_requirement",
               "description": "required means every applicable rights constraint needs at least one current verified attestation evaluation before the creative is eligible to serve. optional permits independent legacy contractual policy, but unattested constraints remain machine-unverified and verification_url is never a downgrade path."
             }
           },
@@ -2442,8 +2441,7 @@
               "type": "array",
               "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
               "items": {
-                "type": "string",
-                "enum": ["hashed_email", "hashed_phone"]
+                "$ref": "#/definitions/hashed_identifier_type"
               },
               "minItems": 1,
               "x-max-items-4.0": 16
@@ -2499,21 +2497,7 @@
           "type": "array",
           "description": "Optimization metrics this seller can support on at least one of their products. Seller-level rollup of product-level metric_optimization.supported_metrics declarations (core/product.json). Buyers SHOULD filter their requested optimization goals against this list before submitting briefs. Sellers MUST keep this in sync with their product catalog — if no products support a metric, it must not appear here. Omitting this field means the seller declares no specific guarantees about which metrics they support; buyers should fall back to per-product inspection of metric_optimization.supported_metrics.",
           "items": {
-            "type": "string",
-            "enum": [
-              "clicks",
-              "views",
-              "completed_views",
-              "viewed_seconds",
-              "viewable_rate",
-              "attention_seconds",
-              "attention_score",
-              "engagements",
-              "follows",
-              "saves",
-              "profile_visits",
-              "reach"
-            ]
+            "$ref": "/schemas/enums/optimization-metric.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -2537,8 +2521,7 @@
               "type": "array",
               "description": "Target kinds this seller can support for vendor_metric optimization goals on at least one product. Values match optimization_goals[].target.kind for kind: vendor_metric. A target-less vendor_metric goal maximizes the metric within budget and does not require a target-kind declaration.",
               "items": {
-                "type": "string",
-                "enum": ["cost_per", "threshold_rate"]
+                "$ref": "/schemas/enums/metric-optimization-target-kind.json"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -2576,8 +2559,7 @@
               "type": "array",
               "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. cost_per also declares that the seller binds criteria.outcome_target.cost_per to an event goal; buyers do not rely on event-goal cost targets without it. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
               "items": {
-                "type": "string",
-                "enum": ["cost_per", "per_ad_spend", "maximize_value"]
+                "$ref": "/schemas/enums/conversion-optimization-target.json"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -2595,8 +2577,7 @@
               "type": "array",
               "description": "Hashed PII types accepted for user matching. Buyers must hash before sending (SHA-256, normalized).",
               "items": {
-                "type": "string",
-                "enum": ["hashed_email", "hashed_phone"]
+                "$ref": "#/definitions/hashed_identifier_type"
               },
               "minItems": 1,
               "x-max-items-4.0": 16
@@ -2686,8 +2667,7 @@
               "type": "array",
               "description": "Scopes where the seller enforces hard daily caps. media_buy bounds aggregate spend across all packages without allocating it. package bounds one package and remains subordinate to any aggregate cap.",
               "items": {
-                "type": "string",
-                "enum": ["media_buy", "package"]
+                "$ref": "/schemas/enums/budget-cap-scope.json"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -2707,10 +2687,8 @@
               "description": "Source of the default cap-day boundary. account uses the selected Account.timezone and therefore supports different boundaries for different accounts. fixed uses fixed_timezone for every media buy regardless of account timezone."
             },
             "fixed_timezone": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Feature-specific default cap-day timezone used when timezone_basis is fixed. Use UTC or an IANA timezone identifier.",
-              "x-max-length-4.0": 64
+              "$ref": "/schemas/core/iana-timezone.json",
+              "description": "Feature-specific default cap-day timezone used when timezone_basis is fixed. Use UTC or an IANA timezone identifier."
             },
             "buyer_timezone_override": {
               "type": "boolean",
@@ -2767,8 +2745,7 @@
               "type": "array",
               "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.\n\n**Non-exhaustive routing hint.** Unlike the sibling `primary_channels` and `primary_countries` allowlists, this list is NOT exhaustive and a buyer MUST NOT treat a publisher's absence from it as evidence that the seller is unauthorized for that publisher, whether or not it is marked complete. Each publisher's own adagents.json remains the authority; resolve it for the publisher named on a product rather than denying anything this list omits. When the list is truncated, the seller MUST set `publisher_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each publisher's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent. A seller that mirrors \"every publisher whose adagents.json names me\" is reflecting third-party-controlled content into a document whose size gates signing-key discovery under the deprecated RFC 9421 profile. Sellers MUST NOT mirror this list unbounded: select the publishers you actually represent, keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
               "items": {
-                "type": "string",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                "$ref": "/schemas/core/domain-name.json",
                 "x-max-length-4.0": 253
               },
               "minItems": 1,
@@ -2805,15 +2782,13 @@
               "type": "array",
               "description": "Complete list of ISO 3166-1 alpha-2 countries for which this sales agent accepts and can meaningfully answer product-discovery briefs. When present, this is an exhaustive brief-routing allowlist: buyers MAY skip the agent when a brief's requested countries do not intersect it. Omission means country scope is unknown and MUST NOT be interpreted as global coverage. This is a routing pre-filter, not a promise of current product availability and not an executable geo-targeting declaration; media_buy.execution.targeting geo capabilities and each product's overlay_support remain authoritative for targeting execution.",
               "items": {
-                "type": "string",
-                "pattern": "^[A-Z]{2}$"
+                "$ref": "/schemas/core/country-code.json"
               },
               "x-max-items-4.0": 256
             },
             "description": {
-              "type": "string",
-              "description": "Markdown-formatted description of the inventory portfolio",
-              "maxLength": 5000
+              "$ref": "/schemas/core/portfolio-description.json",
+              "description": "Markdown-formatted description of the inventory portfolio"
             },
             "advertising_policies": {
               "type": "string",
@@ -2866,8 +2841,7 @@
           "type": "array",
           "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.\n\n**Non-exhaustive routing hint.** This list is NOT exhaustive and a buyer MUST NOT treat a provider's absence from it as evidence that the agent may not resell that provider, whether or not it is marked complete. Each provider's own adagents.json remains the authority. When the list is truncated, the agent MUST set `data_provider_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each data provider's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent — the same trust direction as `media_buy.portfolio.publisher_domains`, and the same inflation vector into a document whose size gates signing-key discovery under the deprecated RFC 9421 profile. Agents MUST NOT mirror this list unbounded: keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+            "$ref": "/schemas/core/domain-name.json",
             "x-max-length-4.0": 253
           },
           "minItems": 1,
@@ -2907,8 +2881,7 @@
           "type": "array",
           "description": "Discovery modes this signals agent supports on get_signals. 'brief' (default — every signals agent supports this): semantic discovery driven by signal_spec or signal_refs, with deprecated signal_ids accepted for older clients. 'wholesale': raw wholesale signals feed enumeration — caller omits signal_spec, signal_refs, and signal_ids and the agent returns its full priced signals feed, paginated, scoped by filters/account/destinations/countries. Agents that do not declare 'wholesale' MAY return INVALID_REQUEST for wholesale calls. Absent declaration is treated as ['brief'].",
           "items": {
-            "type": "string",
-            "enum": ["brief", "wholesale"]
+            "$ref": "/schemas/enums/signal-discovery-mode.json"
           },
           "minItems": 1,
           "uniqueItems": true,
@@ -2949,8 +2922,7 @@
               "type": "object",
               "properties": {
                 "requirement": {
-                  "type": "string",
-                  "enum": ["optional", "required"],
+                  "$ref": "#/definitions/attestation_requirement",
               "description": "Whether an activate_signal activation check may omit runtime_attestations. When required, missing evidence fails an activation check. Deactivation and privacy-removal checks never require signal-quality evidence and remain available without it."
                 },
                 "claim_types": {
@@ -2995,8 +2967,7 @@
                 "x-max-length-4.0": 128
               },
               "type": {
-                "type": "string",
-                "enum": ["binary", "quantitative", "categorical"],
+                "$ref": "/schemas/enums/property-feature-type.json",
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
@@ -3050,8 +3021,7 @@
                 "x-max-length-4.0": 128
               },
               "type": {
-                "type": "string",
-                "enum": ["binary", "quantitative", "categorical"],
+                "$ref": "/schemas/enums/property-feature-type.json",
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
@@ -3111,8 +3081,7 @@
                 "type": "object",
                 "properties": {
                   "type": {
-                    "type": "string",
-                    "enum": ["mcp", "a2a"],
+                    "$ref": "/schemas/enums/agent-protocol.json",
                     "description": "Protocol transport type"
                   },
                   "url": {
@@ -3128,8 +3097,7 @@
               "maxItems": 8
             },
             "preferred": {
-              "type": "string",
-              "enum": ["mcp", "a2a"],
+              "$ref": "/schemas/enums/agent-protocol.json",
               "description": "Preferred transport when host supports multiple"
             }
           },
@@ -3186,9 +3154,8 @@
           "maxItems": 32
         },
         "description": {
-          "type": "string",
-          "description": "Description of the agent's brand protocol capabilities",
-          "maxLength": 5000
+          "$ref": "/schemas/core/brand-capability-description.json",
+          "description": "Description of the agent's brand protocol capabilities"
         }
       },
       "additionalProperties": true
@@ -3360,14 +3327,7 @@
               "type": "array",
               "description": "Which variant_axis.dimension values this agent supports.",
               "items": {
-                "type": "string",
-                "enum": [
-                  "voice",
-                  "theme",
-                  "best_of_n",
-                  "transformer_config",
-                  "custom"
-                ]
+                "$ref": "/schemas/enums/transformer-variant-dimension.json"
               },
               "uniqueItems": true
             },
@@ -3390,8 +3350,7 @@
             "type": "object",
             "properties": {
               "capability_id": {
-                "type": "string",
-                "pattern": "^[a-zA-Z0-9_-]+$",
+                "$ref": "/schemas/core/creative-capability-id.json",
                 "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products.",
                 "x-max-length-4.0": 128
               },
@@ -3429,14 +3388,12 @@
                 "required": ["capability_id", "rendering_origin"],
                 "properties": {
                   "capability_id": {
-                    "type": "string",
-                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "$ref": "/schemas/core/creative-capability-id.json",
                     "description": "Agent-local creative.supported_formats[].capability_id accepted by preview_creative.",
                     "x-max-length-4.0": 128
                   },
                   "rendering_origin": {
-                    "type": "string",
-                    "enum": ["platform_native", "agent_approximation"],
+                    "$ref": "/schemas/enums/rendering-origin.json",
                     "description": "Informational implementation origin. platform_native means the route uses the serving platform's preview machinery; agent_approximation means the agent renders an approximation. Neither value grants authority without a publisher preview_provider delegation."
                   }
                 },
@@ -3653,8 +3610,7 @@
           "type": "array",
           "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. A transport-specific rename of an operation is not a valid entry (MCP tools and the AdCP A2A profile use the operation name verbatim, so those names coincide with it) — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Over MCP the verifier matches the tools/call params.name; over A2A it matches the skill of the sole DataPart of the message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents). The A2A profile uses the AdCP operation name verbatim as skill, so that is the same name space. A request that does not resolve to exactly one operation is rejected with request_body_malformed; see docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/adcp-task-name.json",
             "x-max-length-4.0": 64
           },
           "default": [],
@@ -3668,8 +3624,7 @@
           "type": "array",
           "description": "AdCP protocol operation names for shadow-mode verification. The verifier records missing signatures and well-formed signatures that fail verification or body binding, but MUST NOT establish verified-signer identity from a failed signature; processing continues only when an independent bearer, API-key, or mTLS authenticator succeeds. A partial or malformed Signature / Signature-Input pair always hard-rejects. Used as a bridge between supported_for and required_for. Precedence: required_for > warn_for > supported_for. An operation MUST NOT appear in both warn_for and required_for; see x-adcp-validation.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/adcp-task-name.json",
             "x-max-length-4.0": 64
           },
           "default": [],
@@ -3684,8 +3639,7 @@
           "type": "array",
           "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Under the 3.2 profile, a presented signature on a body-bearing request without content-digest coverage rejects even though an unsigned request may use configured fallback authentication. Typically a superset of required_for and warn_for.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/adcp-task-name.json",
             "x-max-length-4.0": 64
           },
           "x-max-items-4.0": 32
@@ -3822,8 +3776,7 @@
           "type": "array",
           "description": "Signature algorithms this agent uses on outbound webhooks. 3.0 profile permits 'ed25519' and 'ecdsa-p256-sha256' only; other values are reserved for future profile versions and MUST NOT be emitted under adcp/webhook-signing/v1.",
           "items": {
-            "type": "string",
-            "enum": ["ed25519", "ecdsa-p256-sha256"]
+            "$ref": "/schemas/enums/webhook-signing-algorithm.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -3864,9 +3817,7 @@
       "description": "Operator identity posture — trust-root pointer (`brand_json_url`) plus key-scoping and compromise-response controls the agent operates. `brand_json_url` is **load-bearing** for signature verification: when the agent declares any signing posture (`request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any `key_origins` subfield), `brand_json_url` MUST be present (storyboard-enforced in 3.x; schema-required in 4.0). Verifiers use it to bootstrap from the agent URL to the operator's brand.json (and from there to signing keys); see [security.mdx §Discovering an agent's signing keys](https://adcontextprotocol.org/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url). The remaining fields (`per_principal_key_isolation`, `key_origins`, `compromise_notification`) are advisory and receivers use them to reason about blast radius and revocation latency at onboarding. Empty-object semantics: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral and receivers MUST treat it as equivalent to omitting the block, **except** that an agent declaring a signing posture elsewhere in the response with an empty `identity` MUST be rejected by storyboard runners as missing `brand_json_url`.",
       "properties": {
         "brand_json_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Trust-root pointer for this agent's signing keys. See [security.mdx §Discovering an agent's signing keys via `brand_json_url`](https://adcontextprotocol.org/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url) for the verifier algorithm and `x-adcp-validation` for structured constraints. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals — verifiers MUST use this field for key discovery and MUST NOT fall back to `sponsored_intelligence.brand_url` as a trust-root pointer. This pointer belongs to the deprecated RFC 9421 discovery chain, which stays as written through 3.x and fetches capabilities under MAX_CAPABILITIES_BYTES. No new path reads key material or a key pointer from capabilities: the Web Bot Auth profile finds keys through the origin's key directory and never fetches capabilities for keys.",
           "x-adcp-validation": {
             "trust_root": true,
@@ -4154,8 +4105,7 @@
       "type": "array",
       "description": "Extension namespaces this agent supports. Buyers can expect meaningful data in ext.{namespace} fields on responses from this agent. Extension schemas are published in the AdCP extension registry.",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9_]*$",
+        "$ref": "/schemas/core/extension-namespace.json",
         "description": "Extension namespace (lowercase alphanumeric with underscores, e.g., 'iab_tcf', 'iab_gpp')",
         "x-max-length-4.0": 64
       },
@@ -4221,21 +4171,7 @@
           "type": "array",
           "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path. collection_card.updated, collection_card.removed and collection_catalog.bulk_change (experimental) require list_collections, so listing any of them requires media_buy.collection_catalog in experimental_features; buyers MUST NOT register them with a seller that does not list them here, and sellers reject undeclared types.",
           "items": {
-            "type": "string",
-            "enum": [
-              "product.created",
-              "product.updated",
-              "product.priced",
-              "product.removed",
-              "signal.created",
-              "signal.updated",
-              "signal.priced",
-              "signal.removed",
-              "wholesale_feed.bulk_change",
-              "collection_card.updated",
-              "collection_card.removed",
-              "collection_catalog.bulk_change"
-            ]
+            "$ref": "/schemas/enums/wholesale-feed-event-type.json"
           },
           "minItems": 1,
           "uniqueItems": true,

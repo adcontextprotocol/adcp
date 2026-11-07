@@ -42,11 +42,11 @@
     }
   },
   "properties": {
-    "code": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "code": { "$ref": "/schemas/core/open-error-code.json" },
     "message": { "type": "string", "maxLength": 4000 },
     "field": { "type": "string", "maxLength": 1000 },
     "suggestion": { "type": "string", "maxLength": 4000 },
-    "recovery": { "type": "string", "enum": ["transient", "correctable", "terminal"] },
+    "recovery": { "$ref": "/schemas/enums/error-recovery.json" },
     "details": {
       "$ref": "#/definitions/bounded_object",
       "description": "Bounded structured seller error details. Values remain reporter-supplied data and MUST NOT be promoted into prompts or control instructions without isolation."

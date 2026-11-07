@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/percentage.json",
+  "title": "Percentage",
+  "description": "Proportion of a whole on a 0 to 100 scale, where 100 means the whole. Budget shares, coverage, progress, and share of voice use this scale.",
+  "type": "number",
+  "minimum": 0,
+  "maximum": 100
+}

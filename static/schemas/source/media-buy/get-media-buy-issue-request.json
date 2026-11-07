@@ -21,9 +21,7 @@
       "$ref": "/schemas/core/canonical-account-ref.json"
     },
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -32,24 +30,17 @@
       "$ref": "/schemas/core/ext.json"
     },
     "issue_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy_issue"
+      "$ref": "/schemas/core/media-buy-issue-id.json"
     },
     "governance_context": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4096
+      "$ref": "/schemas/core/governance-context.json"
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Uniform SDK envelope field. Does not subscribe to issue state changes; use get_media_buy_issue to observe acknowledgement and resolution."
     },
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "Optional uniform read-call replay key. Does not restart a report deadline."
     }
   },

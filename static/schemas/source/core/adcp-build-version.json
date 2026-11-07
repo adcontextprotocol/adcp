@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-build-version.json",
+  "title": "AdCP Build Version",
+  "description": "Full semantic version of a seller deployment: MAJOR.MINOR.PATCH with optional prerelease and build metadata.",
+  "type": "string",
+  "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$"
+}

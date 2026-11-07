@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/products-feed-version.json",
+  "title": "Products Feed Version",
+  "description": "Account-scoped feed fence issued by list_products.",
+  "type": "string",
+  "minLength": 1
+}

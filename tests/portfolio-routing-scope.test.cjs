@@ -22,11 +22,13 @@ test("portfolio routing scope is authoritative when present and advisory in 3.2"
   }
   assert.match(portfolio.description, /omitted.*unknown/is);
   assert.match(portfolio.description, /MUST NOT be interpreted as global/i);
-  assert.equal(portfolio.properties.primary_countries.items.type, "string");
   assert.equal(
-    portfolio.properties.primary_countries.items.pattern,
-    "^[A-Z]{2}$"
+    portfolio.properties.primary_countries.items.$ref,
+    "/schemas/core/country-code.json"
   );
+  const countryCode = JSON.parse(read("static/schemas/source/core/country-code.json"));
+  assert.equal(countryCode.type, "string");
+  assert.equal(countryCode.pattern, "^[A-Z]{2}$");
 
   const scenario = read(
     "static/compliance/source/protocols/media-buy/scenarios/portfolio_routing_scope.yaml"

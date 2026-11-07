@@ -9,8 +9,7 @@
     "async_adcp_versions": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^\\d+\\.\\d+$"
+        "$ref": "/schemas/core/adcp-minor-version.json"
       },
       "minItems": 1,
       "maxItems": 8,
@@ -20,8 +19,7 @@
     "webhook_signing_algorithms": {
       "type": "array",
       "items": {
-        "type": "string",
-        "enum": ["ed25519", "ecdsa-p256-sha256"]
+        "$ref": "/schemas/enums/webhook-signing-algorithm.json"
       },
       "minItems": 1,
       "uniqueItems": true,

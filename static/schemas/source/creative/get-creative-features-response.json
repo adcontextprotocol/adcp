@@ -19,10 +19,8 @@
       "description": "Error response",
       "properties": {
         "evaluation_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Optional provider evaluation identity when failure occurred after the evaluation was accepted. When present, it is the same value returned on the submitted acknowledgement.",
-          "x-entity": "creative_evaluation"
+          "$ref": "/schemas/core/creative-evaluation-id.json",
+          "description": "Optional provider evaluation identity when failure occurred after the evaluation was accepted. When present, it is the same value returned on the submitted acknowledgement."
         },
         "errors": {
           "type": "array",
@@ -58,10 +56,8 @@
       "description": "Async acknowledgement returned after the provider accepts an evaluation but cannot complete it within the response window. Exact keyed request replays return this original acknowledgement with replayed: true and the same task_id. In AdCP 3.x providers SHOULD also return evaluation_id; it becomes required in AdCP 4.0. When present, exact replays and terminal results preserve it. The caller polls get_task_status using task_id.",
       "properties": {
         "evaluation_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Provider-generated identity allocated when the evaluation is accepted. Optional in AdCP 3.x and required in AdCP 4.0. Providers SHOULD emit it in 3.x; when present, exact replays and the terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
-          "x-entity": "creative_evaluation"
+          "$ref": "/schemas/core/creative-evaluation-id.json",
+          "description": "Provider-generated identity allocated when the evaluation is accepted. Optional in AdCP 3.x and required in AdCP 4.0. Providers SHOULD emit it in 3.x; when present, exact replays and the terminal result MUST carry this same value. Distinct from task_id and idempotency_key."
         },
         "context": {
           "$ref": "/schemas/core/context.json"

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/macro-unavailable-behavior.json",
+  "title": "Macro Unavailable Behavior",
+  "description": "Action when the responsible actor has no value for a macro.",
+  "type": "string",
+  "enum": [
+    "preserve",
+    "omit_parameter",
+    "dialect_sentinel",
+    "reject"
+  ]
+}

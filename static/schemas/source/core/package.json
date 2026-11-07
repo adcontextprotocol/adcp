@@ -293,9 +293,8 @@
           "description": "Which party initiated the package cancellation."
         },
         "reason": {
-          "type": "string",
-          "description": "Reason the package was canceled.",
-          "maxLength": 500
+          "$ref": "/schemas/core/cancellation-reason.json",
+          "description": "Reason the package was canceled."
         },
         "acknowledged_at": {
           "type": "string",
@@ -306,8 +305,7 @@
       "additionalProperties": false
     },
     "agency_estimate_number": {
-      "type": "string",
-      "maxLength": 100,
+      "$ref": "/schemas/core/agency-estimate-number.json",
       "description": "Agency estimate or authorization number for this package. Echoed from the buyer's request. When present on the package, takes precedence over the media buy-level estimate number."
     },
     "creative_deadline": {

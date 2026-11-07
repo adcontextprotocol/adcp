@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-canonicalization-id.json",
+  "title": "Reporting Canonicalization ID",
+  "description": "Identifier of the rules for stable logical row ordering, value encoding, nulls, and schema used by a reporting content digest.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 128
+}

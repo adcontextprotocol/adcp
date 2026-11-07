@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-adjustment-reason.json",
+  "title": "Plan Adjustment Reason",
+  "description": "Seller reason for a reported governance plan adjustment, kept in the audit trail.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 1000
+}

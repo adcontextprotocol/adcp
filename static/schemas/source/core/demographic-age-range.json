@@ -6,15 +6,11 @@
   "type": "object",
   "properties": {
     "min": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 150,
+      "$ref": "/schemas/core/age-in-years.json",
       "description": "Inclusive minimum age in completed years. Omit for an open lower bound."
     },
     "max": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 150,
+      "$ref": "/schemas/core/age-in-years.json",
       "description": "Inclusive maximum age in completed years. Omit for an open upper bound."
     },
     "include_unknown": {

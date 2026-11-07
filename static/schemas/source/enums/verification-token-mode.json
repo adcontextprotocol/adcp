@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/verification-token-mode.json",
+  "title": "Verification Token Mode",
+  "description": "Mode of a verification token: spec or live.",
+  "type": "string",
+  "enum": [
+    "spec",
+    "live"
+  ]
+}

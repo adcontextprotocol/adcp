@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import Ajv from 'ajv';
+import { addNamedScalarSchemas } from '../../../tests/helpers/named-scalar-schemas.cjs';
 
 vi.mock('../../src/db/client.js', () => ({
   query: vi.fn(),
@@ -23,7 +24,7 @@ const eventSchema = JSON.parse(readFileSync(
   resolve(__dirname, '../../../static/schemas/source/core/registry-event.json'),
   'utf8',
 ));
-const ajv = new Ajv({ strict: false, allErrors: true });
+const ajv = addNamedScalarSchemas(new Ajv({ strict: false, allErrors: true }));
 
 function gradingProfileSchema(eventType: string): object {
   const branch = eventSchema.oneOf.find(

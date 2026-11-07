@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/gender.json",
+  "title": "Gender",
+  "description": "Gender category: female, male, or non_binary.",
+  "type": "string",
+  "enum": [
+    "female",
+    "male",
+    "non_binary"
+  ]
+}

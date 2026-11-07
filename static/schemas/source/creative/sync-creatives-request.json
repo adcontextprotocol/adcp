@@ -218,10 +218,8 @@
             "x-added-in": "3.3.0"
           },
           "weight": {
-            "type": "number",
-            "description": "Relative delivery weight (0-100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
-            "minimum": 0,
-            "maximum": 100
+            "$ref": "/schemas/core/creative-rotation-weight.json",
+            "description": "Relative delivery weight (0-100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery)."
           },
           "placement_ids": {
             "type": "array",
@@ -269,8 +267,8 @@
             "title": "Assign or update",
             "properties": {
               "operation": { "const": "assign" },
-              "creative_id": { "type": "string", "minLength": 1, "x-entity": "creative" },
-              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
+              "creative_id": { "$ref": "/schemas/core/creative-id.json" },
+              "package_id": { "$ref": "/schemas/core/package-id.json" },
               "trackers": {
                 "type": "array",
                 "items": { "$ref": "/schemas/core/assignment-tracker.json" },
@@ -283,10 +281,10 @@
                 "description": "Override the creative's click-through destination for this creative on this package only, without changing the library creative. The override applies to every click-through destination for this assignment, including per-state destinations; partial application MUST be rejected. AdCP macros follow the same rules as the creative's own click-through without declarations, retaining existing 3.x compatibility behavior. Declarations on the original creative assets do not transfer to this URL. Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise and sellers without the capability MUST reject it with UNSUPPORTED_FEATURE. The seller MUST serve the override or reject the assignment through existing assignment errors, including when an embedded HTML, JavaScript, or VAST click cannot be overridden. Creative approval remains valid; destination review applies to the assignment. Omission on an additive upsert preserves an existing override. To restore inheritance, atomically unassign then assign without this field; null is not accepted.",
                 "x-added-in": "3.3.0"
               },
-              "weight": { "type": "number", "minimum": 0, "maximum": 100 },
+              "weight": { "$ref": "/schemas/core/creative-rotation-weight.json" },
               "placement_ids": {
                 "type": "array",
-                "items": { "type": "string", "minLength": 1 },
+                "items": { "$ref": "/schemas/core/placement-id.json" },
                 "minItems": 1,
                 "uniqueItems": true
               }
@@ -312,8 +310,8 @@
             "title": "Unassign",
             "properties": {
               "operation": { "const": "unassign" },
-              "creative_id": { "type": "string", "minLength": 1, "x-entity": "creative" },
-              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" }
+              "creative_id": { "$ref": "/schemas/core/creative-id.json" },
+              "package_id": { "$ref": "/schemas/core/package-id.json" }
             },
             "required": ["operation", "creative_id", "package_id"],
             "additionalProperties": false
@@ -323,14 +321,14 @@
             "description": "Atomically swap the currently assigned replaces_creative_id for creative_id on package_id. The replacement takes over the replaced assignment's authored settings: weight, placement routing (placement_ids and placement_refs), rotation_mode, group_id, sequence_position, assignment trackers, and the landing_page_url override. Supplied weight replaces the transferred weight. Supplied placement_ids replaces the transferred placement routing entirely: neither the replaced assignment's placement_ids nor its placement_refs transfer. The seller MUST validate every transferred setting against the replacement (format tracker slots, landing-page applicability, destination review) and MUST reject the atomic request rather than drop or partially apply one. To change transferred trackers or the landing page in the same request, follow this operation with an assign for creative_id.",
             "properties": {
               "operation": { "const": "replace" },
-              "creative_id": { "type": "string", "minLength": 1, "description": "Replacement creative ID.", "x-entity": "creative" },
-              "replaces_creative_id": { "type": "string", "minLength": 1, "description": "Currently assigned creative ID to remove atomically. Its authored assignment settings transfer to creative_id.", "x-entity": "creative" },
-              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
-              "weight": { "type": "number", "minimum": 0, "maximum": 100, "description": "Delivery weight for the replacement. Omitted: the replaced assignment's weight transfers." },
+              "creative_id": { "$ref": "/schemas/core/creative-id.json", "description": "Replacement creative ID." },
+              "replaces_creative_id": { "$ref": "/schemas/core/creative-id.json", "description": "Currently assigned creative ID to remove atomically. Its authored assignment settings transfer to creative_id." },
+              "package_id": { "$ref": "/schemas/core/package-id.json" },
+              "weight": { "$ref": "/schemas/core/creative-rotation-weight.json", "description": "Delivery weight for the replacement. Omitted: the replaced assignment's weight transfers." },
               "placement_ids": {
                 "type": "array",
                 "description": "Placement routing for the replacement. Supplied: replaces the transferred routing entirely, including any placement_refs. Omitted: the replaced assignment's placement_ids and placement_refs transfer.",
-                "items": { "type": "string", "minLength": 1 },
+                "items": { "$ref": "/schemas/core/placement-id.json" },
                 "minItems": 1,
                 "uniqueItems": true
               }
@@ -357,9 +355,9 @@
             "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, and placement routing to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires creative.supports_assignment_merge.",
             "properties": {
               "operation": { "const": "merge" },
-              "creative_id": { "type": "string", "minLength": 1, "description": "Buyer's creative that takes over the assignment. It need not already be assigned to package_id.", "x-entity": "creative" },
-              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
-              "merged_creative_id": { "type": "string", "minLength": 1, "description": "Seller-created creative (one that entered the library outside sync_creatives, under a seller-assigned creative_id) currently assigned to package_id that the seller verifies is the same creative as creative_id.", "x-entity": "creative" }
+              "creative_id": { "$ref": "/schemas/core/creative-id.json", "description": "Buyer's creative that takes over the assignment. It need not already be assigned to package_id." },
+              "package_id": { "$ref": "/schemas/core/package-id.json" },
+              "merged_creative_id": { "$ref": "/schemas/core/creative-id.json", "description": "Seller-created creative (one that entered the library outside sync_creatives, under a seller-assigned creative_id) currently assigned to package_id that the seller verifies is the same creative as creative_id." }
             },
             "required": ["operation", "creative_id", "package_id", "merged_creative_id"],
             "additionalProperties": false,
@@ -396,11 +394,8 @@
       }
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "delete_missing": {
       "type": "boolean",

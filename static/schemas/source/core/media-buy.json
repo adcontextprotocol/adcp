@@ -11,22 +11,15 @@
       "x-entity": "media_buy"
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. Sellers MUST include the persisted name on read surfaces such as get_media_buys when the media buy was created through AdCP with name. Sellers MAY omit name for media buys created outside AdCP or created without name. This display label is not an identifier or financial reference."
     },
     "accepted_proposal_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "proposal",
+      "$ref": "/schemas/core/proposal-id.json",
       "description": "Current accepted commercial snapshot. Compact-lifecycle buyers pass this ID to refine_proposals after restart or handoff. Updated atomically when an amendment or negotiated cancellation is accepted."
     },
     "accepted_proposal_terms_digest": {
-      "type": "string",
-      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "$ref": "/schemas/core/proposal-terms-digest.json",
       "description": "Digest of the current accepted proposal commercial_terms, allowing buyers and governance agents to verify the recovered snapshot."
     },
     "account": {
@@ -78,9 +71,8 @@
           "description": "Which party initiated the cancellation. 'buyer' when canceled through control_media_buy or the 3.x update_media_buy facade; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal)."
         },
         "reason": {
-          "type": "string",
-          "description": "Reason provided when the media buy was canceled.",
-          "maxLength": 500
+          "$ref": "/schemas/core/cancellation-reason.json",
+          "description": "Reason provided when the media buy was canceled."
         }
       },
       "additionalProperties": false
@@ -130,13 +122,12 @@
       "description": "Current hard MediaBuy-level cap. Sellers MUST echo it whenever set. Its counter aggregates exposures across all participating packages; each package targeting_overlay.frequency_cap remains independently binding."
     },
     "budget_cap_timezone": {
-      "type": "string",
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "IANA timezone defining the shared calendar-day boundary for every aggregate and package daily cap on this media buy. Sellers MUST echo it whenever any daily cap is set."
     },
     "currency": {
-      "type": "string",
-      "description": "Single ISO 4217 denomination for total_budget, every package budget/minimum, and every canonical BiddingPolicy monetary field. Every package's selected pricing option MUST declare this currency; packages requiring another currency belong in a separate media buy.",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json",
+      "description": "Single ISO 4217 denomination for total_budget, every package budget/minimum, and every canonical BiddingPolicy monetary field. Every package's selected pricing option MUST declare this currency; packages requiring another currency belong in a separate media buy."
     },
     "budget_allocation": {
       "allOf": [

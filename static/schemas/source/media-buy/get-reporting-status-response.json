@@ -44,7 +44,7 @@
     "ledger_snapshot_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Opaque identity of the seller's consistent reporting-ledger snapshot. Every page reached from one periods cursor MUST return the same value." },
     "ledger_as_of": { "type": "string", "format": "date-time", "description": "Exclusive observation boundary for ledger_snapshot_id. Revisions committed later appear only in a later reconciliation." },
     "changes_checkpoint": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Opaque durable incremental-repair checkpoint for this periods snapshot. Consumers persist it only after consuming every page, then send it as changes_after. It is bound to authenticated caller, account, and filters and MUST order every committed obligation, revision, adjustment, materialization, consumer status statement, revision receipt, and adjustment receipt without gaps." },
-    "account_id": { "type": "string", "minLength": 1, "x-entity": "account", "description": "Resolved seller/storefront account identifier." },
+    "account_id": { "$ref": "/schemas/core/account-id.json", "description": "Resolved seller/storefront account identifier." },
     "scope": {
       "type": "object",
       "description": "Exact denominator evaluated for summary or periods health. complete is valid only when scope_closed is true.",
@@ -60,10 +60,10 @@
           "items": {
             "type": "object",
             "properties": {
-              "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_delivery_config" },
+              "delivery_config_id": { "$ref": "/schemas/core/reporting-delivery-config-id.json" },
               "delivery_config_version": { "type": "integer", "minimum": 1 },
               "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" },
-              "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }
+              "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }
             },
             "required": ["delivery_config_id", "delivery_config_version", "feed_purpose"],
             "additionalProperties": false
@@ -155,7 +155,7 @@
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "failed" },
-        "view": { "enum": ["summary", "periods", "revision"] },
+        "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
         "failure_kind": { "type": "string", "const": "lookup_unavailable" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
@@ -192,7 +192,7 @@
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "failed" },
-        "view": { "enum": ["summary", "periods", "revision"] },
+        "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
         "failure_kind": { "type": "string", "const": "operational" },
         "context": { "$ref": "/schemas/core/context.json" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }

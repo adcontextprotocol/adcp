@@ -55,10 +55,9 @@
       "description": "Search for formats by name (case-insensitive partial match)"
     },
     "publisher_domain": {
-      "type": "string",
+      "$ref": "/schemas/core/domain-name.json",
       "deprecated": true,
-      "description": "Deprecated compatibility filter for older 3.x callers. A compatibility implementation MAY project publisher-origin or community-catalog declarations obtained through the registry publisher lookup, but MUST NOT synthesize a publisher catalog from seller products. New callers use `GET /api/registry/publisher?domain=...` for publisher acceptance and `get_products` for this seller's deliverability. The pattern below is a syntactic floor, not an SSRF guard.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "description": "Deprecated compatibility filter for older 3.x callers. A compatibility implementation MAY project publisher-origin or community-catalog declarations obtained through the registry publisher lookup, but MUST NOT synthesize a publisher catalog from seller products. New callers use `GET /api/registry/publisher?domain=...` for publisher acceptance and `get_products` for this seller's deliverability. The pattern below is a syntactic floor, not an SSRF guard."
     },
     "property_id": {
       "$ref": "/schemas/core/property-id.json",

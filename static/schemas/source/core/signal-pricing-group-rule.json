@@ -8,9 +8,8 @@
   "x-added-in": "3.3.0",
   "properties": {
     "pricing_group": {
-      "type": "string",
-      "description": "The pricing_group key this rule applies to.",
-      "minLength": 1
+      "$ref": "/schemas/core/signal-pricing-group.json",
+      "description": "The pricing_group key this rule applies to."
     },
     "pricing_combination": {
       "type": "string",

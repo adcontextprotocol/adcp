@@ -22,9 +22,7 @@
       "$ref": "/schemas/core/canonical-account-ref.json"
     },
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -33,48 +31,25 @@
       "$ref": "/schemas/core/ext.json"
     },
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json"
     },
     "package_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "package"
+      "$ref": "/schemas/core/package-id.json"
     },
     "creative_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "creative"
+      "$ref": "/schemas/core/creative-id.json"
     },
     "severity": {
-      "type": "string",
-      "enum": [
-        "critical",
-        "warning"
-      ]
+      "$ref": "/schemas/enums/media-buy-issue-severity.json"
     },
     "category": {
-      "type": "string",
-      "enum": [
-        "malicious_creative",
-        "wrong_creative",
-        "brand_safety",
-        "tracking",
-        "delivery",
-        "other"
-      ]
+      "$ref": "/schemas/enums/media-buy-issue-category.json"
     },
     "description": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4000
+      "$ref": "/schemas/core/media-buy-issue-description.json"
     },
     "governance_context": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4096
+      "$ref": "/schemas/core/governance-context.json"
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",

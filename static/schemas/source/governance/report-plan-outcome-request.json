@@ -46,11 +46,8 @@
       "x-entity": "governance_check"
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Buyer-generated unique key for this outcome report. An identical retry returns the cached response without another settlement; reuse with a different canonical payload returns IDEMPOTENCY_CONFLICT. Use a fresh UUID v4 for each distinct report.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Buyer-generated unique key for this outcome report. An identical retry returns the cached response without another settlement; reuse with a different canonical payload returns IDEMPOTENCY_CONFLICT. Use a fresh UUID v4 for each distinct report."
     },
     "purchase_type": {
       "$ref": "/schemas/enums/purchase-type.json",
@@ -106,18 +103,11 @@
       "description": "Buyer-attributed observation compared with the canonical seller delivery statement identified by check_id. This evidence never overwrites seller evidence or creates a second commitment. A conflict produces an explicit disputed reconciliation state while the operational period is open; the plan owner may close it without asserting final billing truth.",
       "properties": {
         "observation_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Stable buyer-issued identifier for this observation.",
-          "x-entity": "governance_delivery_observation"
+          "$ref": "/schemas/core/delivery-observation-id.json",
+          "description": "Stable buyer-issued identifier for this observation."
         },
         "source": {
-          "type": "string",
-          "enum": [
-            "seller_statement_copy",
-            "buyer_measurement"
-          ],
+          "$ref": "/schemas/enums/governance-delivery-source.json",
           "description": "Whether the buyer is forwarding the seller statement it received or reporting an independently measured observation. A forwarded seller statement is not independent evidence."
         },
         "observed_at": {
@@ -130,8 +120,7 @@
           "x-entity": "governance_delivery_statement"
         },
         "seller_statement_digest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$",
+          "$ref": "/schemas/core/sha256-digest.json",
           "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
         },
         "reporting_period": {
@@ -159,8 +148,7 @@
           "description": "Buyer-attributed cumulative spend for the governed action."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json"
         },
         "period_closed": {
           "type": "boolean",
@@ -193,11 +181,8 @@
       "description": "Buyer-attributed error associated with a failed seller interaction. Required when outcome is failed; classification_source=seller_response_copy preserves what the buyer received without claiming seller-attested provenance."
     },
     "governance_context": {
-      "type": "string",
-      "description": "Opaque governance context from the check_governance response. Required with check_id for completed and failed outcomes and buyer delivery observations.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque governance context from the check_governance response. Required with check_id for completed and failed outcomes and buyer delivery observations."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

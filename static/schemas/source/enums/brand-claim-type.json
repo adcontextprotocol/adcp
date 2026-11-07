@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/brand-claim-type.json",
+  "title": "Brand Claim Type",
+  "description": "Kind of brand claim being verified.",
+  "type": "string",
+  "enum": [
+    "subsidiary",
+    "parent",
+    "property",
+    "trademark"
+  ]
+}

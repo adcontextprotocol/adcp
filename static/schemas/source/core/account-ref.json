@@ -23,9 +23,8 @@
           "description": "Brand reference identifying the advertiser. domain and optional brand_id identify the brand; countries is an account attribute that acts as a lookup filter."
         },
         "operator": {
-          "type": "string",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
           "x-entity": "operator"
         },
         "operator_unit": {
@@ -33,13 +32,11 @@
           "description": "Optional operator-owned business unit, agency seat, or platform account. An account attribute: id acts as a lookup filter; name is display metadata and never filters."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 transaction currency when the seller's advertiser object is currency-bound. An account attribute that acts as a lookup filter; media buys on the account MUST use it. Omit when currency is selected independently per media buy."
         },
         "timezone": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Account timezone. An account attribute that acts as a lookup filter when get_adcp_capabilities.account.timezone declares account_fixed with buyer_selected; omit it for seller_fixed or seller_assigned accounts."
         },
         "sandbox": {

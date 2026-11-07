@@ -9,8 +9,8 @@
       "type": "string",
       "enum": ["safe_area", "reserved_region", "decoration_only_edge", "no_text_or_logos"]
     },
-    "state_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "breakpoint_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "state_id": { "$ref": "/schemas/core/canvas-state-id.json" },
+    "breakpoint_id": { "$ref": "/schemas/core/canvas-breakpoint-id.json" },
     "region": {
       "type": "object",
       "properties": {

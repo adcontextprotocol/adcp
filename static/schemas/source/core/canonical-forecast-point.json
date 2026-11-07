@@ -5,7 +5,7 @@
   "description": "Compact forecast row with numeric ranges and identity-only measurement-vendor references.",
   "type": "object",
   "properties": {
-    "label": { "type": "string", "maxLength": 128 },
+    "label": { "$ref": "/schemas/core/forecast-point-label.json" },
     "budget": { "type": "number", "minimum": 0 },
     "product_id": { "type": "string", "x-entity": "product" },
     "dimensions": { "$ref": "/schemas/core/forecast-point-dimensions.json" },

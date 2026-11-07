@@ -6,8 +6,8 @@
   "description": "One immutable post-official accounting-only correction to billing-purpose reporting evidence/control totals. It never edits rows, supersedes a revision, creates or changes invoices, calculates tax or FX, authorizes accounting entries, settles payment, or determines legal payment obligations.",
   "type": "object",
   "properties": {
-    "reporting_adjustment_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_adjustment" },
-    "adjusts_reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Exact immutable official revision whose billing-purpose evidence/control totals are corrected. External billing systems MAY retain this identifier as supporting evidence." },
+    "reporting_adjustment_id": { "$ref": "/schemas/core/reporting-adjustment-id.json" },
+    "adjusts_reporting_revision_id": { "$ref": "/schemas/core/reporting-revision-id.json", "description": "Exact immutable official revision whose billing-purpose evidence/control totals are corrected. External billing systems MAY retain this identifier as supporting evidence." },
     "reason_code": {
       "type": "string",
       "enum": ["invalid_traffic", "late_attribution", "source_correction", "mapping_correction", "commercial_adjustment", "other"],
@@ -31,7 +31,7 @@
       "uniqueItems": true,
       "description": "Signed deltas to apply to the named official control totals. Names and units use the adjusted revision's pinned report definition. Names MUST be unique."
     },
-    "canonical_adjustment_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "SHA-256 of the RFC 8785 JCS serialization of this adjustment with canonical_adjustment_sha256 omitted. Reconciled Billing consumers recompute this digest before accepting or rejecting the adjustment." },
+    "canonical_adjustment_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "SHA-256 of the RFC 8785 JCS serialization of this adjustment with canonical_adjustment_sha256 omitted. Reconciled Billing consumers recompute this digest before accepting or rejecting the adjustment." },
     "correction_observed_at": { "type": "string", "format": "date-time" },
     "created_at": { "type": "string", "format": "date-time" }
   },

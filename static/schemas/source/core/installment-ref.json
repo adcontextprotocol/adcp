@@ -9,10 +9,8 @@
       "$ref": "/schemas/core/collection-ref.json"
     },
     "installment_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Installment ID within the referenced collection.",
-      "x-entity": "installment"
+      "$ref": "/schemas/core/installment-id.json",
+      "description": "Installment ID within the referenced collection."
     }
   },
   "required": ["collection_ref", "installment_id"],

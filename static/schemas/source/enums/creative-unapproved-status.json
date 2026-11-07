@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/creative-unapproved-status.json",
+  "title": "Creative Unapproved Status",
+  "description": "Approval status of a creative that is not approved: pending_review or rejected.",
+  "type": "string",
+  "enum": [
+    "pending_review",
+    "rejected"
+  ]
+}

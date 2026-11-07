@@ -6,9 +6,7 @@
   "type": "object",
   "properties": {
     "code": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
+      "$ref": "/schemas/core/open-error-code.json",
       "description": "Error code for programmatic handling. The error-code vocabulary is open: `error.code` is wire-typed `string` (not a closed enum), the standard codes published in `enums/error-code.json` are documentary, and senders MAY emit codes outside that set (platform-specific codes, or codes introduced in a later AdCP version). Receivers MUST decode unknown codes — treat the response as well-formed, read `error.recovery` for the recovery classification, and fall back to `transient` when `recovery` is absent. See `error-handling.mdx#forward-compatible-decoding-normative` for the full forward-compat contract — this rule is what lets future maintenance lines ship new codes additively."
     },
     "message": {
@@ -21,14 +19,11 @@
       "description": "Optional buyer-actionable classification of the failure. Use this when the enclosing error code or message is too coarse or contains producer-internal context that must not cross the buyer trust boundary. `code` reuses the comprehensive standard vocabulary and recovery classifications published in `enums/error-code.json`, including policy, governance, account, commercial, inventory, and creative failures. The wire field remains open for forward compatibility. `message` MUST be safe to show to the buyer and MUST NOT contain vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details. When present, the enclosing `error.recovery` MUST classify the buyer-actionable reason. If both the enclosing code and buyer reason are registered, their standard recovery classifications MUST agree with each other and with `error.recovery`; sellers MUST choose the closest compatible enclosing code rather than retain a conflicting upstream transport wrapper. One buyer_reason classifies one error object. If a rejection contains independently actionable failures from different classes, sellers MUST emit separate error objects or omit buyer_reason rather than select a misleading single class.",
       "properties": {
         "code": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
+          "$ref": "/schemas/core/open-error-code.json",
           "description": "Machine-readable buyer-actionable reason from the standard `enums/error-code.json` vocabulary or a producer-specific extension. Extensions MUST follow the standard `X_{VENDOR}_{CODE}` naming rule. The wire field is open for forward compatibility. Receivers MUST accept unknown values and use the enclosing `error.recovery` plus this object's `message` as the fallback."
         },
         "message": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/buyer-reason-message.json",
           "description": "Buyer-safe explanation of the actionable failure. MUST NOT expose vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details.",
           "x-max-length-4.0": 1024
         }
@@ -117,8 +112,7 @@
       "additionalProperties": true
     },
     "recovery": {
-      "type": "string",
-      "enum": ["transient", "correctable", "terminal"],
+      "$ref": "/schemas/enums/error-recovery.json",
       "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found). AdCP 3.2 producers MUST populate `recovery` on every error; 3.1 producers SHOULD populate it. The shared 3.x schema intentionally does not add `recovery` to `required` so retained and live errors from earlier 3.x producers remain decodable. When `buyer_reason` is present, `recovery` is required and MUST classify that buyer-actionable reason. If the enclosing code and buyer reason are both registered, their standard recovery classifications MUST agree with each other and with this field. A receiver that does not recognize `error.code` (a newer code, or a platform-specific code) MUST still be able to classify the error from `recovery`. When a legacy error omits `recovery`, receivers use the registered classification for a known code and fall back to `transient` for an unknown code, subject to the bounded retry budget. The `enumMetadata.recovery` block in `enums/error-code.json` is the documentary mirror for known top-level and buyer-reason codes; `error.recovery` on the wire is authoritative when present."
     },
     "mutation_outcome": {

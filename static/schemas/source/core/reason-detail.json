@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reason-detail.json",
+  "title": "Reason Detail",
+  "description": "Untrusted seller free text that supplements a reason code with operational detail.",
+  "type": "string",
+  "maxLength": 500
+}

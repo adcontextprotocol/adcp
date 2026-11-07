@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canvas-state-id.json",
+  "title": "Canvas State ID",
+  "description": "Identifier of one state of a seller-rendered stateful display unit.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*$"
+}

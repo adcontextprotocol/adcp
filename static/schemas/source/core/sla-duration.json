@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/sla-duration.json",
+  "title": "SLA Duration",
+  "description": "ISO 8601 duration of an SLA bound that is not zero.",
+  "type": "string",
+  "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$"
+}

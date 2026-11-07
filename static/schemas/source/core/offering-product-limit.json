@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/offering-product-limit.json",
+  "title": "Offering Product Limit",
+  "description": "Maximum number of matching products a sponsored-intelligence offering lookup returns.",
+  "type": "integer",
+  "minimum": 1,
+  "maximum": 50
+}

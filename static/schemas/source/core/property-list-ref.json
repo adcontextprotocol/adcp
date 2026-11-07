@@ -11,10 +11,8 @@
       "description": "AdCP task endpoint of the agent exposing get_property_list. Receivers MUST support resolution over MCP; another advertised AdCP task transport MAY be used by agreement. This is not a base URL for an inferred /lists/{list_id} HTTP path."
     },
     "list_id": {
-      "type": "string",
-      "description": "Identifier for the property list within the agent",
-      "minLength": 1,
-      "x-entity": "property_list"
+      "$ref": "/schemas/core/property-list-id.json",
+      "description": "Identifier for the property list within the agent"
     },
     "auth_token": {
       "type": "string",

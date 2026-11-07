@@ -27,12 +27,7 @@
             "description": "Current plan version."
           },
           "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "suspended",
-              "completed"
-            ],
+            "$ref": "/schemas/enums/governance-plan-status.json",
             "description": "Plan lifecycle status."
           },
           "budget": {
@@ -44,8 +39,7 @@
                 "description": "Total authorized budget from the plan."
               },
               "accounting_mode": {
-                "type": "string",
-                "enum": ["gross_commitment", "verified_net_cost"]
+                "$ref": "/schemas/enums/governance-accounting-mode.json"
               },
               "committed": {
                 "type": "number",
@@ -189,9 +183,7 @@
                 "description": "Aggregate governance metrics for detecting oversight drift. A declining escalation rate may indicate well-calibrated governance or eroding human oversight -- surfacing the trend lets the organization make that judgment.",
                 "properties": {
                   "escalation_rate": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
+                    "$ref": "/schemas/core/fraction.json",
                     "description": "Fraction of checks that resulted in escalation."
                   },
                   "escalation_rate_trend": {
@@ -204,21 +196,15 @@
                     "description": "Direction of escalation rate over the plan's lifetime."
                   },
                   "auto_approval_rate": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
+                    "$ref": "/schemas/core/fraction.json",
                     "description": "Fraction of checks approved without human intervention."
                   },
                   "human_override_rate": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
+                    "$ref": "/schemas/core/fraction.json",
                     "description": "Fraction of escalations where the human overrode the governance agent's recommendation."
                   },
                   "mean_confidence": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
+                    "$ref": "/schemas/core/fraction.json",
                     "description": "Average confidence score across all findings. Present when findings include confidence scores."
                   },
                   "thresholds": {
@@ -226,27 +212,19 @@
                     "description": "Organization-defined thresholds for drift metrics. When a metric crosses its threshold, the governance agent SHOULD include a finding on the next check. Set by the organization in governance agent configuration, echoed here for visibility.",
                     "properties": {
                       "escalation_rate_max": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
+                        "$ref": "/schemas/core/fraction.json",
                         "description": "Maximum acceptable escalation rate. A rate above this suggests policy miscalibration."
                       },
                       "escalation_rate_min": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
+                        "$ref": "/schemas/core/fraction.json",
                         "description": "Minimum acceptable escalation rate. A rate below this may indicate eroding oversight."
                       },
                       "auto_approval_rate_max": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
+                        "$ref": "/schemas/core/fraction.json",
                         "description": "Maximum acceptable auto-approval rate."
                       },
                       "human_override_rate_max": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
+                        "$ref": "/schemas/core/fraction.json",
                         "description": "Maximum acceptable human override rate. A high rate suggests the governance agent's recommendations are poorly calibrated."
                       }
                     },
@@ -301,11 +279,7 @@
                   "description": "Governance verdict (present for check entries). Renamed from `status` in 3.1 alongside check-governance-response for vocabulary consistency."
                 },
                 "check_type": {
-                  "type": "string",
-                  "enum": [
-                    "intent",
-                    "execution"
-                  ],
+                  "$ref": "/schemas/enums/governance-check-type.json",
                   "description": "Whether the check was an intent check (orchestrator) or execution check (seller). Inferred from the fields present on the original check request. Present for check entries."
                 },
                 "mode": {
@@ -360,17 +334,14 @@
                         "additionalProperties": true
                       },
                       "confidence": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1
+                        "$ref": "/schemas/core/fraction.json"
                       },
                       "uncertainty_reason": {
                         "type": "string",
                         "description": "Reason the finding carries less than full confidence, retained exactly as emitted by check_governance."
                       },
                       "attestation_reference_digest": {
-                        "type": "string",
-                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "$ref": "/schemas/core/sha256-digest.json",
                         "description": "reference_digest of the runtime attestation evaluation this finding relied on."
                       }
                     },
@@ -387,12 +358,12 @@
                   "description": "Canonical seller statement retained on a delivery check entry.",
                   "properties": {
                     "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
-                    "statement_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+                    "statement_digest": { "$ref": "/schemas/core/sha256-digest.json" },
                     "sequence": { "type": "integer", "minimum": 1 },
                     "issued_at": { "type": "string", "format": "date-time" },
                     "seller_reference": { "type": "string" },
                     "cumulative_spend": { "type": "number", "minimum": 0 },
-                    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+                    "currency": { "$ref": "/schemas/core/currency-code.json" },
                     "reporting_period": {
                       "type": "object",
                       "properties": {
@@ -435,13 +406,7 @@
                   "x-entity": "seller_adjustment"
                 },
                 "adjustment_type": {
-                  "type": "string",
-                  "enum": [
-                    "decommitment",
-                    "refund",
-                    "credit",
-                    "makegood"
-                  ],
+                  "$ref": "/schemas/enums/plan-adjustment-type.json",
                   "description": "Commercial adjustment type (present for adjustment entries)."
                 },
                 "amount": {
@@ -453,8 +418,7 @@
                       "exclusiveMinimum": 0
                     },
                     "currency": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{3}$"
+                      "$ref": "/schemas/core/currency-code.json"
                     }
                   },
                   "required": [
@@ -495,18 +459,11 @@
                   "description": "Buyer-attributed observation retained as audit evidence on a delivery outcome. It never overwrites the seller statement.",
                   "properties": {
                     "observation_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 255,
-                      "description": "Stable buyer-issued identifier for this observation.",
-                      "x-entity": "governance_delivery_observation"
+                      "$ref": "/schemas/core/delivery-observation-id.json",
+                      "description": "Stable buyer-issued identifier for this observation."
                     },
                     "source": {
-                      "type": "string",
-                      "enum": [
-                        "seller_statement_copy",
-                        "buyer_measurement"
-                      ],
+                      "$ref": "/schemas/enums/governance-delivery-source.json",
                       "description": "Whether the buyer is forwarding the seller statement it received or reporting an independently measured observation. A forwarded seller statement is not independent evidence."
                     },
                     "observed_at": {
@@ -519,8 +476,7 @@
                       "x-entity": "governance_delivery_statement"
                     },
                     "seller_statement_digest": {
-                      "type": "string",
-                      "pattern": "^sha256:[a-f0-9]{64}$",
+                      "$ref": "/schemas/core/sha256-digest.json",
                       "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
                     },
                     "reporting_period": {
@@ -548,8 +504,7 @@
                       "description": "Buyer-attributed cumulative spend for the governed action."
                     },
                     "currency": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{3}$"
+                      "$ref": "/schemas/core/currency-code.json"
                     },
                     "period_closed": {
                       "type": "boolean",
@@ -589,8 +544,7 @@
                   "maxItems": 10
                 },
                 "runtime_attestation_binding_digest": {
-                  "type": "string",
-                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "$ref": "/schemas/core/sha256-digest.json",
                   "description": "Binding digest copied from the check response and signed governance_context. Auditors recompute it from this entry's ordered runtime_attestations[].evaluation values plus findings carrying attestation_reference_digest after verifying each paired reference digest."
                 },
                 "purchase_type": {
@@ -602,25 +556,22 @@
                   "description": "Outcome status (present for outcome entries)."
                 },
                 "delivery_reconciliation_status": {
-                  "type": "string",
-                  "enum": ["consistent", "measurement_variance", "disputed", "unmatched", "closed_unresolved"]
+                  "$ref": "/schemas/enums/delivery-reconciliation-status.json"
                 },
                 "delivery_period_state": {
-                  "type": "string",
-                  "enum": ["open", "closed"],
+                  "$ref": "/schemas/enums/delivery-period-state.json",
                   "description": "Operational governance-window state for this delivery observation."
                 },
                 "adjustment_state": {
-                  "type": "string",
-                  "enum": ["reported", "verified", "disputed"]
+                  "$ref": "/schemas/enums/plan-adjustment-state.json"
                 },
                 "verified_amount": { "type": "number", "minimum": 0 },
                 "evidence": {
                   "type": "object",
                   "properties": {
                     "evidence_id": { "type": "string", "x-entity": "governance_adjustment_evidence" },
-                    "evidence_type": { "type": "string", "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"] },
-                    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+                    "evidence_type": { "$ref": "/schemas/enums/plan-adjustment-evidence-type.json" },
+                    "digest": { "$ref": "/schemas/core/sha256-digest.json" },
                     "issued_at": { "type": "string", "format": "date-time" }
                   },
                   "required": ["evidence_id", "evidence_type", "digest", "issued_at"],
@@ -663,12 +614,7 @@
                   "description": "Type of financial commitment."
                 },
                 "status": {
-                  "type": "string",
-                  "enum": [
-                    "active",
-                    "suspended",
-                    "completed"
-                  ],
+                  "$ref": "/schemas/enums/governed-action-status.json",
                   "description": "Action status."
                 },
                 "committed": {
@@ -713,12 +659,10 @@
                   "description": "Greater of seller-reported and buyer-observed spend while evidence is unresolved."
                 },
                 "delivery_reconciliation_status": {
-                  "type": "string",
-                  "enum": ["consistent", "measurement_variance", "disputed", "unmatched", "closed_unresolved"]
+                  "$ref": "/schemas/enums/delivery-reconciliation-status.json"
                 },
                 "delivery_period_state": {
-                  "type": "string",
-                  "enum": ["open", "closed"],
+                  "$ref": "/schemas/enums/delivery-period-state.json",
                   "description": "Whether the current governance reporting period remains actionable. Closure is not final billing."
                 },
                 "check_count": {

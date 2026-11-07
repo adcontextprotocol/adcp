@@ -9,10 +9,10 @@
   ],
   "properties": {
     "outcome": { "type": "string", "enum": ["proposed", "products_available", "rejected"] },
-    "reason": { "type": "string", "minLength": 1 },
+    "reason": { "$ref": "/schemas/core/brief-rejection-reason.json" },
     "suggestions": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": { "$ref": "/schemas/core/seller-suggestion.json" },
       "minItems": 1
     },
     "proposals": {
@@ -51,8 +51,8 @@
       "items": {
         "type": "object",
         "properties": {
-          "scope": { "type": "string", "enum": ["products", "pricing", "forecast", "proposals", "wholesale_feed"] },
-          "description": { "type": "string", "minLength": 1 },
+          "scope": { "$ref": "/schemas/enums/incomplete-scope.json" },
+          "description": { "$ref": "/schemas/core/incomplete-scope-description.json" },
           "estimated_wait": { "$ref": "/schemas/core/duration.json" }
         },
         "required": ["scope", "description"],
@@ -81,17 +81,15 @@
               "description": "Exact products the coordinator promoted and re-read through account-scoped list_products before returning this result. The set MUST match products[].product_id.",
               "minItems": 1,
               "uniqueItems": true,
-              "items": { "type": "string", "minLength": 1, "x-entity": "product" }
+              "items": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" }
             },
             "cache_scope": { "type": "string", "const": "account" },
             "feed_version": {
-              "type": "string",
-              "minLength": 1,
+              "$ref": "/schemas/core/products-feed-version.json",
               "description": "Real seller-issued account-scoped feed fence obtained by re-reading the promoted products through list_products."
             },
             "pricing_version": {
-              "type": "string",
-              "minLength": 1,
+              "$ref": "/schemas/core/products-pricing-version.json",
               "description": "Real seller-issued pricing fence from the same account-scoped list_products response, when the seller versions pricing independently."
             }
           },
@@ -102,8 +100,7 @@
           "properties": {
             "kind": { "type": "string", "const": "legacy_create" },
             "continuation_token": {
-              "type": "string",
-              "minLength": 16,
+              "$ref": "/schemas/core/purchase-continuation-token.json",
               "description": "Opaque, short-lived coordinator token bound to the caller principal, account, and complete observed product/pricing payload. It is not a seller-issued feed fence."
             },
             "continuation_expires_at": {
@@ -121,7 +118,7 @@
               "description": "Exact products bound to this continuation. A follow-up MUST select a non-empty subset and MUST NOT substitute an ID from another discovery result.",
               "minItems": 1,
               "uniqueItems": true,
-              "items": { "type": "string", "minLength": 1, "x-entity": "product" }
+              "items": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" }
             },
             "losses": {
               "type": "array",
@@ -129,8 +126,7 @@
               "minItems": 2,
               "uniqueItems": true,
               "items": {
-                "type": "string",
-                "enum": ["feed_version_not_atomic", "pricing_version_not_atomic", "mutation_idempotency_not_guaranteed"]
+                "$ref": "/schemas/enums/purchase-continuation-loss.json"
               },
               "allOf": [
                 { "contains": { "const": "feed_version_not_atomic" } },

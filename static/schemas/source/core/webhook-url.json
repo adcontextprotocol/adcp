@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/webhook-url.json",
+  "title": "Webhook URL",
+  "description": "URL of an endpoint that receives webhook deliveries. The wire contract is any URI; the sender applies the protocol's SSRF checks before it delivers.",
+  "type": "string",
+  "format": "uri"
+}

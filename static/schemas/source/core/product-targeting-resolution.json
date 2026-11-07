@@ -13,8 +13,7 @@
       "uniqueItems": true
     },
     "effective_targeting_digest": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Optional digest of the canonical effective targeting overlay. Until AdCP defines a cross-implementation canonicalization algorithm, this value is an opaque seller audit handle and buyers MUST NOT attempt to reproduce or compare it across sellers."
     },
     "ext": { "$ref": "/schemas/core/ext.json" }

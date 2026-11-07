@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-sync-action.json",
+  "title": "Audience Sync Action",
+  "description": "Outcome of an audience sync.",
+  "type": "string",
+  "enum": [
+    "created",
+    "updated",
+    "unchanged",
+    "deleted",
+    "failed"
+  ]
+}

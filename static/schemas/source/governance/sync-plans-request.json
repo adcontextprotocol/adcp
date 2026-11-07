@@ -13,11 +13,8 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request."
     },
     "plans": {
       "type": "array",
@@ -52,11 +49,7 @@
                 "description": "ISO 4217 currency code."
               },
               "accounting_mode": {
-                "type": "string",
-                "enum": [
-                  "gross_commitment",
-                  "verified_net_cost"
-                ],
+                "$ref": "/schemas/enums/governance-accounting-mode.json",
                 "default": "gross_commitment",
                 "description": "Controls which verified adjustments restore reusable plan headroom. gross_commitment allows verified decommitments only; verified_net_cost also allows buyer-accepted refunds and credits. Both modes retain the original commitment in anti-fragmentation history and expose economic net cost separately."
               },
@@ -88,9 +81,7 @@
                       "description": "Maximum budget for this purchase type."
                     },
                     "max_pct": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 100,
+                      "$ref": "/schemas/core/percentage.json",
                       "description": "Maximum percentage of total budget for this purchase type."
                     }
                   },
@@ -107,12 +98,8 @@
                   "type": "object",
                   "properties": {
                     "budget_period_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64,
-                      "pattern": "^[A-Za-z0-9_.:-]+$",
-                      "description": "Identifier for this period, unique within the plan and stable across syncs. Buyers MAY echo it as `budget_period_id` on `check_governance` to assert which period a buy belongs to.",
-                      "x-entity": "governance_budget_period"
+                      "$ref": "/schemas/core/governance-budget-period-id.json",
+                      "description": "Identifier for this period, unique within the plan and stable across syncs. Buyers MAY echo it as `budget_period_id` on `check_governance` to assert which period a buy belongs to."
                     },
                     "start": {
                       "type": "string",

@@ -409,20 +409,14 @@
                       "properties": {
                         "indicator_types_evaluated": {
                           "items": {
-                            "enum": [
-                              "creative_fatigue",
-                              "creative_quality_opportunity"
-                            ]
+                            "$ref": "/schemas/enums/creative-indicator-type.json"
                           }
                         },
                         "indicators": {
                           "items": {
                             "properties": {
                               "type": {
-                                "enum": [
-                                  "creative_fatigue",
-                                  "creative_quality_opportunity"
-                                ]
+                                "$ref": "/schemas/enums/creative-indicator-type.json"
                               }
                             }
                           }
@@ -460,7 +454,7 @@
                           "approval_scopes": {
                             "allOf": [
                               { "contains": { "properties": { "approval_status": { "const": "approved" } } } },
-                              { "contains": { "properties": { "approval_status": { "enum": ["pending_review", "rejected"] } } } }
+                              { "contains": { "properties": { "approval_status": { "$ref": "/schemas/enums/creative-unapproved-status.json" } } } }
                             ]
                           }
                         }

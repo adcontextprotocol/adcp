@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/media-buy-name.json",
+  "title": "Media Buy Name",
+  "description": "Human-readable media buy name for trafficking UI display and operational communication. It contains at least one non-whitespace character.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "pattern": "\\S"
+}

@@ -5,8 +5,8 @@
   "description": "Buyer-authored evidence policy for compact product discovery. Organization selectors are stable keys and never carry brand assets or content provenance.",
   "type": "object",
   "properties": {
-    "requirement_mode": { "type": "string", "enum": ["required", "preferred"] },
-    "evidence_presence": { "type": "string", "enum": ["required", "when_available"] },
+    "requirement_mode": { "$ref": "/schemas/enums/audience-evidence-requirement-mode.json" },
+    "evidence_presence": { "$ref": "/schemas/enums/audience-evidence-presence.json" },
     "accepted_methodologies": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/audience-evidence-methodology.json" },
@@ -21,7 +21,7 @@
     },
     "accepted_evidence_types": {
       "type": "array",
-      "items": { "type": "string", "enum": ["measured", "forecast", "seller_declared"] },
+      "items": { "$ref": "/schemas/enums/audience-evidence-type.json" },
       "minItems": 1,
       "uniqueItems": true
     },
@@ -47,11 +47,11 @@
       "minItems": 1,
       "uniqueItems": true
     },
-    "minimum_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "minimum_confidence": { "$ref": "/schemas/core/fraction.json" },
     "maximum_age": {
       "allOf": [
         { "$ref": "/schemas/core/duration.json" },
-        { "properties": { "unit": { "enum": ["seconds", "minutes", "hours", "days"] } } }
+        { "properties": { "unit": { "$ref": "/schemas/enums/evidence-age-unit.json" } } }
       ]
     },
     "methodology_documentation_required": { "type": "boolean", "default": false },
@@ -76,9 +76,7 @@
             "properties": {
               "type": { "type": "string", "const": "agent" },
               "agent_url": {
-                "type": "string",
-                "format": "uri",
-                "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+                "$ref": "/schemas/core/canonical-https-url.json"
               },
               "ext": { "$ref": "/schemas/core/ext.json" }
             },
@@ -90,9 +88,7 @@
             "properties": {
               "type": { "type": "string", "const": "origin" },
               "origin": {
-                "type": "string",
-                "format": "uri",
-                "pattern": "^https://[^/?#@]+$"
+                "$ref": "/schemas/core/https-origin.json"
               },
               "ext": { "$ref": "/schemas/core/ext.json" }
             },

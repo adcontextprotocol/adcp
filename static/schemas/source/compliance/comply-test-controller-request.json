@@ -746,19 +746,14 @@
                 "description": "Maximum number of calls to return. The response carries `total_count` and `truncated` so the runner can detect overflow."
               },
               "attestation_mode": {
-                "type": "string",
-                "enum": [
-                  "raw",
-                  "digest"
-                ],
+                "$ref": "/schemas/enums/compliance-attestation-mode.json",
                 "default": "raw",
                 "description": "Requested response shape per recorded call. `raw` (default) returns full payload — the load-bearing assertion target for arbitrary `payload_must_contain` paths, and the existing v2.0.0 contract. `digest` returns only `payload_digest_sha256` + `payload_length` + `content_type` + optional `identifier_match_proofs[]`, so privacy-conscious adopters can support `upstream_traffic` conformance without raw-payload disclosure. Whether digest mode satisfies a given adopter's data-handling obligations (GDPR processor responsibilities, internal data-classification policy, contractual restrictions) is for that adopter's counsel to determine — the spec doesn't promise digest mode clears any specific legal bar. Synthetic-vectors-only still applies (see UpstreamTrafficSuccess top-level description in comply-test-controller-response.json): digest mode reduces what the runner sees, but the controller must still operate on synthetic test data, not production traffic — running queries against production payloads would let a runner with a precomputed digest set learn membership of arbitrary identifiers in the adopter's user base. Adopters MAY unilaterally downgrade a `raw` request to `digest` when their policy requires it; the response's per-call `attestation_mode` field echoes what was actually returned. Storyboards that strictly require raw introspection set `attestation_mode_required: \"raw\"` on their `upstream_traffic` check — calls returned in digest mode then grade not_applicable rather than failing."
               },
               "identifier_value_digests": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{64}$"
+                  "$ref": "/schemas/core/identifier-value-digest.json"
                 },
                 "maxItems": 64,
                 "description": "When `attestation_mode` is `digest`, the runner MAY supply SHA-256 digests (lowercase hex, 64 chars) of identifier values it wants the controller to verify echo for. The controller scans each recorded call's payload for string tokens whose SHA-256 hash matches any digest in this list and returns booleans in `recorded_calls[].identifier_match_proofs[]`. Lets the runner verify `identifier_paths` echo without ever transmitting plaintext identifiers to the controller — the digest is the comparison key. Cap of 64 digests per query to bound the controller's work; storyboards with more identifiers SHOULD batch across multiple queries. Has no effect when `attestation_mode` is `raw` (the runner does the matching in-process against the full payload)."
@@ -968,7 +963,7 @@
                 "then": {
                   "required": ["target_health"],
                   "properties": {
-                    "target_health": { "enum": ["delayed", "action_required"] }
+                    "target_health": { "$ref": "/schemas/enums/reporting-status-severity.json" }
                   }
                 },
                 "else": {
@@ -983,7 +978,7 @@
                 "then": {
                   "required": ["received_reporting_revision_id"],
                   "properties": {
-                    "advance_to": { "enum": ["within_grace", "past_grace"] }
+                    "advance_to": { "$ref": "#/definitions/grace_boundary" }
                   }
                 },
                 "else": {
@@ -1160,18 +1155,12 @@
           "x-entity": "product"
         },
         "opportunity_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-          "description": "Open opportunity with later_proposals consent for which simulate_later_proposal makes the seller create one later proposal now, as it would after the creating task completed, including the proposal.created notification and any change-feed record. Experimental (media_buy.open_opportunities). The seller still enforces the consent window, max_count, and min_interval and fails the scenario when they forbid a proposal.",
-          "x-entity": "opportunity"
+          "$ref": "/schemas/core/opportunity-id.json",
+          "description": "Open opportunity with later_proposals consent for which simulate_later_proposal makes the seller create one later proposal now, as it would after the creating task completed, including the proposal.created notification and any change-feed record. Experimental (media_buy.open_opportunities). The seller still enforces the consent window, max_count, and min_interval and fails the scenario when they forbid a proposal."
         },
         "proposal_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, the holdable draft proposal whose next finalize force_hold_unavailable fails with hold_unavailable.",
-          "x-entity": "proposal"
+          "$ref": "/schemas/core/proposal-id.json",
+          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, the holdable draft proposal whose next finalize force_hold_unavailable fails with hold_unavailable."
         },
         "pricing_option_id": {
           "type": "string",
@@ -1199,44 +1188,29 @@
           "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal, acceptance, operational-control, and MediaBuy readback path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse. compact_direct_buy_lifecycle_probe uses prepare to make one seeded product's list, direct-purchase, operational-control, and readback path deterministic. reporting_core_lifecycle_probe uses prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, and advance_past_escalation to exercise obligation availability, health deadlines, explicit reporting, provisional restatement, stale-received grace, buyer-side missing-obligation detection, counted consumer-status silence, and consumer-mismatch escalation. advance_past_status_deadline moves the clock strictly past expected_at plus the advertised automated_recovery_window_seconds without recording any consumer status, so obligation_counts.consumer_status_pending is gradable; advance_past_escalation moves it strictly past the open CONSUMER_STATUS_MISMATCH issue opened_at plus the advertised consumer_mismatch_escalation_seconds and returns both that boundary and any still-future stale_received_grace_deadline, so the escalation precedence rule is gradable. restate_snapshot publishes a new snapshot revision that immediately supersedes the current snapshot for the same logical slice and is invalid when the current revision is official. restate_after_received does the same restatement but only against the revision named in received_reporting_revision_id, so the stale-received grace projection can be graded live; it returns the grace deadline and advance_to positions the virtual clock inside or past it. Reliable Reporting tier probes use prepare plus publish_official_adjustment, probe_scheduler_dst, suppress_readiness, advance_within_retention, revoke_access, or publish_adjustment to seed deterministic Core-integrity, Managed Delivery, and Reconciled Billing lifecycle evidence. reporting_subscription_probe (experimental, media_buy.reporting_subscriptions) uses revoke_grant, regrant, reduce_grant, set_account_timezone, and advance_time to drive grants, account timezone cutovers, and the sandbox clock for reporting-subscription coverage."
         },
         "target_health": {
-          "type": "string",
-          "enum": ["delayed", "action_required"],
+          "$ref": "/schemas/enums/reporting-status-severity.json",
           "description": "Clock-derived health boundary selected by reporting_core_lifecycle_probe advance_time. The controller chooses the corresponding deterministic target time; callers do not supply timestamps."
         },
         "received_reporting_revision_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-          "x-entity": "reporting_revision",
+          "$ref": "/schemas/core/reporting-revision-id.json",
           "description": "Revision the caller currently reports as received, required by reporting_core_lifecycle_probe restate_after_received. The seller MUST reject the operation unless this names the caller's current required revision for the fixture obligation, and a seller advertising consumer_status_task MUST additionally require a current received consumer status from this caller naming it. This binds the restatement to a real prior read instead of restating into a vacuum."
         },
         "advance_to": {
-          "type": "string",
-          "enum": ["within_grace", "past_grace"],
+          "$ref": "#/definitions/grace_boundary",
           "default": "within_grace",
           "description": "Where reporting_core_lifecycle_probe restate_after_received leaves the virtual clock relative to the returned stale_received_grace_deadline. within_grace grades the delayed projection; past_grace grades the escalation to action_required. Repeating the operation is convergent: it reuses the committed restatement and only moves the clock."
         },
         "catalog_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Catalog operated on by catalog_item_availability_probe.",
-          "x-entity": "catalog"
+          "$ref": "/schemas/core/catalog-id.json",
+          "description": "Catalog operated on by catalog_item_availability_probe."
         },
         "catalog_generation": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Catalog incarnation operated on by catalog_item_availability_probe.",
-          "x-entity": "catalog_generation"
+          "$ref": "/schemas/core/catalog-generation.json",
+          "description": "Catalog incarnation operated on by catalog_item_availability_probe."
         },
         "item_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Catalog item operated on by catalog_item_availability_probe.",
-          "x-entity": "catalog_item"
+          "$ref": "/schemas/core/catalog-item-id.json",
+          "description": "Catalog item operated on by catalog_item_availability_probe."
         },
         "allowed_tasks": {
           "type": "array",
@@ -1249,11 +1223,9 @@
           "description": "reporting_subscription_probe reduce_grant: the complete allowed_tasks the caller's grant on account_id keeps, for example only get_reporting_status, sync_reporting_receipts, and sync_reporting_status to model a wind-down."
         },
         "timezone": {
-          "type": "string",
+          "$ref": "/schemas/core/iana-timezone.json",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "minLength": 1,
-          "maxLength": 255,
           "description": "reporting_subscription_probe set_account_timezone: the account's new IANA timezone."
         },
         "target_time": {
@@ -1270,11 +1242,7 @@
           "description": "Reason for rejection. Used by force_creative_status and force_media_buy_status when status = rejected."
         },
         "purge_kind": {
-          "type": "string",
-          "enum": [
-            "soft",
-            "hard"
-          ],
+          "$ref": "/schemas/enums/creative-purge-kind.json",
           "description": "Purge mode for force_creative_purge. soft retains a list_creatives tombstone; hard removes the creative entirely."
         },
         "reason_code": {
@@ -1391,8 +1359,7 @@
               "minimum": 0
             },
             "currency": {
-              "type": "string",
-              "pattern": "^[A-Z]{3}$"
+              "$ref": "/schemas/core/currency-code.json"
             }
           },
           "required": [
@@ -1419,12 +1386,7 @@
           "description": "Measurement window semantics to attach to the simulated reach and frequency values. Used by simulate_delivery. When present, sellers MUST populate `reach_window` on the delivery row so buyers can determine the window semantics (cumulative vs. period vs. rolling). Omitting this param produces a row with no `reach_window` — valid per schema but sum-unsafe. Mirrors the `reach_window` shape in delivery-metrics.json.",
           "properties": {
             "kind": {
-              "type": "string",
-              "enum": [
-                "cumulative",
-                "period",
-                "rolling"
-              ],
+              "$ref": "/schemas/enums/delivery-report-window-kind.json",
               "description": "Window kind. `cumulative` — no period field required. `period` and `rolling` — period field REQUIRED."
             },
             "period": {
@@ -1534,9 +1496,7 @@
           }
         },
         "spend_percentage": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100,
+          "$ref": "/schemas/core/percentage.json",
           "description": "Spend to this percentage of budget (0–100). Used by simulate_budget_spend."
         },
         "arm": {
@@ -1555,21 +1515,15 @@
           "maxLength": 128
         },
         "evaluation_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Deterministic provider evaluation identity the seller MUST emit on the next forced get_creative_features submitted acknowledgement and preserve on its terminal completion result.",
-          "x-entity": "creative_evaluation"
+          "$ref": "/schemas/core/creative-evaluation-id.json",
+          "description": "Deterministic provider evaluation identity the seller MUST emit on the next forced get_creative_features submitted acknowledgement and preserve on its terminal completion result."
         },
         "message": {
-          "type": "string",
-          "maxLength": 2000,
+          "$ref": "/schemas/core/task-message.json",
           "description": "Optional human-readable explanation surfaced on the next forced operation response. Used by force_create_media_buy_arm, force_get_products_arm, force_get_signals_arm, and force_get_creative_features_arm for the submitted arm. Plain text only."
         },
         "reason": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
+          "$ref": "/schemas/core/brief-rejection-reason.json",
           "description": "Deterministic buyer-facing reason the seller MUST emit on the next get_products response when force_get_products_arm uses arm 'rejected'. Plain text only; MUST NOT expose confidential internal rules, inventory identifiers, credentials, or stack traces."
         },
         "suggestions": {
@@ -1578,9 +1532,7 @@
           "minItems": 1,
           "maxItems": 20,
           "items": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
+            "$ref": "/schemas/core/seller-suggestion.json"
           }
         },
         "format_id": {
@@ -1857,5 +1809,16 @@
         }
       }
     }
-  ]
+  ],
+  "definitions": {
+    "grace_boundary": {
+      "title": "Grace Boundary",
+      "description": "Where a lifecycle probe leaves the virtual clock relative to a reporting grace period: within_grace or past_grace.",
+      "type": "string",
+      "enum": [
+        "within_grace",
+        "past_grace"
+      ]
+    }
+  }
 }

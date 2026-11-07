@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-evidence-type.json",
+  "title": "Audience Evidence Type",
+  "description": "Nature of audience evidence: measured, forecast, or seller_declared.",
+  "type": "string",
+  "enum": [
+    "measured",
+    "forecast",
+    "seller_declared"
+  ]
+}

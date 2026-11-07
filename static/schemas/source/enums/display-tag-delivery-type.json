@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/display-tag-delivery-type.json",
+  "title": "Display Tag Delivery Type",
+  "description": "How a display tag is delivered.",
+  "type": "string",
+  "enum": [
+    "tag_url",
+    "inline_markup",
+    "paired_redirect"
+  ]
+}

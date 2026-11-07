@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/clickthrough-policy.json",
+  "title": "Clickthrough Policy",
+  "description": "Clickthrough destination policy of a stateful display.",
+  "type": "string",
+  "enum": [
+    "required",
+    "optional",
+    "none"
+  ]
+}

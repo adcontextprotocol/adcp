@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/refinement-ask.json",
+  "title": "Refinement Ask",
+  "description": "Free-text statement of what the buyer asks the seller to change in a product or proposal refinement.",
+  "type": "string",
+  "minLength": 1
+}

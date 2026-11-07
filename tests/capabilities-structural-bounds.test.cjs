@@ -8,7 +8,9 @@
  *
  * A field new in 3.3 or experimental enforces its bound with a schema keyword.
  * A field that was stable before 3.3 carries the bound as a 4.0 annotation,
- * because a minor release may not tighten it. The worst-case document the
+ * because a minor release may not tighten it. A position can carry both: the
+ * keyword a 3.x release published and a lower 4.0 annotation, which the worst
+ * case takes as the 4.0 limit. The worst-case document the
  * bounds allow is computed by `scripts/capabilities-structural-bounds.cjs`
  * and pinned here so the figure in security.mdx cannot drift.
  */
@@ -27,7 +29,7 @@ const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 const security = read('docs/building/by-layer/L1/security.mdx');
 
 // The documented worst case. Update security.mdx with this number.
-const DOCUMENTED_WORST_CASE_BYTES = 91_816_283;
+const DOCUMENTED_WORST_CASE_BYTES = 91_766_491;
 const DOCUMENTED_OPEN_POSITIONS = 107;
 
 const rows = bounds.coverage();
@@ -55,12 +57,30 @@ describe('capabilities structural bounds (#8198)', () => {
     assert.deepEqual(lax, [], 'a new or experimental field must carry the keyword, not only the annotation');
   });
 
-  it('never annotates a limit below the keyword that enforces it', () => {
+  it('never annotates a 4.0 limit above the keyword that enforces it', () => {
+    // A 4.0 annotation plans a tightening, so it may sit below the keyword a 3.x
+    // release published. One above the keyword would plan a loosening, which
+    // the worst case ignores because it takes the lower of the two.
+    const wrong = [];
     for (const r of rows) {
-      if (r.enforced !== undefined && r.annotated !== undefined) {
-        assert.ok(r.annotated >= r.enforced, `${r.key}: x-max annotation ${r.annotated} < ${KEYWORD_BY_KIND[r.kind]} ${r.enforced}`);
+      if (r.annotated === undefined) continue;
+      if (!Number.isInteger(r.annotated) || r.annotated < 1) wrong.push(`${r.key}: x-max annotation ${r.annotated} is not a positive integer`);
+      else if (r.enforced !== undefined && r.annotated > r.enforced) {
+        wrong.push(`${r.key}: x-max annotation ${r.annotated} > ${KEYWORD_BY_KIND[r.kind]} ${r.enforced}`);
       }
     }
+    assert.deepEqual(wrong, []);
+  });
+
+  it('applies the 4.0 timezone limit from the named schema, and lets a site override it', () => {
+    const timezone = bounds.load('core/iana-timezone.json');
+    assert.equal(timezone.maxLength, 255, '3.2.8 published 255, so 3.x keeps it');
+    assert.equal(timezone['x-max-length-4.0'], 64);
+    const items = rows.find((r) => r.key === 'core/account-timezone-capability.json#/properties/supported_timezones/items');
+    assert.equal(items.enforced, 255);
+    assert.equal(items.annotated, 64);
+    const site = { $ref: '/schemas/core/iana-timezone.json', 'x-max-length-4.0': 40 };
+    assert.equal(bounds.overlayScalarRef(site, 'core/account-timezone-capability.json')['x-max-length-4.0'], 40);
   });
 
   it('leaves room for every value of a closed vocabulary a list can hold', () => {
@@ -151,7 +171,7 @@ describe('exemptions', () => {
     const reasons = new Set(rows.filter((r) => r.exempt).map((r) => r.exempt));
     assert.deepEqual([...reasons].sort(), ['closed-enum', 'pattern']);
     for (const r of rows.filter((x) => x.exempt)) {
-      const node = nodeAt(r.file, r.pointer);
+      const node = bounds.overlayScalarRef(nodeAt(r.file, r.pointer), r.file);
       if (r.exempt === 'closed-enum') assert.equal(node.uniqueItems, true, r.key);
       if (r.exempt === 'pattern') assert.ok(Number.isFinite(bounds.patternMaxLength(node.pattern)), r.key);
     }

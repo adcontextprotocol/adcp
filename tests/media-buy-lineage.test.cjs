@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 const REASONS = ['renewal', 'terms_change', 'migration', 'sunset', 'replacement'];
@@ -87,7 +88,7 @@ for (const [task, { uri, base }] of Object.entries(REQUESTS)) {
 
   test(`${task} carries no write-back field for the predecessor`, () => {
     const props = readSchema(uri).properties;
-    assert.equal(props.predecessor_media_buy_id['x-entity'], 'media_buy');
+    assert.equal(resolveScalar(props.predecessor_media_buy_id)['x-entity'], 'media_buy');
     assert.equal('replacement_media_buy_id' in props, false);
   });
 }
@@ -102,8 +103,9 @@ test('the core media buy pairs the lineage fields', async () => {
 
 test('get_media_buys filters by predecessor_media_buy_id', async () => {
   const schema = readSchema('/schemas/media-buy/get-media-buys-request.json');
-  assert.equal(schema.properties.predecessor_media_buy_id['x-entity'], 'media_buy');
-  assert.equal(schema.properties.predecessor_media_buy_id.type, 'string');
+  const predecessor = resolveScalar(schema.properties.predecessor_media_buy_id);
+  assert.equal(predecessor['x-entity'], 'media_buy');
+  assert.equal(predecessor.type, 'string');
   const validate = await compile(schema);
   assert.equal(validate({ predecessor_media_buy_id: 'mb_pinnacle_q3', status_filter: ['active'] }), true, JSON.stringify(validate.errors));
   assert.equal(validate({ predecessor_media_buy_id: '' }), false);
