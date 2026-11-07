@@ -7,6 +7,14 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
+// The brand-claim verify flow checks the published TXT record before asking
+// WorkOS; publish the mocked challenge's value. Other lookups stay real.
+vi.mock('node:dns', async () => {
+  const actual = await vi.importActual<typeof import('node:dns')>('node:dns');
+  const promises = { ...actual.promises, resolveTxt: async () => [['verification_token=test-token']] };
+  return { ...actual, promises, default: { ...actual, promises } };
+});
+
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/middleware/auth.js')>(
     '../../src/middleware/auth.js',

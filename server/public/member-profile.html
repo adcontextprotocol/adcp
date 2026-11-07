@@ -2383,6 +2383,7 @@
               ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
               : '';
             statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
+            if (data.dns_record_value) document.getElementById('domain-claim-record-value').textContent = data.dns_record_value;
             return;
           }
           throw new Error(data.message || data.error || 'Failed to verify domain.');
@@ -2549,6 +2550,7 @@
               ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
               : '';
             statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
+            if (data.dns_record_value) document.getElementById('cross-org-claim-record-value').textContent = data.dns_record_value;
             return;
           }
           throw new Error(data.message || data.error || 'Failed to verify domain.');
