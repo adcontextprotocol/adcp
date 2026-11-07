@@ -11,8 +11,9 @@ AdCP uses a three-tier numbering system: **VERSION.RELEASE.PATCH** (e.g., 3.1.2)
 1. **A minor only adds.** New fields go on open schemas. Nothing is removed, renamed, retyped or made required, and closed schemas stay closed until the next major ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). The [additive-minor check](https://github.com/adcontextprotocol/adcp/blob/main/scripts/lint-additive-minor.cjs) enforces this for schemas in CI.
 2. **To replace a field, add the new one and deprecate the old one.** Senders emit both until the next major.
 3. **Removals and breaking changes happen in a major.**
+4. **A minor never adds a field to a mutating request if an older seller that ignores it would commit to something different.** Spend, targeting, caps, bidding, creative activation, measurement and account identity are examples, not the full list. Such a field waits for the next major, or ships behind a capability the seller declares first, and buyers MUST NOT send it to a seller that does not declare that capability.
 
-These rules cover stable surfaces. [Experimental surfaces](#experimental-surfaces) have their own contract. The only other change a minor may make to a closed schema is a correction recorded in DR-0036, which brings the schema back in line with text the spec already published.
+These rules cover stable surfaces. [Experimental surfaces](#experimental-surfaces) have their own contract. The only other changes a minor may make to a closed schema are the corrections and named exceptions that DR-0036 allows, each listed in [the corrections register](https://github.com/adcontextprotocol/adcp/blob/main/scripts/lint-additive-minor-corrections.json).
 
 The shipped 3.0 → 3.1 → 3.2 moves did not all follow these rules; they and the 12 released entries in the [additive-minor baseline](https://github.com/adcontextprotocol/adcp/blob/main/scripts/lint-additive-minor-baseline.json) stay as shipped until 4.0 and set no precedent.
 
@@ -42,7 +43,7 @@ Implementations built against 3.0 continue to function against any 3.x release, 
 
 ## Version negotiation
 
-Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3.0"`, `"3.1"`) on every request and response. Release-precision pinning lets a buyer select which schemas it validates against, and lets sellers return responses shaped to the contract the buyer expects (Stripe model).
+Buyers and sellers negotiate at **release precision** (VERSION.RELEASE, e.g. `"3.0"`, `"3.1"`) on every request and response. Release-precision pinning lets a buyer select which schemas it validates against, and lets sellers return responses that match the contract the buyer expects (Stripe model).
 
 > In-house clients implementing the wire directly can stay on `adcp_major_version` through all of 3.x; `adcp_version` is opt-in until 4.0. See [Migration timeline](#migration-timeline) for the cadence.
 
@@ -116,7 +117,7 @@ Per the three-tier model, patches introduce no stable AdCP contract change — t
 
 `build_version` MUST be a valid semver string with the patch component populated, optionally extended with pre-release and build-metadata segments per [semver §9–§10](https://semver.org/#spec-item-9). Examples: `"3.1.2"`, `"3.1.2+scope3.deploy.4821"`, `"3.1.0-beta.3+sha.a1b2c3d"`.
 
-The `adcp_version` wire shape is `MAJOR.MINOR` or `MAJOR.MINOR-PRERELEASE`. **No patch component is valid on the wire**, even alongside a pre-release tag. A sender that holds a full semver (`"3.1.0-beta.1"`) MUST normalize it to release precision (`"3.1-beta.1"`) before emitting. `"3.1.2"`, `"3.1.0-beta.1"`, `"v3.1"`, and `"3"` are all invalid wire values and will be rejected by validation.
+The `adcp_version` wire format is `MAJOR.MINOR` or `MAJOR.MINOR-PRERELEASE`. **No patch component is valid on the wire**, even alongside a pre-release tag. A sender that holds a full semver (`"3.1.0-beta.1"`) MUST normalize it to release precision (`"3.1-beta.1"`) before emitting. `"3.1.2"`, `"3.1.0-beta.1"`, `"v3.1"`, and `"3"` are all invalid wire values and will be rejected by validation.
 
 **Don't confuse the wire field with bundle metadata.** The schema registry, tarball manifest, compliance index, and the `/protocol/` HTTP discovery endpoint all expose a `published_version` field (e.g. `"3.1.0-beta.1"`) at full-semver precision — that's the version of the published artifact, not a wire value. A legacy `adcp_version` alias is also present on those meta-objects through 3.x for `@adcp/sdk.ComplianceIndex` compatibility, sunset at 4.0. **Never emit a meta-field value on the wire** — normalize to release-precision first. See [schemas-and-sdks](/docs/building/schemas-and-sdks#schema-urls) for the discovery URL.
 
