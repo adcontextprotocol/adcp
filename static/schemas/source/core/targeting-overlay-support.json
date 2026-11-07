@@ -253,7 +253,7 @@
               }
             }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     }
@@ -327,7 +327,13 @@
     "signal_targeting_groups": { "$ref": "#/definitions/supported" },
     "demographics": {
       "anyOf": [
-        { "$ref": "#/definitions/supported" },
+        {
+          "$ref": "#/definitions/supported",
+          "deprecated": true,
+          "x-deprecated-in": "3.3.0",
+          "x-removed-in": "4.0.0",
+          "description": "Deprecated in 3.3. The 3.2 shorthand for { age: true }. Senders MUST send the object; receivers MUST accept true."
+        },
         {
           "type": "object",
           "properties": {
@@ -336,7 +342,7 @@
               "$ref": "#/definitions/supported",
               "x-status": "experimental",
               "x-added-in": "3.3.0",
-              "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
+              "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting)."
             },
             "ext": { "$ref": "/schemas/core/ext.json" }
           },

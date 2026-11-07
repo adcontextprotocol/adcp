@@ -2008,9 +2008,18 @@ test("required overlay requirements exclude seller limit fields", async () => {
     false,
     "seller maxima are response-only"
   );
+  // The requirements container is open (a correction under DR-0036). An unknown
+  // hard requirement still isn't ignored: matching fails closed on it.
   assert.equal(
     validate({ future_unknown_dimension: true }),
-    false,
+    true,
+    errors(validate)
+  );
+  assert.match(
+    JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting-overlay-requirements.json"), "utf8")
+    ).description,
+    /Missing or unknown required fields do not match\./,
     "unknown hard requirements must not be ignored"
   );
   for (const zeroCapability of [
@@ -2107,6 +2116,36 @@ test("required overlay requirements exclude seller limit fields", async () => {
     assert.match(description, /requirement value of true|requirement true/i);
     assert.match(description, /support true|matches true/i);
     assert.match(description, /numeric seller limits|numeric limits/i);
+  }
+});
+
+test("boolean demographics is the deprecated 3.2 shorthand for { age: true }", async () => {
+  for (const name of ["targeting-overlay-support", "targeting-overlay-requirements"]) {
+    const uri = `/schemas/core/${name}.json`;
+    const validate = await compile(uri);
+    for (const demographics of [true, { age: true }, { gender: true }, { age: true, gender: true }]) {
+      assert.equal(
+        validate({ demographics }),
+        true,
+        `${name} accepts demographics ${JSON.stringify(demographics)}: ${errors(validate)}`
+      );
+    }
+    assert.equal(validate({ demographics: false }), false, `${name} rejects demographics false`);
+
+    const source = JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core", `${name}.json`), "utf8")
+    );
+    for (const schema of [source, readBuiltSchema(uri)]) {
+      const [booleanBranch, objectBranch] = schema.properties.demographics.anyOf;
+      assert.equal(booleanBranch.deprecated, true, `${name} marks the boolean branch deprecated`);
+      assert.equal(booleanBranch["x-deprecated-in"], "3.3.0");
+      assert.equal(booleanBranch["x-removed-in"], "4.0.0");
+      assert.match(booleanBranch.description, /^Deprecated in 3\.3\./);
+      assert.match(booleanBranch.description, /The 3\.2 shorthand for \{ age: true \}\./);
+      assert.match(booleanBranch.description, /Senders MUST send the object; receivers MUST accept true\./);
+      assert.equal(objectBranch.type, "object");
+      assert.equal(objectBranch.deprecated, undefined, `${name} keeps the object branch current`);
+    }
   }
 });
 

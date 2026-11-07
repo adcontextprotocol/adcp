@@ -52,5 +52,5 @@
     "measurement_windows": { "type": "array", "items": { "$ref": "/schemas/core/measurement-window.json" }, "minItems": 1, "uniqueItems": true }
   },
   "required": ["available_reporting_frequencies", "expected_delay_minutes", "timezone", "supports_webhooks", "available_metrics", "date_range_support"],
-  "additionalProperties": false
+  "additionalProperties": true
 }
