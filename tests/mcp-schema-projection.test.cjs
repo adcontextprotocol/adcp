@@ -201,7 +201,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_376_000.
 // Experimental match keys (#8375) reach the seeded Product through
 // Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
-const PARITY_COMPILE_LIMIT = 1_384_000;
+// The no-buyer-secrets rule and the https_put transport text (#8149) reach the
+// controller through reporting-write-destination.json and
+// reporting-delivery-method.json: 1_383_804 → 1_385_064 bytes. Bound at
+// 1_385_200.
+const PARITY_COMPILE_LIMIT = 1_385_200;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
