@@ -1436,7 +1436,10 @@ function storedBrandResolutionResponse(
   return withBrandResolutionProvenance({
     canonical_id: brand.canonical_domain || brand.domain,
     canonical_domain: brand.canonical_domain || brand.domain,
-    brand_name: brand.brand_name || brand.domain,
+    // A hosted row may carry only a manifest; take its name before the domain.
+    brand_name: brand.brand_name
+      || (brand.brand_manifest ? resolveBrandFromJson(brand.domain, brand.brand_manifest, false).name : undefined)
+      || brand.domain,
     ...(brand.brand_names?.length ? { names: brand.brand_names } : {}),
     ...(brand.keller_type ? { keller_type: brand.keller_type } : {}),
     ...(brand.parent_brand ? { parent_brand: brand.parent_brand } : {}),
