@@ -401,6 +401,33 @@ describe('applyVerifiedBrandClaim', () => {
       expect(await row()).toMatchObject({ domain_verified: true, domain_verification_method: 'brand_json' });
     });
 
+    async function insertLegacyPointerRow() {
+      await pool.query(
+        `INSERT INTO brands (domain, workos_organization_id, source_type, review_status, is_public, domain_verified)
+         VALUES ($1, $2, 'brand_json', 'approved', TRUE, TRUE)`,
+        [TEST_DOMAIN, ORG_A],
+      );
+    }
+
+    it('records fresh member evidence on a legacy row whose brand.json was once read', async () => {
+      await insertLegacyPointerRow();
+      await addMember(USER_ON_DOMAIN, ORG_A, `someone@${TEST_DOMAIN}`, true);
+      await brandDb.syncBrandDomainFromWorkos(TEST_DOMAIN, ORG_A, 'manual');
+      expect(await row()).toMatchObject({ domain_verified: true, domain_verification_method: 'member_email' });
+    });
+
+    it('records the claimed method on a legacy row whose brand.json was once read', async () => {
+      await insertLegacyPointerRow();
+      await brandDb.applyVerifiedBrandClaim(TEST_DOMAIN, ORG_A, 'member_email');
+      expect(await row()).toMatchObject({ domain_verified: true, domain_verification_method: 'member_email' });
+    });
+
+    it('keeps a legacy row whose brand.json was read even when reclassifying', async () => {
+      await insertLegacyPointerRow();
+      await brandDb.syncBrandDomainFromWorkos(TEST_DOMAIN, ORG_A, 'manual', { reclassifyLegacy: true });
+      expect(await row()).toMatchObject({ domain_verified: true, domain_verification_method: 'brand_json' });
+    });
+
     it('does not replace stronger proof with a member\'s email', async () => {
       await brandDb.syncBrandDomainFromWorkos(TEST_DOMAIN, ORG_A, 'dns');
       await brandDb.applyVerifiedBrandClaim(TEST_DOMAIN, ORG_A, 'member_email');

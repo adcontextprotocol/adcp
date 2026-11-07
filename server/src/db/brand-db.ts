@@ -468,20 +468,19 @@ const methodRankSql = (method: string) =>
   `(CASE WHEN ${method} IS NULL THEN 0 WHEN ${method} = 'manual' THEN 1
     WHEN ${method} = 'member_email' THEN 2 ELSE 3 END)`;
 
-/**
- * The proof an existing verified row already carries. Rows verified before
- * the method was recorded count as `brand_json` when the domain's own
- * brand.json was read (source_type), and as no proof otherwise, so a sync
- * reclassifies them.
- */
-const EXISTING_PROOF_SQL = `(CASE WHEN brands.domain_verified THEN COALESCE(
-  brands.domain_verification_method,
-  CASE WHEN brands.source_type = 'brand_json' THEN 'brand_json' END) END)`;
+/** The proof a verified row has on record. Only this ranks against new proof. */
+const RECORDED_PROOF_SQL = `(CASE WHEN brands.domain_verified THEN brands.domain_verification_method END)`;
 
-/** Verified before the method was recorded, with no recognisable proof. */
-const LEGACY_VERIFIED_SQL = `(brands.domain_verified
-  AND brands.domain_verification_method IS NULL
-  AND brands.source_type IS DISTINCT FROM 'brand_json')`;
+/**
+ * The method a row keeps when a write does not replace its proof. A row
+ * verified before the method was recorded counts as `brand_json` when the
+ * domain's own brand.json was read (source_type); otherwise it stays NULL.
+ */
+const KEPT_PROOF_SQL = `COALESCE(${RECORDED_PROOF_SQL},
+  CASE WHEN brands.domain_verified AND brands.source_type = 'brand_json' THEN 'brand_json' END)`;
+
+/** Verified before the method was recorded. */
+const LEGACY_VERIFIED_SQL = `(brands.domain_verified AND brands.domain_verification_method IS NULL)`;
 
 /**
  * A write would move another organization's verified row to a new owner on
@@ -961,8 +960,8 @@ export class BrandDatabase {
          domain_verified = TRUE,
          domain_verification_method = CASE
            WHEN brands.workos_organization_id = $2
-             AND ${methodRankSql(EXISTING_PROOF_SQL)} > ${methodRankSql('$3::text')}
-           THEN ${EXISTING_PROOF_SQL} ELSE $3::text END,
+             AND ${methodRankSql(RECORDED_PROOF_SQL)} > ${methodRankSql('$3::text')}
+           THEN ${RECORDED_PROOF_SQL} ELSE $3::text END,
          is_public = TRUE,
          manifest_orphaned = FALSE,
          prior_owner_org_id = NULL,
@@ -1049,16 +1048,15 @@ export class BrandDatabase {
     options: { reclassifyLegacy?: boolean } = {},
   ): Promise<HostedBrand | null> {
     const canonicalDomain = canonicalizeBrandDomain(domain);
-    // Routine syncs never demote a row verified before the method was
-    // recorded; only the reclassification script (reviewed dry-run first)
-    // does. Proof from a routine sync is still recorded on it.
-    const keepsLegacy = options.reclassifyLegacy
-      ? 'FALSE'
-      : `(${LEGACY_VERIFIED_SQL} AND EXCLUDED.domain_verification_method = 'manual')`;
+    // A legacy row is never demoted by an administrator's assertion, except
+    // by the reclassification script, and even then not when its own
+    // brand.json was read. Fresh proof is always recorded on it.
+    const keepsLegacy = `(${LEGACY_VERIFIED_SQL} AND EXCLUDED.domain_verification_method = 'manual'${
+      options.reclassifyLegacy ? ` AND brands.source_type = 'brand_json'` : ''})`;
     // Same-org proof that is at least as strong as the incoming method wins.
     const keepsProof = `(brands.workos_organization_id = EXCLUDED.workos_organization_id
       AND (${keepsLegacy}
-        OR ${methodRankSql(EXISTING_PROOF_SQL)} >= ${methodRankSql('EXCLUDED.domain_verification_method')}))`;
+        OR ${methodRankSql(RECORDED_PROOF_SQL)} >= ${methodRankSql('EXCLUDED.domain_verification_method')}))`;
     const verifiedAfter = `(${keepsProof} OR EXCLUDED.domain_verified)`;
     // The member check runs inside the write, so a concurrent promotion
     // cannot be overwritten with a stale `manual`.
@@ -1080,7 +1078,7 @@ export class BrandDatabase {
          workos_organization_id = $2,
          domain_verified = ${verifiedAfter},
          domain_verification_method = CASE WHEN ${keepsProof}
-           THEN ${EXISTING_PROOF_SQL} ELSE EXCLUDED.domain_verification_method END,
+           THEN ${KEPT_PROOF_SQL} ELSE EXCLUDED.domain_verification_method END,
          -- Only a verified claim takes a relinquished row out of the orphan
          -- state; an administrator's assertion leaves the adopt choice open.
          is_public = CASE WHEN ${verifiedAfter} THEN TRUE ELSE brands.is_public END,
