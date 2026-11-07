@@ -10,6 +10,7 @@
       "type": "array",
       "items": {
         "type": "string",
+        "maxLength": 64,
         "pattern": "^\\d+\\.\\d+$"
       },
       "minItems": 1,
@@ -19,6 +20,7 @@
     },
     "webhook_signing_algorithms": {
       "type": "array",
+      "maxItems": 32,
       "items": {
         "type": "string",
         "enum": ["ed25519", "ecdsa-p256-sha256"]

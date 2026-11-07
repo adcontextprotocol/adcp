@@ -22,11 +22,13 @@
     },
     "rights_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Rights offering identifier from get_rights response",
       "x-entity": "rights_grant"
     },
     "pricing_option_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Selected pricing option from the rights offering",
       "x-entity": "vendor_pricing_option"
     },
@@ -44,10 +46,12 @@
       "properties": {
         "description": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Description of how the rights will be used"
         },
         "uses": {
           "type": "array",
+          "maxItems": 32,
           "description": "Specific rights uses for this campaign",
           "items": {
             "$ref": "/schemas/enums/right-use.json"
@@ -56,6 +60,7 @@
         },
         "countries": {
           "type": "array",
+          "maxItems": 32,
           "description": "Countries where the campaign will run (ISO 3166-1 alpha-2)",
           "items": {
             "type": "string",
@@ -64,6 +69,7 @@
         },
         "format_ids": {
           "type": "array",
+          "maxItems": 100,
           "deprecated": true,
           "x-removed-in": "4.0.0",
           "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named formats that will be produced. Use `format_kinds` and optional `format_option_refs`.",
@@ -73,6 +79,7 @@
         },
         "format_kinds": {
           "type": "array",
+          "maxItems": 32,
           "description": "Canonical creative format kinds that will be produced under the rights grant.",
           "items": { "$ref": "/schemas/core/canonical-format-kind.json" },
           "minItems": 1,
@@ -80,6 +87,7 @@
         },
         "format_option_refs": {
           "type": "array",
+          "maxItems": 100,
           "description": "Exact canonical publisher or product format options covered by the planned rights use, when kind alone is insufficient.",
           "items": { "$ref": "/schemas/core/format-option-ref.json" },
           "minItems": 1,

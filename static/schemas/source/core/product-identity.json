@@ -23,6 +23,7 @@
     },
     "reach_methodology": {
       "type": "string",
+      "maxLength": 2000,
       "minLength": 1,
       "description": "Human-readable methodology for this product's custom reach unit. Required when the product reports reach or frequency with reach_unit custom, including frequency-only reporting."
     }

@@ -9,6 +9,7 @@
   "properties": {
     "adjustment_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Governance-agent identifier for the adjustment record.",
       "x-entity": "governance_adjustment"
     },

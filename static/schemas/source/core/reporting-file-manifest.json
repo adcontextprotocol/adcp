@@ -16,7 +16,7 @@
       "properties": {
         "start": { "type": "string", "format": "date-time" },
         "end": { "type": "string", "format": "date-time" },
-        "source_timezone": { "type": "string", "minLength": 1 }
+        "source_timezone": { "type": "string", "maxLength": 64, "minLength": 1 }
       },
       "required": ["start", "end", "source_timezone"],
       "additionalProperties": false
@@ -25,6 +25,7 @@
     "compression": { "$ref": "/schemas/core/reporting-file-compression.json" },
     "files": {
       "type": "array",
+      "maxItems": 100,
       "items": { "$ref": "/schemas/core/reporting-file-entry.json" },
       "minItems": 1
     },
@@ -32,6 +33,7 @@
     "row_count": { "type": "integer", "minimum": 0 },
     "control_totals": {
       "type": "array",
+      "maxItems": 100,
       "items": { "$ref": "/schemas/core/reporting-control-total.json" },
       "uniqueItems": true
     },

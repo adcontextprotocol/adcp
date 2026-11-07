@@ -23,6 +23,7 @@
     },
     "media_buy_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "x-entity": "media_buy"
     },
@@ -40,11 +41,13 @@
     },
     "package_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "x-entity": "package"
     },
     "creative_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "x-entity": "creative"
     },

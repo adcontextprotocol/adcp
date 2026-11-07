@@ -19,6 +19,7 @@
     },
     "industries": {
       "type": "array",
+      "maxItems": 81,
       "description": "Optional industry filter. The agent restricts results to brands operating in these industries. Values follow the advertiser-industry taxonomy; the agent SHOULD accept unknown values gracefully per the advertiser-industry extension policy.",
       "items": {
         "$ref": "/schemas/enums/advertiser-industry.json"
@@ -27,6 +28,7 @@
     },
     "countries": {
       "type": "array",
+      "maxItems": 32,
       "description": "Optional market filter. Returns brands with rights availability in at least one of the specified countries (ISO 3166-1 alpha-2).",
       "items": {
         "type": "string",
