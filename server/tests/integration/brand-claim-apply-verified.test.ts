@@ -207,6 +207,24 @@ describe('applyVerifiedBrandClaim', () => {
     expect(row.rows[0]).toEqual({ brand_manifest: {}, workos_organization_id: ORG_B });
   });
 
+  it('stores an owner\'s published document on its verified row, with its name', async () => {
+    const claimed = await brandDb.applyVerifiedBrandClaim(TEST_DOMAIN, ORG_A, 'dns');
+    await brandDb.updateHostedBrand(claimed!.id, {
+      brand_json: { name: 'Published Brand' },
+      brand_name: 'Published Brand',
+      origin_validated: true,
+    });
+    const row = await pool.query<{ brand_manifest: Record<string, unknown>; has_brand_manifest: boolean; brand_name: string }>(
+      'SELECT brand_manifest, has_brand_manifest, brand_name FROM brands WHERE domain = $1',
+      [TEST_DOMAIN],
+    );
+    expect(row.rows[0]).toEqual({
+      brand_manifest: { name: 'Published Brand' },
+      has_brand_manifest: true,
+      brand_name: 'Published Brand',
+    });
+  });
+
   it('preserves the prior manifest when adoptPriorManifest is true', async () => {
     await pool.query(
       `INSERT INTO brands (

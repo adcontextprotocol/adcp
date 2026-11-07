@@ -348,6 +348,7 @@ export interface CreateHostedBrandInput {
  */
 export interface UpdateHostedBrandInput {
   brand_json?: Record<string, unknown>;
+  brand_name?: string;
   /** The domain's own brand.json points at this hosted record: proof of control. */
   verified_by_brand_json_pointer?: true;
   /** Mark a successful live origin read as terminal brand.json evidence. */
@@ -733,6 +734,12 @@ export class BrandDatabase {
     if (input.brand_json !== undefined) {
       updates.push(`brand_manifest = $${paramIndex++}`);
       values.push(JSON.stringify(input.brand_json));
+      updates.push(`has_brand_manifest = $${paramIndex++}`);
+      values.push(Object.keys(input.brand_json).length > 0);
+    }
+    if (input.brand_name !== undefined) {
+      updates.push(`brand_name = $${paramIndex++}`);
+      values.push(input.brand_name);
     }
     if (input.verified_by_brand_json_pointer) {
       updates.push(`domain_verified = TRUE`);
