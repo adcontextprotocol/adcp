@@ -143,7 +143,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -154,7 +154,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -165,7 +165,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -176,7 +176,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -187,7 +187,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -198,7 +198,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "core/canonical-proposal.json",

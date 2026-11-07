@@ -206,7 +206,7 @@ Nothing here is graded. 3.3 has no wire form for any of it after beta.1, so a ru
 
 **Detects:** a seller that changes a signed purchase on its own authority carries no seller-held entry in `commercial_terms.change_terms[]` naming the bounded change.
 
-In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers) that the buyer accepts. A way for the buyer to pre-agree bounded seller changes (a budget release, a schedule shift, ordered line alternates) would add `holder` and `purchase_index` to `change-term.json` and new constraint kinds. `commercial_terms` and `change-term.json` are closed schemas, and a minor release adds no property to a closed schema, so the lane ships in 4.0. The expected shape is in [Planned for 4.0](/docs/media-buy/product-discovery/proposal-negotiation#planned-for-40-seller-held-change-terms).
+In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers) that the buyer accepts. A way for the buyer to pre-agree bounded seller changes (a budget release, a schedule shift, ordered line alternates) would add `holder` and `purchase_index` to `change-term.json` and new constraint kinds. `commercial_terms` and `change-term.json` are closed schemas, and a minor release adds no property to a closed schema, so the lane ships in 4.0. The expected schema is in [Planned for 4.0](/docs/media-buy/product-discovery/proposal-negotiation#planned-for-40-seller-held-change-terms).
 
 **Fix:** until 4.0, send a seller offer for every seller-initiated change to a signed buy. A 3.x run cannot observe this check, so it reports as not observable.
 
