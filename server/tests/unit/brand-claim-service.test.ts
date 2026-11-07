@@ -19,6 +19,7 @@ type WorkOSStub = {
     createOrganizationDomain: ReturnType<typeof vi.fn>;
     verifyOrganizationDomain: ReturnType<typeof vi.fn>;
     deleteOrganizationDomain: ReturnType<typeof vi.fn>;
+    getOrganizationDomain: ReturnType<typeof vi.fn>;
   };
 };
 
@@ -27,6 +28,7 @@ function makeWorkos(overrides: Partial<{
   createOrganizationDomain: any;
   verifyOrganizationDomain: any;
   deleteOrganizationDomain: any;
+  getOrganizationDomain: any;
 }> = {}): WorkOSStub {
   return {
     organizations: {
@@ -36,6 +38,7 @@ function makeWorkos(overrides: Partial<{
       createOrganizationDomain: overrides.createOrganizationDomain ?? vi.fn(),
       verifyOrganizationDomain: overrides.verifyOrganizationDomain ?? vi.fn(),
       deleteOrganizationDomain: overrides.deleteOrganizationDomain ?? vi.fn().mockResolvedValue(undefined),
+      getOrganizationDomain: overrides.getOrganizationDomain ?? vi.fn(),
     },
   };
 }
@@ -55,6 +58,11 @@ function makeBrandDb(overrides: Partial<{
 }
 
 const ORG = 'org_test_brand_claim';
+
+/** A resolver that publishes these TXT values at every name. */
+function published(...values: string[]) {
+  return vi.fn().mockResolvedValue(values.map(value => [value]));
+}
 const DOMAIN = 'acme.com';
 
 describe('issueDomainChallenge', () => {
@@ -579,6 +587,7 @@ describe('verifyDomainChallenge', () => {
       brandDb: makeBrandDb(),
       orgId: ORG,
       rawDomain: DOMAIN,
+      resolveTxt: published('verification_token=tok_pending'),
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -587,6 +596,80 @@ describe('verifyDomainChallenge', () => {
       expect(result.message).not.toContain('verification_prefix');
       expect(result.dns_record_name).toBe(DOMAIN);
     }
+    expect(workos.organizationDomains.verifyOrganizationDomain).toHaveBeenCalledWith('d1');
+  });
+
+  describe('checking the published record before asking WorkOS', () => {
+    const pendingDomain = { id: 'd1', domain: DOMAIN, state: 'pending', verificationToken: 'tok_now', verificationPrefix: null };
+
+    it('returns the current value and does not ask WorkOS when the record holds an older value', async () => {
+      const workos = makeWorkos({ getOrganization: vi.fn().mockResolvedValue({ domains: [pendingDomain] }) });
+      const result = await verifyDomainChallenge({
+        workos: workos as any, brandDb: makeBrandDb(), orgId: ORG, rawDomain: DOMAIN,
+        resolveTxt: published('verification_token=tok_old', 'google-site-verification=x'),
+      });
+      expect(result).toMatchObject({
+        ok: false,
+        code: 'still_pending',
+        dns_record_name: DOMAIN,
+        dns_record_value: 'verification_token=tok_now',
+      });
+      expect(workos.organizationDomains.verifyOrganizationDomain).not.toHaveBeenCalled();
+    });
+
+    it('treats a value with stray whitespace as not published', async () => {
+      const workos = makeWorkos({ getOrganization: vi.fn().mockResolvedValue({ domains: [pendingDomain] }) });
+      const result = await verifyDomainChallenge({
+        workos: workos as any, brandDb: makeBrandDb(), orgId: ORG, rawDomain: DOMAIN,
+        resolveTxt: published('verification_token= tok_now'),
+      });
+      expect(result).toMatchObject({ ok: false, code: 'still_pending' });
+      expect(workos.organizationDomains.verifyOrganizationDomain).not.toHaveBeenCalled();
+    });
+
+    it('treats a name with no TXT records as not published', async () => {
+      const workos = makeWorkos({ getOrganization: vi.fn().mockResolvedValue({ domains: [pendingDomain] }) });
+      const result = await verifyDomainChallenge({
+        workos: workos as any, brandDb: makeBrandDb(), orgId: ORG, rawDomain: DOMAIN,
+        resolveTxt: vi.fn().mockRejectedValue(Object.assign(new Error('queryTxt ENODATA'), { code: 'ENODATA' })),
+      });
+      expect(result).toMatchObject({ ok: false, code: 'still_pending', dns_record_value: 'verification_token=tok_now' });
+      expect(workos.organizationDomains.verifyOrganizationDomain).not.toHaveBeenCalled();
+    });
+
+    it('asks WorkOS once the current value is published, and joins split TXT strings', async () => {
+      const workos = makeWorkos({
+        getOrganization: vi.fn().mockResolvedValue({ domains: [pendingDomain] }),
+        verifyOrganizationDomain: vi.fn().mockResolvedValue({ ...pendingDomain, state: 'verified', verificationStrategy: 'dns' }),
+      });
+      const result = await verifyDomainChallenge({
+        workos: workos as any,
+        brandDb: makeBrandDb({ applyVerifiedBrandClaim: vi.fn().mockResolvedValue({ brand_domain: DOMAIN, domain_verified: true }) }),
+        orgId: ORG,
+        rawDomain: DOMAIN,
+        resolveTxt: vi.fn().mockResolvedValue([['verification_token=', 'tok_now']]),
+      });
+      expect(result.ok).toBe(true);
+      expect(workos.organizationDomains.verifyOrganizationDomain).toHaveBeenCalledWith('d1');
+    });
+
+    it('returns the new value when WorkOS does not confirm a published record', async () => {
+      const workos = makeWorkos({
+        getOrganization: vi.fn().mockResolvedValue({ domains: [pendingDomain] }),
+        verifyOrganizationDomain: vi.fn().mockResolvedValue({ ...pendingDomain, state: 'pending' }),
+        getOrganizationDomain: vi.fn().mockResolvedValue({ ...pendingDomain, verificationToken: 'tok_next' }),
+      });
+      const result = await verifyDomainChallenge({
+        workos: workos as any, brandDb: makeBrandDb(), orgId: ORG, rawDomain: DOMAIN,
+        resolveTxt: published('verification_token=tok_now'),
+      });
+      expect(result).toMatchObject({
+        ok: false,
+        code: 'still_pending',
+        dns_record_value: 'verification_token=tok_next',
+      });
+      expect(!result.ok && result.message).toContain('verification_token=tok_next');
+    });
   });
 
   it('returns ok with newly_verified=true on a fresh verify success', async () => {

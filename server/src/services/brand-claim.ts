@@ -10,6 +10,7 @@
  * owns WorkOS-vs-our-DB orchestration.
  */
 
+import { promises as dns } from 'node:dns';
 import type { WorkOS } from '@workos-inc/node';
 import { BrandDatabase, workosDomainVerificationStrategy } from '../db/brand-db.js';
 import type { HostedBrand } from '../types.js';
@@ -54,7 +55,16 @@ export type VerifyChallengeResult =
       brand: { brand_domain: string; domain_verified: boolean } | null;
     }
   | { ok: false; code: 'no_challenge'; message: string }
-  | { ok: false; code: 'still_pending'; message: string; state: string; retry_after_seconds?: number; dns_record_name?: string }
+  | {
+      ok: false;
+      code: 'still_pending';
+      message: string;
+      state: string;
+      retry_after_seconds?: number;
+      dns_record_name?: string;
+      /** The TXT value WorkOS expects now; it changes after every failed check. */
+      dns_record_value?: string;
+    }
   | { ok: false; code: 'manual_domain'; message: string }
   | { ok: false; code: 'verified_elsewhere'; message: string }
   | { ok: false; code: 'workos_error'; message: string };
@@ -73,6 +83,24 @@ function isVerifiedState(state: unknown): boolean {
 
 function dnsRecordName(domain: string, verificationPrefix?: string | null): string {
   return verificationPrefix ? `${verificationPrefix}.${domain}` : domain;
+}
+
+/** The TXT value WorkOS checks for a pending domain's current token. */
+function dnsRecordValue(verificationToken: string): string {
+  return `verification_token=${verificationToken}`;
+}
+
+/** TXT values published at `name`; none when the name does not resolve. */
+async function publishedTxtValues(
+  resolveTxt: (name: string) => Promise<string[][]>,
+  name: string,
+): Promise<string[]> {
+  try {
+    return (await resolveTxt(name)).map(chunks => chunks.join(''));
+  } catch (err) {
+    logger.debug({ err, name }, 'brand-claim: TXT lookup found nothing');
+    return [];
+  }
 }
 
 // In-process verify cooldown to stop autonomous LLM loops from polling. DNS
@@ -278,8 +306,10 @@ export async function verifyDomainChallenge(input: {
   orgId: string;
   rawDomain: string;
   adoptPriorManifest?: boolean;
+  /** Injected for tests; defaults to the system resolver. */
+  resolveTxt?: (name: string) => Promise<string[][]>;
 }): Promise<VerifyChallengeResult> {
-  const { workos, brandDb, orgId, rawDomain, adoptPriorManifest = false } = input;
+  const { workos, brandDb, orgId, rawDomain, adoptPriorManifest = false, resolveTxt = dns.resolveTxt } = input;
   if (!rawDomain) {
     return { ok: false, code: 'no_challenge', message: 'domain is required' };
   }
@@ -326,18 +356,34 @@ export async function verifyDomainChallenge(input: {
     verified = existingDomain;
     alreadyVerified = true;
   } else {
+    const recordName = dnsRecordName(domain, existingDomain.verificationPrefix);
+    const recordValue = existingDomain.verificationToken
+      ? dnsRecordValue(existingDomain.verificationToken)
+      : undefined;
+    // WorkOS issues a new token after every failed check, so asking it to
+    // verify a stale record only moves the target again. Check first.
+    if (recordValue && !(await publishedTxtValues(resolveTxt, recordName)).includes(recordValue)) {
+      return {
+        ok: false,
+        code: 'still_pending',
+        message: `The DNS TXT record at ${recordName} must be exactly ${recordValue}. WorkOS issues a new value after every failed check, so replace any older value, then retry.`,
+        state: String(existingDomain.state),
+        dns_record_name: recordName,
+        dns_record_value: recordValue,
+      };
+    }
     try {
       verified = await workos.organizationDomains.verifyOrganizationDomain(existingDomain.id);
     } catch (err: any) {
       const status = err?.status ?? err?.response?.status;
       if (status === 422 || status === 400) {
-        const recordName = dnsRecordName(domain, existingDomain.verificationPrefix);
         return {
           ok: false,
           code: 'still_pending',
           message: `WorkOS could not find a matching DNS TXT record. Make sure ${recordName} is published with the verification token, then retry.`,
           state: String(existingDomain.state),
           dns_record_name: recordName,
+          ...(recordValue ? { dns_record_value: recordValue } : {}),
         };
       }
       logger.error({ err, orgId, domain }, 'workos.organizationDomains.verifyOrganizationDomain failed');
@@ -346,11 +392,24 @@ export async function verifyDomainChallenge(input: {
   }
 
   if (!isVerifiedState(verified.state)) {
+    // A check that did not confirm leaves WorkOS holding a new token; hand
+    // the caller the value to publish now.
+    let current = verified;
+    try {
+      current = await workos.organizationDomains.getOrganizationDomain(existingDomain.id);
+    } catch (err) {
+      logger.warn({ err, orgId, domain }, 'brand-claim: could not re-read the domain after an unconfirmed check');
+    }
+    const recordName = dnsRecordName(domain, current.verificationPrefix);
     return {
       ok: false,
       code: 'still_pending',
-      message: 'WorkOS has not confirmed the DNS record yet. DNS propagation can take 5-15 minutes (occasionally longer with slow registrars).',
-      state: String(verified.state),
+      message: current.verificationToken
+        ? `WorkOS has not confirmed the DNS record yet, and it now expects ${dnsRecordValue(current.verificationToken)} at ${recordName}. Update the record if it holds an older value; DNS changes can take a few minutes to propagate.`
+        : 'WorkOS has not confirmed the DNS record yet. DNS propagation can take 5-15 minutes (occasionally longer with slow registrars).',
+      state: String(current.state),
+      dns_record_name: recordName,
+      ...(current.verificationToken ? { dns_record_value: dnsRecordValue(current.verificationToken) } : {}),
     };
   }
 

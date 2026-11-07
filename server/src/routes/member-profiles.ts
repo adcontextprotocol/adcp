@@ -1848,6 +1848,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             domain: canonical,
             state: result.state,
             ...(result.dns_record_name !== undefined ? { dns_record_name: result.dns_record_name } : {}),
+            ...(result.dns_record_value !== undefined ? { dns_record_value: result.dns_record_value } : {}),
             ...(result.retry_after_seconds !== undefined ? { retry_after_seconds: result.retry_after_seconds } : {}),
           });
         }
