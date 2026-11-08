@@ -24,9 +24,13 @@ on 2026-09-14. The same release installed in other jobs of that run, and
 Upstream returns false on a non-2xx download without logging the HTTP status;
 the fallback then fails because the published Cargo manifest inherits workspace
 fields without a workspace root. The logs cannot establish the exact HTTP code.
-The published 0.9.7 and 0.9.9 Cargo manifests still inherit workspace fields,
-so the underlying fallback bug is not fixed upstream; the matcher follows the
-locked version instead of a hardcoded one. Keep the match narrow; reassess/remove
+The same block, followed by the installer's unhandled-rejection trace, failed
+four shards of [#8804's first Build Check attempt](https://github.com/adcontextprotocol/adcp/actions/runs/42472661157/attempts/1)
+on 2026-11-08 with 0.9.7 locked; the rerun passed.
+The published 0.9.7, 0.9.9 and 0.10.0 Cargo manifests still inherit workspace
+fields, and 0.10.0 ships the same `postinstall.cjs` as 0.9.7, so the underlying
+fallback bug is not fixed upstream; the matcher follows the locked version
+instead of a hardcoded one. Keep the match narrow; reassess/remove
 this workaround when upstream fixes the installer. This is not a general npm
 retry policy.
 

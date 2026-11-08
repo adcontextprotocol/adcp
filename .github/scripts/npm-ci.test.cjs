@@ -295,7 +295,33 @@ for (const [name, err] of [
   });
 }
 
-for (const version of ['0.9.4', '0.9.7', '0.9.9']) {
+// Verbatim tail npm printed after the signature in #8804's failed install
+// (job 128706873969, 2026-11-08): the installer's unhandled rejection.
+const observedTail = `npm error
+npm error node:internal/process/promises:392
+npm error       new UnhandledPromiseRejection(reason);
+npm error       ^
+npm error
+npm error UnhandledPromiseRejection: This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason "undefined".
+npm error     at throwUnhandledRejectionsMode (node:internal/process/promises:392:7)
+npm error     at processPromiseRejections (node:internal/process/promises:475:17)
+npm error     at process.processTicksAndRejections (node:internal/process/task_queues:106:37) {
+npm error   code: 'ERR_UNHANDLED_REJECTION'
+npm error }
+npm error
+npm error Node.js v24.22.2
+npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2026-11-08T10_47_43_203Z-debug-0.log
+`;
+
+test('observed signature with its unhandled-rejection tail retries once', { timeout: 10000 }, async t => {
+  const err = signatureFor('0.10.0') + observedTail;
+  const f = fixture(t, [{ code: 1, err }, { out: 'installed\n' }], { lock: '0.10.0' });
+  assert.deepEqual(await f.done, { code: 0, signal: null });
+  checkCalls(f, 2);
+  assert.equal(fs.readFileSync(path.join(f.logs(), 'attempt-1.stderr.log'), 'utf8'), err.replaceAll('ROOT', f.cwd));
+});
+
+for (const version of ['0.9.4', '0.9.7', '0.9.9', '0.10.0']) {
   test(`locked C2PA ${version}: exact ${version} signature retries once and logs remain complete`, { timeout: 10000 }, async t => {
     const sig = signatureFor(version);
     const f = fixture(t, [{ code: 1, err: sig }, { out: 'installed\n' }], { lock: version });
@@ -318,6 +344,8 @@ for (const [locked, observed] of [
   ['0.9.9', '0.9.7'],
   ['0.9.7', '0.9.9'],
   ['0.9.4', '0.9.7'],
+  ['0.10.0', '0.9.7'],
+  ['0.9.7', '0.10.0'],
 ]) {
   test(`mixed versions: lock ${locked} with ${observed} failure: no retry`, { timeout: 10000 }, async t => {
     const err = signatureFor(observed);
