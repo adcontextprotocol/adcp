@@ -8,7 +8,8 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 2048
     },
     "last_updated": {
       "type": "string",
@@ -16,6 +17,7 @@
     },
     "acknowledgements": {
       "type": "array",
+      "maxItems": 10000,
       "items": {
         "$ref": "/schemas/trust/v1/trust.json#/definitions/acknowledgement"
       }

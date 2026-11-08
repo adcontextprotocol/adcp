@@ -20,7 +20,7 @@
     "supersedes_reporting_receipt_id": { "type": "string", "minLength": 16, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{16,255}$", "x-entity": "reporting_receipt", "description": "Optional immutable rejected receipt replaced by this new receipt for the same adjustment. Accepted current receipts are terminal." },
     "status": { "type": "string", "enum": ["accepted", "rejected"] },
     "observed_adjustment_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest recomputed from the adjustment using its canonical evidence rule." },
-    "rejection_codes": { "type": "array", "items": { "$ref": "#/definitions/ReportingAdjustmentRejectionCode" }, "minItems": 1, "uniqueItems": true },
+    "rejection_codes": { "type": "array", "maxItems": 100, "items": { "$ref": "#/definitions/ReportingAdjustmentRejectionCode" }, "minItems": 1, "uniqueItems": true },
     "observed_at": { "type": "string", "format": "date-time" },
     "received_at": { "type": "string", "format": "date-time", "readOnly": true }
   },

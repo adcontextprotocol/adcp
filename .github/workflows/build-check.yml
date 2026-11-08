@@ -94,6 +94,11 @@ jobs:
           ADCP_ADDITIVE_MINOR_BASELINE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: npm run test:additive-minor
 
+      - name: Schema bounds guard (new and experimental lists and strings are bounded)
+        # Fails when an array or string that is new in 3.3 or experimental has no
+        # maxItems/maxLength. Fix: node scripts/audit-schema-bounds.cjs --apply
+        run: npm run lint:schema-bounds
+
       - name: Fetch 3.0.x for error-code drift comparison
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
         run: git fetch --depth=1 origin +3.0.x:refs/remotes/origin/3.0.x

@@ -26,6 +26,7 @@
     },
     "control_total_deltas": {
       "type": "array",
+      "maxItems": 100,
       "items": { "$ref": "/schemas/core/reporting-control-total.json" },
       "minItems": 1,
       "uniqueItems": true,

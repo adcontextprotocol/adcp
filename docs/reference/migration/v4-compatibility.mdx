@@ -35,6 +35,7 @@ In raw runner output, a check observed by a validation appears as a `validation_
 | [`signed_requests_specialism_deprecated`](#signed_requests_specialism_deprecated) | [#3078](https://github.com/adcontextprotocol/adcp/issues/3078) | All agents | Notice on `signed_requests` |
 | [`request_signing_required_in_4_0`](#request_signing_required_in_4_0) | [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) | Sellers | `media_buy_seller` capability discovery |
 | [`legacy_hmac_fallback_removed_in_4_0`](#legacy_hmac_fallback_removed_in_4_0) | [#4205](https://github.com/adcontextprotocol/adcp/issues/4205) | All agents | `capability_discovery` |
+| [`schema_bounds_required_in_4_0`](#schema_bounds_required_in_4_0) | [#8512](https://github.com/adcontextprotocol/adcp/issues/8512) | All agents | Not observable in 3.x |
 | [`capabilities_structural_bounds_required_in_4_0`](#capabilities_structural_bounds_required_in_4_0) | [#8198](https://github.com/adcontextprotocol/adcp/issues/8198) | All agents | Not observable |
 | [`purchase_target_audiences_required_in_4_0`](#purchase_target_audiences_required_in_4_0) | [#8125](https://github.com/adcontextprotocol/adcp/issues/8125) | Sellers | Not observable in 3.x |
 | [`seller_held_change_terms_required_in_4_0`](#seller_held_change_terms_required_in_4_0) | [#8087](https://github.com/adcontextprotocol/adcp/issues/8087) | Sellers | Not observable in 3.x |
@@ -111,6 +112,34 @@ Request signing is optional in 3.x. 4.0 requires it on spend-committing operatio
 4.0 removes the HMAC-SHA256 webhook fallback.
 
 **Fix:** sign webhooks with RFC 9421 only and stop advertising `legacy_hmac_fallback`. See [Webhooks](/docs/building/by-layer/L3/webhooks).
+
+<a id="schema_bounds_required_in_4_0"></a>
+### Lists and strings carry bounds
+
+**Check id:** `schema_bounds_required_in_4_0` · **Change:** new requirement
+
+**Detects:** a payload carries an array longer, or a string longer, than the 4.0 bound for its field. A 3.x run cannot observe it, because 3.x schemas carry no bound on stable fields.
+
+The working group decided to bound list sizes and string lengths across the protocol. 3.3 bounds the arrays and strings that are new in 3.3 or experimental. 4.0 bounds the stable ones, because tightening a stable field is not a minor-release change. Proposed limits by kind of field:
+
+| Kind of field | Limit |
+|---|---|
+| A set of enum values | the enum size, with a floor of 32 |
+| Attributes of one object (keys, identifiers, closed vocabularies) | 32 items |
+| Country and language codes (ISO 3166-1, ISO 639); region codes (ISO 3166-2) | 256 items; 1,000 items |
+| A list nested in an object | 100 items |
+| A request batch or id list; the response that pages it | 100 items; 1,000 items |
+| Catalog-scale payloads (records, events, inline catalog items) | 10,000 items |
+| Identifiers, names, labels | 255 characters |
+| DNS names | 253 characters |
+| Prose (reasons, messages, descriptions) | 2,000 characters |
+| URLs | 2,048 characters |
+| Cursors, tokens, consent strings | 4,096 characters |
+| Long bodies (asset content, briefs, preview markup) | 100,000 characters |
+
+The limits are proposals until the owning working groups confirm them. The same release moves property and collection lists out of band: they are passed by reference (`agent_url` and `list_id`) and never inline.
+
+**Fix:** keep lists and strings inside these limits, and send property and collection lists by reference. The per-field inventory and the reasoning are in [the proposal](https://github.com/adcontextprotocol/adcp/blob/main/specs/collection-bounds-proposal.md).
 
 <a id="capabilities_structural_bounds_required_in_4_0"></a>
 ### Capabilities stay within their structural bounds
