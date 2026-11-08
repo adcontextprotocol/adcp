@@ -2,7 +2,7 @@
 id: DR-0030
 title: Media-buy lineage is forward-only, same-seller, and set once at creation
 class: normative
-status: accepted
+status: ratified
 decided: 2026-10-30
 decided_by: WG Session C consent (objections closed 2026-10-30)
 date: 2026-10-08

@@ -154,6 +154,7 @@
     "lint:additive-minor": "node scripts/lint-additive-minor.cjs",
     "test:additive-minor": "node --test --test-force-exit --test-timeout=30000 tests/lint-additive-minor.test.cjs && npm run lint:additive-minor",
     "test:language-tag-refs": "node --test --test-force-exit --test-timeout=30000 tests/lint-language-tag-refs.test.cjs && node scripts/lint-language-tag-refs.cjs",
+    "test:decision-record-status": "node --test --test-force-exit --test-timeout=30000 tests/lint-decision-record-status.test.cjs && node scripts/lint-decision-record-status.cjs",
     "test:compliance-snippets": "node --test --test-force-exit --test-timeout=30000 tests/generate-compliance-snippets.node.mjs tests/link-compliance-symbols.node.mjs && npm run build:compliance -- --check",
     "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs tests/lint-conformance-doc-freshness.test.cjs && npm run test:release-instrumentation",
     "test:release-instrumentation": "node --test --test-force-exit --test-timeout=30000 tests/release-instrumentation.test.cjs",

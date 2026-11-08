@@ -2,8 +2,10 @@
 id: DR-0031
 title: Seller revisions advance on every committed change, whatever its origin
 class: normative
-status: accepted
+status: ratified
 date: 2026-10-19
+decided: 2026-10-19
+decided_by: WG Session B
 refs: ["#8142", "#8159", "#6810"]
 dissent: none
 ---

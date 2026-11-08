@@ -2,7 +2,7 @@
 id: DR-0028
 title: A fixed-price, non-guaranteed seller claims `sales-fixed-rate`, and seller review is a commitment axis, not a status
 class: normative
-status: accepted
+status: ratified
 decided: 2026-10-30
 decided_by: WG Session C consent (objections closed 2026-10-30)
 date: 2026-10-06

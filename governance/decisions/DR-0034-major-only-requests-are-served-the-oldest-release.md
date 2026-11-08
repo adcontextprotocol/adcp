@@ -2,7 +2,7 @@
 id: DR-0034
 title: A request carrying only adcp_major_version is served the oldest supported release of that major
 class: breaking
-status: accepted
+status: ratified
 date: 2026-10-22
 decided: 2026-10-26
 decided_by: WG Session C, 2026-10-26
