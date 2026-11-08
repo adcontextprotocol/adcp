@@ -46,7 +46,7 @@ jobs:
     steps:
       - name: Mint Secretariat App token
         id: app-token
-        uses: actions/create-github-app-token@v3.2.0
+        uses: actions/create-github-app-token@v3.3.0
         with:
           app-id: ${{ secrets.SECRETARIAT_APP_ID }}
           private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
