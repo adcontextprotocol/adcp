@@ -682,6 +682,12 @@ function createDocsSnapshotFixture(t) {
   git('tag', 'v9.9.9');
   fs.writeFileSync(path.join(root, 'docs/stable.md'), 'Current main content\n');
   fs.writeFileSync(path.join(root, 'docs/future-only.md'), 'Future protocol guide\n');
+  // The step delegates extraction to the checkout's script.
+  fs.mkdirSync(path.join(root, 'scripts'));
+  fs.copyFileSync(
+    path.join(repoRoot, 'scripts/extract-release-docs-snapshot.sh'),
+    path.join(root, 'scripts/extract-release-docs-snapshot.sh')
+  );
   return root;
 }
 
@@ -719,5 +725,5 @@ test('an invalid source tag fails without moving or overwriting live documentati
   assert.notStrictEqual(result.status, 0);
   assert.strictEqual(fs.readFileSync(path.join(root, 'docs/stable.md'), 'utf8'), 'Current main content\n');
   assert.strictEqual(fs.readFileSync(path.join(root, 'docs/future-only.md'), 'utf8'), 'Future protocol guide\n');
-  assert.deepStrictEqual(fs.readdirSync(path.join(root, 'dist/docs/9.9.8')), []);
+  assert.strictEqual(fs.existsSync(path.join(root, 'dist/docs/9.9.8')), false);
 });
