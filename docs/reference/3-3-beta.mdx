@@ -28,7 +28,7 @@ The latest checkpoint is **`3.3.0-beta.5`, published 2026-11-07**. Each beta is 
 
 Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1).
 
-`@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 support beta.4. `@adcp/sdk` 17.0.0-beta.21 and later support beta.5, and Python adoption of beta.5 is in flight ([SDK guidance](#sdk-guidance)).
+`@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 support beta.4. `@adcp/sdk` 17.0.0-beta.21 and later and Python `adcp` 10.0.0b13 and later support beta.5 ([SDK guidance](#sdk-guidance)).
 
 ## Know which version string to use
 
@@ -146,7 +146,7 @@ SDK maintainers should report protocol ambiguities against the [AdCP repository]
 
 **TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, 17.0.0-beta.11 through 17.0.0-beta.17 bundle `3.3.0-beta.3`, 17.0.0-beta.18 through 17.0.0-beta.20 bundle `3.3.0-beta.4`, and 17.0.0-beta.21 and later bundle `3.3.0-beta.5`. Each negotiates only its own beta, so a buyer and seller on different betas settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
 
-**Python.** `adcp` **10.0.0b12**, a PyPI prerelease (`pip install adcp==10.0.0b12`), adopts the signed `3.3.0-beta.4` bundle. `adcp` 10.0.0-beta.13, which adopts `3.3.0-beta.5`, is tagged but not yet on PyPI. Keep production-line work on the `adcp` 3.2 release.
+**Python.** `adcp` **10.0.0b13**, a PyPI prerelease (`pip install --pre "adcp==10.0.0b13"`), adopts the signed `3.3.0-beta.5` bundle and negotiates only `3.3-beta.5`; 10.0.0b12 adopts `3.3.0-beta.4`. Keep production-line work on the `adcp` 3.2 release.
 
 **Go.** Check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases) for a published 3.3 support statement; this page names none.
 

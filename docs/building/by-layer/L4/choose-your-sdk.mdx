@@ -44,7 +44,7 @@ Production stays on the 3.2 line and the packages above. For development and sta
 | SDK | Package | AdCP bundle | Roles and transports | Known limits |
 |---|---|---|---|---|
 | **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.21` (npm `beta` dist-tag) | Signed `3.3.0-beta.5`; also bundles stable 3.2.8, 3.1.31 and 3.0.25. Earlier 3.3 betas require a matching external schema root | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. Use a Reliable Reporting storage release whose `@adcp/sdk` peer range matches this SDK. |
-| **`adcp`** (Python) | `10.0.0b12` (PyPI prerelease) | Signed `3.3.0-beta.4` | Buyer client and seller server, MCP and A2A | Adopts the beta.4 reporting-subscription coverage, grant, and controller rules. Install the exact prerelease with `pip install adcp==10.0.0b12`. |
+| **`adcp`** (Python) | `10.0.0b13` (PyPI prerelease) | Signed `3.3.0-beta.5` | Buyer client and seller server, MCP and A2A | Negotiates only `3.3-beta.5`. Install the exact prerelease with `pip install --pre "adcp==10.0.0b13"`; for Reliable Reporting storage, use `adcp-reporting-storage` 0.2.0b3. |
 
 ```bash
 npm install @adcp/sdk@17.0.0-beta.21
