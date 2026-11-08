@@ -128,16 +128,16 @@ describe('reporting subscriptions: registration and readback', () => {
 
   it('rejects a reused version with new semantics, duplicates, and an unknown destination', async () => {
     await sync([daily()]);
-    expect((await sync([daily({ selector: { feed_purpose: 'pacing', period_duration: 'PT1H', required_finality: 'snapshot' } })])).result)
-      .toMatchObject({ kind: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
-    expect((await sync([daily(), daily()])).result).toMatchObject({ kind: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
-    expect((await sync([daily({ subscription_version: 3, destination: { destination_id: 'missing', path_template: '{account_id}/x' } })])).result)
-      .toMatchObject({ kind: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
+    expect(await sync([daily({ selector: { feed_purpose: 'pacing', period_duration: 'PT1H', required_finality: 'snapshot' } })]))
+      .toMatchObject({ status: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
+    expect(await sync([daily(), daily()])).toMatchObject({ status: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
+    expect(await sync([daily({ subscription_version: 3, destination: { destination_id: 'missing', path_template: '{account_id}/x' } })]))
+      .toMatchObject({ status: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
   });
 
   it('refuses the section below 3.3', async () => {
     const result = await sync([daily()], { mode: 'open', principal: 'static:buyer-a', servedAdcpVersion: '3.2' });
-    expect(result.result).toMatchObject({ kind: 'failed', errors: [{ code: 'UNSUPPORTED_FEATURE' }] });
+    expect(result).toMatchObject({ status: 'failed', errors: [{ code: 'UNSUPPORTED_FEATURE' }] });
   });
 });
 

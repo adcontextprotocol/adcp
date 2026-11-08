@@ -185,8 +185,10 @@ function authRequired(task: string): Json {
   };
 }
 
+// A failed principal response is the task error schema: errors at the
+// response root, no result (core/task-error.json).
 function failed(errors: PrincipalError[]): Json {
-  return { status: 'failed', result: { kind: 'failed', errors } };
+  return { status: 'failed', errors };
 }
 
 function suppliedIdentityField(args: ToolArgs): string | undefined {

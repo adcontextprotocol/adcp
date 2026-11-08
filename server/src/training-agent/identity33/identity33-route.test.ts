@@ -80,10 +80,12 @@ describe('sandbox identity route: Web Bot Auth and demand-side grants', () => {
       accounts: [{ billing: 'operator', sandbox: true, ...account }],
     }, signer);
 
+  // Onboarding syncs a section the principal layer advertises; it doesn't
+  // list notification_configs, so a sync of that section fails.
   const onboard = (signer: FixtureAgentName) =>
     tool('sync_principal', {
       idempotency_key: `identity33-${randomUUID()}`,
-      configuration: { notification_configs: [] },
+      configuration: { declarations: {} },
     }, signer);
 
   const errorCode = (response: RpcResponse) =>

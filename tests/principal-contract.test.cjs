@@ -374,31 +374,24 @@ describe('sync_principal contract', () => {
     }), false);
   });
 
-  it('makes failed result arms incapable of leaking principal state', () => {
+  it('makes failed responses the task error schema, unable to leak principal state', () => {
+    const errors = [{ code: 'AUTH_INVALID', message: 'Authentication failed' }];
+    assert.equal(validateResponse({ status: 'failed', errors }), true, JSON.stringify(validateResponse.errors));
+    // A failed response carries its errors at the root and no result.
+    assert.equal(validateResponse({ status: 'failed' }), false);
+    assert.equal(validateResponse({ status: 'failed', errors: [] }), false);
+    assert.equal(validateResponse({ status: 'failed', result: { kind: 'failed', errors } }), false);
     assert.equal(validateResponse({
       status: 'failed',
-      result: {
-        kind: 'failed',
-        errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-      },
-    }), true, JSON.stringify(validateResponse.errors));
-
-    assert.equal(validateResponse({
-      status: 'failed',
-      result: {
-        kind: 'failed',
-        errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-        principal_id: 'leaked_principal',
-        configuration_version: 'leaked_version',
-      },
+      errors,
+      result: { kind: 'applied', principal_id: 'leaked_principal', configuration_version: 'leaked_version' },
     }), false);
 
-    // The rejected body is the failed body; a failed result never rides on a
-    // completed response.
-    const failedResult = { kind: 'failed', errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }] };
-    assert.equal(validateResponse({ status: 'rejected', result: failedResult }), true, JSON.stringify(validateResponse.errors));
-    assert.equal(validateResponse({ status: 'rejected', result: { ...failedResult, principal_id: 'leaked_principal' } }), false);
-    assert.equal(validateResponse({ status: 'completed', result: failedResult }), false);
+    // The rejected body is the failed body; errors never ride on a completed
+    // result.
+    assert.equal(validateResponse({ status: 'rejected', errors }), true, JSON.stringify(validateResponse.errors));
+    assert.equal(validateResponse({ status: 'rejected', errors, result: { kind: 'failed', errors } }), false);
+    assert.equal(validateResponse({ status: 'completed', result: { kind: 'failed', errors } }), false);
   });
 
   it('returns no durable identifiers from dry-run validation', () => {
@@ -588,11 +581,8 @@ describe('sync_principal contract', () => {
 
     assert.equal(validateReadResponse({
       status: 'failed',
-      result: {
-        kind: 'failed',
-        errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-        principal_id: 'leaked_principal',
-      },
+      errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
+      result: { kind: 'current', principal_id: 'leaked_principal' },
     }), false);
 
     const response = readSchema('/schemas/protocol/get-principal-completed.json');

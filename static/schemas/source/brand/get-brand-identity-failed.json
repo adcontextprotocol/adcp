@@ -5,40 +5,19 @@
   "description": "Body of a failed get_brand_identity response: operation-level errors, and none of the success fields. The completed body also admits this body.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
-  ],
-  "properties": {
-    "errors": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      },
-      "minItems": 1
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
-    }
-  },
-  "required": [
-    "errors"
+    { "$ref": "/schemas/core/task-error.json" }
   ],
   "additionalProperties": true,
   "not": {
     "anyOf": [
       {
-        "required": [
-          "brand_id"
-        ]
+        "required": ["brand_id"]
       },
       {
-        "required": [
-          "house"
-        ]
+        "required": ["house"]
       },
       {
-        "required": [
-          "names"
-        ]
+        "required": ["names"]
       }
     ]
   }

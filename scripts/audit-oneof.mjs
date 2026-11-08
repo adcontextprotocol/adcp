@@ -17,8 +17,9 @@
 // a worse status. Improvements (dangerous → discriminated) are accepted
 // silently but printed in the diff so they get reflected on --update.
 //
-// Known limitations: ref resolution is one hop. A variant's `allOf` members
-// are fused into it before classification (allOf is a conjunction, and code
+// Known limitations: ref resolution is one hop. A variant's `allOf` members,
+// and those of the document a `$ref` variant names, are fused into it before
+// classification (allOf is a conjunction, and code
 // generators merge it): their properties and required names count as the
 // variant's own, so a submitted branch that composes core/task-submitted.json
 // is discriminated by that schema's required `status` const.
@@ -125,13 +126,16 @@ function variantInfo(variant, sourceFile) {
         ref: variant.$ref,
       };
     }
-    return {
+    // The target's own allOf members count too, one hop from the target:
+    // a failed body that composes core/task-error.json requires its errors.
+    const fused = fuseAllOf({
       properties: target.properties || {},
       required: target.required || [],
-      refOnly: !target.properties,
+      refOnly: false,
       scalar: false,
       ref: variant.$ref,
-    };
+    }, target, resolved.file);
+    return { ...fused, refOnly: Object.keys(fused.properties).length === 0 };
   }
   return fuseAllOf({
     properties: variant.properties || {},

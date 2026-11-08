@@ -5,7 +5,7 @@
   "description": "Body of a failed update_content_standards response: success false, at least one error, and the conflicting standards when the update conflicts. The completed body also admits this body.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
+    { "$ref": "/schemas/core/task-error.json" }
   ],
   "properties": {
     "success": {
@@ -13,25 +13,11 @@
       "const": false,
       "description": "Indicates the update failed"
     },
-    "errors": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      },
-      "description": "Errors that occurred during the update",
-      "minItems": 1
-    },
     "conflicting_standards_id": {
       "type": "string",
       "description": "If scope change conflicts with another configuration, the ID of the conflicting standards"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "success",
-    "errors"
-  ],
+  "required": ["success"],
   "additionalProperties": true
 }

@@ -140,6 +140,16 @@ Bodies declare no envelope field, never test `status`, and stay open. A
 submitted body composes `core/task-submitted.json`, which requires
 `task_id`.
 
+A task response is either a success schema or an error schema. The error
+schema is `core/task-error.json`: it requires `errors`, at least one entry
+of the task-level error list that the envelope defines once
+(`core/protocol-envelope.json#/definitions/TaskErrors`). A task's
+`<task>-failed.json` exists only where the task adds something specific to
+its errors, such as kinds of error as branches; it composes
+`core/task-error.json` and doesn't declare `errors` again. In 3.x the rule
+covers experimental tasks, and a stable task keeps what its response accepts
+until 4.0 ([DR-0038](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0038-task-responses-have-one-error-schema.md)).
+
 The schema build generates each task's response,
 `<protocol>/<task>-response.json`: a `oneOf` discriminated by `status`,
 with one branch per status that has a body or that the task's response
@@ -152,7 +162,9 @@ requires at its root (a failed response carries the failed body's
 that named it composes its own body. A status it admitted under its general
 rules, its open root or a branch that left `status` open, keeps those rules:
 its branch also composes the body that now holds that content, the completed
-body for success content and the failed body for an error branch's. A status
+body for success content and the failed body for an error branch's. For an
+experimental task, the failed branch composes the task's error body alone: its
+`<task>-failed.json`, or `core/task-error.json` when it has none. A status
 with no branch is not a valid response of that task.
 `<task>-response.json` is the task's response for every outcome:
 `index.json`, the release manifest's `response_schema` and the MCP

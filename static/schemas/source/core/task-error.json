@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-error.json",
+  "title": "Task Error",
+  "description": "The error schema of a task response: a failed task carries at least one entry in `errors[]`, the task-level error list the protocol envelope defines (core/protocol-envelope.json#/definitions/TaskErrors). The envelope's `adcp_error`, which a fatal task failure SHOULD also populate, carries the same failure for clients that dispatch without reading the payload. The schema build composes this schema into the failed branch of a task's generated response. A task's own failed body exists only to add what is specific to its errors (kinds of error as branches, or fields a failure carries); it composes this schema and does not declare `errors` again. In 3.x this applies to experimental task responses and to the failed bodies of stable tasks that already required the same `errors`; 4.0 applies it to every task (DR-0038).",
+  "type": "object",
+  "allOf": [{ "$ref": "/schemas/core/protocol-envelope.json" }],
+  "properties": {
+    "errors": {
+      "allOf": [{ "$ref": "/schemas/core/protocol-envelope.json#/definitions/TaskErrors" }],
+      "minItems": 1
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["errors"],
+  "additionalProperties": true
+}

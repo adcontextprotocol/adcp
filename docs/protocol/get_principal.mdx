@@ -47,9 +47,10 @@ The deprecated `principal_kind` is resolved from authorization state, but the re
 | `current` | The caller has standing configuration. Returns `principal_id`, the deprecated `principal_kind` (always `buyer_agent` for a bound agent), `configuration_version`, and complete credential-free configuration state. |
 | `recognized` | The caller maps to an existing durable principal record but has no standing configuration. Returns `principal_id` and the deprecated `principal_kind`, with no configuration or version. |
 | `unconfigured` | Stable authentication succeeded, but the caller has no durable principal record. Carries `kind`, and `relationship` when an application is in progress. |
-| `failed` | The read could not be served. Carries only structured errors, never identifiers or state. |
 
-The response reveals only the authenticated caller's identity and state. It never exposes whether another principal exists or has configuration, and `failed` results carry no identity facts.
+A read that can't be served returns `status: "failed"` with the task error schema (`core/task-error.json`): at least one entry in `errors[]` at the response root, at most 16, and no `result`. A rejected response has the same schema.
+
+The response reveals only the authenticated caller's identity and state. It never exposes whether another principal exists or has configuration, and a failed response carries no identity facts.
 
 ### Relationship status
 
