@@ -805,11 +805,9 @@ Exp-based expiry alone does not cover execution-phase tokens that live for a med
 
 ```json
 {
+  "protected": "<b64url header with kid, alg, typ=adcp-gov-revocation+jws>",
   "payload": "<base64url of the JSON below>",
-  "signatures": [
-    { "protected": "<b64url header with kid, alg, typ=adcp-gov-revocation+jws>",
-      "signature": "<b64url signature>" }
-  ]
+  "signature": "<b64url signature>"
 }
 ```
 
