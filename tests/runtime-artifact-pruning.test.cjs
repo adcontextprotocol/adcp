@@ -228,36 +228,67 @@ test("noncanonical training checkpoint mappings fail closed", () => {
   }
 });
 
-test("image-only protocol offload preserves discovery inventory, required archives and every sidecar", async () => {
+function cdnServing(root, listed) {
+  return async (url, options) => {
+    assert.equal(options.redirect, "error");
+    assert.ok(options.signal);
+    if (url === "https://adcontextprotocol.org/protocol/") {
+      return Response.json({ versions: listed.map((name) => ({ tarball: `/protocol/${name}` })) });
+    }
+    const name = url.replace("https://adcontextprotocol.org/protocol/", "");
+    assert.ok(listed.includes(name), `fetched unlisted archive ${name}`);
+    return new Response(readFileSync(join(root, "dist", "protocol", name)), {
+      headers: { etag: '"0123456789abcdef0123456789abcdef-2"' },
+    });
+  };
+}
+
+test("image-only protocol offload covers required archives and preserves discovery inventory, latest and every sidecar", async () => {
   const root = fixture();
   try {
-    const sidecars = ["sha256", "sig", "crt"].map((suffix) =>
-      [suffix, readFileSync(join(root, "dist", "protocol", `3.0.0.tgz.${suffix}`))]);
-    assert.deepEqual(protocolOffloadCandidates(root), ["3.0.0.tgz"]);
-    const verified = await verifyProtocolOffloads(root, async (url, options) => {
-      assert.equal(options.redirect, "error");
-      assert.ok(options.signal);
-      if (url === "https://adcontextprotocol.org/protocol/") {
-        return Response.json({ versions: [{ tarball: "/protocol/3.0.0.tgz" }] });
-      }
-      assert.equal(url, "https://adcontextprotocol.org/protocol/3.0.0.tgz");
-      return new Response(readFileSync(join(root, "dist", "protocol", "3.0.0.tgz")), {
-        headers: { etag: '"0123456789abcdef0123456789abcdef-2"' },
-      });
-    });
+    const sidecars = ["3.0.0", "3.1.1"].flatMap((version) => ["sha256", "sig", "crt"].map((suffix) =>
+      [`${version}.tgz.${suffix}`, readFileSync(join(root, "dist", "protocol", `${version}.tgz.${suffix}`))]));
+    // 3.1.1 is a published hosted release; its archive body is still only a download.
+    assert.deepEqual(protocolOffloadCandidates(root), ["3.0.0.tgz", "3.1.1.tgz"]);
+    const verified = await verifyProtocolOffloads(root, cdnServing(root, ["3.0.0.tgz", "3.1.1.tgz"]));
+    assert.deepEqual(verified, ["3.0.0.tgz", "3.1.1.tgz"]);
     const result = pruneRuntimeArtifacts(root, verified);
-    assert.deepEqual(result.protocolFilesOffloaded, ["3.0.0.tgz"]);
+    assert.deepEqual(result.protocolFilesOffloaded, ["3.0.0.tgz", "3.1.1.tgz"]);
     assert.equal(existsSync(join(root, "dist", "protocol", "3.0.0.tgz")), false);
+    assert.equal(existsSync(join(root, "dist", "protocol", "3.1.1.tgz")), false);
     assert.deepEqual(JSON.parse(readFileSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json"))),
-      { schema_version: 1, files: ["3.0.0.tgz"] });
-    assert.equal(readFileSync(join(root, "dist", "protocol", "3.1.1.tgz"), "utf8"), "3.1.1 archive\n");
+      { schema_version: 1, files: ["3.0.0.tgz", "3.1.1.tgz"] });
     assert.equal(readFileSync(join(root, "dist", "protocol", "latest.tgz"), "utf8"), "latest protocol\n");
-    for (const [suffix, before] of sidecars) {
-      assert.deepEqual(readFileSync(join(root, "dist", "protocol", `3.0.0.tgz.${suffix}`)), before);
+    for (const [name, before] of sidecars) {
+      assert.deepEqual(readFileSync(join(root, "dist", "protocol", name)), before);
     }
     pruneRuntimeArtifacts(root); // Repeated image preparation preserves the offloaded entries.
     assert.deepEqual(JSON.parse(readFileSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json"))).files,
-      ["3.0.0.tgz"]);
+      ["3.0.0.tgz", "3.1.1.tgz"]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a required archive R2 does not list yet stays local while listed archives offload", async () => {
+  const root = fixture();
+  try {
+    // A Version Packages build carries the new release's archive before its tag reaches R2.
+    const verified = await verifyProtocolOffloads(root, cdnServing(root, ["3.0.0.tgz"]));
+    assert.deepEqual(verified, ["3.0.0.tgz"]);
+    pruneRuntimeArtifacts(root, verified);
+    assert.equal(existsSync(join(root, "dist", "protocol", "3.0.0.tgz")), false);
+    assert.equal(readFileSync(join(root, "dist", "protocol", "3.1.1.tgz"), "utf8"), "3.1.1 archive\n");
+    assert.deepEqual(JSON.parse(readFileSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json"))),
+      { schema_version: 1, files: ["3.0.0.tgz"] });
+
+    // A listed required archive must still match byte for byte.
+    const differentRequired = fixture();
+    try {
+      await assert.rejects(() => verifyProtocolOffloads(differentRequired, (url, options) =>
+        url === "https://adcontextprotocol.org/protocol/3.1.1.tgz"
+          ? Promise.resolve(new Response("different bytes", { headers: { etag: '"0123456789abcdef0123456789abcdef"' } }))
+          : cdnServing(differentRequired, ["3.0.0.tgz", "3.1.1.tgz"])(url, options)),
+      /differs from committed bytes/);
+    } finally { rmSync(differentRequired, { recursive: true, force: true }); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -281,13 +312,13 @@ test("CDN archive verification rejects unavailable, different and interrupted bo
       assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-beta.2")));
       assert.equal(existsSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json")), false);
     }
-    assert.throws(() => pruneRuntimeArtifacts(root, ["3.1.1.tgz"]), /required or unknown/);
-    assert.throws(() => pruneRuntimeArtifacts(root, ["latest.tgz"]), /required or unknown/);
+    assert.throws(() => pruneRuntimeArtifacts(root, ["3.9.9.tgz"]), /unknown protocol archive/);
+    assert.throws(() => pruneRuntimeArtifacts(root, ["latest.tgz"]), /unknown protocol archive/);
     assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-beta.2")));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("R2 discovery must list every offloaded archive and cannot be a Fly fallback", async () => {
+test("R2 discovery must list every archive outside the required closure and cannot be a Fly fallback", async () => {
   const root = fixture();
   try {
     await assert.rejects(() => verifyProtocolOffloads(root, async () => Response.json({ versions: [] })),
