@@ -256,6 +256,69 @@ forAll('confirming earlier never owes less', r => {
   for (const key of later) assert.ok(sooner.has(key), `earlier confirmation removed ${key}`);
 });
 
+forAll('package_ids entries compose: one entry per package removes what one entry naming them all does', r => {
+  // coverage: "a period is removed when the union of the packages named by the package_ids exceptions in effect
+  // for it ... covers every package that resolves the offering and is owed that period, whether one entry names
+  // them all or several entries each name some". Every package resolves every offering, so naming a strict subset
+  // never removes a period.
+  const input = randomCase(r);
+  const buy = input.buys[0];
+  const ids = ['pkg_1', 'pkg_2', 'pkg_3'];
+  buy.packages = ids.map(id => ({ package_id: id, reporting_delivery_offering_ids: input.offerings.map(o => o.offering_id) }));
+  const from = Date.parse(buy.start_time) + r.int(-48, 6 * 24) * HOUR;
+  const until = r.bool() ? { until: iso(from + r.int(1, 6 * 24) * HOUR) } : {};
+  const entry = names => ({ reason: 'offering_unsupported', media_buy_id: buy.media_buy_id, package_ids: names, from: iso(from), ...until });
+  const owed = excluded => new Set(owedKeys(run({ ...input, coverage: { excluded } })));
+  const together = owed([entry(ids)]);
+  assert.deepEqual(owed(ids.map(id => entry([id]))), together);
+  assert.deepEqual(owed([entry(['pkg_1', 'pkg_2']), entry(['pkg_2', 'pkg_3'])]), together);
+  assert.deepEqual(owed([entry(['pkg_1']), entry(['pkg_3'])]), owed([]));
+});
+
+forAll('a billing feed stays contiguous across an account timezone change', r => {
+  // cutover: account timezone changes apply "including on billing offerings, where the stub rule above applies",
+  // so billable time from the first owed period to the last is never interrupted.
+  const [previous, zone] = r.pick([
+    ['America/New_York', 'America/Los_Angeles'], ['America/Los_Angeles', 'Asia/Tokyo'], ['Asia/Kathmandu', 'Australia/Lord_Howe'],
+    ['Europe/London', 'UTC'], ['America/New_York', 'America/Toronto'], ['America/Santiago', 'Africa/Cairo'],
+  ]);
+  const duration = r.pick(['P1D', 'PT6H', 'P1M', 'P7D']);
+  const t0 = Date.UTC(2026, r.int(0, 11), r.int(1, 28));
+  const change = t0 + r.int(0, 30 * 24 * 4) * (HOUR / 4);
+  const old = localCalendar(duration, previous).periods(change - 400 * DAY, change + 400 * DAY);
+  const effectiveAt = old.find(p => p.start < change && p.end >= change).end;
+  const billing = {
+    ...offering('off_bill', duration, 'account_timezone'),
+    feed_purpose: 'billing', reconciliation_mode: 'consumer_receipt',
+  };
+  const input = {
+    subscription_id: 'sub',
+    versions: [{
+      subscription_version: 1,
+      accepted_at: iso(t0 - 200 * DAY),
+      configuration: {
+        subscription_id: 'sub', subscription_version: 1, active: true, scope: { account_ids: ['acct_1'] },
+        selector: { feed_purpose: 'billing', period_duration: duration, required_finality: 'official', match: 'exact', dimensions: ['package'] },
+        reconciliation_mode: 'consumer_receipt',
+      },
+    }],
+    account: { account_id: 'acct_1', timezone: zone, grants: [{ authorized_at: iso(t0 - 300 * DAY) }] },
+    buys: [{
+      media_buy_id: 'mb_1', confirmed_at: iso(t0 - 100 * DAY), start_time: iso(t0 - 90 * DAY), end_time: iso(t0 + 150 * DAY),
+      packages: [{ package_id: 'pkg_1', reporting_delivery_offering_ids: ['off_bill'] }],
+    }],
+    offerings: [billing],
+    now: iso(t0 + 160 * DAY),
+    coverage: { timezone_cutovers: [{ effective_at: iso(effectiveAt), timezone: zone, previous_timezone: previous }] },
+  };
+  const rows = run(input).expected;
+  for (let i = 1; i < rows.length; i += 1) assert.equal(rows[i].period_start, rows[i - 1].period_end, `gap or overlap after ${rows[i - 1].period_end}`);
+  const stubs = rows.filter(row => row.stub);
+  const incomingBoundary = localCalendar(duration, zone).periods(effectiveAt - 400 * DAY, effectiveAt + 400 * DAY).some(p => p.start === effectiveAt);
+  assert.equal(stubs.length, incomingBoundary ? 0 : 1, `${previous} -> ${zone} ${duration} at ${iso(effectiveAt)}`);
+  if (stubs.length) assert.equal(Date.parse(stubs[0].period_start), effectiveAt);
+});
+
 // ---------------------------------------------------------------------------
 // Cutover geometry (cutover: "it is shorter than one incoming period and is empty when both schedules
 // share boundaries (same alignment and timezone, nested durations)")

@@ -26,7 +26,7 @@
     "offering": "The buy's packages resolve an offering under the version's selector, and this offering is one of them.",
     "flight": "The period overlaps the buy's flight [start_time, stop) with flight values as of the period end (scope_resolved_at), where stop is the earliest of end_time, canceled_at, and completed_at.",
     "confirmation": "The buy is confirmed and the period ends after confirmed_at, and, for a package added after confirmed_at, after that package's added_at: at least one package resolving the offering is owed the period.",
-    "exception": "No get_reporting_status excluded[] entry applying to the buy and offering covers the period start in [from, until).",
+    "exception": "No get_reporting_status excluded[] entry applying to the buy and offering covers the period start in [from, until). Entries with package_ids compose: together, the ones covering the period start do not name every package resolving the offering that is owed the period.",
     "gap": "No gaps[] entry applying to the offering covers the period start, and without backfill_on_regrant the period does not end after an unauthorized_at and start before the re-grant that continued the chain.",
     "cutover": "The version's side owns the period: it starts at or after the side's handoff E (the side's start instant when it has no outgoing predecessor) and before the next change instant T, at which the next side or a deactivation takes over.",
     "timezone": "For an account_timezone offering whose account changed timezone, the period is one of the zone in effect at its start: the previous zone's periods start before effective_at, the new zone's at or after it."
@@ -94,7 +94,7 @@
       "verdict": "not_owed",
       "rule": "offering",
       "side": "both",
-      "definition": "No offering matching the selector is available on the account's or the buy's products, so the buy (or the account) resolves nothing, whether computed from the wire or read from an excluded[] entry with reason offering_unsupported. An entry with package_ids removes those packages, not periods; the buy stays covered for its other packages.",
+      "definition": "No offering matching the selector is available on the account's or the buy's products, so the buy (or the account) resolves nothing, whether computed from the wire or read from an excluded[] entry with reason offering_unsupported. An entry with package_ids removes those packages, not periods; the buy stays covered for its other packages, and loses the period only when the package_ids entries covering its start together name every package resolving the offering that is owed it.",
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/selection",
         "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded"

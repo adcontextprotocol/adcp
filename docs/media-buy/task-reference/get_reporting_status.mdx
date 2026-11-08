@@ -844,7 +844,10 @@ stub when E isn't an incoming boundary.
   schedule is outgoing. The E instant is listed as `effective_at` in
   `timezone_cutovers[]`, with the old zone as `previous_timezone`, and `list_accounts`
   shows the new `timezone` and `revision`. On a billing offering the stretch from
-  `effective_at` to the first new-timezone boundary is a stub. When the account's offerings have different
+  `effective_at` to the first new-timezone boundary is a stub: a monthly billing feed
+  moving from New York to Los Angeles owes New York's May, a stub from 04:00Z to 07:00Z
+  on June 1, then Los Angeles months. There is no stub when `effective_at` is already a
+  new-timezone boundary, as when the two zones share an offset at that instant. When the account's offerings have different
   boundaries, the seller lists one entry per `offering_id`.
 
 Each obligation names the `offering_id` and `report_definition_id` it used, and that
@@ -893,13 +896,18 @@ Both values are cutover instants (E above), and an entry without `until` is stil
 effect. `action_required` entries are account-level only. An entry without `media_buy_id` applies to the whole account.
 An entry with `package_ids` (reason `offering_unsupported` or `overridden`) removes only
 those packages from the buy's coverage: the buy stays covered for its other packages.
-When the entry names every package of the buy that resolves an offering (with
-`offering_id`, that offering) and is owed the period, nothing keeps the buy covered for
-it, so the buy's periods for that offering that start in `[from, until)` are not owed.
+`package_ids` entries compose. For each period, take the entries in effect for it: those
+whose `[from, until)` contains the period's start and, when they carry `offering_id`, name
+that offering. When the packages they name, together, include every package of the buy
+that resolves the offering and is owed the period, nothing keeps the buy covered for it,
+so the period is not owed. It doesn't matter whether one entry names them all or several
+entries each name some: if `pkg_1` is excluded from day 1 and `pkg_2` from day 5, a buy
+with only those two packages owes nothing from day 5. While any owed package is named by
+no entry in effect, the period stays owed.
 A package added later is owed only the periods that end after its `added_at`, so it
 keeps the buy covered from then on, and not for earlier periods. Adding and removing
-packages therefore compose: a package counts from its `added_at` until an entry naming
-it takes it out.
+packages therefore compose too: a package counts from its `added_at` until an entry
+naming it takes it out.
 
 | `reason` | Removes periods because |
 |---|---|

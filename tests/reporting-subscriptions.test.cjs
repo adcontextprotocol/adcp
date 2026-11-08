@@ -1053,9 +1053,11 @@ test('a package added after confirmation carries added_at, its own confirmed_at 
   const rule = read('core/reporting-subscription.json')['x-adcp-validation'];
   assert.match(rule.coverage, /added_at is that package's own confirmed_at/);
   assert.match(rule.coverage, /adding a package is never a cutover/);
-  assert.match(rule.coverage, /A package_ids exception removes a period when it names every package that resolves the offering and is owed that period/);
+  assert.match(rule.coverage, /package_ids exceptions compose: a period is removed when the union of the packages named by the package_ids exceptions in effect for it .* covers every package that resolves the offering and is owed that period, whether one entry names them all or several entries each name some/);
   assert.match(rule.selection, /at the later of the version's accepted_at and the package's own confirmed_at \(the buy's confirmed_at, or the package's added_at when later\)/);
-  assert.match(read('core/reporting-subscription-coverage.json').properties.excluded.items.properties.package_ids.description, /does not keep the buy covered for earlier periods/);
+  const packageIds = read('core/reporting-subscription-coverage.json').properties.excluded.items.properties.package_ids.description;
+  assert.match(packageIds, /does not keep the buy covered for earlier periods/);
+  assert.match(packageIds, /Entries compose: when the package_ids entries in effect for a period .* together name every package of the buy that resolves the offering and is owed the period/);
 });
 
 test('a grant reduced without get_reporting_status is a loss of authority; one that keeps it is not', () => {
