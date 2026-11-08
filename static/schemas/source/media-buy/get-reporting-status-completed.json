@@ -3,7 +3,7 @@
   "$id": "/schemas/media-buy/get-reporting-status-completed.json",
   "title": "Get Reporting Status - Completed",
   "x-status": "experimental",
-  "description": "Authoritative caller/account-isolated reporting status response. This schema is the completed body: the view echoes the request and discriminates the summary, periods and exact revision shapes. A failed response is get-reporting-status-failed.json, and the schema build generates the task response, get-reporting-status-response.json, from both. Seller obligation/revision state and separately attributed consumer status remain distinct but are compared in the caller-scoped health projection. Every identifier, cursor, ledger snapshot, destination, revision, materialization, consumer status, and resource is scoped to the authenticated caller and account.",
+  "description": "Authoritative caller/account-isolated reporting status response. This schema is the completed body: the view echoes the request and discriminates the summary, periods and exact revision schemas. A failed response is get-reporting-status-failed.json, and the schema build generates the task response, get-reporting-status-response.json, from both. Seller obligation/revision state and separately attributed consumer status remain distinct but are compared in the caller-scoped health projection. Every identifier, cursor, ledger snapshot, destination, revision, materialization, consumer status, and resource is scoped to the authenticated caller and account.",
   "type": "object",
   "allOf": [
     { "$ref": "/schemas/core/protocol-envelope.json" },

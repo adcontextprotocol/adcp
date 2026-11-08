@@ -121,7 +121,7 @@ async function runTests() {
     suggestions: ['Increase the campaign budget or request display inventory.']
   };
   await expectAccept('/schemas/media-buy/get-products-rejected.json', productsRejected, 'canonical GetProductsRejected (status + reason, no products/errors)');
-  await expectAccept('/schemas/media-buy/get-products-response.json', productsRejected, 'canonical get_products response accepts the rejected arm');
+  await expectAccept('/schemas/media-buy/get-products-response.json', productsRejected, 'canonical get_products response accepts the rejected branch');
   await expectAccept('/schemas/core/async-response-data.json', productsRejected, 'GetProductsRejected is included in the task-result union');
 
   await expectAccept('/schemas/core/async-response-data.json', {
