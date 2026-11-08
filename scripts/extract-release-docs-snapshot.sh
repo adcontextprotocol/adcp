@@ -15,14 +15,6 @@
 # It also refuses to run when dist/docs/<version> is already tracked in the
 # checkout (HEAD tree or index), so a rerun can never rewrite a published
 # snapshot.
-#
-# One deliberate exception: the stable 3.2 navigation lists a "3.3 preview"
-# group (the whats-new, beta-program, and 3.2-to-3.3 migration pages), wired
-# in by the 3.2.3 snapshot and its maintenance navigation sync. Those three
-# pages are not in a 3.2.x tag, so a stable 3.2 snapshot carries them from the
-# current checkout, with their development-only warnings, and only them. The
-# list below is the whole exception; remove it together with that navigation
-# group if the preview should leave the stable docs.
 
 set -euo pipefail
 
@@ -43,17 +35,7 @@ if ! git rev-parse --verify --quiet "$SOURCE_REF^{commit}" > /dev/null; then
   exit 1
 fi
 
-CARRIED_PAGES=()
-if [[ "$VERSION" =~ ^3\.2\.[0-9]+$ ]]; then
-  CARRIED_PAGES=(
-    reference/whats-new-in-3-3.mdx
-    reference/3-3-beta.mdx
-    reference/migration/3-2-to-3-3.mdx
-  )
-fi
-
 DEST="dist/docs/$VERSION"
-SOURCE_DOCS="$(pwd)/docs"
 
 # A snapshot already committed to this checkout is a published, immutable
 # release record. Refuse before touching it; only untracked scratch output from
@@ -75,21 +57,6 @@ ACTUAL="$(mktemp)"
 trap 'rm -f "$EXPECTED" "$ACTUAL"' EXIT
 
 git -c core.quotepath=off ls-tree -r --name-only "$SOURCE_REF" -- docs | sed 's|^docs/||' | LC_ALL=C sort > "$EXPECTED"
-
-for page in "${CARRIED_PAGES[@]+"${CARRIED_PAGES[@]}"}"; do
-  if grep -qxF "$page" "$EXPECTED"; then
-    continue
-  fi
-  if [ ! -f "$SOURCE_DOCS/$page" ]; then
-    echo "Error: carried preview page docs/$page is not in $SOURCE_REF or the current checkout" >&2
-    exit 1
-  fi
-  mkdir -p "$DEST/$(dirname "$page")"
-  cp "$SOURCE_DOCS/$page" "$DEST/$page"
-  echo "Carried main-only preview page docs/$page into $DEST (not in $SOURCE_REF)"
-  echo "$page" >> "$EXPECTED"
-done
-LC_ALL=C sort -o "$EXPECTED" "$EXPECTED"
 
 (cd "$DEST" && find . \( -type f -o -type l \) | sed 's|^\./||' | LC_ALL=C sort) > "$ACTUAL"
 

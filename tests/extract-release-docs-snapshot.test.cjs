@@ -9,6 +9,8 @@ const repoRoot = path.join(__dirname, '..');
 const extractScript = path.join(repoRoot, 'scripts/extract-release-docs-snapshot.sh');
 const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/release-docs.yml'), 'utf8');
 
+// 3.3 story pages that exist only on main. Stable 3.2 navigation no longer
+// links them (3.3 has its own 3.3-beta version), so no snapshot carries them.
 const PREVIEW_PAGES = [
   'reference/whats-new-in-3-3.mdx',
   'reference/3-3-beta.mdx',
@@ -65,21 +67,19 @@ function listFiles(dir) {
   return out.sort();
 }
 
-test('a stable 3.2 snapshot is the tag plus only the declared 3.3 preview pages', () => {
+test('a snapshot is exactly the tag, with no main-only page', () => {
   const root = releaseRepo();
   const result = extract(root, '3.2.9', 'v3.2.9');
   assert.equal(result.status, 0, result.stderr);
 
   const snapshot = path.join(root, 'dist/docs/3.2.9');
-  assert.deepEqual(
-    listFiles(snapshot),
-    ['intro.mdx', 'media-buy/task.mdx', ...PREVIEW_PAGES].sort()
-  );
+  assert.deepEqual(listFiles(snapshot), ['intro.mdx', 'media-buy/task.mdx']);
   // The tag's bytes win over main's later edit, and main-only pages stay out.
   assert.equal(fs.readFileSync(path.join(snapshot, 'intro.mdx'), 'utf8'), 'tag intro\n');
   assert.equal(fs.existsSync(path.join(snapshot, 'reference/trust-json.mdx')), false);
   assert.equal(fs.existsSync(path.join(snapshot, 'runbooks/ops.md')), false);
-  assert.match(result.stdout, /Carried main-only preview page docs\/reference\/3-3-beta\.mdx/);
+  for (const page of PREVIEW_PAGES) assert.equal(fs.existsSync(path.join(snapshot, page)), false);
+  assert.doesNotMatch(result.stdout, /Carried/);
 });
 
 test('the checkout docs/ tree is left in place', () => {
@@ -99,7 +99,7 @@ test('other release lines carry nothing from the checkout', () => {
   assert.deepEqual(listFiles(path.join(root, 'dist/docs/3.1.9')), ['intro.mdx', 'media-buy/task.mdx']);
 });
 
-test('a preview page already in the tag is not overwritten from the checkout', () => {
+test('a page the tag ships keeps the tag copy, not the checkout copy', () => {
   const root = releaseRepo();
   git(root, 'checkout', '-q', 'v3.2.9');
   write(root, 'docs/reference/3-3-beta.mdx', 'tag copy\n');
@@ -156,15 +156,10 @@ test('re-running replaces a stale snapshot instead of merging into it', () => {
   assert.equal(fs.existsSync(path.join(root, 'dist/docs/3.2.9/stale.mdx')), false);
 });
 
-test('fails closed on an unknown ref, an invalid version, or a missing preview page', () => {
+test('fails closed on an unknown ref or an invalid version', () => {
   const root = releaseRepo();
   assert.notEqual(extract(root, '3.2.9', 'v9.9.9').status, 0);
   assert.notEqual(extract(root, '3.2', 'v3.2.9').status, 0);
-
-  fs.rmSync(path.join(root, 'docs/reference/3-3-beta.mdx'));
-  const missing = extract(root, '3.2.9', 'v3.2.9');
-  assert.notEqual(missing.status, 0);
-  assert.match(missing.stderr, /carried preview page docs\/reference\/3-3-beta\.mdx/);
 });
 
 test('the release-docs workflow extracts through the guarded script', () => {
