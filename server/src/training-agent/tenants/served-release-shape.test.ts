@@ -19,9 +19,9 @@
  *   release cannot validate.
  *
  * The same flow runs at the opt-in 3.3 preview (#8181,
- * candidate-version.ts): an exact `3.3-beta.3` pin is echoed and every
- * response validates against the published 3.3.0-beta.3 bundle, the release
- * the preview claims. The local candidate wire contract is covered in
+ * candidate-version.ts): an exact preview pin is echoed and every response
+ * validates against the preview's published bundle, the release the preview
+ * claims. The local candidate wire contract is covered in
  * tests/unit/training-agent-candidate-version.test.ts.
  */
 
