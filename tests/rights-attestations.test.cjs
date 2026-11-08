@@ -5,6 +5,7 @@ const path = require('node:path');
 const { before, describe, it } = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 const {
   assessBrandAgentAuthorization,
   canonicalizeFixtureUrl,
@@ -21,7 +22,7 @@ let canonicalize;
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {
@@ -385,16 +386,16 @@ describe('rights attestation domain vectors', () => {
       validateReference,
       validateUpdate,
     ] = await Promise.all([
-      compile('/schemas/brand/acquire-rights-response.json'),
+      compile('/schemas/brand/acquire-rights-completed.json'),
       compile('/schemas/brand.json'),
       compile('/schemas/media-buy/build-creative-request.json'),
       compile('/schemas/core/attestation-capabilities.json'),
-      compile('/schemas/protocol/get-adcp-capabilities-response.json'),
+      compile('/schemas/protocol/get-adcp-capabilities-completed.json'),
       compile('/schemas/core/rights-constraint.json'),
       compile('/schemas/core/rights-attestation-evaluation.json'),
       compile('/schemas/creative/list-creatives-request.json'),
       compile('/schemas/core/attestation-reference.json'),
-      compile('/schemas/brand/update-rights-response.json'),
+      compile('/schemas/brand/update-rights-completed.json'),
     ]);
   });
 
@@ -452,7 +453,7 @@ describe('rights attestation domain vectors', () => {
 
   it('makes rights evaluations requestable with automatic companion readback fields', () => {
     assert.equal(validateListRequest({ fields: ['rights_attestation_evaluations'] }), true, JSON.stringify(validateListRequest.errors));
-    const creativeSchema = readSchema('/schemas/creative/list-creatives-response.json').properties.creatives.items;
+    const creativeSchema = readSchema('/schemas/creative/list-creatives-completed.json').properties.creatives.items;
     const rule = creativeSchema['x-adcp-validation'].rights_readback;
     assert.deepEqual(rule.automatic_companion_fields.rights_attestation_evaluations, ['creative_id', 'rights']);
     assert.equal(creativeSchema.properties.rights.maxItems, undefined);

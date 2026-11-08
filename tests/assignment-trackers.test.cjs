@@ -50,7 +50,7 @@ const cases = [
     row: data => data.assignment_operations[0]
   },
   {
-    schema: 'creative/list-creatives-response.json', write: false,
+    schema: 'creative/list-creatives-completed.json', write: false,
     data: { status: 'completed', query_summary: { total_matching: 1, returned: 1 }, pagination: { has_more: false },
       creatives: [{ creative_id: 'hero', name: 'Hero', format_kind: 'image', status: 'approved',
         created_date: '2026-10-15T12:00:00Z', updated_date: '2026-10-15T12:00:00Z',
@@ -59,7 +59,7 @@ const cases = [
     row: data => data.creatives[0].assignments.assigned_packages[0]
   },
   {
-    schema: 'media-buy/get-media-buys-response.json', write: false,
+    schema: 'media-buy/get-media-buys-completed.json', write: false,
     data: { status: 'completed', media_buys: [{ media_buy_id: 'mb_display', status: 'active', currency: 'USD',
       total_budget: 1000, confirmed_at: '2026-10-15T12:00:00Z', revision: 1,
       packages: [{ package_id: 'pkg_display', creative_approvals: [{ creative_id: 'hero', approval_status: 'approved' }] }] }] },
@@ -144,7 +144,7 @@ test('unreleased assignment tracker documentation request validates against the 
 });
 
 test('assignment tracker capability defaults off, requires a library, and is independent of landing-page support', async () => {
-  const creative = readSchema('protocol/get-adcp-capabilities-response.json').properties.creative;
+  const creative = readSchema('protocol/get-adcp-capabilities-completed.json').properties.creative;
   assert.equal(creative.properties.supports_assignment_trackers.default, false);
   assert.equal(creative.properties.supports_assignment_trackers['x-added-in'], '3.3.0');
   const validate = await ajv.compileAsync(creative);
@@ -159,4 +159,24 @@ test('assignment tracker capability defaults off, requires a library, and is ind
     { supports_assignment_trackers: 'true', has_creative_library: true }]) {
     assert.equal(validate(declaration), false, JSON.stringify(declaration));
   }
+});
+
+test('tracker-slot limits apply only where the format declares a tracker slot, matched by event', () => {
+  const assign = readSchema('creative/sync-creatives-request.json')
+    .properties.assignment_operations.items.oneOf.find(variant => variant.properties.operation.const === 'assign');
+  const descriptions = [
+    assign.properties.trackers.description,
+    readSchema('core/creative-assignment.json').properties.trackers.description,
+  ];
+  for (const description of descriptions) {
+    assert.match(description, /These limits apply only when the effective format declares at least one tracker slot/);
+    assert.match(description, /makes no slot-limit claim/);
+    assert.match(description, /impression_tracker takes impression, click_tracker takes click, viewability_tracker takes viewable_\* and audible_video_complete/);
+  }
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/creative/task-reference/sync_creatives.mdx'), 'utf8');
+  const section = doc.slice(doc.indexOf('### Assignment trackers'), doc.indexOf('\n### ', doc.indexOf('### Assignment trackers') + 1));
+  assert.match(section, /These limits apply only when the effective format declares at least one tracker slot/);
+  assert.match(section, /does not reject an assignment tracker for lack of a slot/);
+  assert.match(section, /MUST fire every accepted tracker at its declared event or reject the assignment/);
+  assert.match(section, /\[`replace`\]\(#replacing-a-creative-on-a-package\) transfers/);
 });

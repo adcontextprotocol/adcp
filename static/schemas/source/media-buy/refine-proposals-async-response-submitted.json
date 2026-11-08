@@ -8,13 +8,13 @@
   ],
   "properties": {
     "results": {
-      "$ref": "/schemas/media-buy/refine-proposals-response.json#/properties/results"
+      "$ref": "/schemas/media-buy/refine-proposals-completed.json#/properties/results"
     },
     "products": {
-      "$ref": "/schemas/media-buy/refine-proposals-response.json#/properties/products"
+      "$ref": "/schemas/media-buy/refine-proposals-completed.json#/properties/products"
     },
     "collections": {
-      "$ref": "/schemas/media-buy/refine-proposals-response.json#/properties/collections"
+      "$ref": "/schemas/media-buy/refine-proposals-completed.json#/properties/collections"
     },
     "expected_confirmation_at": {
       "type": "string",

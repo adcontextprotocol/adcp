@@ -39,10 +39,11 @@ const {
 } = require('./mcp-schema-projection.cjs');
 const {
   taskStatusSchemas,
-  wireResponseRel,
+  taskResponseRel,
+  completedBodyRel,
   generatedSchemaDocuments,
   readSourceSchemaDocument,
-} = require('./wire-responses.cjs');
+} = require('./task-responses.cjs');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
@@ -1027,8 +1028,9 @@ function buildExtensions(sourceDir, targetDir, version) {
 // metadata each SDK currently hand-rolls and drifts on.
 //
 // Tool name derivation: the basename `<name>-request.json` → tool name
-// `<name>` with hyphens converted to underscores. The matching response
-// is `<name>-response.json`; async variants follow the same prefix.
+// `<name>` with hyphens converted to underscores. The matching completed
+// body is `<name>-completed.json`, and the build generates the task's
+// response, `<name>-response.json`; async variants follow the same prefix.
 //
 // Protocol derivation: the source directory name. Tools at the source
 // root (none today, but reserved) are intentionally excluded — every tool
@@ -1297,8 +1299,10 @@ function discoverTools(sourceDir) {
       const toolName = toolBase.replace(/-/g, '_');
       const requestPath = path.join(protoDir, f.name);
       const requestSchema = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
-      const responseName = `${toolBase}-response.json`;
-      const responseSchema = `${protocol}/${responseName}`;
+      // The completed body is the file on disk; the build generates the
+      // task's response, <task>-response.json, from the status bodies.
+      const completedSchema = completedBodyRel(protocol, toolBase);
+      const responseName = completedSchema.slice(protocol.length + 1);
       const summary = requestSchema['x-tool-summary'];
       if (summary !== undefined && (
         typeof summary !== 'string'
@@ -1339,8 +1343,8 @@ function discoverTools(sourceDir) {
       if (!fs.existsSync(responsePath)) {
         // A request with no matching response is a bug, not a tool — surface it.
         throw new Error(
-          `Manifest generation: ${protocol}/${f.name} has no matching response schema (${responseName}). ` +
-          `Either add the response file or move the request out of the protocol directory.`
+          `Manifest generation: ${protocol}/${f.name} has no matching completed body (${responseName}). ` +
+          `Either add the completed body or move the request out of the protocol directory.`
         );
       }
       const mutating = classifyRequestMutating(requestPath);
@@ -1350,7 +1354,7 @@ function discoverTools(sourceDir) {
         .map(g => `${protocol}/${g.name}`)
         .sort();
       // One body per envelope status; the build composes them into the
-      // tool's wire response (scripts/wire-responses.cjs), the schema a tool
+      // tool's response (scripts/task-responses.cjs), the schema a tool
       // response validates against.
       const statusSchemas = taskStatusSchemas(sourceDir, protocol, toolBase);
 
@@ -1370,8 +1374,8 @@ function discoverTools(sourceDir) {
         ...(legacyFallback ? { legacy_fallback: legacyFallback } : {}),
         ...(supersededBy ? { superseded_by: supersededBy } : {}),
         request_schema: `${protocol}/${f.name}`,
-        response_schema: wireResponseRel(protocol, toolBase),
-        completed_response_schema: responseSchema,
+        response_schema: taskResponseRel(protocol, toolBase),
+        completed_response_schema: completedSchema,
         status_schemas: statusSchemas,
         async_response_schemas: asyncVariants
       });
@@ -1555,7 +1559,7 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
   }
 
   // At the tree root, publish the documents the build generates from the
-  // source: every tool's wire response (scripts/wire-responses.cjs).
+  // source: every task's response (scripts/task-responses.cjs).
   if (fs.existsSync(path.join(sourceDir, 'enums', 'task-status.json'))) {
     for (const [rel, schema] of generatedSchemaDocuments(sourceDir)) {
       const targetPath = path.join(targetDir, ...rel.split('/'));
@@ -2349,6 +2353,30 @@ function dedupBundledSchemaIds(schema) {
 const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
 
 /**
+ * In a bundled task response (scripts/task-responses.cjs), moves each
+ * branch's inlined status body to root `$defs`, named after the body's title,
+ * and points the branch at it. Inlined into one tree, the bodies of a task
+ * like get_products make a validator that Ajv compiles into a single function
+ * too large to run (its call stack overflows); as `$defs` each body compiles
+ * on its own. Any other schema is left as it is.
+ */
+function hoistStatusBodiesToDefs(schema) {
+  if (!schema || !schema['x-generated'] || !Array.isArray(schema.oneOf)) return;
+  schema.$defs = schema.$defs || {};
+  for (const branch of schema.oneOf) {
+    const body = Array.isArray(branch.allOf) && branch.allOf.length === 1 ? branch.allOf[0] : null;
+    if (!body || typeof body !== 'object' || body.$ref !== undefined) continue;
+    const name = typeof body.title === 'string' ? body.title.replace(/[^A-Za-z0-9_]/g, '') : '';
+    if (!name) throw new Error(`${schema.$id}: status body of branch ${branch.title} needs a title to name its $defs entry`);
+    if (Object.prototype.hasOwnProperty.call(schema.$defs, name)) {
+      throw new Error(`${schema.$id}: $defs already holds ${name}`);
+    }
+    schema.$defs[name] = body;
+    branch.allOf = [{ $ref: `#/$defs/${name}` }];
+  }
+}
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
@@ -2356,7 +2384,7 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
   ensureDir(bundledDir);
 
   // Source documents plus the documents the build generates from them
-  // (every tool's wire response).
+  // (every task's response).
   const schemaFiles = [
     ...findSchemaFiles(sourceDir),
     ...[...generatedSchemaDocuments(sourceDir).keys()].map(rel => path.join(sourceDir, ...rel.split('/'))),
@@ -2394,13 +2422,14 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
     if (!shouldBundle) continue;
 
     try {
-      // Read the schema (a wire response is generated, not on disk)
+      // Read the schema (a task response is generated, not on disk)
       const schema = readSourceSchemaDocument(schemaPath, sourceDir);
 
       // Resolve all $refs. Schemas listed in IDENTITY_HOISTED_REFS are
       // written once to root $defs instead of being inlined at every
       // call-site, keeping per-call-site `description` siblings. See #4875.
       const dereferenced = hoistBySourceIdentity(schema, sourceDir, IDENTITY_HOISTED_REFS, new Set([schemaPath]));
+
 
       // After inlining, referenced schemas that carried local `#/$defs/...`
       // pointers leave their `$defs` nested wherever they were inlined —
@@ -2419,6 +2448,12 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // to the pure-enum auto-hoist for spec-author-declared canonical
       // shared types. See #4557.
       hoistMarkedSchemas(dereferenced);
+
+      // A task response names one status body per branch. Keep each inlined
+      // body in root $defs, so a validator compiles every body on its own
+      // rather than all of them as one function. After the hoists above,
+      // which look for repeats in the inlined tree.
+      hoistStatusBodiesToDefs(dereferenced);
 
       // Stamp inlined sub-schema `$id`s with the version (#3868). Source
       // schemas declare `$id` as `/schemas/core/foo.json` (unversioned);

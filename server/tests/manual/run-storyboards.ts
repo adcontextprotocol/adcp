@@ -317,7 +317,21 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
  * coverage. Every entry names a concrete removal condition; link an issue
  * when an active tracker exists.
  */
+const EXTEND_HOLD_RUNNER_GAP = 'The @adcp/sdk runner validates refine_proposals requests client-side and accepts only revise and finalize, so it never sends action extend_hold (experimental 3.3 media_buy.hold_extension). The training agent serves extend_hold and its behavior is graded in server/tests/unit/training-agent-hold-vectors.test.ts. Remove when adcontextprotocol/adcp-client#3601 is resolved.';
+
 const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
+  [
+    'media_buy_seller/hold_extension/extend_extendable_hold',
+    EXTEND_HOLD_RUNNER_GAP,
+  ],
+  [
+    'media_buy_seller/hold_extension/extend_capped_hold',
+    EXTEND_HOLD_RUNNER_GAP,
+  ],
+  [
+    'media_buy_seller/hold_extension/extend_fixed_hold',
+    EXTEND_HOLD_RUNNER_GAP,
+  ],
   [
     'sales_broadcast_tv/expect_window_update_webhook',
     'The training seller emits no delivery window_update webhooks: on AdCP 3.2 its synchronous create_media_buy completion is silent and it does not push delivery reports on simulated delivery. Every other step of the broadcast transaction is graded. Remove when the training agent emits C3 and C7 window_update webhooks to the registered push_notification_config.',

@@ -55,6 +55,7 @@ const CHECK_MATCHER_KEYS = new Map([
   ['field_value', ['value', 'allowed_values']],
   ['field_value_or_absent', ['value', 'allowed_values']],
   ['field_contains', ['value']],
+  ['field_excludes', ['value', 'allowed_values']],
   ['array_length', ['value', 'min', 'max']],
   ['http_status', ['value']],
   ['http_status_in', ['value', 'values', 'allowed_values']],

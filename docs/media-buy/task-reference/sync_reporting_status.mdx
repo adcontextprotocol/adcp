@@ -43,7 +43,9 @@ against `3.2.0-rc.2` that already emits `CONSUMER_STATUS_MISMATCH` must add
 
 Each immutable statement addresses one exact `(authenticated consumer, account,
 delivery_config_id, delivery_config_version, report_definition_id, period)`
-chain:
+chain. For a generation derived from a [reporting subscription](/docs/protocol/sync_principal#reporting-subscriptions)
+(experimental), `offering_id` is part of the chain too, because one subscription
+version can resolve several offerings that share a report definition and period:
 
 | `consumer_status` | Meaning | Required evidence |
 |---|---|---|
@@ -233,10 +235,13 @@ or changes the seller's production SLA. A seller counts a missed deadline in
 [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status)
 and does nothing else with it: silence raises no issue and changes no health.
 
-After the buyer loses authority for an account, every status for that account fails
+After the buyer's grant on an account is revoked, every status for that account fails
 exactly like an unknown identifier. A seller that wants the buyer to finish
 reconciling keeps a reduced grant listing this task instead of revoking. See
 [when authorization ends](/docs/media-buy/task-reference/get_reporting_status#when-authorization-ends).
+A grant that lists `get_reporting_status` but not this task is a partial grant: the
+account stays covered, and this task fails for it with
+[`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient).
 
 ## Relationship to billing receipts
 

@@ -16,6 +16,7 @@ import { resolveGovernanceAgentsForAccount } from './account-handlers.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
 import { decodeOffsetCursor, encodeOffsetCursor } from './pagination.js';
 import { sourceSchemaDocument } from './source-schema.js';
+import { creatorBrandEntries, withCollectionLinks } from './collections/brand-links.js';
 
 async function governedCommitmentRejection(
   governanceContext: string,
@@ -626,6 +627,10 @@ const BRAND_MAP = new Map<string, AnyBrand>([
   ...ADVERTISER_BRANDS.map(b => [b.brand_id, b] as [string, AnyBrand]),
 ]);
 
+const CREATOR_BRAND_MAP = new Map<string, AnyBrand>(
+  creatorBrandEntries().map(brand => [brand.brand_id, brand as AnyBrand]),
+);
+
 // Fields that are always returned (public, not selectable)
 const PUBLIC_FIELDS = ['description', 'industries', 'keller_type', 'logos', 'tagline'] as const;
 const AUTHORIZED_FIELDS = ['colors', 'fonts', 'visual_guidelines', 'tone', 'voice_synthesis', 'assets', 'rights'] as const;
@@ -936,7 +941,9 @@ export function handleGetBrandIdentity(
   const fields = req.fields;
   const authorized = req.authorized ?? false;
 
-  const talent = BRAND_MAP.get(brandId);
+  // Creator identities behind CreatorLoop collections resolve by id only;
+  // search_brands keeps its roster.
+  const talent = BRAND_MAP.get(brandId) ?? CREATOR_BRAND_MAP.get(brandId);
   if (!talent) {
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
@@ -968,7 +975,11 @@ export function handleGetBrandIdentity(
     response.available_fields = withheld;
   }
 
-  return response;
+  // Experimental 3.3 brand.collection_links: the creator's channels. Only
+  // the /brand tenant declares the feature.
+  return ctx.tenantId === 'brand'
+    ? withCollectionLinks(response, brandId, fields, ctx.servedAdcpVersion)
+    : response;
 }
 
 function computeMatchScore(

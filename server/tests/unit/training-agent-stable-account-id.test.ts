@@ -12,8 +12,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import express from 'express';
 import http from 'node:http';
-import { clearAccountStore, clearProcessLocalAccountStore } from '../../src/training-agent/account-handlers.js';
-import { clearReportingAccountBindingCacheForTesting } from '../../src/training-agent/reporting-reliability.js';
+import { clearAccountStore, clearProcessLocalAccountStore, seedAccountFixture } from '../../src/training-agent/account-handlers.js';
+import {
+  clearReportingAccountBindingCacheForTesting,
+  resolveReportingAccountDurably,
+  withDurableReportingLedger,
+} from '../../src/training-agent/reporting-reliability.js';
 import {
   clearSessions,
   runWithAccountIdAliasScope,
@@ -318,6 +322,45 @@ describe('training agent: account.stable_account_id', () => {
     });
     expect(seeded?.success, JSON.stringify(seeded)).toBe(false);
     expect(JSON.stringify(seeded)).toContain('acc_luma_shared');
+  });
+
+  it('keeps a controller-seeded natural account discoverable after process-cache loss', async () => {
+    const url = `${server.baseUrl}/sales/mcp`;
+    await initialize(url);
+    const seeded = await callTool(url, 'comply_test_controller', {
+      account: naturalKey,
+      scenario: 'seed_account',
+      params: { account_id: 'acc_seeded_cold_discovery', fixture: naturalKey },
+    });
+    expect(seeded?.success, JSON.stringify(seeded)).toBe(true);
+
+    clearProcessLocalAccountStore();
+    clearReportingAccountBindingCacheForTesting();
+    const products = await callTool(url, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Outdoor lifestyle video inventory for adults 25-54 in the US.',
+      account: naturalKey,
+    });
+    expect(products?.adcp_error, JSON.stringify(products)).toBeUndefined();
+    expect(products?.products, JSON.stringify(products)).toEqual(expect.any(Array));
+  });
+
+  it('does not publish an in-memory binding before a foreign thenable operation rejects', async () => {
+    const pending = {
+      then(_resolve: unknown, reject: (error: Error) => void) { reject(new Error('operation rejected')); },
+    } as unknown as Promise<void>;
+    await expect(withDurableReportingLedger(
+      'test:pending-seed', 'acc_pending_seed', true, () => pending, naturalKey,
+    )).rejects.toThrow('operation rejected');
+    expect(await resolveReportingAccountDurably('test:pending-seed', naturalKey)).toBeUndefined();
+  });
+
+  it('does not let concurrent in-memory seeds assign two ids to one natural key', async () => {
+    const results = await Promise.all(['acc_seed_race_a', 'acc_seed_race_b'].map(accountId => seedAccountFixture({
+      params: { account_id: accountId, fixture: naturalKey },
+    }, { mode: 'open', principal: 'test:seed-race' })));
+    expect(results.filter(result => result.success)).toHaveLength(1);
+    expect(results.filter(result => result.error === 'INVALID_STATE')).toHaveLength(1);
   });
 
   it('lands a controller seed by account_id in the buyer partition for static credentials', async () => {

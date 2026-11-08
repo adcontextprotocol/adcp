@@ -32,7 +32,7 @@ const VECTOR_DIR = path.join(ROOT, 'static/compliance/source/test-vectors/reques
 const A2A_DIR = path.join(VECTOR_DIR, 'a2a');
 const keys = JSON.parse(fs.readFileSync(path.join(VECTOR_DIR, 'keys.json'), 'utf8')).keys;
 const capabilitiesSchema = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'static/schemas/source/protocol/get-adcp-capabilities-response.json'), 'utf8')
+  fs.readFileSync(path.join(ROOT, 'static/schemas/source/protocol/get-adcp-capabilities-completed.json'), 'utf8')
 );
 const securityDoc = fs.readFileSync(path.join(ROOT, 'docs/building/by-layer/L1/security.mdx'), 'utf8');
 

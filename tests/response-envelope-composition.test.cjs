@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Task responses: the protocol envelope owns every envelope field, the source
- * schemas declare only bodies, and the build generates each task's wire
+ * schemas declare only bodies, and the build generates each task's
  * response from them.
  *
  * On MCP and REST, envelope fields (`status`, `task_id`, `context`,
@@ -13,13 +13,14 @@
  * roots open, and so do these schemas. No build step adds the envelope:
  * source and published schemas agree.
  *
- * A task declares one body per envelope status: <task>-response.json
+ * A task declares one body per envelope status: <task>-completed.json
  * (completed), <task>-async-response-<status>.json (submitted, working,
  * input-required), <task>-rejected.json and <task>-failed.json. Each body
  * serves only the status its file name carries and never tests `status`. The
- * build (scripts/wire-responses.cjs) generates
- * <protocol>/<task>-wire-response.json: a disjoint `oneOf`, discriminated by
- * `status`, with one branch per status that has a body.
+ * build (scripts/task-responses.cjs) generates
+ * <protocol>/<task>-response.json, the task's response for every outcome: a
+ * disjoint `oneOf`, discriminated by `status`, with one branch per status
+ * that has a body.
  *
  * A response node is a root, an inline `allOf`/`anyOf`/`oneOf` member at any
  * depth, or a document such a member names by whole-document `$ref` (the
@@ -27,7 +28,7 @@
  *   1. every status body composes the envelope through its root `allOf`;
  *   2. no response node is closed;
  *   3. a source response node declares no envelope field: no `status`
- *      discriminator (those appear only in the generated wire responses), no
+ *      discriminator (those appear only in the generated task responses), no
  *      `context` mirror, no bound on `message`, no `replayed` value. The one
  *      exception is a `const` pin of a value for one task (the fixed message
  *      and error of an unavailable reporting lookup);
@@ -52,14 +53,14 @@
  *      the response wrapper refer to: a 2,001-character `message` adds
  *      exactly its maxLength error on every response node and on both other
  *      carriers, so the bound does not depend on the delivery path.
- *   8. every tool's wire response is a disjoint `oneOf` discriminated by
+ *   8. every tool's task response is a disjoint `oneOf` discriminated by
  *      `status`, with exactly one branch per status that has a body, each
  *      requiring `status`, pinning it and composing that body; no body tests
  *      `status` itself (the core/task-<status>.json schemas the bodies
  *      compose are the core schemas that pin it);
  *   9. differential validation against the base build (the envelope
  *      composition before the bodies were split), scored per surface. On the
- *      tool surface (base `<task>-response.json`, this build's wire response)
+ *      tool surface (base `<task>-response.json`, this build's at the same path)
  *      only the listed differences of status dispatch occur, by tool and
  *      status; on the async surface (base status file, the status body at its
  *      path) only the listed contradictions resolved toward the tool response
@@ -96,7 +97,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const { discoverTools } = require('../scripts/build-schemas.cjs');
-const { taskStatusSchemas } = require('../scripts/wire-responses.cjs');
+const { taskStatusSchemas } = require('../scripts/task-responses.cjs');
 const { collectResponseInstances } = require('./helpers/response-instance-corpus.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -210,11 +211,10 @@ const TASK_STATUSES = readSource('enums/task-status.json').enum;
 
 /** The status a body's file name carries. */
 function bodyStatus(rel) {
-  if (rel.endsWith('-wire-response.json')) throw new Error(`${rel} is generated, not a body`);
+  if (rel.endsWith('-response.json')) throw new Error(`${rel} is generated, not a body`);
   for (const status of TASK_STATUSES) {
     if (rel.endsWith(`-async-response-${status}.json`) || rel.endsWith(`-${status}.json`)) return status;
   }
-  if (rel.endsWith('-response.json')) return 'completed';
   throw new Error(`${rel}: no status in its name`);
 }
 
@@ -451,7 +451,7 @@ test('no response root or status branch is closed', () => {
  * keep: a value pin for one task, a `const` or an object whose properties pin
  * values with `const` (the fixed message and error of an unavailable
  * reporting lookup). A `status` discriminator appears only in the generated
- * wire responses, and `context` only on the envelope; anything else restates
+ * task responses, and `context` only on the envelope; anything else restates
  * the envelope, so the envelope's declaration governs.
  */
 function permittedLocalDeclaration(name, declaration) {
@@ -474,17 +474,17 @@ test('source response nodes declare no envelope field', () => {
   assert.deepEqual(copied, [], 'the envelope declares these fields; remove the local redeclarations');
 });
 
-test('status discriminators appear only in the generated wire responses', () => {
+test('status discriminators appear only in the generated task responses', () => {
   for (const tool of TOOLS) {
-    const wire = readBuilt(tool.response_schema);
-    for (const branch of wire.oneOf) {
+    const union = readBuilt(tool.response_schema);
+    for (const branch of union.oneOf) {
       assert.ok(pins(branch.properties?.status), `${tool.response_schema}: a branch without a status const`);
     }
   }
   const declared = RESPONSE_NODES
     .filter(({ node }) => has(node.properties, 'status'))
     .map(({ rel, pointer }) => `${rel}#${pointer}`);
-  assert.deepEqual(declared, [], 'a source body declares status; the generated wire response pins it');
+  assert.deepEqual(declared, [], 'a source body declares status; the generated task response pins it');
 });
 
 test('no response node narrows message length or pins replayed', () => {
@@ -679,7 +679,8 @@ test('every status body composes its core/task-<status>.json', () => {
 });
 
 test('every submitted body and branch composes core/task-submitted.json', () => {
-  assert.ok(SUBMITTED_NODES.length >= 16, `expected the submitted bodies, found ${SUBMITTED_NODES.length}`);
+  // buy_products and accept_proposal share one submitted body, the commitment's.
+  assert.ok(SUBMITTED_NODES.length >= 15, `expected the submitted bodies, found ${SUBMITTED_NODES.length}`);
   assert.deepEqual(SUBMITTED_NODES.filter((entry) => !composesTaskSubmitted(entry.node)).map(({ rel, pointer }) => `${rel}#${pointer}`), [],
     'a submitted body or branch must compose core/task-submitted.json');
   // The rule lives in one place: no node restates it with a required task_id,
@@ -801,13 +802,13 @@ test('every request that carries a task_id rejects an empty one, single fault', 
   ], 'every request task_id carrier must run');
 });
 
-test('every tool wire response has one branch per status that has a body', () => {
+test('every tool response has one branch per status that has a body', () => {
   const statuses = readSource('enums/task-status.json').enum;
   for (const tool of TOOLS) {
     const toolBase = tool.name.replace(/_/g, '-');
     const protoDir = path.join(SOURCE_DIR, tool.protocol);
     // Status bodies on disk, by the naming convention, independent of the build.
-    const expected = new Map([['completed', `${tool.protocol}/${toolBase}-response.json`]]);
+    const expected = new Map([['completed', `${tool.protocol}/${toolBase}-completed.json`]]);
     for (const name of fs.readdirSync(protoDir)) {
       const match = name.match(new RegExp(`^${toolBase}-(?:async-response-)?([a-z-]+)\\.json$`));
       if (match && statuses.includes(match[1]) && match[1] !== 'completed') {
@@ -816,14 +817,14 @@ test('every tool wire response has one branch per status that has a body', () =>
       }
     }
 
-    assert.equal(tool.response_schema, `${tool.protocol}/${toolBase}-wire-response.json`, `${tool.name}: manifest response_schema`);
+    assert.equal(tool.response_schema, `${tool.protocol}/${toolBase}-response.json`, `${tool.name}: manifest response_schema`);
     for (const rel of tool.async_response_schemas) {
       assert.ok([...expected.values()].includes(rel), `${tool.name}: async schema ${rel} is not a status body`);
     }
 
-    const wire = readBuilt(tool.response_schema);
-    assert.equal(wire.$id, `${BUILT_ORIGIN}${tool.response_schema}`, `${tool.name}: wire response $id`);
-    const branches = wire.oneOf.map((branch) => {
+    const union = readBuilt(tool.response_schema);
+    assert.equal(union.$id, `${BUILT_ORIGIN}${tool.response_schema}`, `${tool.name}: task response $id`);
+    const branches = union.oneOf.map((branch) => {
       assert.equal(branch.allOf.length, 1, `${tool.name}: a branch composes one body`);
       const rel = documentOf(branch.allOf[0].$ref);
       assert.ok(rel && fs.existsSync(path.join(BUILT_DIR, rel)), `${tool.name}: branch body ${branch.allOf[0].$ref} is published`);
@@ -846,23 +847,25 @@ test('a schema tree without the task-status enum has no status bodies', () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-no-status-enum-'));
   try {
     fs.mkdirSync(path.join(fixture, 'media-buy'), { recursive: true });
-    fs.writeFileSync(path.join(fixture, 'media-buy', 'demo-task-response.json'), '{}\n');
+    fs.writeFileSync(path.join(fixture, 'media-buy', 'demo-task-completed.json'), '{}\n');
     assert.deepEqual(taskStatusSchemas(fixture, 'media-buy', 'demo-task'), []);
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }
 });
 
-test('every wire response is a disjoint oneOf discriminated by status', () => {
-  const ALLOWED_UNION_KEYS = ['$schema', '$id', 'title', 'description', 'type', 'discriminator', 'oneOf', 'x-generated'];
+test('every task response is a disjoint oneOf discriminated by status', () => {
+  // The task-level annotations the completed body carries (x-status,
+  // x-added-in, ...) describe the whole response, so the union carries them too.
+  const ALLOWED_UNION_KEYS = ['$schema', '$id', 'title', 'description', 'deprecated', 'x-status', 'x-added-in', 'x-deprecated-in', 'type', 'discriminator', 'oneOf', 'x-generated'];
   const ALLOWED_BRANCH_KEYS = ['title', 'allOf', 'properties', 'required'];
   for (const tool of TOOLS) {
-    const wire = readBuilt(tool.response_schema);
-    assert.deepEqual(Object.keys(wire).filter((key) => !ALLOWED_UNION_KEYS.includes(key)), [], `${tool.name}: the union carries only its oneOf`);
-    assert.deepEqual(wire.discriminator, { propertyName: 'status' }, `${tool.name}: discriminator`);
-    assert.ok(Array.isArray(wire.oneOf) && wire.oneOf.length > 0, `${tool.name}: oneOf`);
+    const union = readBuilt(tool.response_schema);
+    assert.deepEqual(Object.keys(union).filter((key) => !ALLOWED_UNION_KEYS.includes(key)), [], `${tool.name}: the union carries only its oneOf`);
+    assert.deepEqual(union.discriminator, { propertyName: 'status' }, `${tool.name}: discriminator`);
+    assert.ok(Array.isArray(union.oneOf) && union.oneOf.length > 0, `${tool.name}: oneOf`);
     const consts = [];
-    for (const branch of wire.oneOf) {
+    for (const branch of union.oneOf) {
       assert.deepEqual(Object.keys(branch).filter((key) => !ALLOWED_BRANCH_KEYS.includes(key)), [], `${tool.name}: a branch carries no other keyword`);
       assert.deepEqual(Object.keys(branch.properties), ['status'], `${tool.name}: a branch declares only status`);
       assert.ok(pins(branch.properties.status), `${tool.name}: a branch pins status`);
@@ -875,7 +878,7 @@ test('every wire response is a disjoint oneOf discriminated by status', () => {
 });
 
 test('no status body dispatches on status', () => {
-  // A body never tests `status`: the wire response selects the body by its
+  // A body never tests `status`: the task response selects the body by its
   // status, so a body has no status-level branch, condition or exclusion.
   // core/task-submitted.json, core/task-working.json and
   // core/task-input-required.json pin `status`; they are envelope rules the
@@ -907,7 +910,7 @@ const PINNED_BASE_REF = '023bbd26e7c230dcc74bea4087336ea6bc8d0f6a';
 
 // Verdicts are scored per surface:
 //   - tool: a tool response, base `<task>-response.json` against this build's
-//     `<task>-wire-response.json`;
+//     `<task>-response.json`, the same published $id;
 //   - async: an async status payload, base `<task>-async-response-<status>.json`
 //     (or `<task>-<status>.json`) against the status body at the same path,
 //     for an instance that carries that status;
@@ -920,7 +923,7 @@ const PINNED_BASE_REF = '023bbd26e7c230dcc74bea4087336ea6bc8d0f6a';
 // the status body and passed the base file, and keeps its verdict on the
 // tool surface.
 //
-// The wire response is a disjoint oneOf that selects one body by status. The
+// The task response is a disjoint oneOf that selects one body by status. The
 // base's tool response did not dispatch on status for most tasks, so three
 // kinds of tool-surface difference follow, each listed by tool and status:
 //   - OPEN_ROOT: a status with no body, which the base accepted through its
@@ -1147,7 +1150,7 @@ function surfacesOf(instance, context) {
   const status = instance.data && typeof instance.data === 'object' ? instance.data.status : undefined;
   const tool = TOOLS.find((t) => instance.schema === t.response_schema || instance.schema === t.completed_response_schema);
   if (tool) {
-    const surfaces = [{ surface: 'tool', tool: tool.name, base: tool.completed_response_schema, built: tool.response_schema }];
+    const surfaces = [{ surface: 'tool', tool: tool.name, base: tool.response_schema, built: tool.response_schema }];
     const rel = files.get(tool.name)?.get(status);
     if (rel) surfaces.push({ surface: 'async', base: rel, built: rel });
     return surfaces;
@@ -1241,7 +1244,7 @@ test('differential validation: every response instance keeps its verdict on each
           if (entry.reason === OTHER_BODY && !(await validate('built', tool.completed_response_schema, data))) continue;
           // STATUS_FILE: the base's tool response never referenced the status's body.
           if (entry.reason === STATUS_FILE
-            && fs.readFileSync(path.join(base.dir, tool.completed_response_schema), 'utf8').includes(branch.schema)) continue;
+            && fs.readFileSync(path.join(base.dir, tool.response_schema), 'utf8').includes(branch.schema)) continue;
           // OVERLAP: the completed body, which composes the status body, rejects it.
           if (entry.reason === OVERLAP && await validate('built', tool.completed_response_schema, data)) continue;
           observedTool.add(`${entry.reason}|${entry.tool} ${entry.status}`);
@@ -1296,9 +1299,9 @@ test('differential validation: every response instance keeps its verdict on each
         `${entry.tool} ${entry.field}: ${entry.reason}`,
       );
       const tool = TOOLS.find((candidate) => candidate.name === entry.tool);
-      const onTool = await score({ surface: 'tool', base: tool.completed_response_schema, built: tool.response_schema }, vector);
+      const onTool = await score({ surface: 'tool', base: tool.response_schema, built: tool.response_schema }, vector);
       assert.equal(onTool.baseValid, onTool.builtValid, `${entry.tool} ${entry.field}: the tool surface keeps its verdict`);
-      assert.deepEqual(await score({ surface: 'tool', base: tool.completed_response_schema, built: tool.response_schema }, control), { baseValid: true, builtValid: true }, `${entry.tool}: tool-surface control`);
+      assert.deepEqual(await score({ surface: 'tool', base: tool.response_schema, built: tool.response_schema }, control), { baseValid: true, builtValid: true }, `${entry.tool}: tool-surface control`);
     }
     t.diagnostic(`${expectedAsync.length} listed async-surface differences, each shown by its vector`);
 
@@ -1340,7 +1343,7 @@ test('differential validation: every response instance keeps its verdict on each
     // on the async surface when the base had a file for its status.
     let matrixRuns = 0;
     for (const tool of TOOLS) {
-      const baseDocuments = [tool.completed_response_schema, ...files.get(tool.name).values()];
+      const baseDocuments = [tool.response_schema, ...files.get(tool.name).values()];
       const requiredSets = [{}];
       for (const rel of baseDocuments) {
         const document = readJson(path.join(base.dir, rel));

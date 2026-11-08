@@ -9,6 +9,7 @@
  * `TestControllerStore` bound to our JSONB-persisted `SessionState`.
  */
 
+import { FORCE_HOLD_UNAVAILABLE, forceHoldUnavailable, holdsServed } from './holds/service.js';
 import { promoteStagedUpdate, stagedOnRejection } from './live-creative-updates.js';
 import {
   TestControllerError,
@@ -39,6 +40,7 @@ import type {
 import {
   atLeastAdcpVersion,
   supportsAccountChangeFeed,
+  supportsAccountSurfaces33,
   supportsGetProductsRejected,
   supportsReliableReporting,
   supportsSalesFixedRate,
@@ -79,6 +81,7 @@ import {
   mintWrongAudDemoToken,
 } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { handleSeedCollection, SEED_COLLECTION_SCENARIO } from './collections/seed-collection.js';
 import {
   getSharedAccountCreative,
   removeSharedAccountCreative,
@@ -93,6 +96,8 @@ import {
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
 import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
+import { resetAccountRequests } from './account-requests.js';
+import { handleReportingSubscriptionProbe, REPORTING_SUBSCRIPTION_PROBE, resetReportingSubscriptionProbe } from './subscription-probe.js';
 import {
   taskRegistryNamespaceForTenant,
   type TaskRegistryTenant,
@@ -1625,6 +1630,7 @@ function createStore(
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
   'reset_state',
+  'reporting_subscription_probe',
   'expire_account_change_cursor',
   'force_create_media_buy_arm',
   'force_media_buy_confirmation',
@@ -1647,6 +1653,7 @@ const LOCAL_SCENARIOS = [
   'query_account_governance_binding',
   'evaluate_distributed_brand_resolution',
   'verify_governance_token',
+  'force_hold_unavailable',
 ] as const;
 
 async function resolveOrCreateReportingProbeAccount(
@@ -2085,9 +2092,11 @@ function localScenariosFor(ctx: TrainingContext): string[] {
       && s !== 'reliable_reporting_managed_delivery_probe'
       && s !== 'reliable_reporting_reconciled_billing_probe'
     ));
-  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withChangeFeed = supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? currentOnly
     : currentOnly.filter(s => s !== 'expire_account_change_cursor');
+  // Experimental 3.3 holds (media_buy.hold_policy).
+  return holdsServed(ctx) ? withChangeFeed : withChangeFeed.filter(s => s !== FORCE_HOLD_UNAVAILABLE);
 }
 
 /**
@@ -2337,13 +2346,36 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ctx.moduleId,
       targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
     );
+  if (scenario === SEED_COLLECTION_SCENARIO) {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: 'seed_collection is an experimental AdCP 3.3 scenario' };
+    }
+    return handleSeedCollection(rawArgs, ctx);
+  }
+  if (scenario === REPORTING_SUBSCRIPTION_PROBE) {
+    if (ctx.storyboardCompat?.version === '3.0' || !supportsAccountSurfaces33(ctx.servedAdcpVersion)) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'reporting_subscription_probe is an experimental AdCP 3.3 scenario',
+      };
+    }
+    return handleReportingSubscriptionProbe(params, ctx);
+  }
+  if (scenario === FORCE_HOLD_UNAVAILABLE) {
+    return forceHoldUnavailable(params, ctx);
+  }
   if (scenario === 'reset_state') {
+    // The caller's sandbox clock, grants, timezone changes, and account
+    // requests reset too (reporting_subscription_probe reset effects).
+    await resetReportingSubscriptionProbe(ctx);
+    await resetAccountRequests(ctx);
     // These stores intentionally use the same keys as their public handlers,
     // which differ from the principal-aware controller-fixture session above.
     const accountSessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
     const catalogSessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
     await clearSession(sessionKey);
-    clearAccountStoreForSession(accountSessionKey, ctx.principal);
+    await clearAccountStoreForSession(accountSessionKey, ctx.principal);
     clearCatalogEventStoresForSession(catalogSessionKey);
     clearForcedTaskCompletionsForScope(ctx.taskRegistryScope);
     SEED_CACHES.delete(sessionKey);

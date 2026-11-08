@@ -20,6 +20,15 @@
  *   - A base schema marked `x-status: "experimental"`, or in a file whose
  *     root is, is not compared: docs/reference/versioning.mdx classes
  *     experimental-only changes as patch-level.
+ *   - The source tree includes the documents the schema build generates
+ *     (scripts/task-responses.cjs): each task's `<task>-response.json`, a
+ *     `oneOf` with one branch per status body. A base task response that
+ *     the candidate generates is compared as that union: the base root
+ *     against the completed body, a base branch that pins `status` against
+ *     that status's body, a property as removed only when no status body
+ *     declares it, and a name as newly required at the root only when every
+ *     status body requires it. A correction at such a file's location names
+ *     the completed body's node there.
  *
  * Default base (CI and `--candidate` without `--base`)
  *   The highest released stable version in the candidate's major line that
@@ -434,8 +443,23 @@ function readSourceVersion(repoRoot = REPO_ROOT) {
   return JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version;
 }
 
+/**
+ * The source tree as the release publishes it: the files on disk plus the
+ * documents the schema build generates from them (every task's
+ * `<task>-response.json`, scripts/task-responses.cjs).
+ */
+function loadSourceTree(sourceDir) {
+  const { generatedSchemaDocuments } = require('./task-responses.cjs');
+  const raw = new Map();
+  for (const file of walkJsonFiles(sourceDir)) raw.set(file, fs.readFileSync(path.join(sourceDir, file), 'utf8'));
+  for (const [rel, schema] of generatedSchemaDocuments(sourceDir)) {
+    if (!raw.has(rel)) raw.set(rel, JSON.stringify(schema));
+  }
+  return buildTree('source', raw);
+}
+
 function loadTreeSpec(spec, { repoRoot = REPO_ROOT, sourceDir = DEFAULT_SOURCE_DIR } = {}) {
-  if (spec === 'source') return loadDirectoryTree(sourceDir, 'source');
+  if (spec === 'source') return loadSourceTree(sourceDir);
   if (parseVersion(spec)) return loadReleasedTree(spec, repoRoot);
   if (fs.existsSync(spec) && fs.statSync(spec).isDirectory()) return loadDirectoryTree(path.resolve(spec));
   throw new Error(`unknown tree: ${spec} (expected a released version, "source", or a directory)`);
@@ -580,6 +604,40 @@ function declaredNames(node, docKey, tree, keyword, seen = new Set()) {
   return names;
 }
 
+/**
+ * The status bodies of a generated task response (scripts/task-responses.cjs),
+ * as `Map(status -> { node, docKey })`, or null for any other document.
+ */
+function generatedStatusBodies(schema, docKey, tree) {
+  const generated = isObject(schema) ? schema['x-generated'] : null;
+  if (!isObject(generated) || generated.by !== 'scripts/task-responses.cjs' || !isObject(generated.status_schemas)) return null;
+  const bodies = new Map();
+  for (const [status, rel] of Object.entries(generated.status_schemas)) {
+    const resolved = resolveNode({ $ref: `/schemas/${rel}` }, docKey, tree);
+    if (resolved && isObject(resolved.node)) bodies.set(status, resolved);
+  }
+  return bodies.has('completed') ? bodies : null;
+}
+
+/** The status a composition branch pins with a `status` const, or null. */
+function pinnedStatus(branch) {
+  const status = isObject(branch) && isObject(branch.properties) ? branch.properties.status : null;
+  if (!isObject(status)) return null;
+  if (typeof status.const === 'string') return status.const;
+  return Array.isArray(status.enum) && status.enum.length === 1 && typeof status.enum[0] === 'string' ? status.enum[0] : null;
+}
+
+/**
+ * The status body of a generated task response that a base task response's
+ * `oneOf`/`anyOf` branch corresponds to: the body of the status the branch
+ * pins, or the completed body for a branch that pins none (a success
+ * variant). Null when the branch pins a status that has no body.
+ */
+function bodyForBaseBranch(branch, bodies) {
+  const status = pinnedStatus(branch);
+  return bodies.get(status || 'completed') || null;
+}
+
 const BRANCH_KEY_TYPES = ['ref', 'disc', 'title', 'req', 'if'];
 
 /**
@@ -703,6 +761,21 @@ function compareTrees(baseTree, candTree, {
     (VIOLATIONS.has(kind) ? findings : notices).push({ file, pointer, kind, detail, ...extra });
   }
 
+  // The candidate's completed bodies, keyed by document, each naming the
+  // generated task response that composes it.
+  const taskResponseOfCompleted = new Map();
+  for (const [key, document] of candTree.documents) {
+    const completed = generatedStatusBodies(document.schema, key, candTree)?.get('completed');
+    if (completed && completed.docKey !== key) taskResponseOfCompleted.set(completed.docKey, key);
+  }
+  const taskResponseRefOf = (ref) => {
+    const [key, fragment] = ref.split('#');
+    const response = taskResponseOfCompleted.get(key);
+    return response && baseTree.documents.has(response) && !generatedStatusBodies(baseTree.documents.get(response).schema, response, baseTree)
+      ? `${response}#${fragment}`
+      : null;
+  };
+
   const experimentalFile = (docKey) => {
     const document = baseTree.documents.get(docKey);
     return Boolean(document) && isExperimental(document.schema);
@@ -720,10 +793,13 @@ function compareTrees(baseTree, candTree, {
     if (!isObject(b) || !isObject(c)) return;
 
     // References: identical targets are compared at the target file itself.
+    // A candidate reference into a completed body names what the base
+    // reference at the same pointer of the task response named, and the
+    // comparison of the task response covers it.
     const bRef = typeof b.$ref === 'string' ? normalizeRef(b.$ref, bDoc) : null;
     const cRef = typeof c.$ref === 'string' ? normalizeRef(c.$ref, cDoc) : null;
     if (b.$ref !== undefined || c.$ref !== undefined) {
-      if (bRef && cRef && bRef === cRef) {
+      if (bRef && cRef && (bRef === cRef || bRef === taskResponseRefOf(cRef))) {
         const { $ref: _b, ...bRest } = b;
         const { $ref: _c, ...cRest } = c;
         inheritLocation(baseTree, bRest, b);
@@ -865,6 +941,54 @@ function compareTrees(baseTree, candTree, {
     }
   }
 
+  /**
+   * A base task response against the union the candidate generates from its
+   * status bodies. The base root is compared with the completed body; a name
+   * another status body declares has moved, not gone, and a name that some
+   * status body does not require is not required of every response. A base
+   * branch that pins `status` is compared with that status's body.
+   */
+  function compareTaskResponse(file, b, bodies) {
+    const declared = new Set();
+    let requiredByAll = null;
+    const requiredBySome = new Set();
+    for (const { node, docKey } of bodies.values()) {
+      declaredNames(node, docKey, candTree, 'properties').forEach((name) => declared.add(name));
+      for (const keyword of ['oneOf', 'anyOf']) {
+        for (const branch of Array.isArray(node[keyword]) ? node[keyword] : []) {
+          const resolved = resolveNode(branch, docKey, candTree);
+          if (resolved && isObject(resolved.node)) declaredNames(resolved.node, resolved.docKey, candTree, 'properties').forEach((name) => declared.add(name));
+        }
+      }
+      const required = declaredNames(node, docKey, candTree, 'required');
+      required.forEach((name) => requiredBySome.add(name));
+      requiredByAll = requiredByAll ? new Set([...requiredByAll].filter((name) => required.has(name))) : required;
+    }
+    const scope = { declared, required: new Set([...requiredBySome].filter((name) => !requiredByAll.has(name))) };
+    const completed = bodies.get('completed');
+    // The base root's own branches are compared with status bodies below,
+    // not with the completed body's branches.
+    const root = { ...b };
+    const branched = ['oneOf', 'anyOf'].filter((keyword) => Array.isArray(b[keyword]) && !Array.isArray(completed.node[keyword]));
+    for (const keyword of branched) delete root[keyword];
+    inheritLocation(baseTree, root, b);
+    compareNode(file, '', root, file, completed.node, completed.docKey, new Set(), scope);
+    // A name every status body requires is judged once, at the root.
+    const branchScope = { declared, required: new Set([...scope.required, ...requiredByAll]) };
+    for (const keyword of branched) {
+      b[keyword].forEach((branch, i) => {
+        const body = bodyForBaseBranch(branch, bodies);
+        if (!body) return;
+        // The body's status is pinned by the union branch that composes it.
+        const view = isObject(branch.properties) && branch.properties.status
+          ? (({ status: _status, ...properties }) => ({ ...branch, properties }))(branch.properties)
+          : { ...branch };
+        inheritLocation(baseTree, view, branch);
+        compareNode(file, child('', keyword, i), view, file, body.node, body.docKey, new Set(), branchScope);
+      });
+    }
+  }
+
   const files = [...baseTree.documents.keys()].sort();
   for (const key of files) {
     const base = baseTree.documents.get(key);
@@ -874,7 +998,9 @@ function compareTrees(baseTree, candTree, {
       continue;
     }
     if (skipIdentical && base.unversioned !== null && base.unversioned === candidate.unversioned) continue;
-    compareNode(key, '', base.schema, key, candidate.schema, key, new Set());
+    const bodies = generatedStatusBodies(base.schema, key, baseTree) ? null : generatedStatusBodies(candidate.schema, key, candTree);
+    if (bodies) compareTaskResponse(key, base.schema, bodies);
+    else compareNode(key, '', base.schema, key, candidate.schema, key, new Set());
   }
 
   const order = (x, y) => (x.file < y.file ? -1 : x.file > y.file ? 1 : 0)
@@ -1031,12 +1157,41 @@ function readCorrections(value, candidateVersion) {
  * corrected bound has its value there (through a `$ref` if the location
  * refers to a shared definition).
  */
-function checkCorrectionsApplied({ reopened, properties, bounds = new Map(), required = new Map() }, candTree) {
+function checkCorrectionsApplied({ reopened, properties, bounds = new Map(), required = new Map() }, candTree, baseTree = null) {
   const errors = [];
+  // A property that a node no longer declares itself but composes through
+  // an allOf entry (the protocol envelope's task_id, say) is found there.
+  const composedProperty = (root, docKey, pointer) => {
+    const match = /^(.*)\/properties\/([^/]+)$/.exec(pointer || '');
+    const parent = match ? readPointer(root, match[1]) : undefined;
+    if (!isObject(parent)) return undefined;
+    for (const entry of Array.isArray(parent.allOf) ? parent.allOf : []) {
+      const resolved = resolveNode(entry, docKey, candTree);
+      if (!resolved || !isObject(resolved.node)) continue;
+      const found = isObject(resolved.node.properties) && resolved.node.properties[match[2]] !== undefined
+        ? resolved.node.properties[match[2]]
+        : composedProperty(resolved.node, resolved.docKey, `/properties/${match[2]}`);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
   const nodeAt = (location) => {
     const [key, pointer] = location.split('#');
     const document = candTree.documents.get(key);
-    return document ? readPointer(document.schema, pointer) : undefined;
+    if (!document) return undefined;
+    const bodies = generatedStatusBodies(document.schema, key, candTree);
+    if (!bodies) return readPointer(document.schema, pointer) ?? composedProperty(document.schema, key, pointer);
+    // A generated task response: a location names the node of the status
+    // body that the comparison pairs with the base node there.
+    const branch = /^\/(oneOf|anyOf)\/(\d+)(\/.*)?$/.exec(pointer || '');
+    const baseDocument = baseTree && baseTree.documents.get(key);
+    const baseBranches = branch && baseDocument && baseDocument.schema[branch[1]];
+    const completed = bodies.get('completed');
+    if (branch && Array.isArray(baseBranches) && baseBranches[Number(branch[2])] && !Array.isArray(completed.node[branch[1]])) {
+      const body = bodyForBaseBranch(baseBranches[Number(branch[2])], bodies);
+      return body ? readPointer(body.node, branch[3] || '') : undefined;
+    }
+    return readPointer(completed.node, pointer);
   };
   for (const location of reopened) {
     const node = nodeAt(location);
@@ -1181,10 +1336,12 @@ function findingKey(entry) {
   return `${entry.file}#${entry.pointer} ${entry.kind}: ${entry.detail}`;
 }
 
+const BASELINE_SHAPE_ERROR = 'baseline must be an object with an entries array';
+
 function validateBaseline(value) {
   const errors = [];
   if (!isObject(value) || !Array.isArray(value.entries)) {
-    return { entries: [], base: null, errors: ['baseline must be an object with an entries array'] };
+    return { entries: [], base: null, errors: [BASELINE_SHAPE_ERROR] };
   }
   const seen = new Set();
   value.entries.forEach((entry, index) => {
@@ -1207,12 +1364,28 @@ function validateBaseline(value) {
   return { entries: value.entries, base: typeof value.base === 'string' ? value.base : null, errors };
 }
 
-function readBaselineAtRef(ref, repoRoot = REPO_ROOT) {
+// Only a baseline that is genuinely absent from the ref's tree may skip the
+// shrink-only check. A tree lookup decides that without reading the blob; a
+// present baseline that cannot be read (failed lazy fetch in a blobless clone)
+// or does not parse throws instead of silently disabling the guard.
+function readBaselineAtRef(ref, repoRoot = REPO_ROOT, runGit = git) {
+  const listed = runGit(['ls-tree', '-z', '--name-only', ref, '--', BASELINE_REPO_PATH], { cwd: repoRoot });
+  if (!listed.split('\0').includes(BASELINE_REPO_PATH)) return null;
+  const text = runGit(['show', `${ref}:${BASELINE_REPO_PATH}`], { cwd: repoRoot });
+  let value;
   try {
-    return JSON.parse(git(['show', `${ref}:${BASELINE_REPO_PATH}`], { cwd: repoRoot }));
-  } catch {
-    return null;
+    value = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${ref}:${BASELINE_REPO_PATH} is present but is not valid JSON: ${error.message}`);
   }
+  // A present file that is not a baseline at all (`null`, `false`, `0`, `""`,
+  // no entries array) must not read as absent and skip the shrink-only check.
+  // Entry-level problems stay tolerated on the base ref, as
+  // checkAgainstBaseline already does when it reads the previous entries.
+  if (validateBaseline(value).errors.includes(BASELINE_SHAPE_ERROR)) {
+    throw new Error(`${ref}:${BASELINE_REPO_PATH} is present but invalid: ${BASELINE_SHAPE_ERROR}`);
+  }
+  return value;
 }
 
 /**
@@ -1322,7 +1495,7 @@ function analyze({
     ...corrections.errors,
     ...checkCorrectionSources(corrections.entries, repoRoot),
     ...checkCorrectionsRecorded(value, repoRoot),
-    ...checkCorrectionsApplied(corrections, candTree),
+    ...checkCorrectionsApplied(corrections, candTree, baseTree),
   ];
   const closedEarlier = closedInEarlierReleases(baseTree, trees);
   const result = compareTrees(baseTree, candTree, { closedEarlier, corrections });
@@ -1357,7 +1530,7 @@ function lintAdditiveMinor({
     if (!base) return { ok: true, skipped: true, base: null, errors: [], warnings: [], findings: [], notices: [] };
   }
   const baseSchemas = baseTree || loadReleasedTree(base, repoRoot);
-  const candTree = loadDirectoryTree(sourceDir, 'source');
+  const candTree = loadSourceTree(sourceDir);
   const { findings, notices, filesCompared, errors: analysisErrors } = analyze({
     base,
     baseTree: baseSchemas,
@@ -1488,6 +1661,7 @@ function main() {
 }
 
 module.exports = {
+  readBaselineAtRef,
   NOTICE_KINDS,
   VIOLATION_KINDS,
   WHOLE_SCHEMA,

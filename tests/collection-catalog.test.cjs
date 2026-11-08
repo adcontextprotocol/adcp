@@ -46,7 +46,7 @@ test('the three card event types appear in every enumeration of webhook types', 
   const lists = {
     'enums/notification-type.json': read('enums/notification-type.json').enum,
     'core/notification-config.json event_types': read('core/notification-config.json').properties.event_types.items.enum,
-    'wholesale_feed_webhooks.event_types': read('protocol/get-adcp-capabilities-response.json')
+    'wholesale_feed_webhooks.event_types': read('protocol/get-adcp-capabilities-completed.json')
       .properties.wholesale_feed_webhooks.properties.event_types.items.enum,
     'core/wholesale-feed-event.json event_type': read('core/wholesale-feed-event.json').properties.event_type.enum,
     'core/wholesale-feed-webhook.json notification_type': read('core/wholesale-feed-webhook.json').properties.notification_type.enum,
@@ -142,7 +142,7 @@ test('list_collections response: listed and unchanged arms', () => {
   assert.equal(responseSchema({ ...listed, products: [] }), false, 'the response never carries products');
   const { collections_version: _v, ...noVersion } = listed;
   assert.equal(responseSchema(noVersion), false, 'collections_version is required');
-  const schema = read('media-buy/list-collections-response.json');
+  const schema = read('media-buy/list-collections-completed.json');
   assert.equal(schema['x-status'], 'experimental');
   assert.equal(schema.properties.collections.items.$ref, '/schemas/core/response-collection.json');
   assert.equal(schema.properties.pagination.$ref, '/schemas/core/pagination-response.json');
@@ -152,7 +152,7 @@ test('list_collections response: listed and unchanged arms', () => {
 });
 
 test('capabilities: collection_catalog requires collection_cards, and card events require collection_catalog', () => {
-  const caps = read('protocol/get-adcp-capabilities-response.json');
+  const caps = read('protocol/get-adcp-capabilities-completed.json');
   const rule = text => caps.allOf.find(r => r.description && r.description.includes(text));
   const catalogNeedsCards = ajv.compile(rule('requires media_buy.collection_cards'));
   assert.equal(catalogNeedsCards({ experimental_features: ['media_buy.collection_catalog'] }), false);

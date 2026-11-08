@@ -21,12 +21,12 @@ RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 RUN node scripts/deduplicate-runtime-artifacts.cjs
 
 # Historical releases remain immutable in git and in the public R2 artifact
-# CDN. Fly still carries every compliance, docs, and protocol artifact, but its
-# local schema tree only needs hosted-compliance pairs, current docs, aliases,
-# and the training-agent checkpoint. Prune the builder copy so repository
-# release records are never deleted or rewritten.
+# CDN. Fly retains every compliance bundle, configured docs snapshot and required
+# schema/protocol pair. Historical tarball bodies outside that closure are
+# offloaded only after byte verification against the CDN; their sidecars and a
+# discovery inventory stay local. Prune only the builder copy, never Git records.
 FROM builder AS runtime-artifacts
-RUN node scripts/prune-runtime-artifacts.cjs \
+RUN node scripts/prune-runtime-artifacts.cjs --offload-protocol \
  && DOCS_SMOKE_APP_ROOT=/app node scripts/smoke-docs-index-runtime.mjs \
  && HOSTED_COMPLIANCE_SMOKE_APP_ROOT=/app node scripts/smoke-hosted-compliance-runtime.mjs
 
@@ -187,6 +187,11 @@ COPY --from=builder /app/docs ./docs
 # Addie's version-aware docs search derives its public version/snapshot mapping
 # from the same Mintlify configuration used by the docs site.
 COPY --from=builder /app/docs.json ./docs.json
+
+# The reporting-subscription coverage reference model and its pinned tzdata.
+# The training agent computes subscription obligations with it
+# (server/src/training-agent/reporting-coverage-model.ts).
+COPY --from=builder /app/scripts/reference/reporting-coverage ./scripts/reference/reporting-coverage
 
 # Skill docs read at runtime by Addie's ask_about_adcp_task / call_adcp_task loader.
 COPY --from=builder /app/skills ./skills

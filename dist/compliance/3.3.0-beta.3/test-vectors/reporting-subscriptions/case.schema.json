@@ -1,0 +1,612 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "case.schema.json",
+  "title": "Reporting subscription coverage vector case",
+  "description": "One case in vectors.json: the input a buyer holds for one subscription and one account, and either every period the seller owes (expected and expected_obligations) or the input error (expected_error). Wire objects inside the input (versions[].configuration, offerings[], coverage entries, inactive_intervals) are AdCP objects and validate against the AdCP schemas, except in cases whose expected_error.wire_valid is false.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "origin",
+    "rule",
+    "spec_refs",
+    "input"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Stable identifier, unique in the file."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "adcp",
+        "adcp-client#3505"
+      ],
+      "description": "adcp-client#3505: ported from the TypeScript SDK's parity table and re-derived from the spec text. adcp: authored here."
+    },
+    "changed_from_origin": {
+      "type": "string",
+      "description": "How a ported case differs from its origin, and why."
+    },
+    "rule": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The derivation: which clause applies and why the expected rows follow."
+    },
+    "spec_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(?:static/schemas/source/|docs/)[^#\\s]+(?:#\\S*)?$"
+      },
+      "description": "Repository paths, with JSON Pointer or heading anchors, of the normative text the case derives from."
+    },
+    "timezones": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "description": "IANA zones the expected rows depend on, as named in the input. Empty when every schedule is utc-aligned."
+    },
+    "input": {
+      "$ref": "#/definitions/input"
+    },
+    "expected": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/row"
+      }
+    },
+    "expected_obligations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/obligation"
+      }
+    },
+    "expected_error": {
+      "type": "object",
+      "required": [
+        "code",
+        "detail",
+        "wire_valid"
+      ],
+      "description": "The error an SDK raises for this input: code and detail from error-codes.json.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "COVERAGE_INPUT_INCOMPLETE",
+            "COVERAGE_INPUT_INVALID"
+          ]
+        },
+        "detail": {
+          "$ref": "#/definitions/coverage_input_error_detail"
+        },
+        "wire_valid": {
+          "type": "boolean",
+          "description": "false when the input also fails AdCP schema validation."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "COVERAGE_INPUT_INCOMPLETE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "detail": {
+                "enum": [
+                  "missing_account_timezone",
+                  "missing_source_timezone",
+                  "missing_previous_timezone",
+                  "missing_standard_dimensions",
+                  "missing_status_retention_days",
+                  "missing_version_configuration",
+                  "missing_destination_method"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "COVERAGE_INPUT_INVALID"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "detail": {
+                "enum": [
+                  "invalid_timezone",
+                  "invalid_period_duration",
+                  "invalid_instant",
+                  "invalid_input"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "expected",
+        "expected_obligations",
+        "timezones"
+      ],
+      "not": {
+        "required": [
+          "expected_error"
+        ]
+      }
+    },
+    {
+      "required": [
+        "expected_error"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "expected"
+            ]
+          },
+          {
+            "required": [
+              "expected_obligations"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "instant": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$",
+      "description": "RFC 3339 date-time, at most millisecond precision. Compare instants, never strings."
+    },
+    "z_instant": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$",
+      "description": "An expected instant, written in Z form with fractional seconds only when non-zero."
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "subscription_id",
+        "versions",
+        "account",
+        "buys",
+        "offerings",
+        "now"
+      ],
+      "properties": {
+        "subscription_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versions": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Every subscription_version whose obligations matter, oldest first: the current version and prior_versions from the get_principal readback (reporting-subscription-state.json).",
+          "items": {
+            "type": "object",
+            "required": [
+              "subscription_version",
+              "accepted_at",
+              "configuration"
+            ],
+            "properties": {
+              "subscription_version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "accepted_at": {
+                "$ref": "#/definitions/instant"
+              },
+              "superseded_at": {
+                "$ref": "#/definitions/instant",
+                "description": "prior_versions[].superseded_at: the next version's accepted_at."
+              },
+              "deactivated_at": {
+                "$ref": "#/definitions/instant",
+                "description": "The readback's deactivated_at while the subscription is inactive: an open inactive interval."
+              },
+              "configuration": {
+                "type": "object",
+                "description": "The version's reporting-subscription.json object."
+              },
+              "destination_method": {
+                "type": "object",
+                "required": [
+                  "pattern",
+                  "transport"
+                ],
+                "properties": {
+                  "pattern": {
+                    "type": "string"
+                  },
+                  "transport": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false,
+                "description": "pattern and transport of the destination configuration.destination names, from the caller's reporting_destinations. Present when the configuration names a destination."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "account": {
+          "type": "object",
+          "required": [
+            "account_id",
+            "grants"
+          ],
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "timezone": {
+              "type": "string",
+              "description": "The account's current timezone as list_accounts shows it."
+            },
+            "operator": {
+              "type": "string",
+              "description": "The account's operator domain, read when a version names operator_domains."
+            },
+            "source_timezone": {
+              "type": "string",
+              "description": "The seller-resolved upstream reporting timezone (the obligation's period.source_timezone), read by an account_resolved source_timezone offering."
+            },
+            "grants": {
+              "type": "array",
+              "minItems": 1,
+              "description": "The caller's authority over the account, oldest first: intervals during which its authorization lists get_reporting_status. Each grant but the last has unauthorized_at (from accounts_unauthorized). A re-grant at or before the previous unauthorized_at carries the wire's chain-start authorized_at, so its re-grant instant is unknown and only the seller's gaps[] say what the interruption removed. A later re-grant before unauthorized_at plus status_retention_days continues the chain; otherwise it starts a new one.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "authorized_at"
+                ],
+                "properties": {
+                  "authorized_at": {
+                    "$ref": "#/definitions/instant"
+                  },
+                  "unauthorized_at": {
+                    "$ref": "#/definitions/instant"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "buys": {
+          "type": "array",
+          "description": "Media buys the caller can see through get_media_buys.",
+          "items": {
+            "type": "object",
+            "required": [
+              "media_buy_id",
+              "start_time",
+              "end_time",
+              "packages"
+            ],
+            "properties": {
+              "media_buy_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "confirmed_at": {
+                "oneOf": [
+                  {
+                    "$ref": "#/definitions/instant"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Null or absent: not confirmed, so not covered."
+              },
+              "start_time": {
+                "$ref": "#/definitions/instant"
+              },
+              "end_time": {
+                "$ref": "#/definitions/instant"
+              },
+              "canceled_at": {
+                "$ref": "#/definitions/instant",
+                "description": "cancellation.canceled_at."
+              },
+              "cancellation_effective_at": {
+                "$ref": "#/definitions/instant",
+                "description": "cancellation_effective_at, the delivery stop under the cancellation. When present it, not canceled_at, is the cancellation's term in the stop time."
+              },
+              "completed_at": {
+                "$ref": "#/definitions/instant"
+              },
+              "packages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "package_id",
+                    "reporting_delivery_offering_ids"
+                  ],
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "reporting_delivery_offering_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "The package's product reporting_capabilities.reporting_delivery_offering_ids."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "flight_history": {
+                "type": "array",
+                "description": "The buy's flight_history from get_media_buys (core/media-buy.json flight_history): its retroactive flight edits, oldest first, each with the flight in force before it. The flight in force at an instant is the one in the earliest entry recorded after it, or the current flight.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "recorded_at",
+                    "start_time",
+                    "stop_time"
+                  ],
+                  "properties": {
+                    "recorded_at": {
+                      "$ref": "#/definitions/instant"
+                    },
+                    "start_time": {
+                      "$ref": "#/definitions/instant"
+                    },
+                    "stop_time": {
+                      "$ref": "#/definitions/instant"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "offerings": {
+          "type": "array",
+          "description": "Seller offerings as published (reporting-delivery-offering.json, with standard_dimensions, unmapped_dimensions, and the availability window available_from and withdrawn_at, which changes a resolution).",
+          "items": {
+            "type": "object",
+            "required": [
+              "offering_id",
+              "schedule"
+            ],
+            "properties": {
+              "available_from": {
+                "$ref": "#/definitions/instant"
+              },
+              "withdrawn_at": {
+                "$ref": "#/definitions/instant"
+              }
+            }
+          }
+        },
+        "inactive_intervals": {
+          "type": "array",
+          "description": "The readback's inactive_intervals (reporting-subscription-state.json)."
+        },
+        "coverage": {
+          "type": "object",
+          "description": "This subscription's get_reporting_status subscription_coverage entry for the account: its exceptions only.",
+          "properties": {
+            "excluded": {
+              "type": "array"
+            },
+            "gaps": {
+              "type": "array"
+            },
+            "timezone_cutovers": {
+              "type": "array"
+            }
+          },
+          "additionalProperties": false
+        },
+        "status_retention_days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The seller's reporting_delivery status_retention_days."
+        },
+        "backfill_on_regrant": {
+          "type": "boolean",
+          "description": "The seller's subscriptions.backfill_on_regrant. Absent means false."
+        },
+        "now": {
+          "$ref": "#/definitions/instant",
+          "description": "Only periods that end at or before now are expected."
+        }
+      },
+      "additionalProperties": false
+    },
+    "row": {
+      "type": "object",
+      "required": [
+        "subscription_version",
+        "media_buy_id",
+        "offering_id",
+        "period_start",
+        "period_end"
+      ],
+      "properties": {
+        "subscription_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "media_buy_id": {
+          "type": "string"
+        },
+        "offering_id": {
+          "type": "string"
+        },
+        "period_start": {
+          "$ref": "#/definitions/z_instant"
+        },
+        "period_end": {
+          "$ref": "#/definitions/z_instant"
+        },
+        "stub": {
+          "type": "boolean",
+          "const": true,
+          "description": "Present, and true, on a billing cutover stub: the stretch [E, first incoming boundary) a cutover hands to a billing feed whose schedule has no boundary at E (core/reporting-obligation.json stub)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "obligation": {
+      "type": "object",
+      "required": [
+        "subscription_version",
+        "offering_id",
+        "period_start",
+        "period_end",
+        "media_buy_ids"
+      ],
+      "properties": {
+        "subscription_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "offering_id": {
+          "type": "string"
+        },
+        "period_start": {
+          "$ref": "#/definitions/z_instant"
+        },
+        "period_end": {
+          "$ref": "#/definitions/z_instant"
+        },
+        "stub": {
+          "type": "boolean",
+          "const": true,
+          "description": "Present, and true, on a billing cutover stub: the stretch [E, first incoming boundary) a cutover hands to a billing feed whose schedule has no boundary at E (core/reporting-obligation.json stub)."
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "SUBSCRIPTION_WOULD_DEACTIVATE",
+        "DESTINATION_WOULD_REVOKE",
+        "SUBSCRIPTION_ID_CLASH",
+        "SUBSCRIPTION_OPERATOR_SCOPE_REQUIRED",
+        "SUBSCRIPTION_SELECTOR_UNMATCHED",
+        "SUBSCRIPTION_CONFLICT_EXHAUSTED",
+        "SUBSCRIPTION_READBACK_MISMATCH",
+        "COVERAGE_INPUT_INCOMPLETE",
+        "COVERAGE_INPUT_INVALID",
+        "COVERAGE_BUDGET_EXCEEDED",
+        "REPORTING_STORAGE_NOT_DURABLE",
+        "REPORTING_SCHEMA_BEHIND",
+        "SUBSCRIPTIONS_REQUIRE_STANDARD_DIMENSIONS",
+        "SUBSCRIPTION_ROSTER_UNAVAILABLE"
+      ],
+      "description": "The frozen SDK error codes in error-codes.json."
+    },
+    "coverage_input_error_detail": {
+      "type": "string",
+      "enum": [
+        "missing_account_timezone",
+        "missing_source_timezone",
+        "missing_previous_timezone",
+        "missing_standard_dimensions",
+        "missing_status_retention_days",
+        "missing_version_configuration",
+        "missing_destination_method",
+        "invalid_timezone",
+        "invalid_period_duration",
+        "invalid_instant",
+        "invalid_input"
+      ],
+      "description": "The details of COVERAGE_INPUT_INCOMPLETE and COVERAGE_INPUT_INVALID in error-codes.json."
+    },
+    "coverage_reason": {
+      "type": "string",
+      "enum": [
+        "not_in_scope",
+        "excluded:excluded_by_buyer",
+        "not_authorized",
+        "before_coverage_start",
+        "subscription_inactive",
+        "excluded:offering_unsupported",
+        "outside_flight",
+        "after_stop",
+        "before_confirmation",
+        "excluded:capacity",
+        "excluded:overridden",
+        "excluded:action_required",
+        "gap:unauthorized",
+        "cutover_stretch",
+        "owed_under_other_version",
+        "period_not_ended",
+        "owed",
+        "owed:regrant_backfill",
+        "owed:withheld",
+        "buy_not_visible"
+      ],
+      "description": "The frozen coverage reason codes in reason-codes.json: why a period is or is not owed. For expected traces (CoverageTrace reason) and reconciliation lines."
+    },
+    "coverage_rule": {
+      "type": "string",
+      "enum": [
+        "scope",
+        "authorization",
+        "version",
+        "activity",
+        "offering",
+        "flight",
+        "confirmation",
+        "exception",
+        "gap",
+        "cutover",
+        "timezone"
+      ],
+      "description": "The coverage rules in reason-codes.json rule_order, in evaluation order."
+    }
+  }
+}

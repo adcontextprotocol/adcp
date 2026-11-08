@@ -475,9 +475,9 @@ test('task authority discovery prefers grouped headings and stable released-sche
     fs.writeFileSync(target, content);
   };
   write('static/schemas/source/media-buy/demo-task-request.json', '{}\n');
-  write('static/schemas/source/media-buy/demo-task-response.json', '{}\n');
+  write('static/schemas/source/media-buy/demo-task-completed.json', '{}\n');
   write('static/schemas/source/protocol/get-task-status-request.json', '{}\n');
-  write('static/schemas/source/protocol/get-task-status-response.json', '{}\n');
+  write('static/schemas/source/protocol/get-task-status-completed.json', '{}\n');
   write(
     'docs/media-buy/task-reference/grouped.mdx',
     '---\ntitle: Grouped\n---\n\n## demo_task\n',

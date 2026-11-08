@@ -5,9 +5,12 @@ Reference verdicts for the experimental `hold_policy` object
 feature id `media_buy.hold_policy`). Like the feature, these vectors are
 experimental and change with it.
 
-There is no storyboard for `hold_policy` yet. These vectors let buyer SDKs,
-seller test suites, and graders check the same rules against frozen inputs in
-the meantime.
+The `media_buy_seller/hold_*` storyboards
+(`protocols/media-buy/scenarios/hold_*.yaml`) grade a live seller's holds.
+These vectors let buyer SDKs, seller test suites, and graders check the same
+rules against frozen inputs, including the duration arithmetic the storyboards
+grade only through the advisory `instant_offset_within` check and the
+`extend_hold` paths the storyboard runner cannot send yet.
 
 `vectors.json` contains:
 

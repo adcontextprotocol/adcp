@@ -14,10 +14,10 @@
     "result": {
       "oneOf": [
         {
-          "$ref": "/schemas/protocol/sync-principal-response.json#/properties/result/oneOf/0"
+          "$ref": "/schemas/protocol/sync-principal-completed.json#/properties/result/oneOf/0"
         },
         {
-          "$ref": "/schemas/protocol/sync-principal-response.json#/properties/result/oneOf/1"
+          "$ref": "/schemas/protocol/sync-principal-completed.json#/properties/result/oneOf/1"
         },
         {
           "title": "Failed principal sync",

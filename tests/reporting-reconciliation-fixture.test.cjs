@@ -12,6 +12,7 @@ const addFormats = require('ajv-formats');
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMA_ROOT = path.join(ROOT, 'static/schemas/source');
 const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 ensureBuiltSchemas();
 const FIXTURE_ROOT = path.join(
@@ -25,7 +26,7 @@ function readJson(relativePath) {
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compileSchema(uri) {
@@ -209,7 +210,7 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   const validateAdjustmentReceipt = await compileSchema('/schemas/core/reporting-adjustment-receipt.json');
   const validateCoverage = await compileSchema('/schemas/core/reporting-coverage.json');
   const validateReceiptRequest = await compileSchema('/schemas/media-buy/sync-reporting-receipts-request.json');
-  const validateReceiptResponse = await compileSchema('/schemas/media-buy/sync-reporting-receipts-response.json');
+  const validateReceiptResponse = await compileSchema('/schemas/media-buy/sync-reporting-receipts-completed.json');
   const rowAjv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(rowAjv);
   const validateRow = rowAjv.compile(readJson('row-schema.json'));
@@ -263,7 +264,7 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   assert.equal(emptyCoverage.expected_coverage.status, 'full');
 
   const coverageSemantics = readSchema('/schemas/core/reporting-coverage.json')['x-adcp-validation'].status;
-  const aggregationSemantics = readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].coverage_aggregation;
+  const aggregationSemantics = readSchema('/schemas/media-buy/get-reporting-status-completed.json')['x-adcp-validation'].coverage_aggregation;
   for (const semantics of [coverageSemantics, aggregationSemantics]) {
     assert.match(semantics, /partially covered media buy/);
     assert.match(semantics, /explicit empty denominator is full/);

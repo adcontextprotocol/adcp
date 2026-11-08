@@ -7,11 +7,20 @@ track: creative
 requires:
   - controller
 
+requires_capability:
+  path: creative.supports_provenance
+  equals: true
+
 required_tools:
   - get_products
   - sync_creatives
 
 narrative: |
+  creative.supports_provenance was introduced in AdCP 3.3. A creative library
+  alone does not establish provenance enforcement support. Responses served
+  before 3.3 cannot publish this declaration, so this gated coverage is
+  unavailable on those releases.
+
   creative_policy carries three load-bearing fields for provenance enforcement:
   provenance_required (some provenance must be attached), provenance_requirements
   (which fields must be present), and accepted_verifiers (which governance agents
@@ -132,7 +141,7 @@ phases:
         title: "Read provenance_requirements and accepted_verifiers from creative_policy"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-wire-response.json"
+        response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
@@ -144,14 +153,6 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_provenance_enforcement_discover_requirement_get_products_with_disclosure_policy"
           buying_mode: "brief"
-          # Brief intentionally surfaces "Provenance Enforcement" so brief-mode
-          # keyword scoring places the seeded fixture product (which carries
-          # creative_policy.{provenance_required, provenance_requirements,
-          # accepted_verifiers}) at products[0]. This is a known coupling
-          # between the storyboard and brief-mode scoring; if the runner ever
-          # supports JSONPath predicates (`products[?(@.product_id=='...')]`),
-          # switch to wholesale mode + a predicate path so the assertion
-          # doesn't depend on scoring weights.
           brief: "Provenance Enforcement display inventory — AI disclosure metadata required, accepted verifier allowlist published"
           brand:
             domain: "acmeoutdoor.example"
@@ -167,17 +168,18 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
-          - check: field_value
-            path: "products[0].creative_policy.provenance_required"
-            value: true
-            description: "Seller declares provenance_required on the product"
-          - check: field_value
-            path: "products[0].creative_policy.provenance_requirements.require_disclosure_metadata"
-            value: true
-            description: "Seller declares require_disclosure_metadata as a structural requirement"
-          - check: field_present
-            path: "products[0].creative_policy.accepted_verifiers[0].agent_url"
-            description: "Seller publishes at least one accepted verifier so buyers can represent against it"
+          - check: field_contains
+            path: "products[*]"
+            value:
+              product_id: "test-product-disclosure-required"
+              creative_policy:
+                provenance_required: true
+                provenance_requirements:
+                  require_digital_source_type: true
+                  require_disclosure_metadata: true
+                accepted_verifiers:
+                  - agent_url: "https://governance.encypher.seller.example"
+            description: "The seeded product publishes its structural requirements and the verifier used by subsequent submissions"
           - check: field_value
             path: "context.correlation_id"
             value: "provenance_enforcement--get_products"
@@ -198,7 +200,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-wire-response.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -267,7 +269,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-wire-response.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -339,7 +341,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-wire-response.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -428,7 +430,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-wire-response.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -501,7 +503,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-wire-response.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |

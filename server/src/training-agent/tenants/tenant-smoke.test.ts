@@ -2291,7 +2291,8 @@ describe('tenant routing smoke', () => {
       const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
       expect(body.result?.structuredContent?.adcp_version).toBe('3.2');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2']);
+      // The opt-in 3.3 preview (#8181) is advertised last, served to an exact pin only.
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-beta.3']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
@@ -3918,7 +3919,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-beta.3'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
@@ -4188,36 +4189,38 @@ describe('tenant routing smoke', () => {
   }, 30000);
 
   it('does not tunnel invalid or pre-3.2 operator units through the controller compatibility bridge', async () => {
-    const { baseUrl, close } = await bootServer();
-    try {
-      const url = `${baseUrl}/signals/mcp`;
-      await initializeTenant(url);
-      const invalidUnit = await callTenantTool(url, 2, 'comply_test_controller', {
-        account: {
-          brand: { domain: 'invalid-unit.example' },
-          operator: 'pinnacle-agency.example',
-          operator_unit: { id: 'invalid unit' },
-          sandbox: true,
-        },
-        scenario: 'list_scenarios',
-      }) as { result?: { structuredContent?: { scenarios?: string[] } } };
-      expect(invalidUnit.result?.structuredContent?.scenarios).toBeUndefined();
-
-      for (const adcpVersion of ['3.1', '3.1-rc.15']) {
-        const legacyVersion = await callTenantTool(url, 3, 'comply_test_controller', {
-          adcp_version: adcpVersion,
+    for (const storyboardCompat of [undefined, { version: '3.0' as const }]) {
+      const { baseUrl, close } = await bootServer({ storyboardCompat });
+      try {
+        const url = `${baseUrl}/signals/mcp`;
+        await initializeTenant(url);
+        const invalidUnit = await callTenantTool(url, 2, 'comply_test_controller', {
           account: {
-            brand: { domain: 'legacy-unit.example' },
+            brand: { domain: 'invalid-unit.example' },
             operator: 'pinnacle-agency.example',
-            operator_unit: { id: 'not-in-3-1' },
+            operator_unit: { id: 'invalid unit' },
             sandbox: true,
           },
           scenario: 'list_scenarios',
         }) as { result?: { structuredContent?: { scenarios?: string[] } } };
-        expect(legacyVersion.result?.structuredContent?.scenarios, adcpVersion).toBeUndefined();
+        expect(invalidUnit.result?.structuredContent?.scenarios).toBeUndefined();
+
+        for (const adcpVersion of ['3.0', '3.1', '3.1-rc.15']) {
+          const legacyVersion = await callTenantTool(url, 3, 'comply_test_controller', {
+            adcp_version: adcpVersion,
+            account: {
+              brand: { domain: 'legacy-unit.example' },
+              operator: 'pinnacle-agency.example',
+              operator_unit: { id: 'not-in-3-1' },
+              sandbox: true,
+            },
+            scenario: 'list_scenarios',
+          }) as { result?: { structuredContent?: { scenarios?: string[] } } };
+          expect(legacyVersion.result?.structuredContent?.scenarios, adcpVersion).toBeUndefined();
+        }
+      } finally {
+        await close();
       }
-    } finally {
-      await close();
     }
   }, 30000);
 

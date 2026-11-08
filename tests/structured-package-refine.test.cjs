@@ -4,14 +4,15 @@ const path = require('node:path');
 const { before, test } = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMAS = path.join(__dirname, '../static/schemas/source');
 const PACKAGE_URI = '/schemas/media-buy/package-request.json';
 const FORECAST_URI = '/schemas/media-buy/package-forecast-input.json';
 const REQUEST_URI = '/schemas/media-buy/get-products-request.json';
-const RESPONSE_URI = '/schemas/media-buy/get-products-response.json';
+const RESPONSE_URI = '/schemas/media-buy/get-products-completed.json';
 const CREATE_URI = '/schemas/media-buy/create-media-buy-request.json';
-const read = (uri) => JSON.parse(fs.readFileSync(path.join(SCHEMAS, uri.slice('/schemas/'.length)), 'utf8'));
+const read = (uri) => readSchemaFile(path.join(SCHEMAS, uri.slice('/schemas/'.length)));
 const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: async (uri) => read(uri) });
 addFormats(ajv);
 

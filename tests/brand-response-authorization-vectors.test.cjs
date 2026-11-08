@@ -5,6 +5,12 @@ const { describe, it, before } = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const {
+  verifyRequestSignature,
+  StaticJwksResolver,
+  InMemoryReplayStore,
+  InMemoryRevocationStore,
+} = require('@adcp/sdk/signing');
+const {
   assessBrandResponseAuthorization,
   canonicalizeFixtureUrl,
 } = require('./helpers/reference-brand-response-authorizer.cjs');
@@ -35,7 +41,7 @@ const rootDotNegativeVector = JSON.parse(fs.readFileSync(
   'utf8',
 ));
 
-const rootDotPositiveVector = JSON.parse(fs.readFileSync(
+const requestSigningKeys = JSON.parse(fs.readFileSync(
   path.join(
     __dirname,
     '..',
@@ -44,12 +50,10 @@ const rootDotPositiveVector = JSON.parse(fs.readFileSync(
     'source',
     'test-vectors',
     'request-signing',
-    'profile-3.2',
-    'positive',
-    '001-post-with-content-digest.json',
+    'keys.json',
   ),
   'utf8',
-));
+)).keys;
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
@@ -96,19 +100,43 @@ describe('brand response authorization cross-check vectors', () => {
     }
   });
 
-  it('executes the multiple-root-dot signing-profile negative vector', () => {
+  it('executes the multiple-root-dot signing-profile negative vector', async () => {
     assert.equal(rootDotNegativeVector.signing_profile_version, '3.2');
     assert.equal(
       rootDotNegativeVector.expected_outcome.error_code,
       'request_target_uri_malformed',
     );
     assert.equal(canonicalizeFixtureUrl(rootDotNegativeVector.request.url), null);
-    assert.equal(
-      rootDotNegativeVector.request.headers.Signature,
-      rootDotPositiveVector.request.headers.Signature,
-      'the negative vector must reuse the valid equivalent-host signature',
-    );
-    assert.equal(rootDotNegativeVector.request.body, rootDotPositiveVector.request.body);
+    // This vector has its own operation-valid body/idempotency key, so its
+    // signature must verify against that body rather than a sibling vector.
+    // Repair only the extra DNS root dot; retain its headers and body verbatim.
+    const singleRoot = new URL(rootDotNegativeVector.request.url);
+    assert.ok(singleRoot.hostname.endsWith('..'));
+    singleRoot.hostname = singleRoot.hostname.slice(0, -1);
+    const canonicalUrl = canonicalizeFixtureUrl(singleRoot.href);
+    assert.ok(canonicalUrl, 'a single DNS root dot must have a canonical target');
+    const keys = rootDotNegativeVector.jwks_ref.map(kid => {
+      const jwk = requestSigningKeys.find(key => key.kid === kid);
+      assert.ok(jwk, `missing public verification key ${kid}`);
+      const publicJwk = { ...jwk };
+      delete publicJwk._private_d_for_test_only;
+      return publicJwk;
+    });
+    const verify = request => verifyRequestSignature(request, {
+      capability: rootDotNegativeVector.verifier_capability,
+      jwks: new StaticJwksResolver(keys),
+      replayStore: new InMemoryReplayStore(),
+      revocationStore: new InMemoryRevocationStore(),
+      now: () => rootDotNegativeVector.reference_now,
+      operation: 'create_media_buy',
+      adcpVersion: '3.2',
+    });
+    const verified = await verify({ ...rootDotNegativeVector.request, url: canonicalUrl });
+    assert.equal(verified.status, 'verified', 'the vector must be valid apart from its extra root dot');
+    await assert.rejects(verify(rootDotNegativeVector.request), error => {
+      assert.equal(error.code, rootDotNegativeVector.expected_outcome.error_code);
+      return true;
+    });
   });
 
   it('rejects a string key_ops lookalike', () => {

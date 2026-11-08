@@ -122,7 +122,7 @@ The result is the verified identity `O`. A signer whose trust record does not li
 
 Evaluated when something is gated on it: binding a principal (R5), evaluating a grant (R6), and `open` onboarding (R7). It is never evaluated on the request-signature path. For a JWS artifact, R4 derives it to select the profile.
 
-1. **Derive.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
+1. **Derive.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a Public Suffix List bundled with the verifier (not fetched at runtime) that includes the ICANN and PRIVATE sections, refreshed through dependency updates (DR-0037).
    - An `O` whose host is an IP literal or a public suffix, or has no defined eTLD+1, has no trust record.
    - Fetch `R` and any hop under the `security.mdx` Webhook URL validation SSRF rules, with the trust-record body cap and strict parsing.
    - Follow at most one `authoritative_location` hop. The target MUST NOT itself carry `authoritative_location`.
@@ -273,7 +273,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | Trust-record fetches used as an amplifier or network probe | Evaluated only at gates and, for a JWS artifact, to select the profile (R4); never on the request-signature path. One hop, fetch limits, and one external authorization code (R3a). |
 | Signature errors used to probe which check failed | WBA status and headers only; no signature-specific body detail (R2). |
 | Posture used as an onboarding oracle | Seller-wide, unauthenticated, uniform block. Per-agent state only in authenticated `get_principal` (R7, R8). |
-| PSL drift between verifiers | Pinned, dated snapshot, as `security.mdx` already requires. |
+| PSL drift between verifiers | Fails closed: a verifier whose list lacks a newly added suffix derives the platform's trust record, which doesn't list the tenant. Lists are bundled, never fetched at runtime, and refreshed through dependency updates (DR-0037). |
 
 ## Known risks
 

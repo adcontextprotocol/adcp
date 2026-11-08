@@ -625,6 +625,94 @@ Reset with `prepare` before the negative fixture, then call:
 }
 ```
 
+### `reporting_subscription_probe`
+
+Experimental (`media_buy.reporting_subscriptions`). It drives the inputs that
+[reporting-subscription coverage](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage)
+depends on but a buyer can't change itself: the caller's grant on an account, the
+account's timezone, and the clock. A storyboard can then check, against a remote
+seller, that coverage, `accounts_unauthorized[]`, `gaps[]`, `timezone_cutovers[]`,
+and withheld periods follow the spec. Seed buys with `seed_media_buy`.
+
+The probe acts only on sandbox accounts and only on the authenticated caller's own
+grant. It runs on one virtual clock, `simulated_now`, which every authorization
+timestamp, cutover, period boundary, obligation, and delivery for the caller's
+sandbox accounts uses. A revoked account is unknown to every other task, as the spec
+requires, but the controller still accepts `regrant` and `advance_time` for it.
+
+A seller that also lists `media_buy.hold_policy` places and expires the caller's
+holds on the same clock. A hold placed while `simulated_now` is fixed has
+`hold_placed_at` equal to `simulated_now`, and a committed proposal's hold lapses,
+so [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) fails with
+[`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired),
+once `simulated_now` passes its `expires_at`. The hold storyboards use this to
+check a hold's exact window and its lapse.
+
+| Operation | Params | Required observable result |
+|---|---|---|
+| **revoke_grant** | `account_id` | End the caller's authority for the account at `simulated_now`. The account reads as unknown to [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) and every other task. Each covering subscription lists it in `accounts_unauthorized[]` on [`get_principal`](/docs/protocol/get_principal), with `unauthorized_at` equal to `simulated_now`. Return `unauthorized_at`. |
+| **regrant** | `account_id` | Restore the grant at `simulated_now`. Before `unauthorized_at` plus `status_retention_days`, this continues the chain: `authorization.authorized_at` is unchanged, the account leaves `accounts_unauthorized[]`, and withheld periods are owed again. Later, it starts a new chain with `authorized_at` equal to `simulated_now`. Return `authorized_at`, `chain` (`continued` or `new`), and `regranted_at` when the chain continued. |
+| **reduce_grant** | `account_id`, `allowed_tasks` | Replace the caller's `allowed_tasks` on the account, with `read_only: false`, at `simulated_now`. A list that keeps `get_reporting_status` keeps the account covered (the wind-down grant): it is not a loss of authority. A list without it ends the caller's reporting authority at `simulated_now`, exactly like `revoke_grant`: each covering subscription lists the account in `accounts_unauthorized[]` with `unauthorized_at` equal to `simulated_now`, its coverage is withheld, and `get_reporting_status` refuses the account with [`SCOPE_INSUFFICIENT`](/docs/building/verification/compliance-catalog#error-code-scope-insufficient). A later `reduce_grant` whose list adds `get_reporting_status` back is a re-grant, by the same chain rule as `regrant`. Every task the list drops fails for the account with `SCOPE_INSUFFICIENT`, not as unknown. Return the applied `allowed_tasks`. |
+| **set_account_timezone** | `account_id`, `timezone` | Change the account's timezone at `simulated_now`, as an applied account change: [`list_accounts`](/docs/accounts/tasks/list_accounts) shows the new `timezone` and a new `revision`. Account-timezone periods cut over at the first old-timezone boundary at or after the change, recorded in `timezone_cutovers[]`. Return the `SetAccountTimezoneResult` shape below. |
+| **advance_time** | `target_time` | Move `simulated_now` forward to `target_time`. Reject a time at or before the current `simulated_now`. Every period boundary crossed is processed as in production: obligations are committed, subscriptions resolve, deliveries are attempted, and authority is re-checked. Return the applied `simulated_now`. |
+
+Every successful response is a `SimulationSuccess` whose `simulated` object carries
+`simulated_now` and, except for `advance_time`, `account_id`. The operations are
+convergent: repeating one at the same `simulated_now` returns the same result, and
+none mutates state outside the caller's sandbox accounts.
+
+`set_account_timezone` returns `SetAccountTimezoneResult`
+(`comply-test-controller-completed.json#/definitions/SetAccountTimezoneResult`):
+
+| Field | Required | Meaning |
+|---|---|---|
+| `simulated_now` | Yes | The caller's sandbox clock after the call. |
+| `account_id` | Yes | The account named in `params.account_id`. |
+| `previous_timezone` | Yes | The account's IANA timezone before the change. Equal to `timezone` when the call changed nothing. |
+| `timezone` | Yes | The account's IANA timezone after the call, as `list_accounts` shows it. |
+| `changed_at` | When the timezone changed | The instant on the sandbox clock at which the change applied: the `simulated_now` of the call that made it, as `revoke_grant` returns `unauthorized_at`. A repeat at the same `simulated_now` returns the same value. |
+| `timezone_cutovers` | Yes | One entry per `account_timezone`-aligned offering, shaped as a `subscription_coverage[].timezone_cutovers[]` entry with `offering_id` and `previous_timezone` always present: `effective_at` is the end of that offering's last old-timezone period that started before `changed_at`. Coverage lists the same instants for the offerings a subscription covers, and may merge entries that share boundaries. Empty when nothing changed or no offering is `account_timezone`-aligned. |
+
+```json
+{
+  "success": true,
+  "simulated": {
+    "simulated_now": "2030-11-04T18:00:00Z",
+    "account_id": "acc_copy_from_sync_accounts",
+    "previous_timezone": "America/New_York",
+    "timezone": "America/Los_Angeles",
+    "changed_at": "2030-11-04T18:00:00Z",
+    "timezone_cutovers": [
+      {
+        "offering_id": "analytics_daily_api",
+        "previous_timezone": "America/New_York",
+        "timezone": "America/Los_Angeles",
+        "effective_at": "2030-11-05T05:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+**Resetting the probe.** A seller that lists `reporting_subscription_probe` MUST also
+list `reset_state`. For the caller, `reset_state` MUST:
+
+- unpin the sandbox clock. Until the next `advance_time`, `simulated_now` reads the
+  seller's wall clock, so `advance_time` accepts any `target_time` after the current
+  wall-clock instant. The clock does not return to an earlier pinned instant; a
+  storyboard that needs a fixed start pins it with `advance_time` as its first probe
+  step.
+- discard every grant revocation, re-grant, and reduction and every timezone change
+  the probe made, with what they recorded in coverage (`accounts_unauthorized[]`,
+  `gaps[]`, `timezone_cutovers[]`). The seller either discards the sandbox accounts
+  the probe acted on, or keeps them with the changes undone: the caller's full
+  default grant is in effect, and the timezone is the one the account had before
+  the probe first changed it. A kept account's `authorization.authorized_at` MAY
+  restart at the reset.
+
+Without this, a storyboard that pins the clock in one year leaves the next storyboard
+unable to start earlier, and probe state from one run leaks into the next.
+
 ### `force_create_media_buy_arm`
 
 Shapes the next [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) call from the caller's authenticated sandbox account into a specific response arm. v1 supports two arms: `submitted` (the async task envelope, no `media_buy_id` yet) and `input-required` (the errors-branch). Unlike `force_media_buy_status`, no entity transitions — there is no media buy yet — so the response carries `forced.arm` rather than `previous_state`/`current_state`.
@@ -1054,6 +1142,16 @@ At least one of `account_id` or `media_buy_id` is required. The target entity MU
 
 Creates (or upserts) a product fixture with a caller-supplied `product_id` so subsequent storyboard steps can reference the product by stable ID. The controller MUST make the seeded product discoverable via `get_products` under the authenticated account unless the fixture explicitly marks it hidden.
 
+Use the same complete top-level `account` reference on `seed_product`,
+`seed_pricing_option`, and the public requests that consume those fixtures.
+`sandbox: true` selects test mode; it does not identify an advertiser account.
+For natural-key references, retain `brand`, `operator`, and any
+`operator_unit` used by the storyboard. An issued `account_id` can identify
+the same account directly. Separate storyboard accounts allow a suite to run
+in one seller process. `reset_state` resets caller-scoped state such as
+the probe clock; it is not a substitute for per-storyboard accounts, and restarting the
+seller is an implementation workaround, not a runner precondition.
+
 **Why this scenario exists.** Storyboards hardcode fixture IDs like `"test-product"` and expect the seller to have a matching product. Without a seed scenario, every implementer rediscovers which IDs the conformance suite expects and has to alias them by hand. `seed_product` replaces that discovery with an explicit, storyboard-authored contract.
 
 **Params:**
@@ -1250,6 +1348,25 @@ literal when one of those strategies binds a seller-issued ID. See
 - **Sandbox scope.** Seeded fixtures exist only for the authenticated sandbox account. `NOT_FOUND` applies the same way as for `force_*` — a seller that cannot see the parent product for the caller's account MUST return `NOT_FOUND`, not silently fall back to another tenant.
 - **Capability advertisement.** Sellers that do not implement a given seed scenario MUST return [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes) for that scenario name. The runner treats `UNKNOWN_SCENARIO` on a `seed_*` as a coverage gap for storyboards whose `prerequisites.controller_seeding` requires the scenario — those storyboards are graded `not_applicable`, not failed. This applies to **unfamiliar** `seed_*` names as well: a runner may emit a scenario the seller has never seen because the enum is open-for-extension (see below). Sellers and runners MUST respond with `UNKNOWN_SCENARIO` rather than schema-reject an unrecognized scenario value.
 - **Open-for-extension enum.** The `scenario` enum adds new values over time (new seed scenarios land as specialisms demand them). Runners and sellers MUST accept scenario strings they do not recognize and respond with `UNKNOWN_SCENARIO` rather than hard-fail schema validation — otherwise every new enum value becomes a breaking change for stale implementations.
+
+### `reset_state`
+
+Returns the authenticated caller's sandbox to a baseline before a storyboard. It takes
+no `params` and returns `{ "success": true }` (the `SeedSuccess` shape). A runner that
+finds `reset_state` in `list_scenarios` calls it once before each storyboard, before
+any fixture or step, and fails the storyboard if it returns an error other than
+[`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes).
+
+It acts only on the caller's own sandbox state and MUST NOT change another caller's.
+What it discards is implementation-defined, except where a scenario names its reset
+effects: `reporting_subscription_probe` requires it
+and defines what it resets.
+
+```json
+{
+  "scenario": "reset_state"
+}
+```
 
 ## Response shape
 
@@ -1528,7 +1645,7 @@ the failure rather than falling back to another strategy.
 
 1. **Sellers validate transition ordering.** The controller enforces the same state machine rules as production. Calling `force_creative_status(approved)` on a creative that was never `processing` is an error — the controller rejects it just as production would. The lifecycle state machines referenced here are defined in the respective protocol specifications (see [creative lifecycle](/docs/creative/specification#creative-status-lifecycle), [account lifecycle](/docs/accounts/overview#account-status-lifecycle), [media buy lifecycle](/docs/media-buy/specification), [SI session lifecycle](/docs/sponsored-intelligence/specification#session-states)).
 
-2. **Tests are self-contained.** Each test SHOULD create dedicated entities (media buys, creatives, accounts) rather than reusing existing ones. This ensures additive simulation calls (`simulate_delivery`) start from known-zero state without needing a reset mechanism. No `reset` scenario is needed. Compliance testers SHOULD use unique identifiers (e.g., UUIDs) for test entities to avoid collisions when multiple storyboard runner instances run against the same sandbox concurrently. Sandbox entity cleanup (e.g., TTL-based expiration) is the seller's responsibility.
+2. **Tests are self-contained.** Each test SHOULD create dedicated entities (media buys, creatives, accounts) rather than reusing existing ones. This ensures additive simulation calls (`simulate_delivery`) start from known-zero state without needing a reset mechanism. The exception is state scoped to the caller rather than to an entity, such as the `reporting_subscription_probe` sandbox clock: a storyboard cannot create a fresh one, so `reset_state` resets it. Compliance testers SHOULD use unique identifiers (e.g., UUIDs) for test entities to avoid collisions when multiple storyboard runner instances run against the same sandbox concurrently. Sandbox entity cleanup (e.g., TTL-based expiration) is the seller's responsibility.
 
 3. **Delivery simulation uses a synthetic marker.** `simulate_delivery` records MAY include a `synthetic: true` field that sellers can use internally for bookkeeping. The runner ignores this marker — it validates [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) responses against the same schema regardless. This lowers the implementation bar for sellers without affecting test correctness.
 

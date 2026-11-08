@@ -61,6 +61,14 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Bind product fixtures to the complete sandbox account used by their probes.
+context:
+  account:
+    brand:
+      domain: "acmeoutdoor.example"
+    operator: "pinnacle-agency.example"
+    sandbox: true
+
 fixtures:
   products:
     - product_id: "display_vendor_metric_catalog_precondition"
@@ -116,6 +124,7 @@ phases:
             - brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              sandbox: true
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_catalog_precondition_sync_accounts"
@@ -145,6 +154,9 @@ phases:
           catalog for this compliance session.
         sample_request:
           account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
             sandbox: true
           brand:
             domain: "acmeoutdoor.example"
@@ -185,7 +197,7 @@ phases:
         title: "Accept vendor_metric with catalog miss during 3.1 SHOULD window"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         auth:
@@ -203,6 +215,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -246,7 +259,7 @@ phases:
         title: "Reject vendor_metric with catalog miss using TERMS_REJECTED"
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-wire-response.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         expect_error: true
@@ -267,6 +280,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:

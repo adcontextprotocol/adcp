@@ -64,6 +64,8 @@ import {
   assertDiscoveryAccountProvisioned,
   isIdentitylessControllerRef,
 } from './v6-account-helpers.js';
+import { callerGrantRevoked } from './account-sandbox.js';
+import { subscriptionReportingView } from './subscription-coverage-service.js';
 import { registerSharedPublicBrandPartitionForAccountId, rehydrateAccountById } from './account-handlers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
@@ -85,13 +87,14 @@ import {
   withDurableReportingLedger,
 } from './reporting-reliability.js';
 import {
+  flushDirtySessions,
   getSession,
   registerSharedPublicBrandPartition,
   runWithAccountIdAliasScope,
   runWithSessionContext,
   sessionKeyFromArgs,
 } from './state.js';
-import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
+import { supportsAccountSurfaces33, supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_STABLE_REGISTRY_VERSIONS, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -100,6 +103,15 @@ import {
   taskRegistryScopeFromContext,
 } from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
+import { validateProductDiscoverySourceInput } from './source-schema.js';
+import { finishCollectionRead, prepareCollectionRead, runCollectionRead } from './collections/include-collections.js';
+import {
+  withHoldsAcceptProposal,
+  withHoldsDeclineProposals,
+  withHoldsListProducts,
+  withHoldsRefineProposals,
+  withHoldsRequestProposals,
+} from './holds/service.js';
 import {
   SellerManagedControlJobCoordinator,
   type SellerManagedControlJobContext,
@@ -1163,7 +1175,11 @@ export function legacyGetProductsHandler(
     const servedAdcpVersion = ctx.servedAdcpVersion
       ?? (versionResolution.ok ? versionResolution.servedVersion : undefined);
     if (servedAdcpVersion) trainingCtx.servedAdcpVersion = servedAdcpVersion;
-    const executed = await executeTrainingAgentTool('get_products', normalizedReq, trainingCtx);
+    const executed = await executeTrainingAgentTool(
+      'get_products',
+      prepareCollectionRead('get_products', normalizedRecord, trainingCtx) as typeof normalizedReq,
+      trainingCtx,
+    );
     if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
     const rawResponse = executed.data as Record<string, unknown> | undefined;
     if (
@@ -1212,10 +1228,15 @@ export function legacyGetProductsHandler(
       executed.data,
       { allowAdvisories: true },
     );
-    return projectGetProductsCompatibilityWire(
-      response,
-      req as unknown as Record<string, unknown>,
-      servedAdcpVersion,
+    return finishCollectionRead(
+      'get_products',
+      normalizedRecord,
+      projectGetProductsCompatibilityWire(
+        response,
+        req as unknown as Record<string, unknown>,
+        servedAdcpVersion,
+      ),
+      trainingCtx,
     ) as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['getProducts']>>>;
   };
 }
@@ -1262,7 +1283,8 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
     }
     const principal = ctx.authInfo?.clientId;
     const reportingAccount = await resolveReportingAccountDurably(principal, requestedAccount);
-    if (!reportingAccount) {
+    // A revoked grant makes the account unknown to this caller.
+    if (!reportingAccount || await callerGrantRevoked(principal, reportingAccount.accountId)) {
       return validateReliableReportingResponse(reportingStatusUnavailable(req.view));
     }
     const accountId = reportingAccount.accountId;
@@ -1273,6 +1295,11 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
     const session = await getSession(sessionKeyFromArgs(sessionArgs, 'open', undefined, undefined, principal));
     const reportingProducts = new Map(buildCatalog().map(entry => [entry.product.product_id, entry.product]));
     for (const [productId, product] of session.configuredProducts) reportingProducts.set(productId, product);
+    // 3.3: principal-level reporting subscriptions add their obligations and
+    // exceptions, on the caller's sandbox clock.
+    const subscriptionOverlay = supportsAccountSurfaces33(version.servedVersion)
+      ? await subscriptionReportingView({ mode: 'open', principal, servedAdcpVersion: version.servedVersion }, accountId)
+      : undefined;
     const response = await getReportingStatusForAccountDurably(
       req as unknown as Parameters<typeof getReportingStatusForAccountDurably>[0],
       principal,
@@ -1298,6 +1325,7 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
           };
         }),
       })),
+      subscriptionOverlay,
     );
     return supportsReliableReporting(version.servedVersion)
       ? validateReliableReportingResponse(response)
@@ -1553,6 +1581,8 @@ export class TrainingSalesPlatform
     private readonly storyboardCompat?: TrainingContext['storyboardCompat'],
     private readonly proposalNegotiationProfile: NonNullable<TrainingContext['proposalNegotiationProfile']> = 'ask-only',
     taskRegistry?: TaskRegistry,
+    /** This platform serves the hosted 3.3 preview's registry. */
+    private readonly servesPreview = false,
   ) {
     if (taskRegistry) {
       this.sellerManagedControlJobs = new SellerManagedControlJobCoordinator(
@@ -1616,7 +1646,11 @@ export class TrainingSalesPlatform
     // no longer derives the retained 3.2-rc.7 checkpoint on its own. Declare
     // the served releases explicitly so exact prerelease pins negotiate to
     // the checkpoint the agent advertises instead of downshifting to 3.1.
-    return { ...TRAINING_SALES_CAPABILITIES, supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS] };
+    // Only the preview's own registry negotiates the hosted preview.
+    return {
+      ...TRAINING_SALES_CAPABILITIES,
+      supported_versions: [...(this.servesPreview ? TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS : TRAINING_AGENT_STABLE_REGISTRY_VERSIONS)],
+    };
   }
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {
@@ -1653,6 +1687,17 @@ export class TrainingSalesPlatform
           this.storyboardCompat,
         )
         : withCurrentAccountScope(requestWithRawSelectors, ctx.account, ctx.input);
+      // The routed SDK path bypasses the legacy dispatcher's canonical
+      // validation; discovery schemas alone do not enforce purchase branches.
+      if ((args as unknown as Record<string, unknown>).opportunity !== undefined) {
+        const validationError = validateProductDiscoverySourceInput(
+          'create-media-buy-request',
+          args as unknown as Record<string, unknown>,
+        );
+        if (validationError) {
+          throw new AdcpError('INVALID_REQUEST', { ...validationError, recovery: 'correctable' });
+        }
+      }
       const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
@@ -1681,6 +1726,13 @@ export class TrainingSalesPlatform
       const platformResult = translateV5Result<CreateMediaBuyHandlerResult>(
         canonicalMediaBuyPlatformResult(v5Result),
       );
+      if ('media_buy_id' in platformResult && typeof platformResult.media_buy_id === 'string') {
+        // The tenant transport's fallback flush runs after the MCP response.
+        // Commit this synchronous buy before the SDK publishes its result so
+        // the next controller request can read it on another web process.
+        // Session persistence and SDK replay publication remain separate.
+        await flushDirtySessions();
+      }
       // SDK 14 intentionally keeps synchronous terminal responses silent in
       // AdCP 3.2. Released 3.0 storyboards, however, require the historical
       // inline completion callback. Emit only on that compatibility surface,
@@ -1795,44 +1847,57 @@ export class TrainingSalesPlatform
     return {
     proposalRefinement: proposalCapabilitiesForProfile(this.proposalNegotiationProfile),
 
-    listProducts: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'list_products',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
-
-    requestProposals: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'request_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
-
-    refineProposals: async (req, ctx) => {
+    // Experimental 3.3: include_collections (collections/include-collections.ts)
+    // prepares the split reads and adds collection cards; holds
+    // (holds/service.ts) wrap the engine call for 3.3 callers. Other callers
+    // pass straight through both.
+    listProducts: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
       return translateV5Result(
-        await executeProductDiscoveryPlatformTool(
-          'refine_proposals',
+        await runCollectionRead(
+          'list_products',
           withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
           trainingCtx,
+          args => withHoldsListProducts(args, trainingCtx, () => executeProductDiscoveryPlatformTool('list_products', args, trainingCtx)),
         ),
         { allowAdvisories: true },
       );
     },
 
-    declineProposals: async (req, ctx) => translateV5Result(
-      await executeProductDiscoveryPlatformTool(
-        'decline_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-      { allowAdvisories: true },
-    ),
+    requestProposals: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await runCollectionRead(
+          'request_proposals',
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+          trainingCtx,
+          args => withHoldsRequestProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('request_proposals', args, trainingCtx)),
+        ),
+        { allowAdvisories: true },
+      );
+    },
+
+    refineProposals: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await runCollectionRead(
+          'refine_proposals',
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+          trainingCtx,
+          args => withHoldsRefineProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('refine_proposals', args, trainingCtx)),
+        ),
+        { allowAdvisories: true },
+      );
+    },
+
+    declineProposals: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>;
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsDeclineProposals(args, trainingCtx, () => executeProductDiscoveryPlatformTool('decline_proposals', args, trainingCtx)),
+        { allowAdvisories: true },
+      );
+    },
 
     buyProducts: async (req, ctx) => translateV5CommitmentResult(
       await handleBuyProducts(
@@ -1841,12 +1906,13 @@ export class TrainingSalesPlatform
       ),
     ),
 
-    acceptProposal: async (req, ctx) => translateV5Result(
-      await handleAcceptProposal(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0],
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-    ),
+    acceptProposal: async (req, ctx) => {
+      const args = withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0];
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await withHoldsAcceptProposal(args as unknown as Record<string, unknown>, trainingCtx, () => handleAcceptProposal(args, trainingCtx)),
+      );
+    },
 
     controlMediaBuy: async (req, ctx) => {
       const args = withCurrentAccountScope(

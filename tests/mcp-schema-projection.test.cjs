@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 const AjvDraft07 = require('ajv');
 const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
-const { readSourceSchemaDocument, sourceSchemaExists } = require('../scripts/wire-responses.cjs');
+const { readSourceSchemaDocument, sourceSchemaExists } = require('../scripts/task-responses.cjs');
 const yaml = require('js-yaml');
 const semver = require('semver');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
@@ -196,7 +196,13 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // +2.2 KB, plus the account and creative PRs. Bound at 1_375_000 for the
 // window; resume per-PR bounding after the beta.1 cut, and track shrinking
 // the controller closure separately.
-const PARITY_COMPILE_LIMIT = 1_375_000;
+// 3.3.0-beta.4: the reset_state scenario and the set_account_timezone result
+// (#8717) reach the controller on top of the beta.4 coverage fixes (#8718,
+// trimmed to 1_374_852); the controller measures 1_375_833 bytes, bound at
+// 1_376_000.
+// Experimental match keys (#8375) reach the seeded Product through
+// Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
+const PARITY_COMPILE_LIMIT = 1_384_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -246,8 +252,8 @@ function createValidator(AjvClass) {
 }
 
 test('complete reporting summary vectors agree across canonical, bundled, and MCP profiles', async t => {
-  // The tool's wire response: completed reads and failed lookups.
-  const schemaPath = 'media-buy/get-reporting-status-wire-response.json';
+  // The tool's task response: completed reads and failed lookups.
+  const schemaPath = 'media-buy/get-reporting-status-response.json';
   const variants = [
     [schemaPath, AjvDraft07],
     [`bundled/${schemaPath}`, AjvDraft07],
@@ -969,7 +975,7 @@ test('compact lifecycle routes every operational control and declares cross-item
     packageControl['x-adcp-validation'].verifier_constraints.keyword_identity_sets.positive_add_remove,
     'disjoint_by_normalized_keyword_and_match_type'
   );
-  const commitment = readJson(path.join(SOURCE_DIR, 'media-buy', 'media-buy-commitment-response.json'));
+  const commitment = readJson(path.join(SOURCE_DIR, 'media-buy', 'media-buy-commitment-completed.json'));
   const bindingRule = commitment.properties.purchase_bindings['x-adcp-validation']
     .verifier_constraints.complete_purchase_bijection;
   assert.equal(bindingRule.purchase_indexes, 'unique_contiguous_zero_based_range');
@@ -1217,7 +1223,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
       const projectedPath = path.join(PROJECTION_DIR, relativePath);
       const sourcePath = path.join(SOURCE_DIR, relativePath);
       assert.ok(fs.existsSync(projectedPath), `${toolName}.${field} projection is missing`);
-      // A tool's outputSchema is its wire response, which the schema build generates.
+      // A tool's outputSchema is its task response, which the schema build generates.
       assert.ok(sourceSchemaExists(sourcePath, SOURCE_DIR), `${toolName}.${field} source schema is missing`);
       if (seen.has(relativePath)) continue;
       seen.add(relativePath);
@@ -1638,7 +1644,7 @@ test('rewriteEmbeddedResourceRefs unit: root-$id collision causes projection to 
 for (const [relativePath, expectedDefinition] of [
   ['compliance/comply-test-controller-request.json', 'external:core/product.json'],
   ['media-buy/get-products-request.json', 'external:media-buy/package-forecast-input.json'],
-  ['media-buy/get-products-wire-response.json', 'external:core/product.json'],
+  ['media-buy/get-products-response.json', 'external:core/product.json'],
 ]) {
   test(`${relativePath} uses embedded-resource refs without long root-anchored pointers`, () => {
     // Regression for #8041: cross-definition refs within bundled sub-schemas must

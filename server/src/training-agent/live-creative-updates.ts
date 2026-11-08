@@ -5,7 +5,7 @@
  * Spec: docs/creative/task-reference/sync_creatives.mdx#live-creative-updates
  */
 import { isDeepStrictEqual } from 'node:util';
-import type { CreativeState, SessionState } from './types.js';
+import type { CreativeState, MediaBuyState, SessionState } from './types.js';
 
 export type CreativeChangeKind = 'click_through' | 'trackers' | 'asset_content' | 'format';
 export type LiveUpdateServingMode = 'uninterrupted' | 'staged' | 'paused_for_review';
@@ -57,6 +57,14 @@ export interface StagedCreativeUpdate {
 }
 
 const TERMINAL_MEDIA_BUY_STATUSES = new Set(['completed', 'rejected', 'canceled']);
+
+/** A buy is open unless canceled (recorded as canceledAt), rejected,
+ * completed, or past its flight. Mirrors deriveStatus's terminal states. */
+export function isOpenMediaBuy(mb: MediaBuyState, now: Date = new Date()): boolean {
+  if (mb.canceledAt || TERMINAL_MEDIA_BUY_STATUSES.has(mb.status)) return false;
+  const end = Date.parse(mb.endTime);
+  return !(Number.isFinite(end) && end <= now.getTime());
+}
 const KIND_ORDER: readonly CreativeChangeKind[] = ['click_through', 'trackers', 'asset_content', 'format'];
 const MODE_ORDER: readonly LiveUpdateServingMode[] = ['uninterrupted', 'staged', 'paused_for_review'];
 const TRACKER_ASSET_TYPES = new Set(['pixel_tracker', 'vast_tracker', 'daast_tracker']);
@@ -73,7 +81,7 @@ export function livePackageIds(
 ): string[] {
   const ids: string[] = [];
   for (const mediaBuy of session.mediaBuys.values()) {
-    if (TERMINAL_MEDIA_BUY_STATUSES.has(mediaBuy.status)) continue;
+    if (!isOpenMediaBuy(mediaBuy, now)) continue;
     for (const pkg of mediaBuy.packages) {
       if (pkg.canceled) continue;
       if (!pkg.creativeAssignments.includes(creativeId)) continue;

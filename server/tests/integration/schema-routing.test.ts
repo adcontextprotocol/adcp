@@ -437,3 +437,69 @@ describe("/protocol discovery release overrides", () => {
     }
   });
 });
+
+describe("/protocol image-only archive offload", () => {
+  it("preserves discovery and sidecars, redirects known GET/HEAD bodies and stops CDN fallback loops", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "protocol-offload-"));
+    try {
+      fs.writeFileSync(path.join(root, ".runtime-offloaded-tarballs.json"), JSON.stringify({
+        schema_version: 1, files: ["3.1.2.tgz", "3.1.3.tgz"],
+      }));
+      for (const suffix of ["sha256", "sig", "crt"]) fs.writeFileSync(path.join(root, `3.1.2.tgz.${suffix}`), suffix);
+      fs.writeFileSync(path.join(root, "latest.tgz"), "development");
+      fs.writeFileSync(path.join(root, "latest.tgz.sha256"), "development checksum");
+      const app = express();
+      mountProtocolRoutes(app, root);
+      const discovery = await request(app).get("/protocol/");
+      expect(discovery.status).toBe(200);
+      expect(discovery.body.latest.published_version).toBe("3.1.2");
+      expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+        version: "3.1.2", tarball: "/protocol/3.1.2.tgz",
+        signature: "/protocol/3.1.2.tgz.sig", certificate: "/protocol/3.1.2.tgz.crt",
+      }));
+      expect(discovery.body.versions).toContainEqual(expect.objectContaining({ version: "3.1.3", withdrawn: true }));
+      for (const method of ["get", "head"] as const) {
+        const response = await request(app)[method]("/protocol/3.1.2.tgz?destination=https://untrusted.example");
+        expect(response.status).toBe(302);
+        expect(response.headers.location).toBe("https://adcontextprotocol.org/protocol/3.1.2.tgz?fly_protocol_offload=1");
+        expect(response.headers["access-control-allow-origin"]).toBe("*");
+        expect(response.headers["cache-control"]).toBe("public, max-age=600");
+      }
+      const loop = await request(app).get("/protocol/3.1.2.tgz?fly_protocol_offload=1");
+      expect(loop.status).toBe(404);
+      expect(loop.headers.location).toBeUndefined();
+      expect(loop.headers["cache-control"]).toBe("no-store");
+      for (const suffix of ["sha256", "sig", "crt"]) {
+        const response = await request(app).get(`/protocol/3.1.2.tgz.${suffix}`);
+        expect(response.status).toBe(200);
+        expect(response.headers["cache-control"]).toContain("immutable");
+      }
+      expect((await request(app).get("/protocol/latest.tgz")).status).toBe(200);
+      expect((await request(app).get("/protocol/0.0.1.tgz")).status).toBe(404);
+      expect((await request(app).get("/protocol/nested/3.1.2.tgz")).status).toBe(404);
+      expect((await request(app).post("/protocol/3.1.2.tgz")).status).toBe(404);
+      fs.writeFileSync(path.join(root, "3.1.2.tgz"), "local archive wins");
+      const local = await request(app).get("/protocol/3.1.2.tgz?fly_protocol_offload=1");
+      expect(local.status).toBe(200);
+      expect(local.body.toString()).toBe("local archive wins");
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("fails closed on a malformed inventory instead of constructing a redirect", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "protocol-offload-invalid-"));
+    try {
+      fs.writeFileSync(path.join(root, ".runtime-offloaded-tarballs.json"), JSON.stringify({
+        schema_version: 1, files: ["../../other.tgz"],
+      }));
+      const app = express();
+      mountProtocolRoutes(app, root);
+      app.use((_error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+        res.status(500).send("invalid inventory");
+      });
+      const response = await request(app).get("/protocol/3.1.2.tgz");
+      expect(response.status).toBe(500);
+      expect(response.headers.location).toBeUndefined();
+      expect((await request(app).get("/protocol/")).status).toBe(500);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+});

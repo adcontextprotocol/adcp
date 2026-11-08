@@ -4,14 +4,13 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)), "utf8")
-  );
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)));
 }
 
 async function compile(schema) {
@@ -35,7 +34,7 @@ describe("spot-level as-run delivery reporting", () => {
       "/schemas/media-buy/get-media-buy-delivery-request.json"
     );
     const response = readSchema(
-      "/schemas/media-buy/get-media-buy-delivery-response.json"
+      "/schemas/media-buy/get-media-buy-delivery-completed.json"
     );
     const byPackage =
       response.properties.media_buy_deliveries.items.properties.by_package.items;
@@ -184,27 +183,17 @@ describe("spot lifecycle, makegood linkage and break position (experimental, 3.3
 
   before(async () => {
     const response = readSchema(
-      "/schemas/media-buy/get-media-buy-delivery-response.json"
+      "/schemas/media-buy/get-media-buy-delivery-completed.json"
     );
-    const response32 = JSON.parse(
-      fs.readFileSync(
-        path.join(DIST_32, "media-buy", "get-media-buy-delivery-response.json"),
-        "utf8"
-      )
-    );
+    const response32 = readSchemaFile(path.join(DIST_32, "media-buy", "get-media-buy-delivery-response.json"));
     const ajv32 = new Ajv({
       allErrors: true,
       strict: false,
       loadSchema: async (ref) =>
-        JSON.parse(
-          fs.readFileSync(
-            path.join(
+        readSchemaFile(path.join(
               DIST_32,
               ref.replace("https://adcontextprotocol.org/schemas/3.2.3/", "")
-            ),
-            "utf8"
-          )
-        ),
+            )),
     });
     addFormats(ajv32);
     [validateSpot, validateSpot32, validateCapabilities] = await Promise.all([
@@ -331,7 +320,7 @@ describe("spot lifecycle, makegood linkage and break position (experimental, 3.3
 
   it("annotates replaces_spot_id like spot_id and marks new fields experimental", () => {
     const fields = spotItem(
-      readSchema("/schemas/media-buy/get-media-buy-delivery-response.json")
+      readSchema("/schemas/media-buy/get-media-buy-delivery-completed.json")
     ).allOf.find((schema) => schema.properties).properties;
     assert.equal(fields.replaces_spot_id["x-entity"], fields.spot_id["x-entity"]);
     for (const name of ["spot_status", "scheduled_at", "replaces_spot_id", "break_position"]) {

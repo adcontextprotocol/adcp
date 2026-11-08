@@ -124,10 +124,18 @@ jobs:
           # capability-gated unsupported-dimension step is skipped because both
           # profiles declare `flight`).
           #
-          # finalization-failure is intentionally absent: its finalize handler
-          # always rejects the hold, so it can never satisfy this storyboard's
-          # finalize_draft step. It stays manual-only until it has its own
-          # hold-failure storyboard.
+          # finalization-failure never satisfies that storyboard's finalize
+          # step: its finalize rejects every hold. It runs the hold-failure
+          # storyboard instead, which needs force_hold_unavailable (declared
+          # by this profile on the 3.3 candidate wire) and no hold_policy, so
+          # the deterministic failing seller is graded: 1 storyboard and 12
+          # passed steps.
+          - surface: current
+            tenant: finalization-failure
+            tenant_path: sales/profiles/finalization-failure
+            storyboard_id: media_buy_seller/hold_unavailable_batch
+            min_clean_storyboards: 1
+            min_passing_steps: 12
           - surface: current
             tenant: typed-negotiation
             tenant_path: sales/profiles/typed-negotiation
@@ -187,6 +195,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -735,11 +744,14 @@ jobs:
         env:
           CLEAN: ${{ steps.aggregate.outputs.clean }}
           PASSED: ${{ steps.aggregate.outputs.passed }}
-          # Beta.12 capability-resolved replay. Result-row totals include the
-          # three signed-request route profiles; storyboard applicability is
-          # reported separately in the aggregate summary.
-          MIN_CLEAN: 136
-          MIN_PASSED: 680
+          # Ratcheted from the candidate-mode replay with the experimental 3.3
+          # hold storyboards (#8182): 191/194 clean, 1400 passed. The three red
+          # rows (inline_creatives_without_sync, provenance_audit_observation,
+          # provenance_truth_of_claim) also fail on main. Result-row totals
+          # include the three signed-request route profiles; storyboard
+          # applicability is reported separately in the aggregate summary.
+          MIN_CLEAN: 191
+          MIN_PASSED: 1400
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
@@ -809,6 +821,32 @@ jobs:
             "media_buy_seller/governance_conditions:12:0"
             "media_buy_seller/governance_denied:11:0"
             "media_buy_seller/governance_denied_recovery:10:0"
+            # Experimental 3.3 account requests (candidate wire only). The
+            # three skips are the peer branches the training agent's
+            # deterministic seller policy does not take: exact counts pin that
+            # it refuses with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT and opens a
+            # separate account on opt-in, matches a duplicating change, and
+            # hands sign-up to the buyer.
+            "account_requests:36:3"
+            # Experimental 3.3 reporting subscriptions over the sandbox clock.
+            # owed_periods_match grades not_applicable until the released
+            # runner implements it; the steps also pin deterministic values.
+            # The one skip is the backfill_on_regrant: true phase, which this
+            # seller (backfill false) does not take.
+            "media_buy_seller/reporting_subscription_coverage:46:1"
+            "media_buy_seller/reporting_subscription_capacity:16:0"
+            # Experimental 3.3 holds over seeded hold policies. terms_only:
+            # the 4 skips are the hold_semantics inventory_hold-declared and
+            # terms_only phases (this seller declares none). hold_extension:
+            # the 10 skips are the extend_hold steps, which the @adcp/sdk
+            # runner cannot send yet (adcontextprotocol/adcp-client#3601),
+            # and the steps that depend on them.
+            "media_buy_seller/hold_policy_bounds:18:0"
+            "media_buy_seller/hold_policy_terms_only:19:4"
+            "media_buy_seller/hold_policy_version_gate:11:0"
+            "media_buy_seller/hold_unavailable_batch:12:0"
+            "media_buy_seller/hold_extension:22:10"
+            "media_buy_seller/hold_ranking:11:0"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"

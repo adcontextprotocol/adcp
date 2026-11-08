@@ -4,6 +4,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const vectorsPath = path.join(__dirname, '..', 'static', 'test-vectors', 'a2a-profile-extension-v3.json');
 const vectors = JSON.parse(fs.readFileSync(vectorsPath, 'utf8'));
@@ -15,7 +16,7 @@ const ajv = new Ajv({
   discriminator: true,
   loadSchema: async (uri) => {
     if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-    return JSON.parse(fs.readFileSync(path.join(schemaRoot, uri.replace('/schemas/', '')), 'utf8'));
+    return readSchemaFile(path.join(schemaRoot, uri.replace('/schemas/', '')));
   },
 });
 addFormats(ajv);
@@ -23,7 +24,7 @@ addFormats(ajv);
 async function compile(schemaId) {
   const existing = ajv.getSchema(schemaId);
   if (existing) return existing;
-  const schema = JSON.parse(fs.readFileSync(path.join(schemaRoot, schemaId.replace('/schemas/', '')), 'utf8'));
+  const schema = readSchemaFile(path.join(schemaRoot, schemaId.replace('/schemas/', '')));
   return ajv.compileAsync(schema);
 }
 

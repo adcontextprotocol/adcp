@@ -51,11 +51,11 @@ test('the withdrawn schemas, enum values and error code are gone', () => {
 
   const refinement = readSchema('media-buy/proposal-refinement.json');
   assert.equal(refinement.properties.installment_changes, undefined);
-  const row = readSchema('media-buy/refine-proposals-response.json').properties.results.items.properties;
+  const row = readSchema('media-buy/refine-proposals-completed.json').properties.results.items.properties;
   assert.equal(row.drifted_pins, undefined);
   assert.equal(row.unsatisfied_installment_changes, undefined);
 
-  const capabilities = readSchema('protocol/get-adcp-capabilities-response.json');
+  const capabilities = readSchema('protocol/get-adcp-capabilities-completed.json');
   const dimensions = capabilities.properties.media_buy.properties.proposal_refinement.properties.supported_dimensions;
   assert.equal(dimensions.items.enum.includes('installment_changes'), false);
 });

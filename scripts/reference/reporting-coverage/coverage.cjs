@@ -12,7 +12,8 @@
  *   owed(buy, offering, period) =
  *       cutover    -- the side that owns the period, between its handoffs
  *     ∩ authority  -- authorization chains, gaps between grants
- *     ∩ confirmed  -- ends after confirmed_at
+ *     ∩ confirmed  -- ends after confirmed_at, and after the added_at of a
+ *                     package resolving the offering (a per-package confirmed_at)
  *     ∩ flight     -- overlaps the flight in effect at the period end
  *     ∩ ¬excepted  -- no excluded[] or gaps[] entry covers its start
  *     ∩ resolved   -- has ended by now; not zero-length
@@ -26,8 +27,9 @@
  *   static/schemas/source/core/account-authorization.json authorized_at
  *   docs/media-buy/task-reference/get_reporting_status.mdx#subscription-coverage
  *
- * The model is a test oracle, not a library: it favors obviousness over speed,
- * and it carries only the time zones in tzdata.json.
+ * The model is a test oracle, not a library: it favors obviousness over speed.
+ * It carries the whole pinned IANA tzdata release (tzdata.json), so every zone
+ * and link name works.
  *
  * Input and output shapes are those of the vectors in
  * static/compliance/source/test-vectors/reporting-subscriptions/ (see
@@ -75,7 +77,6 @@ function byteCompare(a, b) {
 function checkZone(name, label, used) {
   // reporting-schedule.json iana_timezone: a recognized IANA zone name or link; a numeric offset is not one.
   if (!tz.isIanaName(name)) throw new CoverageInputError('invalid_timezone', `${label}: ${JSON.stringify(name)} is not an IANA time zone`);
-  if (!tz.hasZone(name)) throw new Error(`${label}: ${name} is valid but not in the reference model's pinned subset; add it to tzdata.json`);
   used.add(name);
   return name;
 }
@@ -240,11 +241,24 @@ function resolvePackage(pkg, version, offeringsById, at) {
   return including.filter(offering => mapped(offering).size === most).slice(0, 1).map(offering => offering.offering_id);
 }
 
-function inScope(config, account) {
+/**
+ * Whether the version's scope selects the account. Membership edits apply in
+ * place (reporting-subscription.json membership): "A removed or newly excluded
+ * account opens an excluded_by_buyer entry from E, so periods that started
+ * before T stay owed in full", and the readback configuration already shows
+ * the edited membership. So an account the coverage records an
+ * excluded_by_buyer entry for stays in scope as far as account_ids and
+ * exclude_account_ids go, and its excluded_by_buyer windows remove the periods
+ * from E. The scope kind and operator_domains are versioned, so they still apply.
+ */
+function inScope(config, account, membershipEdited) {
   const scope = config.scope;
   let selected;
-  if (scope.account_ids !== undefined) selected = scope.account_ids.includes(account.account_id);
-  else selected = scope.all_authorized_accounts === true && !(config.exclude_account_ids ?? []).includes(account.account_id);
+  if (scope.account_ids !== undefined) selected = membershipEdited || scope.account_ids.includes(account.account_id);
+  else {
+    selected = scope.all_authorized_accounts === true
+      && (membershipEdited || !(config.exclude_account_ids ?? []).includes(account.account_id));
+  }
   if (!selected) return false;
   if (config.operator_domains !== undefined) return config.operator_domains.includes(account.operator);
   return true;
@@ -314,15 +328,23 @@ function authorized(chains, period, backfill) {
 function flightOf(values, label) {
   const start = instant(values.start_time, `${label}.start_time`);
   const stops = [instant(values.end_time, `${label}.end_time`)];
-  if (values.canceled_at !== undefined) stops.push(instant(values.canceled_at, `${label}.canceled_at`));
+  // coverage: "the cancellation's delivery stop (cancellation_effective_at, or cancellation.canceled_at when it is absent)"
+  if (values.cancellation_effective_at !== undefined) stops.push(instant(values.cancellation_effective_at, `${label}.cancellation_effective_at`));
+  else if (values.canceled_at !== undefined) stops.push(instant(values.canceled_at, `${label}.canceled_at`));
   if (values.completed_at !== undefined) stops.push(instant(values.completed_at, `${label}.completed_at`));
   return { start, stop: Math.min(...stops) };
 }
 
-/** Flight values in effect at an instant: a prior value applies before its replaced_at. */
+/**
+ * Flight values in effect at an instant, from the buy's flight_history (core/media-buy.json): "The flight in force
+ * at an instant X is the one in the earliest entry recorded after X, or the current flight when no entry is."
+ */
 function flightTimeline(buy) {
-  const priors = (buy.prior_flights ?? [])
-    .map((prior, index) => ({ until: instant(prior.replaced_at, `prior_flights[${index}].replaced_at`), flight: flightOf(prior, `prior_flights[${index}]`) }))
+  const priors = (buy.flight_history ?? [])
+    .map((entry, index) => ({
+      until: instant(entry.recorded_at, `flight_history[${index}].recorded_at`),
+      flight: { start: instant(entry.start_time, `flight_history[${index}].start_time`), stop: instant(entry.stop_time, `flight_history[${index}].stop_time`) },
+    }))
     .sort((a, b) => a.until - b.until);
   const current = flightOf(buy, buy.media_buy_id);
   return at => (priors.find(prior => at < prior.until) ?? { flight: current }).flight;
@@ -340,11 +362,15 @@ function overlapsFlight(period, flight) {
 function exceptionWindows(coverage) {
   const windows = [];
   for (const [index, entry] of (coverage?.excluded ?? []).entries()) {
-    // "these are removed from its coverage rather than its periods": package_ids entries remove packages, not periods.
-    if (entry.package_ids !== undefined) continue;
+    // package_ids entries remove packages from the buy's coverage, not periods:
+    // "The buy stays covered for its other packages". When the entry names
+    // every package of the buy that resolves an offering, nothing keeps the buy
+    // covered for that offering, so its periods starting in [from, until) are
+    // removed (see excepted()).
     windows.push({
       mediaBuyId: entry.media_buy_id,
       offeringId: entry.offering_id,
+      ...(entry.package_ids !== undefined && { packageIds: new Set(entry.package_ids) }),
       from: instant(entry.from, `excluded[${index}].from`),
       until: entry.until === undefined ? Infinity : instant(entry.until, `excluded[${index}].until`),
     });
@@ -359,10 +385,19 @@ function exceptionWindows(coverage) {
   return windows;
 }
 
-function excepted(windows, buyId, offeringId, period) {
+/**
+ * resolvingPackages: the buy's packages that resolve the offering on the side
+ * that owns the period and are owed it (it ends after their confirmed_at or
+ * added_at). A package_ids window removes the period only when it names every
+ * one of them, so a package added later keeps the buy covered only for the
+ * periods it is owed.
+ */
+function excepted(windows, buyId, offeringId, period, resolvingPackages) {
   return windows.some(window =>
     (window.mediaBuyId === undefined || window.mediaBuyId === buyId) &&
     (window.offeringId === undefined || window.offeringId === offeringId) &&
+    (window.packageIds === undefined
+      || (resolvingPackages.size > 0 && [...resolvingPackages].every(id => window.packageIds.has(id)))) &&
     period.start >= window.from && period.start < window.until);
 }
 
@@ -404,6 +439,20 @@ function normalizeVersions(input) {
   return versions;
 }
 
+/** Version numbers whose span an excluded_by_buyer entry overlaps: membership edits apply in place to them. */
+function membershipEditedVersions(coverage, versions) {
+  const edited = new Set();
+  for (const [index, entry] of (coverage?.excluded ?? []).entries()) {
+    if (entry.reason !== 'excluded_by_buyer') continue;
+    const from = instant(entry.from, `excluded[${index}].from`);
+    const until = entry.until === undefined ? Infinity : instant(entry.until, `excluded[${index}].until`);
+    for (const version of versions) {
+      if (from < version.endsAt && until > version.acceptedAt) edited.add(version.number);
+    }
+  }
+  return edited;
+}
+
 /** inactive_intervals plus a current deactivated_at, as [from, until) windows. */
 function inactiveWindows(input) {
   const windows = (input.inactive_intervals ?? []).map((interval, index) => ({
@@ -428,11 +477,18 @@ function sideAt(t, ctx, buy) {
   const version = ctx.versions.find(candidate => t >= candidate.acceptedAt && t < candidate.endsAt);
   if (version === undefined) return null;
   if (ctx.inactive.some(window => t >= window.from && t < window.until)) return null;
-  if (!inScope(version.config, ctx.input.account)) return null;
+  if (!inScope(version.config, ctx.input.account, ctx.editedVersions.has(version.number))) return null;
   const ids = new Set();
+  const packagesByOffering = new Map();
   for (const pkg of buy.packages) {
-    // "The seller resolves the selector separately for each account and each buy's products."
-    for (const id of resolvePackage(pkg, version, ctx.offeringsById, t)) ids.add(id);
+    // selection: "Resolution is per package ... A package resolves when its (buy, subscription_version) pair
+    // first does, at the later of the version's accepted_at and the buy's confirmed_at ... and the result stays
+    // fixed for that (buy, version) until the resolved offering is withdrawn."
+    for (const id of stickyResolution(pkg, version, buy, ctx, t)) {
+      ids.add(id);
+      if (!packagesByOffering.has(id)) packagesByOffering.set(id, new Set());
+      packagesByOffering.get(id).add(pkg.package_id);
+    }
   }
   const offerings = new Map();
   for (const id of [...ids].sort(byteCompare)) {
@@ -440,7 +496,42 @@ function sideAt(t, ctx, buy) {
     if (!ctx.schedules.has(key)) ctx.schedules.set(key, scheduleFor(ctx.offeringsById.get(id), version, ctx.input, ctx.zonesUsed));
     offerings.set(id, ctx.schedules.get(key));
   }
-  return { version, offerings };
+  return { version, offerings, packagesByOffering };
+}
+
+/**
+ * When a package joined the buy's coverage: the buy's confirmed_at, or the package's added_at when that is later.
+ * get_media_buys packages[].added_at: "a package added to a buy after its confirmed_at ... behaves as if the buy were
+ * confirmed at added_at"; absent, the package was part of the buy when it was confirmed. An unconfirmed buy has
+ * none (it is not covered).
+ */
+function packageConfirmedAt(buy, pkg) {
+  if (buy.confirmed_at === undefined || buy.confirmed_at === null) return null;
+  const confirmedAt = instant(buy.confirmed_at, `${buy.media_buy_id}.confirmed_at`);
+  if (pkg.added_at === undefined) return confirmedAt;
+  return Math.max(confirmedAt, instant(pkg.added_at, `${buy.media_buy_id}.packages[${pkg.package_id}].added_at`));
+}
+
+/**
+ * The offerings one package resolves to under a version at instant t. The pair resolves once, at the later of
+ * accepted_at and the package's confirmed_at (the buy's, or its added_at when later), among the offerings available
+ * then; an offering added later never re-resolves it. Withdrawal of a resolved offering is the one resolution change
+ * within a version: the package re-resolves among the offerings available at withdrawn_at.
+ */
+function stickyResolution(pkg, version, buy, ctx, t) {
+  const confirmedAt = packageConfirmedAt(buy, pkg) ?? version.acceptedAt;
+  let at = Math.max(version.acceptedAt, confirmedAt);
+  let resolved = resolvePackage(pkg, version, ctx.offeringsById, at);
+  for (;;) {
+    const withdrawals = resolved
+      .map(id => ctx.offeringsById.get(id).withdrawn_at)
+      .filter(value => value !== undefined)
+      .map(value => instant(value, 'withdrawn_at'))
+      .filter(w => w > at && w <= t);
+    if (withdrawals.length === 0) return resolved;
+    at = Math.min(...withdrawals);
+    resolved = resolvePackage(pkg, version, ctx.offeringsById, at);
+  }
 }
 
 /** End of the schedule's last period that starts before t (t itself when t is a boundary). */
@@ -479,6 +570,7 @@ function expectedSubscriptionPeriods(input) {
   for (const buy of input.buys) {
     mentioned.push(instant(buy.start_time, 'start_time'));
     if (buy.confirmed_at) mentioned.push(instant(buy.confirmed_at, 'confirmed_at'));
+    for (const pkg of buy.packages) if (pkg.added_at !== undefined) mentioned.push(instant(pkg.added_at, 'added_at'));
   }
   const longest = Math.max(DAY, ...input.offerings.map(o => {
     try {
@@ -490,6 +582,9 @@ function expectedSubscriptionPeriods(input) {
   const margin = 2 * longest + 3 * DAY;
   const ctx = {
     input,
+    // An excluded_by_buyer entry records an in-place membership edit for the account, within the version in
+    // effect over its window; that version keeps the account in scope (see inScope).
+    editedVersions: membershipEditedVersions(input.coverage, versions),
     versions,
     offeringsById,
     inactive,
@@ -518,7 +613,8 @@ function expectedSubscriptionPeriods(input) {
     seenBuys.add(buy.media_buy_id);
     // coverage: "Covered buys are the confirmed media buys in that account the caller can see"
     if (buy.confirmed_at === undefined || buy.confirmed_at === null) continue;
-    const confirmedAt = instant(buy.confirmed_at, `${buy.media_buy_id}.confirmed_at`);
+    // Per package, the instant from which it is owed periods: confirmed_at, or a later added_at.
+    const packageConfirmed = new Map(buy.packages.map(pkg => [pkg.package_id, packageConfirmedAt(buy, pkg)]));
     const flightAt = flightTimeline(buy);
 
     const sides = changes.map(t => ({ t, side: sideAt(t, ctx, buy) }));
@@ -529,7 +625,17 @@ function expectedSubscriptionPeriods(input) {
       const previous = index > 0 ? sides[index - 1].side : null;
       for (const offeringId of side.offerings.keys()) {
         let floor;
-        if (previous === null || previous.offerings.size === 0) {
+        const reactivation = previous === null ? ctx.inactive.find(window => window.until === t) : undefined;
+        const before = reactivation === undefined ? -1 : sides.findIndex(entry => entry.t >= reactivation.from) - 1;
+        if (before >= 0 && sides[before].side !== null && sides[before].side.offerings.size > 0) {
+          // coverage: "coverage resumes at the first boundary at or after the later of the reactivation instant and
+          // the end of the last period owed before the deactivation", computed like a cutover's E at the
+          // deactivation instant, so a schedule change made while inactive never owes a period twice.
+          const last = sides[before].side;
+          const lastEnd = id => Math.max(endOfLastPeriodStartingBefore(last.offerings.get(id), reactivation.from, ctx), floors[before].get(id));
+          const end = last.offerings.has(offeringId) ? lastEnd(offeringId) : Math.max(...[...last.offerings.keys()].map(lastEnd));
+          floor = Math.max(t, end);
+        } else if (previous === null || previous.offerings.size === 0) {
           // "An incoming side with no outgoing predecessor, or whose predecessor resolved nothing, starts at T
           // under the ordinary start rule." Reactivation: "coverage resumes at the first boundary at or after
           // the reactivation instant". A period starts at or after the first boundary at or after T exactly
@@ -553,17 +659,31 @@ function expectedSubscriptionPeriods(input) {
     sides.forEach(({ side }, index) => {
       if (side === null) return;
       const until = index + 1 < sides.length ? sides[index + 1].t : Infinity;
+      const previous = index > 0 ? sides[index - 1].side : null;
+      const isCutover = previous !== null && previous.offerings.size > 0;
       for (const [offeringId, schedule] of side.offerings) {
         const floor = floors[index].get(offeringId);
-        for (const period of schedulePeriods(schedule, ctx.lo, ctx.hi)) {
+        const periods = schedulePeriods(schedule, ctx.lo, ctx.hi).map(period => ({ ...period }));
+        // cutover: "When the incoming side is a billing feed, that stretch is owed instead, as one stub period
+        // [E, first incoming boundary after E) of the incoming schedule whose obligation carries stub true".
+        if (isCutover && ctx.offeringsById.get(offeringId).feed_purpose === 'billing') {
+          const next = periods.find(period => period.start >= floor);
+          if (next !== undefined && next.start > floor) periods.push({ start: floor, end: next.start, stub: true });
+        }
+        periods.sort((a, b) => a.start - b.start);
+        for (const period of periods) {
+          // "that end after the buy's confirmed_at", per package: a package added after confirmation is owed the
+          // periods that end after its added_at, the one containing it in full. The buy owes a period for the
+          // offering when one of the packages resolving it is owed that period.
+          const owing = new Set([...(side.packagesByOffering.get(offeringId) ?? [])].filter(id => period.end > packageConfirmed.get(id)));
           const owed =
             period.start >= floor && period.start < until && // cutover: owned by this side
             period.start < period.end && // "A period whose start and end coincide ... is never owed"
             period.end <= now && // only resolved periods
             authorized(chains, period, input.backfill_on_regrant === true) &&
-            period.end > confirmedAt && // "that end after the buy's confirmed_at"
+            owing.size > 0 && // "that end after the buy's confirmed_at", or after a later package's added_at
             overlapsFlight(period, flightAt(period.end)) && // "scope_resolved_at is the period end"
-            !excepted(windows, buy.media_buy_id, offeringId, period);
+            !excepted(windows, buy.media_buy_id, offeringId, period, owing);
           if (owed) {
             rows.push({
               subscription_version: side.version.number,
@@ -571,6 +691,7 @@ function expectedSubscriptionPeriods(input) {
               offering_id: offeringId,
               start: period.start,
               end: period.end,
+              ...(period.stub ? { stub: true } : {}),
             });
           }
         }
@@ -594,16 +715,18 @@ function expectedSubscriptionPeriods(input) {
       offering_id: row.offering_id,
       period_start: format(row.start),
       period_end: format(row.end),
+      ...(row.stub ? { stub: true } : {}),
     })),
     expected_obligations: [...groups.values()].map(group => ({
       subscription_version: group.subscription_version,
       offering_id: group.offering_id,
       period_start: format(group.start),
       period_end: format(group.end),
+      ...(group.stub ? { stub: true } : {}),
       media_buy_ids: [...new Set(group.media_buy_ids)].sort(byteCompare),
     })),
     timezones: [...ctx.zonesUsed].sort(),
   };
 }
 
-module.exports = { expectedSubscriptionPeriods, CoverageInputError, instant, format, byteCompare };
+module.exports = { expectedSubscriptionPeriods, resolvePackage, CoverageInputError, instant, format, byteCompare };

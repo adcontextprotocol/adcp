@@ -80,18 +80,18 @@ describe('relationship-scoped indicators', () => {
     ] = await Promise.all([
       compile('core/indicator.json'),
       compile('core/indicator-bearing.json'),
-      compile('creative/list-creatives-response.json'),
-      compile('media-buy/get-media-buys-response.json'),
-      compile('protocol/get-adcp-capabilities-response.json'),
+      compile('creative/list-creatives-completed.json'),
+      compile('media-buy/get-media-buys-completed.json'),
+      compile('protocol/get-adcp-capabilities-completed.json'),
       compile('creative/list-creatives-request.json'),
       compile('media-buy/get-media-buys-request.json'),
-      // Tool responses validate against the generated wire responses, which
+      // Tool responses validate against the generated task responses, which
       // carry every status body.
-      compile('media-buy/create-media-buy-wire-response.json'),
-      compile('media-buy/update-media-buy-wire-response.json'),
-      compile('media-buy/buy-products-wire-response.json'),
-      compile('media-buy/control-media-buy-wire-response.json'),
-      compile('creative/sync-creatives-wire-response.json'),
+      compile('media-buy/create-media-buy-response.json'),
+      compile('media-buy/update-media-buy-response.json'),
+      compile('media-buy/buy-products-response.json'),
+      compile('media-buy/control-media-buy-response.json'),
+      compile('creative/sync-creatives-response.json'),
       compile('core/indicators-changed-webhook.json'),
       compile('creative/creative-assignment-changed-webhook.json'),
       compile('core/notification-config.json')

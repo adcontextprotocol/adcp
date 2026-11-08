@@ -19,7 +19,7 @@
       "minItems": 1
     },
     "request": {
-      "$ref": "/schemas/account/request-account-response.json#/properties/request"
+      "$ref": "/schemas/account/request-account-completed.json#/properties/request"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

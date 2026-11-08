@@ -9,7 +9,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
 import { AdcpError, type WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
-import { atLeastAdcpVersion, TRAINING_AGENT_CURRENT_ADCP_VERSION } from './types.js';
+import { atLeastAdcpVersion, supportsAccountSurfaces33, TRAINING_AGENT_CURRENT_ADCP_VERSION } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import {
   getSession,
@@ -39,13 +39,23 @@ import {
   proveAccountWebhookControl,
 } from './webhook-challenge.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { isCollectionCardEventType, supportsCollections33 } from './collections/card-catalog.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
 import { createLogger } from '../logger.js';
+import {
+  authorizationFor,
+  ensureGrant,
+  grantFor,
+  isRevoked,
+  loadSandbox,
+  sandboxNowIso,
+} from './account-sandbox.js';
 import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
 import {
   UnsupportedReportingFeatureError,
   bindReportingAccountDurably,
   clearReportingReliabilityStore,
+  clearSeededReportingAccountsForSessionDurably,
   listReportingAccountsDurably,
   projectedReportingConfigurationStates,
   replaceReportingConfigurationsDurably,
@@ -130,6 +140,8 @@ interface SyncAccountInput {
 }
 
 interface AccountState {
+  /** Trusted controller seed origin, never projected onto the wire. */
+  seedFixtureSessionKey?: string;
   /** Internal seller scope. Equal wire IDs do not imply shared access. */
   changeScopeId: string;
   accountId: string;
@@ -150,6 +162,13 @@ interface AccountState {
   notificationConfigs: NotificationConfigState[];
   notificationConfigsTouched?: boolean;
   syncedAt: string;
+  /** Optimistic-concurrency revision (account.json `revision`). Absent means 1. */
+  revision?: number;
+  /** Attribute values changed after opening (request_account changes, the
+   * reporting_subscription_probe timezone change). The store keeps the account
+   * under the attributes it opened with, so its session partition and durable
+   * binding never move; the wire shows these values instead. */
+  attributeOverrides?: { countries?: string[]; timezone?: string };
 }
 
 export interface TrainingAccountChange {
@@ -619,11 +638,12 @@ export async function rehydrateAccountById(
   principal: string | undefined,
   accountId: string,
 ): Promise<void> {
-  if (findAccountByIdAcrossSessions(accountId, principal)) return;
+  const local = findAccountByIdAcrossSessions(accountId, principal);
+  if (local && !local.seedFixtureSessionKey) return;
   if (getComplianceAccounts().some(account => account.account_id === accountId)) return;
   let binding: Awaited<ReturnType<typeof resolveReportingAccountDurably>>;
   try {
-    binding = await resolveReportingAccountDurably(principal, { account_id: accountId });
+    binding = await resolveReportingAccountDurably(principal, { account_id: accountId }, Boolean(local?.seedFixtureSessionKey));
   } catch (err) {
     // Fail closed. Without the binding the id would key its opaque partition:
     // a read would miss the account's state, and a write would be stranded
@@ -635,9 +655,13 @@ export async function rehydrateAccountById(
       message: 'Account state is temporarily unavailable. Retry the request.',
     });
   }
-  if (!binding || binding.accountId !== accountId) return;
+  if (!binding || binding.accountId !== accountId) {
+    if (local?.seedFixtureSessionKey) evictSeededAccountViews(principal, new Set([accountId]));
+    return;
+  }
   const state = accountStateFromReportingBinding(binding, principal, new Date().toISOString());
   if (!state) return;
+  if (state.seedFixtureSessionKey) evictSeededAccountViews(principal, new Set([accountId]));
   getAccountMap(sessionKeyFromArgs({ brand: state.brand }, 'open'), principal).set(accountKey(
     state.brand,
     state.operator,
@@ -731,8 +755,28 @@ export function clearProcessLocalAccountStore(): void {
   clearSharedAccountResources();
 }
 
-/** Clear only the process-local account view owned by one caller session. */
-export function clearAccountStoreForSession(sessionKey: string, principal?: string): void {
+function evictSeededAccountViews(principal: string | undefined, accountIds: Set<string>): void {
+  const prefix = `${principalScope(principal)}\u001f`;
+  for (const [scope, accounts] of accountStore) {
+    if (!scope.startsWith(prefix)) continue;
+    for (const [key, account] of accounts) {
+      if (account.seedFixtureSessionKey && accountIds.has(account.accountId)) accounts.delete(key);
+    }
+  }
+}
+
+/** A complete durable inventory replaces every seeded alias, including IDs
+ * retained with new state by another web, before local views are merged. */
+function discardCachedSeededAccountViews(principal: string | undefined): void {
+  evictSeededAccountViews(principal, new Set(accountsForPrincipal(principal)
+    .filter(account => account.seedFixtureSessionKey)
+    .map(account => account.accountId)));
+}
+
+/** Reset fixture-origin bindings, then the caller's process-local session view. */
+export async function clearAccountStoreForSession(sessionKey: string, principal?: string): Promise<void> {
+  const ids = await clearSeededReportingAccountsForSessionDurably(principal, sessionKey);
+  evictSeededAccountViews(principal, new Set(ids));
   accountStore.delete(scopedStoreKey(sessionKey, principal));
 }
 
@@ -761,8 +805,11 @@ interface AccountWireShape {
   rate_card?: string;
   credit_limit?: { amount: number; currency: string };
   sandbox?: true;
+  billing_entity?: Record<string, unknown>;
   notification_configs?: Array<Record<string, unknown>>;
   reporting_delivery_configs?: Array<Record<string, unknown>>;
+  revision?: number;
+  authorization?: Record<string, unknown>;
 }
 
 function accountStateToWire(account: AccountState): AccountWireShape {
@@ -776,7 +823,9 @@ function accountStateToWire(account: AccountState): AccountWireShape {
   // reaches the buyer.
   const wireBrand: { domain: string; brand_id?: string; countries?: string[] } = { domain: account.brand.domain };
   if (account.brand.brand_id !== undefined) wireBrand.brand_id = account.brand.brand_id;
-  if (account.brand.countries !== undefined) wireBrand.countries = [...account.brand.countries];
+  const countries = account.attributeOverrides?.countries ?? account.brand.countries;
+  if (countries !== undefined) wireBrand.countries = [...countries];
+  const timezone = account.attributeOverrides?.timezone ?? account.timezone;
   const wire: AccountWireShape = {
     account_id: account.accountId,
     name: displayName,
@@ -785,12 +834,17 @@ function accountStateToWire(account: AccountState): AccountWireShape {
     operator: account.operator,
     ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
     ...(account.currency && { currency: account.currency }),
-    ...(account.timezone && { timezone: account.timezone }),
+    ...(timezone && { timezone }),
     billing: account.billing,
     account_scope: account.accountScope,
     status: account.status,
     payment_terms: account.paymentTerms,
   };
+  if (account.billingEntity) {
+    // Bank details are write-only.
+    const { bank: _bank, ...billingEntity } = account.billingEntity as Record<string, unknown>;
+    wire.billing_entity = billingEntity;
+  }
   if (account.rateCard) wire.rate_card = account.rateCard;
   if (account.creditLimit) wire.credit_limit = account.creditLimit;
   if (account.sandbox) wire.sandbox = true;
@@ -896,6 +950,9 @@ async function normalizeNotificationConfigs(
     existing: NotificationConfigState[];
     dryRun: boolean;
     proofDeadlineMs: number;
+    /** Collection card events (experimental, 3.3) are registrable only on
+     * the 3.3 wire, where the seller declares them. */
+    servedAdcpVersion?: string;
   },
 ): Promise<NotificationConfigState[] | { error: Record<string, unknown> } | undefined> {
   if (input.notification_configs === undefined) return undefined;
@@ -957,7 +1014,8 @@ async function normalizeNotificationConfigs(
       }
       seenEventTypes.add(eventType);
     }
-    const invalidIndex = config.event_types.findIndex(t => !ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(t));
+    const invalidIndex = config.event_types.findIndex(t => !ACCOUNT_ANCHORED_NOTIFICATION_TYPES.has(t)
+      && !(isCollectionCardEventType(t) && supportsCollections33(options.servedAdcpVersion)));
     if (invalidIndex !== -1) {
       return {
         error: validationFailure(
@@ -1086,6 +1144,39 @@ export function getAccountNotificationSubscribers(
       for (const config of account.notificationConfigs) {
         if (!config.active || !config.eventTypes.includes(notificationType)) continue;
         const subscriberKey = `${account.accountId}\u001F${config.subscriberId}\u001F${notificationType}`;
+        if (seen.has(subscriberKey)) continue;
+        seen.add(subscriberKey);
+        out.push({
+          accountId: account.accountId,
+          subscriberId: config.subscriberId,
+          url: config.url,
+          eventTypes: [...config.eventTypes],
+          authentication: config.authentication,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Every active subscriber to `notificationType` on any account the principal
+ * holds, across its session partitions. For seller-wide changes the
+ * principal can see on every account, such as its collection cards.
+ */
+export function getPrincipalNotificationSubscribers(
+  principal: string | undefined,
+  notificationType: string,
+): AccountNotificationSubscriber[] {
+  const prefix = `${principalScope(principal)}\u001F`;
+  const out: AccountNotificationSubscriber[] = [];
+  const seen = new Set<string>();
+  for (const [storeKey, accounts] of accountStore) {
+    if (!storeKey.startsWith(prefix)) continue;
+    for (const account of accounts.values()) {
+      for (const config of account.notificationConfigs) {
+        if (!config.active || !config.eventTypes.includes(notificationType)) continue;
+        const subscriberKey = `${account.accountId}\u001F${config.subscriberId}`;
         if (seen.has(subscriberKey)) continue;
         seen.add(subscriberKey);
         out.push({
@@ -1237,7 +1328,12 @@ export async function isNaturalAccountRefProvisioned(
       account.currency,
       account.sandbox,
       account.timezone,
-    )) return true;
+    )) {
+      if (!account.seedFixtureSessionKey) return true;
+      const binding = await resolveReportingAccountDurably(principal, ref, true);
+      if (binding?.accountId !== account.accountId) evictSeededAccountViews(principal, new Set([account.accountId]));
+      return binding !== undefined;
+    }
   }
   for (const fixture of getComplianceAccounts()) {
     if (sameScope(
@@ -1337,10 +1433,12 @@ export function resolveAccountBrandForRef(
   return undefined;
 }
 
-export function seedAccountFixture(
+class SeedAccountConflictError extends Error {}
+
+export async function seedAccountFixture(
   args: ToolArgs,
   ctx: TrainingContext,
-): { success: boolean; message?: string; error?: string; error_detail?: string } {
+): Promise<{ success: boolean; message?: string; error?: string; error_detail?: string }> {
   const identityError = durableAccountIdentityError(ctx);
   if (identityError) {
     return {
@@ -1395,7 +1493,8 @@ export function seedAccountFixture(
   const existing = accounts.get(key)
     ?? findAccountByIdAcrossSessions(accountId, ctx.principal);
 
-  const state: AccountState = {
+  let state: AccountState = {
+    seedFixtureSessionKey: sessionKey,
     changeScopeId: principalAccountChangeScope(ctx.principal, accountId),
     accountId,
     brand: brand as { domain: string; brand_id?: string; countries?: string[]; name?: string },
@@ -1416,21 +1515,50 @@ export function seedAccountFixture(
     syncedAt: now,
   };
 
-  if (existing) {
-    const existingComparable = JSON.stringify(accountStateToWire(existing));
-    const nextComparable = JSON.stringify(accountStateToWire(state));
-    if (existingComparable !== nextComparable) {
+  const fixtureWire = JSON.stringify(accountStateToWire(state));
+  let replayed = false;
+  const preserveMatchingState = (prior: AccountState): Record<string, unknown> => {
+    if (accountScopeFromRef(reportingAccountRef(prior)) !== key
+      || JSON.stringify(accountStateToWire(prior)) !== fixtureWire) {
+      throw new SeedAccountConflictError();
+    }
+    replayed = true;
+    // Preserve revision, governance and other non-fixture settings on replay.
+    state = structuredClone(prior);
+    return state as unknown as Record<string, unknown>;
+  };
+  try {
+    await bindReportingAccountDurably(ctx.principal, accountId, reportingAccountRef(state), binding => {
+      if (binding) {
+        if (binding.accountId !== accountId || accountScopeFromRef(binding.account) !== key || !binding.accountState) {
+          throw new SeedAccountConflictError();
+        }
+        return preserveMatchingState(binding.accountState as unknown as AccountState);
+      }
+      // A missing locked row can be a reset from another web process. Its
+      // tagged local copy is not authority to reject or resurrect that fixture.
+      if (existing && !existing.seedFixtureSessionKey) return preserveMatchingState(existing);
+      return state as unknown as Record<string, unknown>;
+    }, sessionKey);
+  } catch (error) {
+    const scopeConflict = error !== null && typeof error === 'object'
+      && 'code' in error && error.code === '23505'
+      && 'constraint' in error && error.constraint === 'training_reporting_ledgers_principal_scope_unique';
+    if (error instanceof SeedAccountConflictError || scopeConflict) {
       return {
         success: false,
         error: 'INVALID_STATE',
         error_detail: `account_id "${accountId}" was already seeded with a different fixture - seed_account is idempotent`,
       };
     }
-    return { success: true, message: `account_id "${accountId}" already seeded with the same fixture` };
+    throw error;
   }
 
-  accounts.set(key, state);
-  return { success: true, message: `Account "${accountId}" seeded` };
+  evictSeededAccountViews(ctx.principal, new Set([accountId]));
+  getAccountMap(sessionKey, ctx.principal).set(key, state);
+  return { success: true, message: replayed
+    ? `account_id "${accountId}" already seeded with the same fixture`
+    : `Account "${accountId}" seeded` };
 }
 
 // Compliance fixture pool — used when the session has no synced accounts, so
@@ -1790,6 +1918,11 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         continue;
       }
       const durableReportingAccount = await resolveReportingAccountDurably(ctx.principal, input.account);
+      const localAccount = findAccountByRef(accounts, input.account)
+        ?? (input.account.account_id ? findAccountByIdAcrossSessions(input.account.account_id, ctx.principal) : undefined);
+      if (localAccount?.seedFixtureSessionKey) {
+        evictSeededAccountViews(ctx.principal, new Set([localAccount.accountId]));
+      }
       const existing = findAccountByRef(accounts, input.account)
         ?? (input.account.account_id ? findAccountByIdAcrossSessions(input.account.account_id, ctx.principal) : undefined)
         ?? (input.account.account_id ? findComplianceAccountById(input.account.account_id, now) : undefined)
@@ -1837,6 +1970,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         existing: existing.notificationConfigs,
         dryRun: req.dry_run === true,
         proofDeadlineMs,
+        servedAdcpVersion: ctx.servedAdcpVersion,
       });
       if (notificationConfigs && 'error' in notificationConfigs) {
         results.push(notificationConfigs.error);
@@ -1928,6 +2062,11 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         continue;
       }
 
+      if (changedPaths.some(path => path !== '/notification_configs' && path !== '/reporting_delivery_configs')) {
+        // A persisted settings change advances the account revision; caller
+        // configuration (webhooks, reporting configs) does not.
+        nextAccountState.revision = (existing.revision ?? 1) + 1;
+      }
       Object.assign(existing, nextAccountState);
       if (changedPaths.length > 0) {
         const change = recordAccountChange(ctx.principal, {
@@ -2094,6 +2233,10 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       ctx.principal,
       requestedReportingAccount,
     );
+    const localAccount = accounts.get(key);
+    if (localAccount?.seedFixtureSessionKey) {
+      evictSeededAccountViews(ctx.principal, new Set([localAccount.accountId]));
+    }
     const existing = accounts.get(key)
       ?? (durableReportingAccount
         ? accountStateFromReportingBinding(durableReportingAccount, ctx.principal, now)
@@ -2105,6 +2248,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       existing: existing?.notificationConfigs ?? [],
       dryRun: req.dry_run === true,
       proofDeadlineMs,
+      servedAdcpVersion: ctx.servedAdcpVersion,
     });
     if (notificationConfigs && 'error' in notificationConfigs) {
       results.push(notificationConfigs.error);
@@ -2163,6 +2307,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 
     const previousWire = existing ? JSON.stringify(accountStateToWire(existing)) : undefined;
     const state: AccountState = {
+      ...(existing?.seedFixtureSessionKey && { seedFixtureSessionKey: existing.seedFixtureSessionKey }),
       changeScopeId: existing?.changeScopeId
         ?? principalAccountChangeScope(ctx.principal, accountId),
       accountId,
@@ -2187,6 +2332,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         ? true
         : existing?.notificationConfigsTouched,
       syncedAt: now,
+      revision: existing?.revision ?? 1,
+      ...(existing?.attributeOverrides && { attributeOverrides: structuredClone(existing.attributeOverrides) }),
     };
     const provisioningChangedPaths = existing
       ? [
@@ -2221,6 +2368,9 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       );
     }
     accounts.set(key, state);
+    if (!existing && supportsAccountSurfaces33(ctx.servedAdcpVersion)) {
+      await recordCallerAccountGrant(ctx.principal, accountId);
+    }
     const reportingDeliveryConfigs = await reportingConfigurationStatesForAccountDurably(ctx.principal, accountId);
     const currentWire = JSON.stringify(accountStateToWire(state));
     if (!existing || previousWire !== currentWire) {
@@ -2349,7 +2499,9 @@ export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): 
   if (identityError) return identityError;
   const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
   const accountMap = getAccountMap(sessionKey, ctx.principal);
-  for (const binding of await listReportingAccountsDurably(ctx.principal)) {
+  const bindings = await listReportingAccountsDurably(ctx.principal);
+  discardCachedSeededAccountViews(ctx.principal);
+  for (const binding of bindings) {
     const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
     if (!restored) continue;
     accountMap.set(accountKey(
@@ -2392,6 +2544,25 @@ export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): 
     accounts = req.sandbox
       ? accounts.filter(a => a.sandbox === true)
       : accounts.filter(a => !a.sandbox);
+  }
+  // 3.3: each account carries the caller's authorization (with the chain
+  // start the reporting-subscription coverage rule reads) and its revision. A
+  // revoked account is unknown, so it is not listed.
+  const accountSurfaces33 = supportsAccountSurfaces33(ctx.servedAdcpVersion);
+  const sandbox = accountSurfaces33 ? await loadSandbox(ctx.principal) : undefined;
+  if (sandbox) {
+    accounts = accounts.filter(account => !isRevoked(sandbox.doc, account.account_id));
+    const revisions = new Map(scopedAccounts.map(account => [account.accountId, account.revision ?? 1]));
+    let recorded = false;
+    accounts = accounts.map(account => {
+      recorded = ensureGrant(sandbox.doc, account.account_id, sandboxNowIso(sandbox.doc)) || recorded;
+      return {
+        ...account,
+        revision: revisions.get(account.account_id) ?? 1,
+        authorization: authorizationFor(grantFor(sandbox.doc, account.account_id)!),
+      };
+    });
+    if (recorded) sandbox.save();
   }
 
   const totalMatching = accounts.length;
@@ -2845,4 +3016,212 @@ export async function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext)
   }
 
   return { accounts: results };
+}
+
+// ── Experimental 3.3 account requests: caller-scoped account access ──
+//
+// request_account (account-requests.ts) and the reporting_subscription_probe
+// controller scenario open and change accounts through these helpers, so an
+// account they touch is the same AccountState sync_accounts and list_accounts
+// use. Attribute changes that would move the store key (countries, timezone)
+// are kept in `attributeOverrides`: the account keeps its account_id, session
+// partition, media buys, and durable binding.
+
+export type CallerAccountState = AccountState;
+
+/** Record the caller's default grant on an account it just opened. */
+export async function recordCallerAccountGrant(principal: string | undefined, accountId: string): Promise<void> {
+  const sandbox = await loadSandbox(principal);
+  if (ensureGrant(sandbox.doc, accountId, sandboxNowIso(sandbox.doc))) sandbox.save();
+}
+
+/** Every account the caller holds, live or durably bound. */
+export async function callerAccountStates(ctx: TrainingContext): Promise<AccountState[]> {
+  const bindings = await listReportingAccountsDurably(ctx.principal);
+  discardCachedSeededAccountViews(ctx.principal);
+  const byId = new Map(accountsForPrincipal(ctx.principal).map(account => [account.accountId, account]));
+  for (const binding of bindings) {
+    if (byId.has(binding.accountId) && !byId.get(binding.accountId)?.seedFixtureSessionKey) continue;
+    const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
+    if (restored) byId.set(restored.accountId, restored);
+  }
+  return [...byId.values()];
+}
+
+/** The account the caller holds under `accountId`, loaded into its live map. */
+export async function findCallerAccount(ctx: TrainingContext, accountId: string): Promise<AccountState | undefined> {
+  const live = findAccountByIdAcrossSessions(accountId, ctx.principal);
+  if (live && !live.seedFixtureSessionKey) return live;
+  const binding = await resolveReportingAccountDurably(ctx.principal, { account_id: accountId }, Boolean(live?.seedFixtureSessionKey));
+  if (!binding || binding.accountId !== accountId) {
+    if (live?.seedFixtureSessionKey) evictSeededAccountViews(ctx.principal, new Set([accountId]));
+    return undefined;
+  }
+  const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
+  if (!restored) return undefined;
+  if (restored.seedFixtureSessionKey) evictSeededAccountViews(ctx.principal, new Set([accountId]));
+  const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
+  getAccountMap(sessionKey, ctx.principal).set(accountKey(
+    restored.brand,
+    restored.operator,
+    restored.operatorUnit,
+    restored.currency,
+    restored.sandbox,
+    restored.timezone,
+  ), restored);
+  return restored;
+}
+
+/** The natural reference an account's session partition and durable binding use. */
+export function callerAccountRef(state: AccountState): AccountRef {
+  return reportingAccountRef(state);
+}
+
+/** The account's wire shape, with its revision and current attributes. */
+export function callerAccountWire(state: AccountState): Record<string, unknown> {
+  return { ...accountStateToWire(state), revision: state.revision ?? 1 };
+}
+
+/** Effective (wire) attributes used to compare accounts. */
+export function callerAccountAttributes(state: AccountState): {
+  domain: string;
+  brand_id?: string;
+  countries: string[];
+  operator: string;
+  operator_unit_id?: string;
+  currency?: string;
+  timezone?: string;
+  sandbox: boolean;
+} {
+  return {
+    domain: state.brand.domain,
+    ...(state.brand.brand_id !== undefined && { brand_id: state.brand.brand_id }),
+    countries: [...(state.attributeOverrides?.countries ?? state.brand.countries ?? [])].sort(),
+    operator: state.operator,
+    ...(state.operatorUnit?.id !== undefined && { operator_unit_id: state.operatorUnit.id }),
+    ...(state.currency !== undefined && { currency: state.currency }),
+    ...((state.attributeOverrides?.timezone ?? state.timezone) !== undefined && {
+      timezone: state.attributeOverrides?.timezone ?? state.timezone,
+    }),
+    sandbox: state.sandbox,
+  };
+}
+
+export interface CallerAccountPatch {
+  countries?: string[];
+  timezone?: string;
+  billing?: string;
+  billingEntity?: Record<string, unknown>;
+  paymentTerms?: string;
+  status?: string;
+}
+
+/**
+ * Apply attribute changes to an account the caller holds, as one persisted
+ * settings change: the revision advances, the durable binding is refreshed,
+ * and the change is recorded in the account change feed. Returns the changed
+ * paths (empty when nothing changed, in which case the revision is kept).
+ */
+export async function updateCallerAccount(
+  ctx: TrainingContext,
+  accountId: string,
+  patch: CallerAccountPatch,
+  options: { summary: string; idempotencyKey?: string; bumpRevision?: boolean } = { summary: 'Account changed.' },
+): Promise<{ state: AccountState; changedPaths: string[] } | undefined> {
+  const state = await findCallerAccount(ctx, accountId);
+  if (!state) return undefined;
+  const changedPaths: string[] = [];
+  const effective = callerAccountAttributes(state);
+  if (patch.countries !== undefined
+    && JSON.stringify([...patch.countries].sort()) !== JSON.stringify(effective.countries)) {
+    state.attributeOverrides = { ...state.attributeOverrides, countries: [...patch.countries] };
+    changedPaths.push('/brand/countries');
+  }
+  if (patch.timezone !== undefined && patch.timezone !== effective.timezone) {
+    state.attributeOverrides = { ...state.attributeOverrides, timezone: patch.timezone };
+    changedPaths.push('/timezone');
+  }
+  if (patch.billing !== undefined && patch.billing !== state.billing) {
+    state.billing = patch.billing;
+    changedPaths.push('/billing');
+  }
+  if (patch.billingEntity !== undefined
+    && JSON.stringify(patch.billingEntity) !== JSON.stringify(state.billingEntity ?? null)) {
+    state.billingEntity = structuredClone(patch.billingEntity);
+    changedPaths.push('/billing_entity');
+  }
+  if (patch.paymentTerms !== undefined && patch.paymentTerms !== state.paymentTerms) {
+    state.paymentTerms = patch.paymentTerms;
+    changedPaths.push('/payment_terms');
+  }
+  if (patch.status !== undefined && patch.status !== state.status) {
+    state.status = patch.status;
+    changedPaths.push('/status');
+  }
+  if (changedPaths.length === 0) return { state, changedPaths };
+  if (options.bumpRevision !== false) state.revision = (state.revision ?? 1) + 1;
+  state.syncedAt = new Date().toISOString();
+  await bindReportingAccountDurably(
+    ctx.principal,
+    state.accountId,
+    reportingAccountRef(state),
+    state as unknown as Record<string, unknown>,
+  );
+  const change = recordAccountChange(ctx.principal, {
+    resource: { type: 'account', account_id: state.accountId, resource_id: state.accountId },
+    action: 'updated',
+    origin: { kind: 'adcp' },
+    ...(options.idempotencyKey && { idempotency_key: options.idempotencyKey }),
+    changed_paths: changedPaths,
+    repair: { task: 'list_accounts' },
+    summary: options.summary,
+  });
+  await emitAccountChangeRecordedWebhook(ctx.principal, change);
+  return { state, changedPaths };
+}
+
+export interface OpenCallerAccountInput {
+  brand: { domain: string; brand_id?: string; countries?: string[] };
+  operator: string;
+  operator_unit?: OperatorUnit;
+  currency?: string;
+  timezone?: string;
+  sandbox?: boolean;
+  billing: string;
+  billing_entity?: Record<string, unknown>;
+  payment_terms?: string;
+}
+
+/**
+ * Open an account for the caller through the sync_accounts provisioning path,
+ * then make it active: an account request resolves to a usable account. Returns
+ * the provisioned state, or the provisioning errors.
+ */
+export async function openCallerAccount(
+  ctx: TrainingContext,
+  input: OpenCallerAccountInput,
+  idempotencyKey: string,
+): Promise<{ state: AccountState } | { errors: Array<Record<string, unknown>> }> {
+  const result = await handleSyncAccounts({
+    idempotency_key: idempotencyKey,
+    accounts: [structuredClone(input)],
+  } as unknown as ToolArgs, ctx) as { accounts?: Array<Record<string, unknown>>; errors?: Array<Record<string, unknown>> };
+  const row = result.accounts?.[0];
+  const accountId = typeof row?.account_id === 'string' ? row.account_id : undefined;
+  if (!accountId) {
+    const errors = (row?.errors as Array<Record<string, unknown>> | undefined) ?? result.errors ?? [];
+    return { errors: errors.length > 0 ? errors : [{ code: 'INVALID_REQUEST', message: 'The account could not be opened.' }] };
+  }
+  const state = await findCallerAccount(ctx, accountId);
+  if (!state) return { errors: [{ code: 'SERVICE_UNAVAILABLE', message: 'The opened account could not be read back.', recovery: 'transient' }] };
+  if (state.status !== 'active') {
+    state.status = 'active';
+    await bindReportingAccountDurably(
+      ctx.principal,
+      state.accountId,
+      reportingAccountRef(state),
+      state as unknown as Record<string, unknown>,
+    );
+  }
+  return { state };
 }

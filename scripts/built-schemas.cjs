@@ -31,7 +31,7 @@ const BUILD_INPUT_FILES = [
   'package.json',
   'scripts/build-schemas.cjs',
   'scripts/mcp-schema-projection.cjs',
-  'scripts/wire-responses.cjs',
+  'scripts/task-responses.cjs',
 ];
 
 function walkFiles(directory) {

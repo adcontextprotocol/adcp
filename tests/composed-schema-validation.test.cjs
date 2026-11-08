@@ -15,6 +15,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 ensureBuiltSchemas();
 
@@ -521,7 +522,7 @@ function testValidationConstraints(constraints, expectedConstraints, description
 
 function testValidationAnnotation(schemaId, expectedConstraints, description) {
   const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const schema = readSchemaFile(schemaPath);
   testValidationConstraints(
     schema['x-adcp-validation']?.verifier_constraints,
     expectedConstraints,
@@ -531,7 +532,7 @@ function testValidationAnnotation(schemaId, expectedConstraints, description) {
 
 function testNestedValidationAnnotation(schemaId, propertyPath, expectedConstraints, description) {
   const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const schema = readSchemaFile(schemaPath);
   const node = propertyPath.reduce((value, key) => value?.[key], schema);
   testValidationConstraints(
     node?.['x-adcp-validation']?.verifier_constraints,
@@ -549,7 +550,7 @@ function testTypedDiscriminatedUnion(
 ) {
   totalTests++;
   const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const schema = readSchemaFile(schemaPath);
   const node = propertyPath.reduce((value, key) => value?.[key], schema);
   const variants = node?.oneOf || [];
   const passed =
@@ -610,7 +611,7 @@ function versionEnvelopeCompositionErrors() {
   const seenExempt = new Set();
   for (const file of listRequestSchemaFiles()) {
     const rel = path.relative(SCHEMA_BASE_DIR, file).split(path.sep).join('/');
-    const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const schema = readSchemaFile(file);
     const composesEnvelope = Array.isArray(schema.allOf) &&
       schema.allOf.some((arm) => arm && arm.$ref === VERSION_ENVELOPE_REF);
     if (VERSION_ENVELOPE_EXEMPT_REQUESTS.has(rel)) {
@@ -2458,12 +2459,7 @@ async function runTests() {
 
   totalTests++;
   try {
-    const capabilitiesSchema = JSON.parse(
-      fs.readFileSync(
-        path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'),
-        'utf8'
-      )
-    );
+    const capabilitiesSchema = readSchemaFile(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-completed.json'));
     const webhookSigningConstraints =
       capabilitiesSchema.properties.webhook_signing.properties.supported['x-adcp-validation']
         .verifier_constraints.must_equal_when.any_of;
@@ -2696,9 +2692,7 @@ async function runTests() {
 
   totalTests++;
   try {
-    const notificationTypeSchema = JSON.parse(
-      fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'enums/notification-type.json'), 'utf8')
-    );
+    const notificationTypeSchema = readSchemaFile(path.join(SCHEMA_BASE_DIR, 'enums/notification-type.json'));
     const values = [...notificationTypeSchema.enum].sort();
     const describedValues = Object.keys(notificationTypeSchema.enumDescriptions || {}).sort();
     const complete =
@@ -2718,9 +2712,7 @@ async function runTests() {
 
   totalTests++;
   try {
-    const listSchema = JSON.parse(
-      fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'creative/list-creatives-response.json'), 'utf8')
-    );
+    const listSchema = readSchemaFile(path.join(SCHEMA_BASE_DIR, 'creative/list-creatives-completed.json'));
     const listExample = listSchema.examples.find((example) =>
       example.description.includes('webhook_activity')
     ).data;
@@ -2733,9 +2725,7 @@ async function runTests() {
       'creative/creative-purged-webhook.json'
     ];
     const mismatches = webhookSchemas.flatMap((relativePath) => {
-      const webhookSchema = JSON.parse(
-        fs.readFileSync(path.join(SCHEMA_BASE_DIR, relativePath), 'utf8')
-      );
+      const webhookSchema = readSchemaFile(path.join(SCHEMA_BASE_DIR, relativePath));
       const payload = webhookSchema.examples[0].data;
       const activity = activitiesByType.get(payload.notification_type);
       return activity &&
@@ -3219,7 +3209,7 @@ async function runTests() {
   // mutating response schemas.
   totalTests++;
   const envelopeSchemaPath = path.join(SCHEMA_BASE_DIR, 'core/protocol-envelope.json');
-  const canonicalReplayed = JSON.parse(fs.readFileSync(envelopeSchemaPath, 'utf8'))
+  const canonicalReplayed = readSchemaFile(envelopeSchemaPath)
     .properties.replayed.description;
   const driftOffenders = [];
   const walkDrift = (dir) => {
@@ -4560,6 +4550,11 @@ async function runTests() {
   };
   await testSchemaValidation(
     '/schemas/media-buy/buy-products-request.json',
+    { ...cleanPurchase, opportunity: { opportunity_id: 'opp_nova_za_q4' } },
+    'buy_products retains ID-only opportunity acceptance for inferred closure'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-request.json',
     cleanPurchase,
     'buy_products creates directly from canonical product selections'
   );
@@ -5252,22 +5247,78 @@ async function runTests() {
     },
     'create_media_buy rejects non-winning explicit opportunity closure'
   );
+  const packagePurchase = {
+    idempotency_key: 'create-package-opportunity-0001',
+    account: { account_id: 'account-opportunity-test' },
+    brand: { domain: 'buyer.example' },
+    packages: [{
+      product_id: 'display-standard',
+      pricing_option_id: 'fixed-cpm',
+      budget: 50000
+    }],
+    start_time: 'asap',
+    end_time: '2027-07-01T00:00:00Z'
+  };
+  const correlationOpportunity = { opportunity_id: 'opp-package-mode' };
+  for (const [mode, request] of [
+    ['implicit fixed', packagePurchase],
+    ['explicit fixed', { ...packagePurchase, budget_allocation: { mode: 'fixed' } }],
+    ['seller-optimized', {
+      ...packagePurchase,
+      packages: [{ product_id: 'display-standard', pricing_option_id: 'fixed-cpm' }],
+      total_budget: { amount: 50000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [{ kind: 'metric', metric: 'clicks' }]
+      }
+    }]
+  ]) {
+    await testSchemaValidation(
+      '/schemas/media-buy/create-media-buy-request.json',
+      request,
+      `create_media_buy ${mode} packages remain valid without opportunity`
+    );
+    await testSchemaValidation(
+      '/schemas/media-buy/create-media-buy-request.json',
+      { ...request, opportunity: correlationOpportunity },
+      `create_media_buy ${mode} packages accept correlation without a proposal`
+    );
+    for (const [label, opportunity] of [
+      ['open status', { ...correlationOpportunity, status: 'open' }],
+      ['closed status without reason', { ...correlationOpportunity, status: 'closed' }],
+      ['winning closure', { ...correlationOpportunity, status: 'closed', close_reason: 'accepted_with_seller' }],
+      ['other closure', { ...correlationOpportunity, status: 'closed', close_reason: 'not_pursued' }],
+      ['close reason alone', { ...correlationOpportunity, close_reason: 'accepted_with_seller' }],
+      ['close detail alone', { ...correlationOpportunity, close_detail: 'Campaign complete.' }],
+      ['consent grant', { ...correlationOpportunity, later_proposals: { accepted: true } }],
+      ['consent withdrawal', { ...correlationOpportunity, later_proposals: { accepted: false } }],
+      ['missing ID', {}],
+      ['empty ID', { opportunity_id: '' }],
+      ['invalid ID', { opportunity_id: 'opp/invalid' }],
+      ['oversized ID', { opportunity_id: 'o'.repeat(256) }]
+    ]) {
+      await testSchemaRejection(
+        '/schemas/media-buy/create-media-buy-request.json',
+        { ...request, opportunity },
+        `create_media_buy ${mode} packages reject ${label}`
+      );
+    }
+  }
+  for (const [label, opportunity] of [
+    ['open status', { ...correlationOpportunity, status: 'open' }],
+    ['closed status without reason', { ...correlationOpportunity, status: 'closed' }],
+    ['consent', { ...correlationOpportunity, later_proposals: { accepted: true } }]
+  ]) {
+    await testSchemaRejection(
+      '/schemas/media-buy/create-media-buy-request.json',
+      { ...proposalExecution, opportunity },
+      `create_media_buy committed proposal still rejects ${label}`
+    );
+  }
   await testSchemaRejection(
     '/schemas/media-buy/create-media-buy-request.json',
-    {
-      idempotency_key: 'create-package-opportunity-0001',
-      account: { account_id: 'account-opportunity-test' },
-      brand: { domain: 'buyer.example' },
-      packages: [{
-        product_id: 'display-standard',
-        pricing_option_id: 'fixed-cpm',
-        budget: 50000
-      }],
-      start_time: 'asap',
-      end_time: '2027-07-01T00:00:00Z',
-      opportunity: { opportunity_id: 'opp-package-mode' }
-    },
-    'create_media_buy restricts opportunity closure to proposal mode'
+    { ...packagePurchase, proposal_id: 'proposal-1', total_budget: { amount: 50000, currency: 'USD' }, opportunity: correlationOpportunity },
+    'create_media_buy correlation does not allow packages with proposal_id'
   );
   const splitCapabilityBase = {
     status: 'completed',
@@ -5347,7 +5398,7 @@ async function runTests() {
     'list_products treats no matches as an empty successful product page'
   );
   await testSchemaValidation(
-    '/schemas/media-buy/refine-proposals-wire-response.json',
+    '/schemas/media-buy/refine-proposals-response.json',
     { status: 'submitted', task_id: 'task-refinement-approval-1' },
     'refine_proposals can enter an async approval workflow'
   );
@@ -6353,7 +6404,7 @@ async function runTests() {
     'get_signals working async progress validates'
   );
   await testSchemaValidation(
-    '/schemas/signals/get-signals-wire-response.json',
+    '/schemas/signals/get-signals-response.json',
     {
       status: 'failed',
       errors: [
@@ -6366,7 +6417,7 @@ async function runTests() {
     'get_signals failed completion does not require signals or cache_scope'
   );
   await testSchemaValidation(
-    '/schemas/media-buy/get-products-wire-response.json',
+    '/schemas/media-buy/get-products-response.json',
     {
       status: 'failed',
       errors: [
@@ -7651,13 +7702,13 @@ async function runTests() {
     source_assets: 'must_equal_request_creative.assets'
   };
   testNestedValidationAnnotation(
-    '/schemas/creative/sync-creatives-response.json',
+    '/schemas/creative/sync-creatives-completed.json',
     ['oneOf', 0, 'properties', 'creatives', 'items', 'properties', 'localization'],
     syncRoundTripConstraints,
     'Sync response exposes machine-readable creative-wide localization rules'
   );
   testNestedValidationAnnotation(
-    '/schemas/creative/list-creatives-response.json',
+    '/schemas/creative/list-creatives-completed.json',
     ['properties', 'creatives', 'items', 'properties', 'localization'],
     {
       lifecycle_source: 'enclosing_creative.status',
@@ -8105,10 +8156,10 @@ async function runTests() {
     { adcp_version: '3.2.1', status: 'submitted', task_id: 'task_123' },
     'Compact submitted arm rejects a malformed adcp_version'
   );
-  // The submitted body does not pin status; the tool's wire response
+  // The submitted body does not pin status; the tool's task response
   // dispatches on it, so a completed status selects the completed body.
   await testSchemaRejection(
-    '/schemas/media-buy/control-media-buy-wire-response.json',
+    '/schemas/media-buy/control-media-buy-response.json',
     { status: 'completed', task_id: 'task_123' },
     'Compact submitted branch rejects non-submitted status'
   );
@@ -8156,7 +8207,7 @@ async function testBundledSchemaValidation(schemaPath, testData, description) {
     });
     addFormats(ajv);
 
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const schema = readSchemaFile(schemaPath);
     const validate = ajv.compile(schema);
     const valid = validate(testData);
 
@@ -8189,7 +8240,7 @@ async function testBundledSchemaCompile(schemaPath, description) {
   try {
     const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true });
     addFormats(ajv);
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const schema = readSchemaFile(schemaPath);
     ajv.compile(schema);
     log(`  \u2713 ${description}`, 'success');
     passedTests++;
@@ -8216,16 +8267,13 @@ async function testBundledDeliveryMetricSchemas(bundledDir) {
     const missing = [];
     for (const [relPath, expectedTitle] of coreSchemas) {
       const schemaPath = path.join(latestDir, relPath);
-      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+      const schema = readSchemaFile(schemaPath);
       if (schema.title !== expectedTitle) {
         missing.push(`${relPath} title=${JSON.stringify(schema.title)} expected ${JSON.stringify(expectedTitle)}`);
       }
     }
 
-    const creativeMetrics = JSON.parse(fs.readFileSync(
-      path.join(latestDir, 'core/creative-delivery-metrics.json'),
-      'utf8'
-    ));
+    const creativeMetrics = readSchemaFile(path.join(latestDir, 'core/creative-delivery-metrics.json'));
     const creativeProperties = creativeMetrics.allOf
       ?.find((branch) => branch.properties?.creative_id)
       ?.properties;
@@ -8233,10 +8281,11 @@ async function testBundledDeliveryMetricSchemas(bundledDir) {
       missing.push('core/creative-delivery-metrics.json must declare optional string creative_name');
     }
 
-    const deliverySchema = JSON.parse(fs.readFileSync(
-      path.join(latestDir, 'bundled/media-buy/get-media-buy-delivery-response.json'),
-      'utf8'
-    ));
+    // The bundled task response keeps each status body in $defs; the
+    // completed branch names the completed body.
+    const deliveryResponse = readSchemaFile(path.join(latestDir, 'bundled/media-buy/get-media-buy-delivery-response.json'));
+    const completedRef = deliveryResponse.oneOf.find((branch) => branch.properties.status.const === 'completed').allOf[0].$ref;
+    const deliverySchema = deliveryResponse.$defs[completedRef.replace('#/$defs/', '')];
     const packageItems = deliverySchema.properties.media_buy_deliveries.items.properties.by_package.items;
     const packageBreakdowns = packageItems.allOf[1].properties;
     const bundledTitles = [

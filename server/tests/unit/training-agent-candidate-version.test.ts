@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+
+const { generatedSchemaDocuments } = createRequire(import.meta.url)('../../../scripts/task-responses.cjs');
 import { loadStoryboardFile, registerExternalSchemaRoot, runStoryboardStep, unregisterExternalSchemaRoot } from '@adcp/sdk/testing';
 import { storyboardStepStatus } from '../manual/storyboard-report-format.js';
 
@@ -28,6 +31,13 @@ describe('local candidate wire contract', () => {
     // no generated development output or immutable release files are changed.
     schemaRoot = mkdtempSync(path.join(tmpdir(), 'adcp-candidate-version-'));
     cpSync(path.resolve('static/schemas/source'), schemaRoot, { recursive: true });
+    // Plus the documents the schema build generates from the source: every
+    // task's <task>-response.json.
+    for (const [rel, schema] of generatedSchemaDocuments(path.resolve('static/schemas/source')) as Map<string, unknown>) {
+      const filename = path.join(schemaRoot, ...rel.split('/'));
+      mkdirSync(path.dirname(filename), { recursive: true });
+      writeFileSync(filename, JSON.stringify(schema, null, 2));
+    }
     for (const file of readdirSync(schemaRoot, { recursive: true }) as string[]) {
       if (!file.endsWith('.json')) continue;
       const filename = path.join(schemaRoot, file);
@@ -133,6 +143,85 @@ describe('local candidate wire contract', () => {
     await legacy.close();
   });
 
+  it('accepts correlation-only explicit-package buys on the pinned candidate over HTTP', async () => {
+    const adcp_version = '3.3-beta.1';
+    const account = { brand: { domain: 'candidate-opportunity.example' }, operator: 'candidate-opportunity.example', sandbox: true };
+    let id = 200;
+    const call = async (name: string, args: Record<string, unknown>) => {
+      id += 1;
+      const response = await fetch(`${baseUrl}/sales/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+        body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: { adcp_version, ...args } } }),
+      });
+      expect(response.status).toBe(200);
+      const envelope = await response.json();
+      expect(envelope.error, JSON.stringify(envelope)).toBeUndefined();
+      const result = envelope.result?.structuredContent;
+      expect(result, JSON.stringify(envelope)).toBeDefined();
+      expect(result.adcp_version).toBe(adcp_version);
+      return result;
+    };
+    const provisioned = await call('sync_accounts', {
+      accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+      idempotency_key: 'candidate-opportunity-provision-0001',
+    });
+    expect(provisioned.adcp_error, JSON.stringify(provisioned)).toBeUndefined();
+    const listed = await call('list_products', {
+      account, criteria: { product_ids: ['pinnacle_news_display_premium'] },
+    });
+    expect(listed.adcp_error, JSON.stringify(listed)).toBeUndefined();
+    const product = listed.products[0];
+    expect(product.product_id).toBe('pinnacle_news_display_premium');
+    const opportunity = { opportunity_id: 'opp-candidate-package-correlation' };
+    const args = {
+      account,
+      brand: account.brand,
+      packages: [{ product_id: product.product_id, pricing_option_id: product.pricing_options[0].pricing_option_id, budget: 5000 }],
+      start_time: 'asap',
+      end_time: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      opportunity,
+      idempotency_key: 'candidate-opportunity-first-0001',
+    };
+    const first = await call('create_media_buy', args);
+    expect(first.adcp_error, JSON.stringify(first)).toBeUndefined();
+    expect(first.media_buy_id).toEqual(expect.any(String));
+    expect(first).not.toHaveProperty('proposal_id');
+    const readBuys = async () => {
+      const result = await call('get_media_buys', {
+        account,
+        status_filter: ['pending_creatives', 'pending_start', 'active', 'paused', 'completed', 'canceled', 'rejected'],
+      });
+      expect(result.adcp_error, JSON.stringify(result)).toBeUndefined();
+      return result.media_buys.map((buy: { media_buy_id: string }) => buy.media_buy_id).sort();
+    };
+    expect(await readBuys()).toEqual([first.media_buy_id]);
+    for (const [suffix, update] of [
+      ['open', { status: 'open' }],
+      ['close', { status: 'closed', close_reason: 'accepted_with_seller' }],
+      ['reason', { close_reason: 'accepted_with_seller' }],
+      ['detail', { close_detail: 'Campaign complete.' }],
+      ['consent', { later_proposals: { accepted: true } }],
+      ['withdraw', { later_proposals: { accepted: false } }],
+    ] as const) {
+      const rejected = await call('create_media_buy', {
+        ...args,
+        opportunity: { ...opportunity, ...update },
+        idempotency_key: `candidate-opportunity-${suffix}-0001`,
+      });
+      expect(rejected.adcp_error?.code, JSON.stringify(rejected)).toBe('INVALID_REQUEST');
+    }
+    expect(await readBuys()).toEqual([first.media_buy_id]);
+    const second = await call('create_media_buy', { ...args, idempotency_key: 'candidate-opportunity-second-0001' });
+    expect(second.adcp_error, JSON.stringify(second)).toBeUndefined();
+    expect(second.media_buy_id).toEqual(expect.any(String));
+    expect(second.media_buy_id).not.toBe(first.media_buy_id);
+    const replay = await call('create_media_buy', args);
+    expect(replay.adcp_error, JSON.stringify(replay)).toBeUndefined();
+    expect(replay).toMatchObject({ media_buy_id: first.media_buy_id, replayed: true });
+    expect(await readBuys()).toEqual([first.media_buy_id, second.media_buy_id].sort());
+  }, 60_000);
+
   it('reports real SDK advisory findings without overriding its blocking validation verdict', async () => {
     const storyboard = loadStoryboardFile(path.resolve('static/compliance/source/universal/capability-discovery.yaml'));
     const options = {
@@ -177,6 +266,7 @@ describe('local candidate wire contract', () => {
       const current = adcp_version === '3.3-beta.1';
       const sales = await call('sales', 'get_adcp_capabilities', { adcp_version });
       expect(sales.account.stable_account_id).toBe(current ? true : undefined);
+      expect(sales.creative.supports_provenance).toBe(current ? true : undefined);
       expect(sales.media_buy.features.supports_property_breakdown).toBe(current ? true : undefined);
       expect(sales.media_buy.features.supports_installment_property_breakdown).toBe(current ? true : undefined);
       if (current) {

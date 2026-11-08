@@ -32,7 +32,7 @@ Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities
 | `state` | Carries | What the buyer does |
 | --- | --- | --- |
 | `in_review` | `pending_action` | `waiting_on: seller`: wait for `account_request.changed` or poll [`list_accounts`](/docs/accounts/tasks/list_accounts) with `request_ids`. `waiting_on: buyer`: show `pending_action.url` to a human, then keep waiting. |
-| `resolved` | `account_id`, `resolution` (`matched`, `created`, or `updated`), and for a change the updated `account` | Store `account_id` and send it on every account-scoped task. |
+| `resolved` | `account_id`, `resolution` (`matched`, `created`, or `updated`), and `account`: always for `matched` and `created`, with the account's money terms, and for a change the updated account | Store `account_id` and send it on every account-scoped task. Check the money terms in `account`: they can differ from the ones requested. |
 | `ambiguous` | `candidates[]` | A human picks one; call `request_account` with that `account_id` and the open `request_id`, and the request resolves as `matched`. |
 | `rejected` | `errors[]` | Tell a human. A new request for the same key opens a new request. |
 
@@ -74,7 +74,7 @@ Send either `account_id` (to change or select), or `brand` and `operator` (to op
 
 ## Changing an account
 
-Send the `account_id` and only the attributes to change. The changeable attributes are those [#8474](https://github.com/adcontextprotocol/adcp/pull/8474) defines: the brand's `countries`, `operator_unit`, `billing`, `billing_entity`, and `payment_terms`. `currency` and `timezone` are set when the account opens, and a seller MAY refuse to change them; `sandbox` never changes. Set `allow_separate_account: true` if you would accept the change on a separate new account when the seller can't make it on this one; it defaults to `false`.
+Send the `account_id` and only the attributes to change. The seller lists the attributes it changes in `account.requests.changeable_attributes`, from the brand's `countries`, `operator_unit`, `billing`, `billing_entity`, `payment_terms`, `currency`, and `timezone`. `currency` and `timezone` are set when the account opens and change only on a seller that lists them; anywhere else the change is refused with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). A timezone change is a reporting cutover: account-timezone periods switch at the first old-timezone boundary at or after it, as [reporting subscriptions](/docs/protocol/sync_principal#reporting-subscriptions) describe. `sandbox` never changes. Set `allow_separate_account: true` if you would accept the change on a separate new account when the seller can't make it on this one; it defaults to `false`.
 
 ```json
 {
@@ -88,12 +88,12 @@ Send the `account_id` and only the attributes to change. The changeable attribut
 
 The seller validates a changed attribute as it does when the account opens, including authorization such as the brand-operator check. Then one of:
 
-- **It applies the change:** `state: resolved`, `resolution: updated`, and `account` carrying the updated attributes and new `revision`.
+- **It applies the change:** `state: resolved`, `resolution: updated`, and `account` carrying the updated attributes and new `revision`. When the change touches `billing`, `billing_entity`, or `payment_terms`, the request also carries `effective_at`, when the new money terms take effect: delivery before it is invoiced under the old terms. The seller may pick a later instant than resolution, such as its next invoice-period boundary. Other attributes change when the request resolves.
 - **It reviews the change first:** `state: in_review` with a pending action. The account keeps its current attributes until the request resolves.
 - **It refuses the change:** `state: rejected` with the reason. The account is unchanged.
-- **It opens a separate account instead, if the buyer allowed it:** `state: resolved`, `resolution: created`, and a new `account_id`, with `account` carrying the new account. The seller says "yes, but as a separate account", for example when a new market needs its own contract or invoicing entity. The seller may do this only when the request set `allow_separate_account: true`. The new account has the named account's attributes with the requested change applied. Terms the seller needs to set differently go through a pending action before the request resolves.
+- **It opens a separate account instead, if the buyer allowed it:** `state: resolved`, `resolution: created`, and a new `account_id`, with `account` carrying the new account. The seller says "yes, but as a separate account", for example when a new market needs its own contract or invoicing entity. The seller may do this only when the request set `allow_separate_account: true`. The new account has the named account's attributes with the requested change applied, and `account` carries its money terms. Terms the seller needs to set differently go through a pending action before the request resolves. The request's `not_carried_over` lists the named account's account-level configurations the new account doesn't have, from `notification_configs`, `reporting_delivery_configs`, `reporting_bucket`, `governance_agents`, `creatives`, `audiences`, `catalogs`, and `event_sources`; `[]` means all of them carried over. Principal-level configuration is unaffected: an `all_authorized_accounts` reporting subscription covers the new account once it is authorized, while an `account_ids` subscription covers it only after you add it.
 - **It would accept the change only as a separate account, and the buyer didn't allow that:** `state: rejected` with [`ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT`](/docs/building/verification/compliance-catalog#error-code-account-change-requires-new-account). The account is unchanged. The buyer can tell this from a plain refusal: it may open a new account itself, resend the change with `allow_separate_account: true`, or keep the account as it is.
-- **It points to an account the caller already holds:** `state: resolved`, `resolution: matched`, and that account's `account_id`. The seller uses this when the change would make the named account duplicate an account the caller can already reach; see [Accounts that end up alike](/docs/accounts/overview#account-identity). As with `candidates`, the seller MUST NOT point to an account outside the caller's grants.
+- **It points to an account the caller already holds:** `state: resolved`, `resolution: matched`, and that account's `account_id`, with `account` carrying its money terms. The seller uses this when the change would make the named account duplicate an account the caller can already reach; see [Accounts that end up alike](/docs/accounts/overview#account-identity). As with `candidates`, the seller MUST NOT point to an account outside the caller's grants.
 
 When the request resolves to another account (`created` or `matched`), the named account is untouched: it keeps its attributes, media buys, and reporting history, and stays usable. The seller MUST NOT move media buys, creatives, or reporting between the two accounts. Which account carries new buys is the buyer's choice. A buyer can tell these outcomes apart because the resolved `account_id` differs from `requested.account_id`.
 
@@ -148,14 +148,21 @@ A day later, sales ops finds no relationship and hands the next step to the buye
 }
 ```
 
-Once the human registers, the request resolves:
+Once the human registers, the request resolves. It carries `account` with the new account's money terms, because they can differ from the ones requested (`requested`, `created_at`, and `updated_at` are omitted here):
 
 ```json
 {
   "request_id": "areq_01K4F8M2Q7",
   "state": "resolved",
   "account_id": "acc_renault_fr_wpp",
-  "resolution": "created"
+  "resolution": "created",
+  "account": {
+    "account_id": "acc_renault_fr_wpp",
+    "name": "Renault France via WPP Media",
+    "status": "active",
+    "billing": "operator",
+    "payment_terms": "net_45"
+  }
 }
 ```
 
@@ -227,4 +234,4 @@ A seller that does deduplicate typically answers a repeated *open* request as fo
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) (money change) | A change to `billing`, `billing_entity`, or `payment_terms` without `revision`. |
 | [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported) | The requested `billing` isn't in the seller's `supported_billing`. Sellers MAY instead record the request and reject it. |
 | [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | The `idempotency_key` was replayed with a different body. |
-| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | The seller doesn't support account requests, or refuses to change `currency`, `timezone`, or `sandbox` on an existing account. |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | The seller doesn't support account requests; or a change names `currency` or `timezone` and the seller doesn't list it in `changeable_attributes`; or a change names `sandbox`. |

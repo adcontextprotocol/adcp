@@ -12,10 +12,13 @@
  * files). Only the published IANA source text is shared, which is the point:
  * the vectors pin the release.
  *
- * It implements the subset of zic(8) the pinned zones use: Zone continuation
- * lines with UNTIL, Rule lines with FROM/TO/IN/ON/AT/SAVE (ON as a day, lastDay,
- * Day>=N, Day<=N; AT with w/s/u suffixes), fixed-save RULES fields, and Links.
- * Years 1800 to 2200 are expanded; nothing the vectors use is near either end.
+ * tzdata.json carries the whole default zic build of the pinned release, every
+ * Zone, Rule, and Link, so every IANA zone and link name works. It implements
+ * the part of zic(8) that build uses: Zone continuation lines with UNTIL, Rule
+ * lines with FROM/TO/IN/ON/AT/SAVE (ON as a day, lastDay, Day>=N, Day<=N; AT
+ * with w/s/u suffixes; negative SAVE), fixed-save RULES fields, and Links. The
+ * tests check every zone against zic(8) for 1970 through 2040. Years 1800 to
+ * 2200 are expanded; nothing the vectors use is near either end.
  *
  * All instants are integer milliseconds since 1970-01-01T00:00:00Z. A "wall"
  * value is the local civil date and time encoded the same way, as if it were UTC.
@@ -25,7 +28,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DATA = JSON.parse(fs.readFileSync(path.join(__dirname, 'tzdata.json'), 'utf8'));
-const NAMES = new Set(DATA.names);
+const NAMES = new Set([...Object.keys(DATA.zones), ...Object.keys(DATA.links)]);
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MIN_YEAR = 1800;
@@ -144,7 +147,7 @@ function parseEra(line) {
 /** Rule transitions of one rule set under one standard offset, in order. */
 function ruleTransitions(ruleName, stdoff) {
   const lines = DATA.rules[ruleName];
-  if (!lines) throw new Error(`rule ${ruleName} is not in the pinned tzdata subset`);
+  if (!lines) throw new Error(`rule ${ruleName} is not in the pinned tzdata`);
   const raw = [];
   for (const rule of lines.map(parseRule)) {
     for (let year = Math.max(rule.from, MIN_YEAR); year <= Math.min(rule.to, MAX_YEAR); year += 1) {
@@ -166,15 +169,6 @@ function ruleTransitions(ruleName, stdoff) {
   return out;
 }
 
-function saveAt(list, instant) {
-  let save = 0;
-  for (const entry of list) {
-    if (entry.at <= instant) save = entry.save;
-    else break;
-  }
-  return save;
-}
-
 const zoneCache = new Map();
 
 /** Resolve a link chain to its zone name. */
@@ -194,12 +188,26 @@ function transitions(name) {
   const zone = canonicalZone(name);
   if (zoneCache.has(zone)) return zoneCache.get(zone);
   const lines = DATA.zones[zone];
-  if (!lines) throw new Error(`${name} is not in the pinned tzdata subset`);
+  if (!lines) throw new Error(`${name} is not a zone in the pinned tzdata`);
   const out = [];
   let eraStart = -Infinity;
   for (const era of lines.map(parseEra)) {
     const rules = era.ruleSet.name ? ruleTransitions(era.ruleSet.name, era.stdoff) : null;
-    const save = instant => (rules ? saveAt(rules, instant) : era.ruleSet.fixed);
+    const push = (at, offset) => {
+      if (out.length === 0 || out[out.length - 1].offset !== offset) out.push({ at, offset });
+    };
+    // The rule transitions this era can apply, in order, starting with the save in effect when it starts.
+    let first = -1;
+    if (rules) {
+      // As zic does, a rule transition whose wall time is at or before the
+      // era's starting wall time is already in effect when the era starts.
+      const startWall = eraStart + (out.length > 0 ? out[out.length - 1].offset : era.stdoff);
+      rules.forEach((entry, index) => {
+        if (entry.at <= eraStart || entry.wall <= startWall) first = index;
+      });
+    }
+    const startSave = rules ? (first >= 0 ? rules[first].save : 0) : era.ruleSet.fixed;
+    const pending = rules ? rules.slice(first + 1) : [];
     let eraEnd = Infinity;
     if (era.until) {
       const { year, month, on, time } = era.until;
@@ -207,28 +215,20 @@ function transitions(name) {
       if (time.suffix === 'u') eraEnd = local;
       else if (time.suffix === 's') eraEnd = local - era.stdoff;
       else {
-        // Wall time: the save in effect just before the UNTIL instant.
-        let guess = local - era.stdoff - save(local - era.stdoff);
-        guess = local - era.stdoff - save(guess - 1);
-        eraEnd = guess;
+        // Wall time, read as zic reads it: with the save in effect when the
+        // UNTIL is reached, so a rule transition at the same instant belongs
+        // to the next era (America/Vancouver's 2026 Nov 1 2:00).
+        let current = startSave;
+        for (const entry of pending) {
+          if (entry.at >= local - era.stdoff - current) break;
+          current = entry.save;
+        }
+        eraEnd = local - era.stdoff - current;
       }
     }
-    const push = (at, offset) => {
-      if (out.length === 0 || out[out.length - 1].offset !== offset) out.push({ at, offset });
-    };
-    if (!rules) push(eraStart, era.stdoff + era.ruleSet.fixed);
-    else {
-      // As zic does, a rule transition whose wall time is at or before the
-      // era's starting wall time is already in effect when the era starts.
-      const startWall = eraStart + (out.length > 0 ? out[out.length - 1].offset : era.stdoff);
-      let first = -1;
-      rules.forEach((entry, index) => {
-        if (entry.at <= eraStart || entry.wall <= startWall) first = index;
-      });
-      push(eraStart, era.stdoff + (first >= 0 ? rules[first].save : 0));
-      for (let index = first + 1; index < rules.length; index += 1) {
-        if (rules[index].at < eraEnd) push(rules[index].at, era.stdoff + rules[index].save);
-      }
+    push(eraStart, era.stdoff + startSave);
+    for (const entry of pending) {
+      if (entry.at < eraEnd) push(entry.at, era.stdoff + entry.save);
     }
     eraStart = eraEnd;
   }
@@ -289,7 +289,7 @@ function isIanaName(name) {
   return typeof name === 'string' && NAMES.has(name);
 }
 
-/** The pinned subset carries this zone's rules. */
+/** The pinned release carries this zone's rules (every IANA name does). */
 function hasZone(name) {
   return isIanaName(name) && DATA.zones[canonicalZone(name)] !== undefined;
 }

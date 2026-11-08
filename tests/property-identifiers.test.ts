@@ -18,7 +18,7 @@ describe('property identifier hostnames', () => {
     addFormats(compiler);
     const create = await compiler.compileAsync(schemaAt('property/create-property-list-request.json'));
     const update = await compiler.compileAsync(schemaAt('property/update-property-list-request.json'));
-    const getResponse = await compiler.compileAsync(schemaAt('property/get-property-list-response.json'));
+    const getResponse = await compiler.compileAsync(schemaAt('property/get-property-list-completed.json'));
     for (const [value, expected] of [['*.publisher.example', true], ['https://publisher.example/path', false]] as const) {
       const identifier = { type: 'domain', value };
       const sources = [{ selection_type: 'identifiers', identifiers: [identifier] }];

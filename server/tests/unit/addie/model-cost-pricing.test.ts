@@ -40,3 +40,18 @@ describe('live Gemini 3.7 implicit-cache pricing', () => {
     })).toBe(3);
   });
 });
+
+describe('live Gemini 3.8 response redirect pricing', () => {
+  it('uses the independently reviewed 3.8 rate and cutoff for the actual returned identity', () => {
+    const price = resolveModelCostPricing('google', 'gemini-3.8-flash')!;
+    expect(price.version).toBe('google-gemini-3.8-flash-through-2026-12-31');
+    expect(price.validBefore?.toISOString()).toBe('2027-01-01T00:00:00.000Z');
+    expect(price.estimateCostMicros({
+      inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000,
+    })).toBe(3_825_000);
+  });
+
+  it.each(['gemini-3.8-pro', 'gemini-3.8-flash-20260801', 'gemini-3.9-flash'])('does not infer a price for %s', model => {
+    expect(resolveModelCostPricing('google', model)).toBeNull();
+  });
+});

@@ -40,6 +40,18 @@ const ALLOWED_PREVIEW_ASSET_TYPES = new Set([
   'audio/aac', 'audio/flac', 'audio/mp4', 'audio/mpeg', 'audio/ogg',
   'audio/wav', 'audio/webm', 'audio/x-wav',
 ]);
+// The default MemoryStore uses setInterval, whose delay must fit a signed int32.
+const MAX_RATE_LIMIT_WINDOW_MS = 2_147_483_647;
+
+function readPositiveIntegerSetting(name: string, fallback: number, maximum = Number.MAX_SAFE_INTEGER): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(value) || value > maximum) {
+    throw new Error(`${name} must be a positive decimal integer from 1 to ${maximum}`);
+  }
+  return value;
+}
 
 class PreviewAssetTooLargeError extends Error {}
 
@@ -144,6 +156,11 @@ function getAgentBaseUrl(req: Request): string {
 }
 
 export function createCreativeAgentRouter(): Router {
+  // Validate every setting before allocating router state or starting timers.
+  const mcpRateLimitMax = readPositiveIntegerSetting('CREATIVE_AGENT_MCP_RATE_LIMIT_MAX', 60);
+  const mcpRateLimitWindowMs = readPositiveIntegerSetting('CREATIVE_AGENT_MCP_RATE_LIMIT_WINDOW_MS', 60_000, MAX_RATE_LIMIT_WINDOW_MS);
+  const previewAssetRateLimitMax = readPositiveIntegerSetting('CREATIVE_AGENT_PREVIEW_ASSET_RATE_LIMIT_MAX', 30);
+  const previewAssetRateLimitWindowMs = readPositiveIntegerSetting('CREATIVE_AGENT_PREVIEW_ASSET_RATE_LIMIT_WINDOW_MS', 60_000, MAX_RATE_LIMIT_WINDOW_MS);
   const router = Router();
   const mirrorDb = new CommunityMirrorDatabase();
 
@@ -227,8 +244,8 @@ export function createCreativeAgentRouter(): Router {
 
   // Rate limiting
   const mcpRateLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
+    windowMs: mcpRateLimitWindowMs,
+    max: mcpRateLimitMax,
     standardHeaders: true,
     legacyHeaders: false,
     validate: { xForwardedForHeader: false, ip: false },
@@ -241,8 +258,8 @@ export function createCreativeAgentRouter(): Router {
     },
   });
   const previewAssetRateLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 30,
+    windowMs: previewAssetRateLimitWindowMs,
+    max: previewAssetRateLimitMax,
     standardHeaders: true,
     legacyHeaders: false,
     validate: { xForwardedForHeader: false, ip: false },

@@ -8,34 +8,34 @@
   ],
   "properties": {
     "outcome": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/outcome"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/outcome"
     },
     "reason": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/reason"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/reason"
     },
     "suggestions": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/suggestions"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/suggestions"
     },
     "proposals": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/proposals"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/proposals"
     },
     "products": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/products"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/products"
     },
     "collections": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/collections"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/collections"
     },
     "incomplete": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/incomplete"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/incomplete"
     },
     "purchase_continuation": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/purchase_continuation"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/purchase_continuation"
     },
     "targeting_resolution": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/targeting_resolution"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/targeting_resolution"
     },
     "later_proposals": {
-      "$ref": "/schemas/media-buy/request-proposals-response.json#/properties/later_proposals"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json#/properties/later_proposals"
     }
   },
   "dependencies": { "collections": ["products"] },

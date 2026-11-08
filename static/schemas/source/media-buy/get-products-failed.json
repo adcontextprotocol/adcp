@@ -11,58 +11,58 @@
   ],
   "properties": {
     "products": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/products"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/products"
     },
     "collections": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/collections"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/collections"
     },
     "targeting_resolution": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/targeting_resolution"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/targeting_resolution"
     },
     "extensions": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/extensions"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/extensions"
     },
     "proposals": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/proposals"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/proposals"
     },
     "errors": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/errors"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/errors"
     },
     "property_list_applied": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/property_list_applied"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/property_list_applied"
     },
     "catalog_applied": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/catalog_applied"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/catalog_applied"
     },
     "refinement_applied": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/refinement_applied"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/refinement_applied"
     },
     "incomplete": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/incomplete"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/incomplete"
     },
     "filter_diagnostics": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/filter_diagnostics"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/filter_diagnostics"
     },
     "pagination": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/pagination"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/pagination"
     },
     "wholesale_feed_version": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/wholesale_feed_version"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/wholesale_feed_version"
     },
     "pricing_version": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/pricing_version"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/pricing_version"
     },
     "execution_readiness": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/execution_readiness"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/execution_readiness"
     },
     "cache_scope": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/cache_scope"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/cache_scope"
     },
     "unchanged": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/unchanged"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/unchanged"
     },
     "sandbox": {
-      "$ref": "/schemas/media-buy/get-products-response.json#/properties/sandbox"
+      "$ref": "/schemas/media-buy/get-products-completed.json#/properties/sandbox"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

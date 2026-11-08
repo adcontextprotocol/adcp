@@ -1,8 +1,8 @@
 /**
  * API key management routes
  *
- * Lists organization API keys through WorkOS. Mutations are contained until
- * the provider can enforce a durable membership fence.
+ * Lists organization API keys through WorkOS. Mutations use WorkOS's
+ * user/organization-scoped Widgets API so the provider authorizes the write.
  * Requires an authenticated user credential and an explicitly selected org.
  * Verifies fresh, exact-credential authority before every operation.
  */
@@ -80,8 +80,8 @@ async function listWorkOSApiKeys(
     Authorization: `Bearer ${WORKOS_API_KEY}`,
   };
 
-  // Deliberately read-only: no transport path can create or revoke a key until
-  // membership revocation and key mutation share an authoritative fence.
+  // The server API key is used only for inventory. Mutations below use a
+  // user-scoped token, never this unrestricted credential.
   const fetchOptions: RequestInit = { method: "GET", headers, signal: AbortSignal.timeout(5_000) };
   let response: globalThis.Response;
   try {
@@ -196,13 +196,116 @@ function assertSameMembership(previous: string, current: string): void {
   if (previous !== current) throw new KeyManagementAuthorizationError(403);
 }
 
-function sendMutationUnavailable(res: Response): void {
-  // No feature flag or request override: re-enabling requires a reviewed,
-  // durable fence enforced by the same authority as membership mutation.
-  res.status(503).json({
-    error: "API key mutations unavailable",
-    message: "API key creation and revocation are disabled until membership changes can be fenced.",
-  });
+// WorkOS documents these operations at https://workos.com/docs/widgets-api/api-keys.
+// Keep delegation on the server: the browser must not receive a reusable token
+// that could bypass our permission allow-list and exact-credential checks.
+// WorkOS roles must grant widgets:api-keys:manage to owner/admin, not member.
+const CREATE_KEY_MUTATION = `mutation CreateOrganizationApiKey($input: CreateApiKeyInput!) {
+  createOrganizationApiKey(input: $input) {
+    __typename
+    ... on OrganizationApiKeyCreated {
+      apiKey { id name createdAt updatedAt expiresAt lastUsedAt obfuscatedValue permissions }
+      value
+    }
+  }
+}`;
+const REVOKE_KEY_MUTATION = `mutation DeleteOrganizationApiKey($apiKeyId: ID!) {
+  deleteOrganizationApiKey(apiKeyId: $apiKeyId) { id }
+}`;
+
+class KeyMutationError extends Error {
+  constructor(readonly status: 400 | 403 | 503, message: string) { super(message); }
+}
+
+function unconfirmedKeyMutation(): KeyMutationError {
+  return new KeyMutationError(503, "API key operation could not be confirmed. Check the key list before trying again.");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+async function mutateWorkOSApiKey(
+  authorization: ApiKeyManagementAuthorization,
+  action: "create" | "revoke",
+  variables: Record<string, unknown>,
+  assertCurrent: () => Promise<void>,
+  assertLive: () => void,
+): Promise<Record<string, unknown>> {
+  if (!workos) throw new KeyManagementAuthorizationError(503);
+  let token: string;
+  try {
+    ({ token } = await workos.widgets.createToken({
+      userId: authorization.actor.authWorkosUserId,
+      organizationId: authorization.organizationId,
+      scopes: ["widgets:api-keys:manage"],
+    }));
+    if (!token || typeof token !== "string") throw new Error("Missing widget token");
+  } catch (error) {
+    // Do not log SDK responses: they can contain credentials. No mutation has
+    // been dispatched when token issuance fails.
+    const status = isRecord(error) ? error.status ?? error.statusCode : undefined;
+    throw new KeyManagementAuthorizationError(status === 401 || status === 403 ? 403 : 503);
+  }
+  // Token issuance is an awaited provider boundary too. Revalidate the exact
+  // credential and membership before sending the single, non-retried write.
+  const membership = await requireDirectAdminMembership(
+    authorization.actor.authWorkosUserId, authorization.organizationId,
+  );
+  // Check after the final provider await so its latency cannot consume the
+  // local fence's reserved five-second mutation budget.
+  await assertCurrent();
+  assertLive();
+  assertSameMembership(authorization.directMembership, membership);
+
+  let response: globalThis.Response;
+  let envelope: unknown;
+  try {
+    response = await fetch("https://api.workos.com/client/graphql", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: action === "create" ? CREATE_KEY_MUTATION : REVOKE_KEY_MUTATION, variables }),
+      signal: AbortSignal.timeout(5_000),
+      redirect: "error",
+    });
+    if (response.ok) envelope = await response.json();
+  } catch {
+    throw unconfirmedKeyMutation();
+  }
+  if (response.status === 401 || response.status === 403) throw new KeyManagementAuthorizationError(403);
+  if (!response.ok || !isRecord(envelope)) throw unconfirmedKeyMutation();
+  // GraphQL can report authorization failure with HTTP 200 and partial data.
+  if (envelope.errors !== undefined && !Array.isArray(envelope.errors)) throw unconfirmedKeyMutation();
+  if (Array.isArray(envelope.errors) && envelope.errors.length > 0) {
+    const denied = envelope.errors.some((error) => isRecord(error) && (
+      error.message === "Unauthorized" || error.message === "Forbidden"
+      || (isRecord(error.extensions) && ["UNAUTHENTICATED", "FORBIDDEN"].includes(String(error.extensions.code)))
+    ));
+    throw new KeyManagementAuthorizationError(denied ? 403 : 503);
+  }
+  const result = isRecord(envelope.data)
+    ? envelope.data[action === "create" ? "createOrganizationApiKey" : "deleteOrganizationApiKey"] : null;
+  if (!isRecord(result)) throw unconfirmedKeyMutation();
+  if (action === "revoke") {
+    if (result.id !== variables.apiKeyId) throw new KeyManagementAuthorizationError(503);
+    return result;
+  }
+  if (["ApiKeyPermissionsNotHeld", "ApiKeyPermissionsUnsupportedForToken"].includes(String(result.__typename))) {
+    throw new KeyMutationError(403, "The requested API key permissions are not available to this user");
+  }
+  if (["InvalidApiKeyName", "InvalidApiKeyPermissions", "InvalidApiKeyExpiration"].includes(String(result.__typename))) {
+    throw new KeyMutationError(400, "Invalid API key name or permissions");
+  }
+  if (result.__typename !== "OrganizationApiKeyCreated" || !isRecord(result.apiKey)
+      || typeof result.apiKey.id !== "string" || typeof result.value !== "string" || !result.value) {
+    throw new KeyManagementAuthorizationError(503);
+  }
+  const key = result.apiKey;
+  return {
+    id: key.id, name: key.name, value: result.value, permissions: key.permissions,
+    created_at: key.createdAt, updated_at: key.updatedAt, expires_at: key.expiresAt,
+    last_used_at: key.lastUsedAt, obfuscated_value: key.obfuscatedValue,
+  };
 }
 
 /**
@@ -281,6 +384,9 @@ function sendWorkOSError(
   error: unknown,
   fallbackMessage: string,
 ) {
+  if (error instanceof KeyMutationError) {
+    return res.status(error.status).json({ error: error.message });
+  }
   if (error instanceof AuthorizationSnapshotUnavailableError || error instanceof KeyManagementAuthorizationError) {
     const status = error instanceof KeyManagementAuthorizationError ? error.status : 503;
     return res.status(status).json({ error: status === 403 ? "Access denied" : "Organization authorization unavailable" });
@@ -340,6 +446,7 @@ export function createApiKeysRouter(): Router {
 
   // POST /api/me/api-keys - Create an API key
   router.post("/", requireApiKeyManagementAuth, async (req, res) => {
+    res.set("Cache-Control", "no-store");
     try {
       if (!workos) {
         return res.status(503).json({ error: "Organization authorization unavailable" });
@@ -351,10 +458,14 @@ export function createApiKeysRouter(): Router {
       const membership = await authorizeKeyManagement(req, res, requestedOrganizationId, "create");
       if (!membership) return;
       const { name, permissions } = req.body;
-      await withCurrentKeyManagementAuthorization(membership, async () => {
+      await withCurrentKeyManagementAuthorization(membership, async (assertCurrent, assertLive) => {
         if (!name) {
           res.status(400).json({ error: "name is required" });
           return null;
+        }
+        if (typeof name !== "string" || !name.trim()) {
+          res.status(400).json({ error: "Invalid API key name" });
+          return;
         }
 
         if (
@@ -383,7 +494,29 @@ export function createApiKeysRouter(): Router {
           return null;
         }
 
-        sendMutationUnavailable(res);
+        const result = await mutateWorkOSApiKey(membership, "create", {
+          input: { name: name.trim(), permissions: requestedPermissions },
+        }, assertCurrent, assertLive);
+        // Never expose a newly created secret after an observed authority change.
+        // The provider write already succeeded: keep the denial status, but make
+        // reconciliation explicit so the caller does not blindly create again.
+        try {
+          await assertCurrent();
+          const currentMembership = await requireDirectAdminMembership(
+            membership.actor.authWorkosUserId, membership.organizationId,
+          );
+          assertLive();
+          assertSameMembership(membership.directMembership, currentMembership);
+        } catch (error) {
+          const status = error instanceof KeyManagementAuthorizationError ? error.status
+            : error instanceof ApiKeyManagementStateChangedError ? 403 : 503;
+          logger.warn({ ...membership.actor, organizationId: membership.organizationId, apiKeyId: result.id, status },
+            "API key created but secret withheld; reconciliation required");
+          throw new KeyMutationError(status,
+            "API key was created, but its value could not be returned. Check the key list before trying again.");
+        }
+        logger.info({ ...membership.actor, organizationId: membership.organizationId, apiKeyId: result.id }, "API key created");
+        res.status(201).json(result);
       });
     } catch (error) {
       logger.error({ err: error }, "Error creating API key");
@@ -404,13 +537,15 @@ export function createApiKeysRouter(): Router {
       const membership = await authorizeKeyManagement(req, res, requestedOrganizationId, "revoke");
       if (!membership) return;
       const apiKeyId = req.params.id;
-      await withCurrentKeyManagementAuthorization(membership, async () => {
+      await withCurrentKeyManagementAuthorization(membership, async (assertCurrent, assertLive) => {
         // Authorize before terminal input rejection. No provider URL is built.
         if (!isOpaqueWorkOSId(apiKeyId)) {
           res.status(400).json({ error: "Invalid API key ID" });
           return;
         }
-        sendMutationUnavailable(res);
+        await mutateWorkOSApiKey(membership, "revoke", { apiKeyId }, assertCurrent, assertLive);
+        logger.info({ ...membership.actor, organizationId: membership.organizationId, apiKeyId }, "API key revoked");
+        res.status(204).end();
       });
     } catch (error) {
       logger.error({ err: error }, "Error revoking API key");

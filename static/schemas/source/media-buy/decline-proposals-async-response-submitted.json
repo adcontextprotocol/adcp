@@ -8,7 +8,7 @@
   ],
   "properties": {
     "results": {
-      "$ref": "/schemas/media-buy/decline-proposals-response.json#/properties/results"
+      "$ref": "/schemas/media-buy/decline-proposals-completed.json#/properties/results"
     }
   }
 }

@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { loadStoryboardFile, registerExternalSchemaRoot, runStoryboardStep, unregisterExternalSchemaRoot } from '@adcp/sdk/testing';
 
 const sourceRoot = path.resolve('static/compliance/source');
+const schemaSourceRoot = path.resolve('static/schemas/source');
+const { generatedSchemaDocuments } = createRequire(import.meta.url)('../scripts/task-responses.cjs');
 const affected = [
   ['universal/ctv-experience-validate-input.yaml', 14],
   ['universal/premium-display-canonical-validation.yaml', 21],
@@ -104,13 +107,21 @@ function seller(selectedRelease: string) {
 
 // Register disposable source snapshots for both selected releases. This also
 // exercises maintenance SDKs that predate the stable 3.2 bundled schemas.
-// Repository metadata and immutable released artifacts stay untouched.
+// Repository metadata and immutable released artifacts stay untouched. Each
+// snapshot is the source tree plus the documents the schema build generates
+// from it (every task's <task>-response.json), so the runner finds a task's
+// response where the published tree has it.
 const schemaRoots: string[] = [];
 beforeAll(() => {
   for (const version of ['3.2.4', '3.3.0']) {
     const schemaRoot = mkdtempSync(path.join(tmpdir(), 'adcp-storyboard-version-'));
     schemaRoots.push(schemaRoot);
-    cpSync(path.resolve('static/schemas/source'), schemaRoot, { recursive: true });
+    cpSync(schemaSourceRoot, schemaRoot, { recursive: true });
+    for (const [rel, schema] of generatedSchemaDocuments(schemaSourceRoot) as Map<string, unknown>) {
+      const filename = path.join(schemaRoot, ...rel.split('/'));
+      mkdirSync(path.dirname(filename), { recursive: true });
+      writeFileSync(filename, JSON.stringify(schema, null, 2));
+    }
     // External roots require a versioned or latest namespace. Normalize only
     // this disposable copy, as build:schemas does for development output.
     for (const file of readdirSync(schemaRoot, { recursive: true }) as string[]) {
@@ -123,7 +134,9 @@ beforeAll(() => {
     writeFileSync(indexPath, JSON.stringify({ ...index, adcp_version: version }));
     registerExternalSchemaRoot(version, schemaRoot);
   }
-});
+  // Two full copies and rewrites of the schema tree; the default 10 s hook
+  // budget is too tight for that much synchronous I/O on a busy machine.
+}, 60_000);
 afterAll(() => {
   for (const version of ['3.2.4', '3.3.0']) unregisterExternalSchemaRoot(version);
   for (const schemaRoot of schemaRoots) rmSync(schemaRoot, { recursive: true, force: true });

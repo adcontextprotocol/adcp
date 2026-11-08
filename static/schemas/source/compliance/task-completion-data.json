@@ -6,15 +6,15 @@
   "anyOf": [
     {
       "title": "GetProductsCompletion",
-      "$ref": "/schemas/media-buy/get-products-response.json"
+      "$ref": "/schemas/media-buy/get-products-completed.json"
     },
     {
       "title": "GetSignalsCompletion",
-      "$ref": "/schemas/signals/get-signals-response.json"
+      "$ref": "/schemas/signals/get-signals-completed.json"
     },
     {
       "title": "CreateMediaBuyCompletion",
-      "$ref": "/schemas/media-buy/create-media-buy-response.json#/oneOf/0"
+      "$ref": "/schemas/media-buy/create-media-buy-completed.json#/oneOf/0"
     },
     {
       "title": "GetCreativeFeaturesCompletion",

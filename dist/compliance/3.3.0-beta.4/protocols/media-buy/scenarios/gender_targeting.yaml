@@ -1,0 +1,1358 @@
+id: media_buy_seller/gender_targeting
+version: 1.0.0
+title: Seller executes exact gender predicates with non-binary support and lossless readback
+category: media_buy_seller
+summary: >-
+  Verifies explicitly seeded product-scoped gender capabilities, exact non-binary and mixed
+  age/gender execution, unsupported predicate rejection, and whole-demographics replacement and
+  clearing.
+track: media_buy
+requires:
+  - controller
+requires_capability:
+  path: media_buy.execution.targeting.demographics.gender.supported
+  equals: true
+required_tools:
+  - get_products
+  - create_media_buy
+  - update_media_buy
+  - get_media_buys
+  - comply_test_controller
+invariants:
+  - status.monotonic
+narrative: >-
+  Gender targeting is a canonical category set plus explicit unknown-gender membership. Categories
+  within gender compose with OR; age and gender compose with AND, with unknown membership evaluated
+  independently per dimension. Requested and applied predicates must equal the accepted package
+  targeting, rather than merely asserting equivalent:true. Product capability absence is not
+  permission to infer support from a seller-wide rollup. The controller authorizes deterministic
+  test products for this scenario; these fixtures do not require every production product or seller
+  to support every category or execution mode.
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - gender_targeting
+  examples:
+    - Sellers with exact product-scoped gender controls
+caller:
+  role: buyer_agent
+  example: Pinnacle Agency (buyer)
+prerequisites:
+  description: >-
+    The authorized controller seeds a native gender product with all three portable categories and
+    selectable unknown membership, a female/male-only product that always excludes unknown gender,
+    and an age-only product with no gender capability. The first product also accepts continuous age
+    bounds. Controller fixtures are contract tests; production products may advertise any supported
+    category subset and their own execution modes.
+  test_kit: test-kits/acme-outdoor.yaml
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: acct_acmeoutdoor_example_sandbox_a5152073f45e
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: pinnacle-agency.example
+        operator_unit:
+          id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+        sandbox: true
+        billing: operator
+        status: active
+  products:
+    - product_id: gender_native_display
+      delivery_type: non_guaranteed
+      channels:
+        - display
+      format_ids:
+        - id: display_300x250
+      overlay_support:
+        geo_countries: true
+        demographics:
+          age: true
+          gender: true
+      demographic_targeting:
+        age:
+          execution_modes:
+            - continuous_bounds
+          min_supported_age: 18
+          max_supported_age: 65
+          supports_unbounded_min: true
+          supports_unbounded_max: true
+          unknown_handling: selectable
+        gender:
+          values:
+            - female
+            - male
+            - non_binary
+          execution_modes:
+            - native
+          unknown_handling: selectable
+    - product_id: gender_limited_display
+      delivery_type: non_guaranteed
+      channels:
+        - display
+      format_ids:
+        - id: display_300x250
+      overlay_support:
+        demographics:
+          gender: true
+      demographic_targeting:
+        gender:
+          values:
+            - female
+            - male
+          execution_modes:
+            - native
+          unknown_handling: always_excluded
+    - product_id: gender_age_only_display
+      delivery_type: non_guaranteed
+      channels:
+        - display
+      format_ids:
+        - id: display_300x250
+      overlay_support:
+        demographics:
+          age: true
+      demographic_targeting:
+        age:
+          execution_modes:
+            - continuous_bounds
+          min_supported_age: 18
+          max_supported_age: 65
+          supports_unbounded_min: true
+          supports_unbounded_max: true
+          unknown_handling: selectable
+  pricing_options:
+    - product_id: gender_native_display
+      pricing_option_id: gender_native_display_cpm
+      pricing_model: cpm
+      currency: USD
+      floor_price: 5
+    - product_id: gender_limited_display
+      pricing_option_id: gender_limited_display_cpm
+      pricing_model: cpm
+      currency: USD
+      floor_price: 5
+    - product_id: gender_age_only_display
+      pricing_option_id: gender_age_only_display_cpm
+      pricing_model: cpm
+      currency: USD
+      floor_price: 5
+phases:
+  - id: discover_product_capabilities
+    title: Discover binding product-scoped gender capabilities
+    steps:
+      - id: get_gender_products
+        title: Read product gender subsets and unknown handling
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          buying_mode: wholesale
+          fields:
+            - product_id
+            - pricing_options
+            - demographic_targeting
+        expected: >-
+          Return the three seeded products with their binding demographic_targeting declarations.
+          The age-only product has no gender capability. A coarse seller declaration never supplies
+          a missing product capability.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: gender_native_display
+              demographic_targeting:
+                gender:
+                  values: [female, male, non_binary]
+                  execution_modes: [native]
+                  unknown_handling: selectable
+            description: The seeded native product retains its binding gender capability
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: gender_limited_display
+              demographic_targeting:
+                gender:
+                  values: [female, male]
+                  execution_modes: [native]
+                  unknown_handling: always_excluded
+            description: The limited product retains its executable subset and unknown handling
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: gender_age_only_display
+              demographic_targeting:
+                age:
+                  execution_modes: [continuous_bounds]
+            description: The age-only product retains its age execution declaration
+  - id: execute_exact_gender
+    title: Book exact non-binary and mixed demographic predicates
+    steps:
+      - id: create_gender_buy
+        title: Create gender-only and mixed age/gender packages
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: gender_native_display
+              pricing_option_id: gender_native_display_cpm
+              bid_price: 7
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  gender:
+                    values:
+                      - non_binary
+                    include_unknown: false
+            - product_id: gender_native_display
+              pricing_option_id: gender_native_display_cpm
+              bid_price: 7
+              budget: 5000
+              targeting_overlay:
+                geo_countries:
+                  - US
+                demographics:
+                  age:
+                    min: 18
+                    max: 55
+                    include_unknown: false
+                  gender:
+                    values:
+                      - female
+                      - non_binary
+                    include_unknown: true
+          idempotency_key: $generate:uuid_v4#gender_targeting_create_gender_buy
+        expected: >-
+          Accept both predicates exactly. The first targets only non_binary and excludes unknown
+          gender, without inventing an age condition. The second targets ages 18–55 AND (female OR
+          non_binary OR unknown gender), excluding unknown ages independently.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: array_length
+            path: packages[0].targeting_overlay.demographics.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: packages[0].targeting_overlay.demographics.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: packages[0].targeting_overlay.demographics.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: packages[0].targeting_overlay.demographics.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: array_length
+            path: packages[0].targeting_resolution.demographics.requested.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: packages[0].targeting_resolution.demographics.requested.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: packages[0].targeting_resolution.demographics.requested.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: packages[0].targeting_resolution.demographics.requested.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: array_length
+            path: packages[0].targeting_resolution.demographics.applied.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: packages[0].targeting_resolution.demographics.applied.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: packages[0].targeting_resolution.demographics.applied.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: packages[0].targeting_resolution.demographics.applied.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: field_value
+            path: packages[0].targeting_resolution.demographics.equivalent
+            value: true
+            description: Only exact predicate compilation is stored
+          - check: array_length
+            path: packages[1].targeting_overlay.demographics.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: packages[1].targeting_overlay.demographics.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: packages[1].targeting_overlay.demographics.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: packages[1].targeting_overlay.demographics.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: packages[1].targeting_overlay.demographics.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: packages[1].targeting_overlay.demographics.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: packages[1].targeting_overlay.demographics.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: array_length
+            path: packages[1].targeting_resolution.demographics.requested.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: packages[1].targeting_resolution.demographics.requested.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: packages[1].targeting_resolution.demographics.requested.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.requested.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.requested.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.requested.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.requested.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: array_length
+            path: packages[1].targeting_resolution.demographics.applied.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: packages[1].targeting_resolution.demographics.applied.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: packages[1].targeting_resolution.demographics.applied.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.applied.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.applied.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.applied.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.applied.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: field_value
+            path: packages[1].targeting_resolution.demographics.equivalent
+            value: true
+            description: Only exact predicate compilation is stored
+        context_outputs:
+          - key: gender_media_buy_id
+            path: media_buy_id
+          - key: mixed_package_id
+            path: packages[1].package_id
+      - id: read_exact_gender
+        title: Recompute exact requested/applied category sets and age bounds
+        task: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_ids:
+            - $context.gender_media_buy_id
+        expected: >-
+          The stored overlay, requested predicate, and applied predicate contain exactly the
+          selected categories and unknown flags. Validate set membership and cardinality
+          independently of array order. Each mixed age bound also equals the request;
+          equivalent:true alone is insufficient.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: array_length
+            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[0].targeting_overlay.demographics.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: array_length
+            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: array_length
+            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: field_value
+            path: media_buys[0].packages[0].targeting_resolution.demographics.equivalent
+            value: true
+            description: Only exact predicate compilation is stored
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.requested.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.applied.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.equivalent
+            value: true
+            description: Only exact predicate compilation is stored
+          - check: field_value
+            path: media_buys[0].packages[0].targeting_resolution.demographics.execution.type
+            value: gender_values
+            description: Gender-only readback identifies native category execution
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.execution.type
+            value: per_dimension
+            description: Mixed native controls return both execution mechanisms
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.execution.age.type
+            value: continuous_bounds
+            description: Mixed readback preserves age execution
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.execution.gender.type
+            value: gender_values
+            description: Mixed readback preserves native gender execution
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
+            value: US
+            description: Unrelated country targeting survives demographic mutation
+  - id: reject_unsupported_gender
+    title: Reject unsupported values, absent capabilities, and unknown-policy mismatches
+    steps:
+      - id: reject_non_binary_subset
+        title: Reject a category outside a product supported subset
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: false
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: gender_limited_display
+              pricing_option_id: gender_limited_display_cpm
+              bid_price: 7
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  gender:
+                    values:
+                      - non_binary
+                    include_unknown: false
+          idempotency_key: $generate:uuid_v4#gender_targeting_reject_non_binary_subset
+        expected: >-
+          Reject non_binary because this product advertises only female and male. Do not reinterpret
+          a known non-binary category as unknown or another category.
+        validations:
+          - check: error_code
+            allowed_values:
+              - UNSUPPORTED_FEATURE
+            description: Reject unsupported exact gender execution before booking
+          - check: field_absent
+            path: media_buy_id
+            description: Rejected targeting does not create a media buy
+        expect_error: true
+        negative_path: payload_well_formed
+      - id: reject_missing_gender_capability
+        title: Reject gender targeting on an age-only product
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: false
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: gender_age_only_display
+              pricing_option_id: gender_age_only_display_cpm
+              bid_price: 7
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  gender:
+                    values:
+                      - non_binary
+                    include_unknown: false
+          idempotency_key: $generate:uuid_v4#gender_targeting_reject_missing_gender_capability
+        expected: >-
+          Reject because the chosen product makes no exact gender commitment. Do not infer support
+          from seller rollup, free-text description, or age capability.
+        validations:
+          - check: error_code
+            allowed_values:
+              - UNSUPPORTED_FEATURE
+            description: Reject unsupported exact gender execution before booking
+          - check: field_absent
+            path: media_buy_id
+            description: Rejected targeting does not create a media buy
+        expect_error: true
+        negative_path: payload_well_formed
+      - id: reject_unknown_policy
+        title: Reject unknown-gender inclusion on an always-excluded product
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: false
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: gender_limited_display
+              pricing_option_id: gender_limited_display_cpm
+              bid_price: 7
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  gender:
+                    values:
+                      - female
+                    include_unknown: true
+          idempotency_key: $generate:uuid_v4#gender_targeting_reject_unknown_policy
+        expected: Reject the incompatible include_unknown value without silently changing it.
+        validations:
+          - check: error_code
+            allowed_values:
+              - UNSUPPORTED_FEATURE
+            description: Reject unsupported exact gender execution before booking
+          - check: field_absent
+            path: media_buy_id
+            description: Rejected targeting does not create a media buy
+        expect_error: true
+        negative_path: payload_well_formed
+  - id: replace_and_clear_demographics
+    title: Preserve omitted demographics and replace or clear the whole dimension
+    steps:
+      - id: update_budget_preserves_demographics
+        title: Omit demographics during a budget update
+        task: update_media_buy
+        schema_ref: media-buy/update-media-buy-request.json
+        response_schema_ref: media-buy/update-media-buy-response.json
+        doc_ref: /media-buy/task-reference/update_media_buy
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_id: $context.gender_media_buy_id
+          packages:
+            - package_id: $context.mixed_package_id
+              budget: 6000
+          idempotency_key: $generate:uuid_v4#gender_targeting_update_budget_preserves_demographics
+        expected: A budget update omits targeting and preserves the existing age and gender constraints.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: field_contains
+            path: affected_packages[*]
+            value:
+              package_id: $context.mixed_package_id
+              budget: 6000
+              targeting_overlay:
+                geo_countries:
+                  - US
+                demographics:
+                  age:
+                    min: 18
+                    max: 55
+                    include_unknown: false
+                  gender:
+                    values:
+                      - female
+                      - non_binary
+                    include_unknown: true
+              targeting_resolution:
+                demographics:
+                  requested:
+                    age:
+                      min: 18
+                      max: 55
+                      include_unknown: false
+                    gender:
+                      values:
+                        - female
+                        - non_binary
+                      include_unknown: true
+                  applied:
+                    age:
+                      min: 18
+                      max: 55
+                      include_unknown: false
+                    gender:
+                      values:
+                        - female
+                        - non_binary
+                      include_unknown: true
+                  equivalent: true
+            description: Update returns the complete effective package targeting and exact demographic readback
+          - check: array_length
+            path: affected_packages
+            value: 1
+            description: Exactly the updated package appears in the response
+          - check: array_length
+            path: affected_packages[0].targeting_overlay.demographics.gender.values
+            value: 2
+            description: Gender readback contains exactly the accepted category set
+          - check: array_length
+            path: affected_packages[0].targeting_resolution.demographics.requested.gender.values
+            value: 2
+            description: Gender readback contains exactly the accepted category set
+          - check: array_length
+            path: affected_packages[0].targeting_resolution.demographics.applied.gender.values
+            value: 2
+            description: Gender readback contains exactly the accepted category set
+      - id: read_preserved_gender
+        title: Verify omission preserves both demographic dimensions
+        task: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_ids:
+            - $context.gender_media_buy_id
+        expected: Omission preserves both accepted demographic predicates.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.requested.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values
+            value: 2
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
+            value: female
+            description: The exact selected category set includes female
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.include_unknown
+            value: true
+            description: Unknown-gender membership equals the accepted request
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.applied.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.equivalent
+            value: true
+            description: Only exact predicate compilation is stored
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
+            value: US
+            description: Unrelated country targeting survives demographic mutation
+      - id: replace_with_age_only
+        title: Replace demographics with the complete age-only post-state
+        task: update_media_buy
+        schema_ref: media-buy/update-media-buy-request.json
+        response_schema_ref: media-buy/update-media-buy-response.json
+        doc_ref: /media-buy/task-reference/update_media_buy
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_id: $context.gender_media_buy_id
+          packages:
+            - package_id: $context.mixed_package_id
+              targeting_overlay:
+                demographics:
+                  age:
+                    min: 18
+                    max: 55
+                    include_unknown: false
+          idempotency_key: $generate:uuid_v4#gender_targeting_replace_with_age_only
+        expected: >-
+          A non-null demographics object replaces the complete demographic dimension. Keeping only
+          age removes the previous gender restriction; it is not a recursive patch.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: field_contains
+            path: affected_packages[*]
+            value:
+              package_id: $context.mixed_package_id
+              budget: 6000
+              targeting_overlay:
+                geo_countries:
+                  - US
+                demographics:
+                  age:
+                    min: 18
+                    max: 55
+                    include_unknown: false
+              targeting_resolution:
+                demographics:
+                  requested:
+                    age:
+                      min: 18
+                      max: 55
+                      include_unknown: false
+                  applied:
+                    age:
+                      min: 18
+                      max: 55
+                      include_unknown: false
+                  equivalent: true
+            description: Update returns the complete effective package targeting and exact demographic readback
+          - check: array_length
+            path: affected_packages
+            value: 1
+            description: Exactly the updated package appears in the response
+          - check: field_absent
+            path: affected_packages[0].targeting_overlay.demographics.gender
+            description: Replacement removes omitted gender
+          - check: field_absent
+            path: affected_packages[0].targeting_resolution.demographics.requested.gender
+            description: Replacement removes omitted gender
+          - check: field_absent
+            path: affected_packages[0].targeting_resolution.demographics.applied.gender
+            description: Replacement removes omitted gender
+      - id: read_age_only_replacement
+        title: Verify replacement removes gender
+        task: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_ids:
+            - $context.gender_media_buy_id
+        expected: >-
+          The replacement preserves exactly ages 18–55 and removes gender from overlay and
+          demographic readback.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: field_absent
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender
+            description: Whole-demographics replacement removes omitted gender
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.requested.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: field_absent
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender
+            description: Whole-demographics replacement removes omitted gender
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.age.min
+            value: 18
+            description: The accepted age min is preserved exactly
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.age.max
+            value: 55
+            description: The accepted age max is preserved exactly
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.applied.age.include_unknown
+            value: false
+            description: The accepted age include_unknown is preserved exactly
+          - check: field_absent
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender
+            description: Whole-demographics replacement removes omitted gender
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
+            value: US
+            description: Unrelated country targeting survives demographic mutation
+      - id: replace_with_gender_only
+        title: Replace demographics with a gender-only predicate
+        task: update_media_buy
+        schema_ref: media-buy/update-media-buy-request.json
+        response_schema_ref: media-buy/update-media-buy-response.json
+        doc_ref: /media-buy/task-reference/update_media_buy
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_id: $context.gender_media_buy_id
+          packages:
+            - package_id: $context.mixed_package_id
+              targeting_overlay:
+                demographics:
+                  gender:
+                    values:
+                      - non_binary
+                    include_unknown: false
+          idempotency_key: $generate:uuid_v4#gender_targeting_replace_with_gender_only
+        expected: >-
+          A complete non-null gender-only replacement removes the prior age predicate. Unknown
+          gender remains explicitly excluded.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: field_contains
+            path: affected_packages[*]
+            value:
+              package_id: $context.mixed_package_id
+              budget: 6000
+              targeting_overlay:
+                geo_countries:
+                  - US
+                demographics:
+                  gender:
+                    values:
+                      - non_binary
+                    include_unknown: false
+              targeting_resolution:
+                demographics:
+                  requested:
+                    gender:
+                      values:
+                        - non_binary
+                      include_unknown: false
+                  applied:
+                    gender:
+                      values:
+                        - non_binary
+                      include_unknown: false
+                  equivalent: true
+            description: Update returns the complete effective package targeting and exact demographic readback
+          - check: array_length
+            path: affected_packages
+            value: 1
+            description: Exactly the updated package appears in the response
+          - check: array_length
+            path: affected_packages[0].targeting_overlay.demographics.gender.values
+            value: 1
+            description: Gender readback contains exactly the accepted category set
+          - check: field_absent
+            path: affected_packages[0].targeting_overlay.demographics.age
+            description: Gender-only replacement removes omitted age
+          - check: array_length
+            path: affected_packages[0].targeting_resolution.demographics.requested.gender.values
+            value: 1
+            description: Gender readback contains exactly the accepted category set
+          - check: field_absent
+            path: affected_packages[0].targeting_resolution.demographics.requested.age
+            description: Gender-only replacement removes omitted age
+          - check: array_length
+            path: affected_packages[0].targeting_resolution.demographics.applied.gender.values
+            value: 1
+            description: Gender readback contains exactly the accepted category set
+          - check: field_absent
+            path: affected_packages[0].targeting_resolution.demographics.applied.age
+            description: Gender-only replacement removes omitted age
+      - id: read_gender_only_replacement
+        title: Verify replacement removes age
+        task: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_ids:
+            - $context.gender_media_buy_id
+        expected: Only the selected non-binary predicate remains; age is absent.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_overlay.demographics.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[1].targeting_overlay.demographics.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.requested.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[1].targeting_resolution.demographics.requested.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: array_length
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[1].targeting_resolution.demographics.applied.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[1].targeting_resolution.demographics.applied.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: field_value
+            path: media_buys[0].packages[1].targeting_resolution.demographics.equivalent
+            value: true
+            description: Only exact predicate compilation is stored
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
+            value: US
+            description: Unrelated country targeting survives demographic mutation
+      - id: clear_demographics
+        title: Clear the complete demographic dimension
+        task: update_media_buy
+        schema_ref: media-buy/update-media-buy-request.json
+        response_schema_ref: media-buy/update-media-buy-response.json
+        doc_ref: /media-buy/task-reference/update_media_buy
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_id: $context.gender_media_buy_id
+          packages:
+            - package_id: $context.mixed_package_id
+              targeting_overlay:
+                demographics: null
+          idempotency_key: $generate:uuid_v4#gender_targeting_clear_demographics
+        expected: >-
+          Null is a mutation command that clears the whole demographics dimension when the fixture
+          permits it. It is never stored as null.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: field_contains
+            path: affected_packages[*]
+            value:
+              package_id: $context.mixed_package_id
+              budget: 6000
+              targeting_overlay:
+                geo_countries:
+                  - US
+            description: Update returns the complete effective package targeting and exact demographic readback
+          - check: array_length
+            path: affected_packages
+            value: 1
+            description: Exactly the updated package appears in the response
+          - check: field_absent
+            path: affected_packages[0].targeting_overlay.demographics
+            description: Clear returns absent demographics, never null
+          - check: field_absent
+            path: affected_packages[0].targeting_resolution.demographics
+            description: Clear removes stale demographic resolution
+      - id: read_cleared_demographics
+        title: Verify cleared state contains no demographic predicate
+        task: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_gender_targeting-6bfd65f4
+            sandbox: true
+          media_buy_ids:
+            - $context.gender_media_buy_id
+        expected: >-
+          The cleared package contains no demographics state or stale demographic resolution; the
+          untouched non-binary-only package remains exact.
+        validations:
+          - check: response_schema
+            description: Response matches the task response schema
+          - check: field_absent
+            path: media_buys[0].packages[1].targeting_overlay.demographics
+            description: Cleared targeting is absent rather than null
+          - check: field_absent
+            path: media_buys[0].packages[1].targeting_resolution.demographics
+            description: No stale age or gender resolution remains after clearing
+          - check: array_length
+            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: media_buys[0].packages[0].targeting_overlay.demographics.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[0].targeting_overlay.demographics.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: array_length
+            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[0].targeting_resolution.demographics.requested.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[0].targeting_resolution.demographics.requested.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: array_length
+            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.values
+            value: 1
+            description: The selected category set has exactly the requested size
+          - check: field_contains
+            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.values[*]
+            value: non_binary
+            description: The exact selected category set includes non_binary
+          - check: field_value
+            path: >-
+              media_buys[0].packages[0].targeting_resolution.demographics.applied.gender.include_unknown
+            value: false
+            description: Unknown-gender membership equals the accepted request
+          - check: field_absent
+            path: media_buys[0].packages[0].targeting_resolution.demographics.applied.age
+            description: Gender-only targeting never fabricates an age predicate
+          - check: field_value
+            path: media_buys[0].packages[0].targeting_resolution.demographics.equivalent
+            value: true
+            description: Only exact predicate compilation is stored
+          - check: field_contains
+            path: media_buys[0].packages[1].targeting_overlay.geo_countries[*]
+            value: US
+            description: Unrelated country targeting survives demographic mutation

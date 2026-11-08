@@ -12,61 +12,61 @@
   ],
   "properties": {
     "changes_checkpoint": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/changes_checkpoint"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/changes_checkpoint"
     },
     "scope": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/scope"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/scope"
     },
     "health": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/health"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/health"
     },
     "coverage": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/coverage"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/coverage"
     },
     "data_through": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/data_through"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/data_through"
     },
     "next_expected_at": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/next_expected_at"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/next_expected_at"
     },
     "obligation_counts": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/obligation_counts"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/obligation_counts"
     },
     "issues": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/issues"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/issues"
     },
     "periods": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/periods"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/periods"
     },
     "revisions": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/revisions"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/revisions"
     },
     "adjustments": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/adjustments"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/adjustments"
     },
     "consumer_statuses": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/consumer_statuses"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/consumer_statuses"
     },
     "adjustment_receipts": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/adjustment_receipts"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/adjustment_receipts"
     },
     "pagination": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/pagination"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/pagination"
     },
     "revision": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/revision"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/revision"
     },
     "materializations": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/materializations"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/materializations"
     },
     "receipts": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/receipts"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/receipts"
     },
     "subscription_coverage": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/subscription_coverage"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/subscription_coverage"
     },
     "ext": {
-      "$ref": "/schemas/media-buy/get-reporting-status-response.json#/properties/ext"
+      "$ref": "/schemas/media-buy/get-reporting-status-completed.json#/properties/ext"
     }
   },
   "oneOf": [

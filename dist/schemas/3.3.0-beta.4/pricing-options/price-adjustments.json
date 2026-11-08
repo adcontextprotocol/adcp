@@ -1,0 +1,238 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/pricing-options/price-adjustments.json",
+  "title": "Price Adjustments",
+  "x-added-in": "3.3.0",
+  "description": "Optional ordered adjustment table on a binding fixed-price option; fixed_price is the base rate. A table and a fully priced seller offer have equal standing: a table tells the buyer it can compute the price locally for the selections and dates it covers; without one the price applies only to what was quoted, and yield-managed sellers are not expected to publish one. Composition is one running total in declared order: each firing row adds (fee) or subtracts (discount) round(running x rate) or its amount, so a 10% fee then a 10% fee is x1.21. An index factor f is a fee rate f - 1 or a discount rate 1 - f. Selection rows fire once per dimension (first applicable row); always rows each fire; valid_from/valid_until bound a row at the purchase start_time. A table applies only to the account it was returned for and expires with its quote (proposal or offer expires_at, or the discovery response's validity). Any change to the table mints a new pricing_option_id, so the accepted pricing_option_id (covered by terms_digest) identifies exactly one immutable table: changes the agreement already permits are priced from that table, which both parties retain from discovery and the seller MUST price from, not from a later table. The table grants no change rights; those come only from change_terms[]. Sellers MUST NOT return a table to callers below adcp_version 3.3. See pricing-models.mdx#selection-dependent-price-adjustments.",
+  "type": "array",
+  "items": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "format_option"
+          },
+          "format_option_ref": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/format-option-ref.json",
+            "description": "Matches when the purchase selects it."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fee",
+              "discount"
+            ],
+            "description": "fee adds to the running total, discount subtracts."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Proportion of the running total at this step; a fee rate may be 1 or more."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Fixed amount per pricing unit."
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive window start."
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive window end."
+          },
+          "ext": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "format_option_ref",
+          "kind",
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "placement_selection"
+          },
+          "placement_ref": {
+            "description": "Matches when the purchase selects it.",
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/placement-ref.json"
+                  },
+                  {
+                    "required": [
+                      "publisher_domain"
+                    ]
+                  }
+                ]
+              },
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/placement-identity.json"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fee",
+              "discount"
+            ],
+            "description": "fee adds to the running total, discount subtracts."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Proportion of the running total at this step; a fee rate may be 1 or more."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Fixed amount per pricing unit."
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive window start."
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive window end."
+          },
+          "ext": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "placement_ref",
+          "kind",
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "always"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fee",
+              "discount"
+            ],
+            "description": "fee adds to the running total, discount subtracts."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Proportion of the running total at this step; a fee rate may be 1 or more."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Fixed amount per pricing unit."
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive window start."
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive window end."
+          },
+          "ext": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "kind",
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "minItems": 1,
+  "maxItems": 20,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "composition": "Rows apply sequentially to one running total in declared order; each step rounds half away from zero to price precision.",
+      "price_precision": "Greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv/cpp, and the fewest decimals exactly representing fixed_price and each amount, by numeric value.",
+      "flight_windows": "A flight crossing a row's valid_from or valid_until is rejected with INVALID_REQUEST.",
+      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST carrying resolved_fixed_price and resolved_price_breakdown."
+    }
+  },
+  "x-status": "experimental"
+}

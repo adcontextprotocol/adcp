@@ -245,7 +245,7 @@ test('report and polling responses separate stored snapshots from task errors', 
 });
 
 test('capability declarations publish calendars without implying a product timing promise', async () => {
-  const validate = await compile('protocol/get-adcp-capabilities-response.json');
+  const validate = await compile('protocol/get-adcp-capabilities-completed.json');
   const value = { status: 'completed', adcp_version: '3.3', adcp: { major_versions: [3], supported_versions: ['3.3'], idempotency: { supported: true, replay_ttl_seconds: 86400 } }, supported_protocols: ['media_buy'], business_calendars: [calendar], media_buy: { issue_reporting: true } };
   accepts(validate, value);
   rejects(validate, { ...value, business_calendars: [] });

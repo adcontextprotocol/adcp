@@ -4,6 +4,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const legacyVectorsPath = path.join(__dirname, '..', 'static', 'test-vectors', 'webhook-receiver-envelope.json');
@@ -22,7 +23,7 @@ async function loadExternalSchema(uri) {
   if (uri.startsWith('/schemas/')) {
     const [schemaUri] = uri.split('#');
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaUri.replace('/schemas/', ''));
-    return JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    return readSchemaFile(schemaPath);
   }
   throw new Error(`Cannot load external schema: ${uri}`);
 }
@@ -37,7 +38,7 @@ async function compileWebhookPayloadSchema() {
   addFormats(ajv);
 
   const schemaPath = path.join(SCHEMA_BASE_DIR, 'core', 'mcp-webhook-payload.json');
-  return ajv.compileAsync(JSON.parse(fs.readFileSync(schemaPath, 'utf8')));
+  return ajv.compileAsync(readSchemaFile(schemaPath));
 }
 
 describe('webhook receiver envelope vectors', async () => {

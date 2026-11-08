@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 // Dependency-free: the audit runs without installed packages.
-const { wireResponseSchemaFor } = require('./wire-responses.cjs');
+const { taskResponseSchemaFor } = require('./task-responses.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const DOCS_DIR = path.join(ROOT, 'docs');
@@ -81,15 +81,15 @@ function loadSchemas(schemasDir = SCHEMAS_DIR) {
 
 /**
  * The schema a docs example names: a source document, or a document the
- * schema build generates (a task's wire response,
- * `<protocol>/<task>-wire-response.json`, which composes the task's status
+ * schema build generates (a task's response,
+ * `<protocol>/<task>-response.json`, which composes the task's status
  * bodies), built here from the source tree.
  */
 function lookupSchema(schemas, schemaUri, schemasDir = SCHEMAS_DIR) {
   const found = schemas.get(schemaUri);
   if (found) return found;
   const rel = schemaUri.replace(/^\/schemas\//, '');
-  const generated = wireResponseSchemaFor(schemasDir, rel);
+  const generated = taskResponseSchemaFor(schemasDir, rel);
   if (!generated) return undefined;
   addSchema(schemas, generated, rel, schemasDir);
   return generated;

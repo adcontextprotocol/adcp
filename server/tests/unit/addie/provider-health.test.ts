@@ -3,12 +3,31 @@ import {
   formatProviderUnavailableMessage,
   ProviderHealthController,
 } from '../../../src/addie/model-providers/provider-health.js';
+import { createModelProviderAdapterError } from '../../../src/addie/model-providers/model-provider.js';
 
 function transientError(status = 529): Error & { status: number } {
   return Object.assign(new Error('provider failure'), { status });
 }
 
 describe('ProviderHealthController', () => {
+  it('contains Google payment-required failures across services until one recovery probe succeeds', () => {
+    let now = 1_000;
+    const health = new ProviderHealthController({}, () => now);
+    const error = createModelProviderAdapterError('provider_transport', 402);
+
+    expect(health.recordFailure('google', 'chat', error)).toEqual(expect.objectContaining({
+      allowed: false, category: 'billing_exhausted', retryAfterSeconds: 300,
+    }));
+    expect(health.acquire('google', 'router').allowed).toBe(false);
+    expect(health.acquire('anthropic', 'chat').allowed).toBe(true);
+
+    now += 300_000;
+    expect(health.acquire('google', 'chat').status).toBe('half_open');
+    expect(health.acquire('google', 'router').allowed).toBe(false);
+    health.recordSuccess('google', 'chat');
+    expect(health.acquire('google', 'router').status).toBe('healthy');
+  });
+
   it('opens after bounded consecutive transient failures and isolates services', () => {
     let now = 1_000;
     const health = new ProviderHealthController({ failureThreshold: 3 }, () => now);

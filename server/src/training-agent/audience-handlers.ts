@@ -477,7 +477,7 @@ function sourceResponse(
 export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) {
   return omitFieldsAddedAfterRelease(
     await syncAudiences(args, ctx),
-    'media-buy/sync-audiences-response.json',
+    'media-buy/sync-audiences-completed.json',
     ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
   );
 }

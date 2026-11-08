@@ -6,6 +6,7 @@ const test = require('node:test');
 const YAML = require('yaml');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const root = path.join(__dirname, '..');
 const scenario = YAML.parse(fs.readFileSync(path.join(
@@ -28,7 +29,7 @@ const schemaRoot = path.join(root, 'static/schemas/source');
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(schemaRoot, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(schemaRoot, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {

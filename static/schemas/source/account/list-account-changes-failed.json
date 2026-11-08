@@ -19,22 +19,22 @@
       "minItems": 1
     },
     "changes": {
-      "$ref": "/schemas/account/list-account-changes-response.json#/properties/changes"
+      "$ref": "/schemas/account/list-account-changes-completed.json#/properties/changes"
     },
     "cursor": {
-      "$ref": "/schemas/account/list-account-changes-response.json#/properties/cursor"
+      "$ref": "/schemas/account/list-account-changes-completed.json#/properties/cursor"
     },
     "has_more": {
-      "$ref": "/schemas/account/list-account-changes-response.json#/properties/has_more"
+      "$ref": "/schemas/account/list-account-changes-completed.json#/properties/has_more"
     },
     "available_since": {
-      "$ref": "/schemas/account/list-account-changes-response.json#/properties/available_since"
+      "$ref": "/schemas/account/list-account-changes-completed.json#/properties/available_since"
     },
     "generated_at": {
-      "$ref": "/schemas/account/list-account-changes-response.json#/properties/generated_at"
+      "$ref": "/schemas/account/list-account-changes-completed.json#/properties/generated_at"
     },
     "source_coverage": {
-      "$ref": "/schemas/account/list-account-changes-response.json#/properties/source_coverage"
+      "$ref": "/schemas/account/list-account-changes-completed.json#/properties/source_coverage"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

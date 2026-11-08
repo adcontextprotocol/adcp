@@ -56,8 +56,8 @@ function read(
     principal,
     accountId,
   );
-  // The wire response covers completed reads and failed lookups.
-  const validation = validateSourceSchema('media-buy/get-reporting-status-wire-response.json', response);
+  // The task response covers completed reads and failed lookups.
+  const validation = validateSourceSchema('media-buy/get-reporting-status-response.json', response);
   expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
   return response;
 }

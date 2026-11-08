@@ -1720,6 +1720,49 @@ describe('MCP tool responses include structuredContent', () => {
     expect(structured.formats.length).toBe(4);
   });
 
+  it('list_creative_formats declares URL slot purposes using role', async () => {
+    const result = await client.callTool({ name: 'list_creative_formats', arguments: {} });
+    expect(result.isError).toBeFalsy();
+    type Asset = {
+      asset_id?: string;
+      asset_type?: string;
+      requirements?: Record<string, unknown>;
+      assets?: Asset[];
+    };
+    const { formats } = result.structuredContent as {
+      formats: Array<{ format_id: { id: string }; assets?: Asset[] }>;
+    };
+    const expectedRoles: Record<string, string> = {
+      click_url: 'clickthrough',
+      cta_url: 'clickthrough',
+      impression_tracker: 'impression_tracker',
+    };
+    const declaredRoles = new Set<string>();
+    const inspectAssets = (assets: Asset[]) => {
+      for (const asset of assets) {
+        if (asset.asset_type === 'url') {
+          const requirements = asset.requirements ?? {};
+          expect(requirements).not.toHaveProperty('url_type');
+          if (requirements.role !== undefined) {
+            const expectedRole = expectedRoles[asset.asset_id ?? ''];
+            expect(expectedRole).toBeDefined();
+            expect(requirements.role).toBe(expectedRole);
+            declaredRoles.add(String(requirements.role));
+          }
+        }
+        if (asset.assets) inspectAssets(asset.assets);
+      }
+    };
+    for (const format of formats) inspectAssets(format.assets ?? []);
+    expect(declaredRoles).toEqual(new Set(['clickthrough', 'impression_tracker']));
+    const display = formats.find(format => format.format_id.id === 'display_300x250_image');
+    expect(display?.assets?.find(asset => asset.asset_id === 'click_url')?.requirements?.role)
+      .toBe('clickthrough');
+    const recommendation = formats.find(format => format.format_id.id === 'sponsored_recommendation');
+    expect(recommendation?.assets?.find(asset => asset.asset_id === 'cta_url')?.requirements?.role)
+      .toBe('clickthrough');
+  });
+
   it('list_creative_formats keeps the text summary distinct from structuredContent', async () => {
     const result = await client.callTool({
       name: 'list_creative_formats',

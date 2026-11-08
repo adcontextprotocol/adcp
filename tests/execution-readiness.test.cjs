@@ -4,12 +4,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const ROOT = path.resolve(__dirname, "..");
 const SOURCE = path.join(ROOT, "static", "schemas", "source");
 
 function readJson(relativePath) {
-  return JSON.parse(fs.readFileSync(path.join(SOURCE, relativePath), "utf8"));
+  return readSchemaFile(path.join(SOURCE, relativePath));
 }
 
 async function loadSchema(uri) {
@@ -442,7 +443,7 @@ test("the readiness map rides on a public-scope response", async () => {
     "a map entry needs requirements",
   );
 
-  const schema = readJson("media-buy/get-products-response.json");
+  const schema = readJson("media-buy/get-products-completed.json");
   assert.ok(
     !schema.required?.includes("execution_readiness"),
     "the map is optional",

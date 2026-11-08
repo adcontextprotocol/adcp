@@ -7,7 +7,7 @@
     {
       "title": "GetProductsResponse",
       "description": "Response for completed or failed get_products",
-      "$ref": "/schemas/media-buy/get-products-response.json"
+      "$ref": "/schemas/media-buy/get-products-completed.json"
     },
     {
       "title": "GetProductsRejected",
@@ -32,7 +32,7 @@
     {
       "title": "RequestProposalsResponse",
       "description": "Terminal response for request_proposals",
-      "$ref": "/schemas/media-buy/request-proposals-response.json"
+      "$ref": "/schemas/media-buy/request-proposals-completed.json"
     },
     {
       "title": "RequestProposalsAsyncSubmitted",
@@ -42,7 +42,7 @@
     {
       "title": "RefineProposalsResponse",
       "description": "Terminal response for refine_proposals",
-      "$ref": "/schemas/media-buy/refine-proposals-response.json"
+      "$ref": "/schemas/media-buy/refine-proposals-completed.json"
     },
     {
       "title": "RefineProposalsAsyncSubmitted",
@@ -52,17 +52,17 @@
     {
       "title": "DeclineProposalsResponse",
       "description": "Terminal response for decline_proposals",
-      "$ref": "/schemas/media-buy/decline-proposals-response.json"
+      "$ref": "/schemas/media-buy/decline-proposals-completed.json"
     },
     {
       "title": "MediaBuyCommitmentResponse",
       "description": "Shared terminal response for buy_products and accept_proposal; originating task identity is carried by the task envelope and manifest resolver.",
-      "$ref": "/schemas/media-buy/media-buy-commitment-response.json"
+      "$ref": "/schemas/media-buy/media-buy-commitment-completed.json"
     },
     {
       "title": "ControlMediaBuyResponse",
       "description": "Terminal response for control_media_buy",
-      "$ref": "/schemas/media-buy/control-media-buy-response.json"
+      "$ref": "/schemas/media-buy/control-media-buy-completed.json"
     },
     {
       "title": "CompactTaskSubmitted",
@@ -82,7 +82,7 @@
     {
       "title": "GetSignalsResponse",
       "description": "Response for completed or failed get_signals",
-      "$ref": "/schemas/signals/get-signals-response.json"
+      "$ref": "/schemas/signals/get-signals-completed.json"
     },
     {
       "title": "GetSignalsAsyncWorking",
@@ -97,7 +97,7 @@
     {
       "title": "CreateMediaBuyResponse",
       "description": "Response for completed or failed create_media_buy",
-      "$ref": "/schemas/media-buy/create-media-buy-response.json"
+      "$ref": "/schemas/media-buy/create-media-buy-completed.json"
     },
     {
       "title": "CreateMediaBuyAsyncWorking",
@@ -117,7 +117,7 @@
     {
       "title": "UpdateMediaBuyResponse",
       "description": "Response for completed or failed update_media_buy",
-      "$ref": "/schemas/media-buy/update-media-buy-response.json"
+      "$ref": "/schemas/media-buy/update-media-buy-completed.json"
     },
     {
       "title": "UpdateMediaBuyAsyncWorking",
@@ -142,12 +142,12 @@
     {
       "title": "BuildCreativeResponse",
       "description": "Response for completed or failed build_creative",
-      "$ref": "/schemas/media-buy/build-creative-response.json"
+      "$ref": "/schemas/media-buy/build-creative-completed.json"
     },
     {
       "title": "PreviewCreativeResponse",
       "description": "Terminal response for completed preview_creative",
-      "$ref": "/schemas/creative/preview-creative-response.json"
+      "$ref": "/schemas/creative/preview-creative-completed.json"
     },
     {
       "title": "BuildCreativeAsyncWorking",
@@ -167,7 +167,7 @@
     {
       "title": "GetCreativeFeaturesResponse",
       "description": "Terminal response for completed or failed get_creative_features",
-      "$ref": "/schemas/creative/get-creative-features-response.json"
+      "$ref": "/schemas/creative/get-creative-features-completed.json"
     },
     {
       "title": "GetCreativeFeaturesAsyncSubmitted",
@@ -177,7 +177,7 @@
     {
       "title": "SyncCreativesResponse",
       "description": "Response for completed or failed sync_creatives",
-      "$ref": "/schemas/creative/sync-creatives-response.json"
+      "$ref": "/schemas/creative/sync-creatives-completed.json"
     },
     {
       "title": "SyncCreativesAsyncWorking",
@@ -197,7 +197,7 @@
     {
       "title": "SyncCatalogsResponse",
       "description": "Response for completed or failed sync_catalogs",
-      "$ref": "/schemas/media-buy/sync-catalogs-response.json"
+      "$ref": "/schemas/media-buy/sync-catalogs-completed.json"
     },
     {
       "title": "SyncCatalogsAsyncWorking",

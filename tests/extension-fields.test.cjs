@@ -11,7 +11,7 @@ const addFormats = require('ajv-formats');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 const { discoverTools } = require('../scripts/build-schemas.cjs');
-const { readSourceSchemaDocument } = require('../scripts/wire-responses.cjs');
+const { readSourceSchemaDocument } = require('../scripts/task-responses.cjs');
 
 /** A source document by its `/schemas/...` reference, or the generated one at that path. */
 function readSchemaRef(ref) {
@@ -55,7 +55,7 @@ function reachedDeclaration(node, name, root, seen = new Set()) {
   return null;
 }
 
-/** Wire-response branches of every tool that do not reach `name`. */
+/** Task-response branches of every tool that do not reach `name`. */
 function branchesMissing(name) {
   const missing = [];
   for (const tool of discoverTools(SCHEMA_BASE_DIR)) {
@@ -488,20 +488,20 @@ async function runTests() {
   });
 
   // Test 3C: Response extensions
-  // A tool response is its generated wire response: a oneOf discriminated by
+  // A tool response is its generated task response: a oneOf discriminated by
   // status, one branch per status body. Every branch, through its body and
   // the protocol envelope the body composes, reaches the ext extension point.
   // validate_input's completed body has never declared ext; adding one is a
   // schema change outside this check. The entry must stay accurate: it fails
   // once the body declares ext.
   const BRANCHES_WITHOUT_EXT = ['validate_input completed'];
-  await test('Every wire-response branch reaches ext through its body', async () => {
+  await test('Every task-response branch reaches ext through its body', async () => {
     const missing = branchesMissing('ext');
     const unexpected = missing.filter((branch) => !BRANCHES_WITHOUT_EXT.includes(branch));
     if (unexpected.length) throw new Error(`branches without ext: ${unexpected.join(', ')}`);
     const stale = BRANCHES_WITHOUT_EXT.filter((branch) => !missing.includes(branch));
     if (stale.length) throw new Error(`listed as lacking ext, but reach it: ${stale.join(', ')}`);
-    const wire = readSchemaRef('/schemas/media-buy/create-media-buy-wire-response.json');
+    const wire = readSchemaRef('/schemas/media-buy/create-media-buy-response.json');
     for (const branch of wire.oneOf) {
       validateExtField(reachedDeclaration(branch, 'ext', wire), '/schemas/core/ext.json');
     }
@@ -531,12 +531,12 @@ async function runTests() {
     return true;
   });
 
-  await test('Every wire-response branch reaches context through the envelope', async () => {
+  await test('Every task-response branch reaches context through the envelope', async () => {
     // context is an envelope field: bodies do not declare it, and every
     // branch reaches the envelope's declaration through its body.
     const missing = branchesMissing('context');
     if (missing.length) throw new Error(`branches without context: ${missing.join(', ')}`);
-    const wire = readSchemaRef('/schemas/media-buy/create-media-buy-wire-response.json');
+    const wire = readSchemaRef('/schemas/media-buy/create-media-buy-response.json');
     for (const branch of wire.oneOf) {
       validateExtField(reachedDeclaration(branch, 'context', wire), '/schemas/core/context.json');
     }

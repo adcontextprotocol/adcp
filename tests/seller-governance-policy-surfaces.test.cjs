@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 const {
   checkEntry,
   checkPolicyCategory,
@@ -20,7 +21,7 @@ function readSchema(uri, root = schemaRoot) {
   let relative = uri.replace(/^\/schemas\//, '');
   const versionPrefix = `${path.basename(root)}/`;
   if (relative.startsWith(versionPrefix)) relative = relative.slice(versionPrefix.length);
-  return JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'));
+  return readSchemaFile(path.join(root, relative));
 }
 
 async function validator(uri, root = schemaRoot) {
@@ -86,8 +87,7 @@ test('seller acceptance catalogs preserve explicit gender targeting restrictions
 test('gender and orientation registry definitions validate as separate attributes', async () => {
   const validate = await validator('/schemas/governance/attribute-definition.json');
   for (const attribute of ['sex_gender', 'sex_life_sexual_orientation']) {
-    const definition = JSON.parse(fs.readFileSync(
-      path.join(__dirname, `../static/registry/attributes/${attribute}.json`), 'utf8'));
+    const definition = readSchemaFile(path.join(__dirname, `../static/registry/attributes/${attribute}.json`));
     assert.equal(validate(definition), true, `${attribute}: ${JSON.stringify(validate.errors)}`);
   }
 });
@@ -203,7 +203,7 @@ test('registry platform profiles pin source versions and reject ambiguous region
 
   for (const platform of platformIds) {
     const filename = `${platform}_political_advertising_acceptance.json`;
-    const policy = JSON.parse(fs.readFileSync(path.join(policyDir, filename), 'utf8'));
+    const policy = readSchemaFile(path.join(policyDir, filename));
     assert.equal(validatePolicy(policy), true, `${filename}: ${JSON.stringify(validatePolicy.errors)}`);
     assert.equal(policy.acceptance_profile.coverage, 'partial');
     assert.ok(policy.acceptance_profile.policy_refs.some(ref =>
@@ -217,7 +217,7 @@ test('registry platform profiles pin source versions and reject ambiguous region
     assert.deepEqual(checkEntry(policy, filename), []);
   }
 
-  const google = JSON.parse(fs.readFileSync(path.join(policyDir, 'google_political_advertising_acceptance.json'), 'utf8'));
+  const google = readSchemaFile(path.join(policyDir, 'google_political_advertising_acceptance.json'));
   google.acceptance_profile.rules[1].jurisdiction_groups = ['UNDECLARED_REGION'];
   assert.ok(checkEntry(google, 'google_political_advertising_acceptance.json')
     .some(error => error.includes('undeclared jurisdiction group')));
@@ -246,16 +246,16 @@ test('registry platform profiles pin source versions and reject ambiguous region
     'same-version profile drift must not update the mutable current-policy projection',
   );
 
-  const retiredEu = JSON.parse(fs.readFileSync(path.join(
+  const retiredEu = readSchemaFile(path.join(
     __dirname,
     '../static/registry/policy-versions/eu_dsa_political_targeting/1.0.0.json'
-  ), 'utf8'));
+  ));
   assert.equal(retiredEu.version, '1.0.0');
   assert.equal(validatePolicy(retiredEu), true, JSON.stringify(validatePolicy.errors));
   assert.deepEqual(checkEntry(retiredEu, 'eu_dsa_political_targeting.json'), []);
   assert.match(publicationMigration, new RegExp(policyContentDigest(retiredEu).replace(':', '\\:')));
 
-  const currentEu = JSON.parse(fs.readFileSync(path.join(policyDir, 'eu_dsa_political_targeting.json'), 'utf8'));
+  const currentEu = readSchemaFile(path.join(policyDir, 'eu_dsa_political_targeting.json'));
   assert.match(publicationMigration, new RegExp(policyContentDigest(currentEu).replace(':', '\\:')));
   const canonicalCurrentEu = structuredClone(currentEu);
   delete canonicalCurrentEu.acceptance_profile;
@@ -271,7 +271,7 @@ test('registry platform profiles pin source versions and reject ambiguous region
   assert.ok(checkEntry(unknownFacet, 'google_political_advertising_acceptance.json')
     .some(error => error.includes('unknown political_advertising facet')));
 
-  const category = JSON.parse(fs.readFileSync(path.join(__dirname, '../static/registry/policy-categories/political_advertising.json'), 'utf8'));
+  const category = readSchemaFile(path.join(__dirname, '../static/registry/policy-categories/political_advertising.json'));
   category.facets.push(structuredClone(category.facets[0]));
   assert.ok(checkPolicyCategory(category, 'political_advertising.json').some(error => error.includes('duplicate')));
   category.regulatory_frameworks.find(framework => framework.policy_ids).policy_ids.push('missing_registry_policy');
@@ -433,7 +433,7 @@ test('failed outcomes preserve structured, attributed seller dispositions in aud
     error,
   }), true, JSON.stringify(request.errors));
 
-  const auditSchema = readSchema('/schemas/governance/get-plan-audit-logs-response.json');
+  const auditSchema = readSchema('/schemas/governance/get-plan-audit-logs-completed.json');
   const entry = auditSchema.properties.plans.items.properties.entries.items;
   assert.equal(entry.properties.error.$ref, '/schemas/governance/reported-outcome-error.json');
 });
@@ -497,7 +497,7 @@ test('governance-agent acceptance is an any-of matcher with a typed rejection', 
   assert.match(errors.enumDescriptions.PERMISSION_DENIED, /POLICY_VIOLATION/);
   assert.match(errors.enumDescriptions.PERMISSION_DENIED, /ACTION_NOT_ALLOWED/);
 
-  const validateResponse = await validator('/schemas/account/sync-governance-response.json');
+  const validateResponse = await validator('/schemas/account/sync-governance-completed.json');
   assert.equal(validateResponse({
     adcp_version: '3.2-beta.5',
     accounts: [{

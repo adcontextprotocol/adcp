@@ -7,6 +7,10 @@ track: creative
 requires:
   - controller
 
+requires_capability:
+  path: creative.supports_provenance
+  equals: true
+
 required_tools:
   - get_products
   - sync_creatives
@@ -132,7 +136,7 @@ phases:
         title: "Read accepted_verifiers from creative_policy"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-wire-response.json"
+        response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: false
         expected: |
@@ -157,9 +161,14 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
-          - check: field_present
-            path: "products[0].creative_policy.accepted_verifiers[0].agent_url"
-            description: "Seller publishes at least one accepted verifier"
+          - check: field_contains
+            path: "products[*]"
+            value:
+              product_id: "test-product-truth-of-claim"
+              creative_policy:
+                accepted_verifiers:
+                  - agent_url: "https://test-agent.adcontextprotocol.org/governance/creative-features/mcp"
+            description: "The seeded product publishes the verifier used by subsequent submissions"
           - check: field_value
             path: "context.correlation_id"
             value: "provenance_truth_of_claim--get_products"
@@ -189,7 +198,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-wire-response.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |
@@ -282,7 +291,7 @@ phases:
         task: sync_creatives
         requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-wire-response.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
         stateful: true
         expected: |

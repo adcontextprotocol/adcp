@@ -11,34 +11,34 @@
   ],
   "properties": {
     "signals": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/signals"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/signals"
     },
     "signal_pricing_group_rules": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/signal_pricing_group_rules"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/signal_pricing_group_rules"
     },
     "errors": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/errors"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/errors"
     },
     "incomplete": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/incomplete"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/incomplete"
     },
     "wholesale_feed_version": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/wholesale_feed_version"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/wholesale_feed_version"
     },
     "pricing_version": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/pricing_version"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/pricing_version"
     },
     "cache_scope": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/cache_scope"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/cache_scope"
     },
     "unchanged": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/unchanged"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/unchanged"
     },
     "pagination": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/pagination"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/pagination"
     },
     "sandbox": {
-      "$ref": "/schemas/signals/get-signals-response.json#/properties/sandbox"
+      "$ref": "/schemas/signals/get-signals-completed.json#/properties/sandbox"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

@@ -25,9 +25,9 @@ async function compile(schema) {
 const syncSchema = readSchema('creative/sync-creatives-request.json');
 const assignSchema = syncSchema.properties.assignment_operations.items.oneOf
   .find(variant => variant.properties.operation.const === 'assign');
-const listAssignment = readSchema('creative/list-creatives-response.json')
+const listAssignment = readSchema('creative/list-creatives-completed.json')
   .properties.creatives.items.properties.assignments.properties.assigned_packages.items;
-const buyAssignment = readSchema('media-buy/get-media-buys-response.json')
+const buyAssignment = readSchema('media-buy/get-media-buys-completed.json')
   .properties.media_buys.items.properties.packages.items.properties.creative_approvals.items;
 const urls = [
   'https://example.com/offer',
@@ -88,7 +88,7 @@ test('complete create/update requests validate optional assignment landing pages
 test('complete list/get responses validate effective assignment landing pages', async () => {
   await checkEnclosingSchemas([
     {
-      schema: 'creative/list-creatives-response.json',
+      schema: 'creative/list-creatives-completed.json',
       data: {
         status: 'completed',
         query_summary: { total_matching: 1, returned: 1 },
@@ -105,7 +105,7 @@ test('complete list/get responses validate effective assignment landing pages', 
       assignment: data => data.creatives[0].assignments.assigned_packages[0]
     },
     {
-      schema: 'media-buy/get-media-buys-response.json',
+      schema: 'media-buy/get-media-buys-completed.json',
       data: {
         status: 'completed',
         media_buys: [{
@@ -195,7 +195,7 @@ test('both assignment readback projections validate effective landing pages and 
 });
 
 test('assignment landing page capability defaults off and requires an explicit creative library when enabled', async () => {
-  const creative = readSchema('protocol/get-adcp-capabilities-response.json').properties.creative;
+  const creative = readSchema('protocol/get-adcp-capabilities-completed.json').properties.creative;
   const capability = creative.properties.supports_assignment_landing_page;
   assert.equal(capability.default, false);
   assert.equal(capability['x-added-in'], '3.3.0');

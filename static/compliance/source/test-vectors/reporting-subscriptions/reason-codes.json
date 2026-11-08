@@ -20,12 +20,12 @@
   ],
   "rules": {
     "scope": "The version's scope selects the account: account_ids names it, or all_authorized_accounts with exclude_account_ids not naming it; and operator_domains, when present, lists the account's operator.",
-    "authorization": "The caller is authorized for the account over the period, by the authorization chains (account-authorization.json authorized_at, reporting-subscription-state.json accounts_unauthorized).",
+    "authorization": "The caller is authorized for the account over the period, by the authorization chains (account-authorization.json authorized_at, reporting-subscription-state.json accounts_unauthorized). A grant reduced to allowed_tasks without get_reporting_status is a loss of authority at the reduction, and adding get_reporting_status back is a re-grant.",
     "version": "The period starts at or after the coverage start: the later of the accepted_at of the first version whose scope selects the account and the first authorization chain's authorized_at. (Later chains are the authorization rule's.)",
     "activity": "The subscription is active: the period does not start inside an inactive interval, or after a reactivation but before reactivated_at.",
     "offering": "The buy's packages resolve an offering under the version's selector, and this offering is one of them.",
     "flight": "The period overlaps the buy's flight [start_time, stop) with flight values as of the period end (scope_resolved_at), where stop is the earliest of end_time, canceled_at, and completed_at.",
-    "confirmation": "The buy is confirmed and the period ends after confirmed_at.",
+    "confirmation": "The buy is confirmed and the period ends after confirmed_at, and, for a package added after confirmed_at, after that package's added_at: at least one package resolving the offering is owed the period.",
     "exception": "No get_reporting_status excluded[] entry applying to the buy and offering covers the period start in [from, until).",
     "gap": "No gaps[] entry applying to the offering covers the period start, and without backfill_on_regrant the period does not end after an unauthorized_at and start before the re-grant that continued the chain.",
     "cutover": "The version's side owns the period: it starts at or after the side's handoff E (the side's start instant when it has no outgoing predecessor) and before the next change instant T, at which the next side or a deactivation takes over.",
@@ -59,7 +59,7 @@
       "verdict": "not_owed",
       "rule": "authorization",
       "side": "both",
-      "definition": "The period starts at or after the first chain's authorized_at, but no chain authorizes it: it ends after the unauthorized_at that ended a chain (none is delivered for periods ending after unauthorized_at), and it starts before the authorized_at of any later chain. Periods inside a chain that continued after a re-grant take gap:unauthorized or owed:regrant_backfill instead.",
+      "definition": "The period starts at or after the first chain's authorized_at, but no chain authorizes it: it ends after the unauthorized_at that ended a chain, by revocation or by a grant reduced to allowed_tasks without get_reporting_status (none is delivered for periods ending after unauthorized_at), and it starts before the authorized_at of any later chain. Periods inside a chain that continued after a re-grant take gap:unauthorized or owed:regrant_backfill instead.",
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
         "docs/media-buy/task-reference/get_reporting_status.mdx#when-authorization-ends",
@@ -131,6 +131,17 @@
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
+      ]
+    },
+    {
+      "code": "before_package_added",
+      "verdict": "not_owed",
+      "rule": "confirmation",
+      "side": "both",
+      "definition": "The buy is confirmed and the period ends after confirmed_at, but every package resolving the offering was added after confirmed_at, and the period ends at or before the added_at of each of them (get_media_buys packages[].added_at). The period containing a package's added_at ends after it and is owed in full. A buy whose packages were all part of it at confirmation never takes this reason.",
+      "spec_refs": [
+        "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
+        "static/schemas/source/media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/added_at"
       ]
     },
     {

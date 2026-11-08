@@ -12,7 +12,11 @@ import type {
   EventType,
   CanonicalProposal,
 } from '@adcp/sdk';
-import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } from './candidate-version.js';
+import {
+  TRAINING_AGENT_CANDIDATE_ADCP_VERSION,
+  TRAINING_AGENT_PREVIEW_ADCP_VERSION,
+  TRAINING_AGENT_SERVES_HOSTED_PREVIEW,
+} from './candidate-version.js';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
@@ -86,9 +90,25 @@ export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS: readonly string[] = Obje
   '3.2-rc.0', TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
-  ...(TRAINING_AGENT_CANDIDATE_ADCP_VERSION ? [TRAINING_AGENT_CANDIDATE_ADCP_VERSION] : []),
+  // The opt-in prerelease preview (candidate-version.ts), served only to an
+  // exact pin.
+  ...(TRAINING_AGENT_PREVIEW_ADCP_VERSION ? [TRAINING_AGENT_PREVIEW_ADCP_VERSION] : []),
 ])]);
 export const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0' as const;
+
+/**
+ * The releases an SDK registry can negotiate below its configured ceiling.
+ * The hosted preview is served by its own registry (tenants/registry.ts), so
+ * the stable registries keep exactly the releases they negotiated before it
+ * existed. In candidate mode the candidate stays in, as one registry serves
+ * it. Equal to TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS when the preview is
+ * off.
+ */
+export const TRAINING_AGENT_STABLE_REGISTRY_VERSIONS: readonly string[] = Object.freeze(
+  TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.filter(version => !(
+    TRAINING_AGENT_SERVES_HOSTED_PREVIEW && version === TRAINING_AGENT_PREVIEW_ADCP_VERSION
+  )),
+);
 
 export const PROPOSAL_NEGOTIATION_PROFILES = [
   'ask-only',
@@ -237,6 +257,23 @@ export function supportsAccountChangeFeed(servedVersion: string | undefined): bo
   const minor = Number.parseInt(match[2], 10);
   return major > 3 || (major === 3 && minor >= 2);
 }
+
+/** First wire checkpoint carrying the experimental 3.3 account and reporting
+ * surfaces the training agent serves: account requests (`account.requests`),
+ * `authorization.authorized_at` / `regranted_at`, and principal-level
+ * reporting subscriptions (`media_buy.reporting_subscriptions`). */
+export const ACCOUNT_SURFACES_33_ADCP_VERSION = '3.3-beta' as const;
+
+export function supportsAccountSurfaces33(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, ACCOUNT_SURFACES_33_ADCP_VERSION);
+}
+
+/** Whether this process registers the experimental 3.3 account tools on its
+ * ordinary routes and enforces sandbox grants on every account-scoped call:
+ * only when one registry serves the 3.3 wire to every caller (the trusted
+ * storyboard candidate mode). The hosted preview's own registry and the 3.3
+ * identity route register them too. */
+export const TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33 = supportsAccountSurfaces33(TRAINING_AGENT_CANDIDATE_ADCP_VERSION);
 
 /** An AdCP release version (`3.2`, `3.1-rc.4`, `3.0.28`), parsed. */
 export interface ParsedAdcpReleaseVersion {
@@ -1032,6 +1069,10 @@ export interface PackageState {
   canceledAt?: string;
   canceledBy?: string;
   cancellationReason?: string;
+  /** When the package was added to an already-confirmed buy (get_media_buys
+   * `added_at`, experimental 3.3 reporting subscriptions). Absent for packages
+   * that were part of the buy when it was confirmed. */
+  addedAt?: string;
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];

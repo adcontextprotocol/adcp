@@ -16,6 +16,8 @@ const {
   retainedTrainingSchemaVersions,
   runtimeArtifactManifest,
   verifyRequiredArtifacts,
+  protocolOffloadCandidates,
+  verifyProtocolOffloads,
 } = require("../scripts/prune-runtime-artifacts.cjs");
 
 const repoRoot = resolve(__dirname, "..");
@@ -63,6 +65,12 @@ function fixture() {
   writeFileSync(join(root, "dist", "protocol", "latest.tgz"), "latest protocol\n");
   writeFileSync(join(root, "dist", "protocol", "latest.tgz.sha256"), "checksum\n");
   writeFileSync(join(root, "dist", "protocol", "3.0.0.tgz"), "release sentinel\n");
+  for (const version of ["3.0.0", "3.1.1"]) {
+    writeFileSync(join(root, "dist", "protocol", `${version}.tgz`), `${version} archive\n`);
+    for (const suffix of ["sha256", "sig", "crt"]) {
+      writeFileSync(join(root, "dist", "protocol", `${version}.tgz.${suffix}`), `${version} ${suffix}\n`);
+    }
+  }
   writeJson(join(root, "dist", "schemas", "index.json"), {
     latest: "3.1.2",
     latest_stable: "3.1.2",
@@ -218,4 +226,89 @@ test("noncanonical training checkpoint mappings fail closed", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("image-only protocol offload preserves discovery inventory, required archives and every sidecar", async () => {
+  const root = fixture();
+  try {
+    const sidecars = ["sha256", "sig", "crt"].map((suffix) =>
+      [suffix, readFileSync(join(root, "dist", "protocol", `3.0.0.tgz.${suffix}`))]);
+    assert.deepEqual(protocolOffloadCandidates(root), ["3.0.0.tgz"]);
+    const verified = await verifyProtocolOffloads(root, async (url, options) => {
+      assert.equal(options.redirect, "error");
+      assert.ok(options.signal);
+      if (url === "https://adcontextprotocol.org/protocol/") {
+        return Response.json({ versions: [{ tarball: "/protocol/3.0.0.tgz" }] });
+      }
+      assert.equal(url, "https://adcontextprotocol.org/protocol/3.0.0.tgz");
+      return new Response(readFileSync(join(root, "dist", "protocol", "3.0.0.tgz")), {
+        headers: { etag: '"0123456789abcdef0123456789abcdef-2"' },
+      });
+    });
+    const result = pruneRuntimeArtifacts(root, verified);
+    assert.deepEqual(result.protocolFilesOffloaded, ["3.0.0.tgz"]);
+    assert.equal(existsSync(join(root, "dist", "protocol", "3.0.0.tgz")), false);
+    assert.deepEqual(JSON.parse(readFileSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json"))),
+      { schema_version: 1, files: ["3.0.0.tgz"] });
+    assert.equal(readFileSync(join(root, "dist", "protocol", "3.1.1.tgz"), "utf8"), "3.1.1 archive\n");
+    assert.equal(readFileSync(join(root, "dist", "protocol", "latest.tgz"), "utf8"), "latest protocol\n");
+    for (const [suffix, before] of sidecars) {
+      assert.deepEqual(readFileSync(join(root, "dist", "protocol", `3.0.0.tgz.${suffix}`)), before);
+    }
+    pruneRuntimeArtifacts(root); // Repeated image preparation preserves the offloaded entries.
+    assert.deepEqual(JSON.parse(readFileSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json"))).files,
+      ["3.0.0.tgz"]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("CDN archive verification rejects unavailable, different and interrupted bodies before pruning", async () => {
+  const root = fixture();
+  try {
+    for (const fetchArtifact of [
+      async () => new Response("missing", { status: 404 }),
+      async () => new Response("different bytes", { headers: { etag: '"0123456789abcdef0123456789abcdef"' } }),
+      async () => new Response(readFileSync(join(root, "dist", "protocol", "3.0.0.tgz")),
+        { headers: { etag: 'W/"old-fly-stat"', "fly-request-id": "origin-fallback" } }),
+      async () => new Response(readFileSync(join(root, "dist", "protocol", "3.0.0.tgz")),
+        { headers: { etag: '"0123456789abcdef0123456789abcdef"', "fly-request-id": "origin-fallback" } }),
+      async () => { throw new Error("network interrupted"); },
+    ]) {
+      await assert.rejects(() => verifyProtocolOffloads(root, (url, options) =>
+        url === "https://adcontextprotocol.org/protocol/"
+          ? Promise.resolve(Response.json({ versions: [{ tarball: "/protocol/3.0.0.tgz" }] }))
+          : fetchArtifact(url, options)));
+      assert.ok(existsSync(join(root, "dist", "protocol", "3.0.0.tgz")));
+      assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-beta.2")));
+      assert.equal(existsSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json")), false);
+    }
+    assert.throws(() => pruneRuntimeArtifacts(root, ["3.1.1.tgz"]), /required or unknown/);
+    assert.throws(() => pruneRuntimeArtifacts(root, ["latest.tgz"]), /required or unknown/);
+    assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-beta.2")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("R2 discovery must list every offloaded archive and cannot be a Fly fallback", async () => {
+  const root = fixture();
+  try {
+    await assert.rejects(() => verifyProtocolOffloads(root, async () => Response.json({ versions: [] })),
+      /absent from R2 discovery/);
+    await assert.rejects(() => verifyProtocolOffloads(root, async () => Response.json({
+      versions: [{ tarball: "/protocol/3.0.0.tgz" }],
+    }, { headers: { "fly-request-id": "origin" } })), /R2 protocol discovery unavailable/);
+    assert.ok(existsSync(join(root, "dist", "protocol", "3.0.0.tgz")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("malformed offload inventory and missing sidecars fail before any pruning", () => {
+  const root = fixture();
+  try {
+    writeJson(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json"),
+      { schema_version: 1, files: ["../3.0.0.tgz"] });
+    assert.throws(() => pruneRuntimeArtifacts(root), /Invalid runtime protocol offload inventory/);
+    rmSync(join(root, "dist", "protocol", ".runtime-offloaded-tarballs.json"));
+    rmSync(join(root, "dist", "protocol", "3.0.0.tgz.sha256"));
+    assert.throws(() => pruneRuntimeArtifacts(root, ["3.0.0.tgz"]), /Required protocol checksum is missing/);
+    assert.ok(existsSync(join(root, "dist", "schemas", "3.1.0-beta.2")));
+    assert.ok(existsSync(join(root, "dist", "protocol", "3.0.0.tgz")));
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

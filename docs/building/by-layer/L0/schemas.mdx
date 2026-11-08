@@ -131,7 +131,7 @@ declares one body per envelope status. The file name carries the status:
 
 | Body | Status |
 |------|--------|
-| `<task>-response.json` | `completed` |
+| `<task>-completed.json` | `completed` |
 | `<task>-async-response-submitted.json`, `-working.json`, `-input-required.json` | `submitted`, `working`, `input-required` |
 | `<task>-rejected.json` | `rejected`, a structured business rejection |
 | `<task>-failed.json` | `failed` |
@@ -141,13 +141,14 @@ no body for is not a valid response of that task. Bodies declare no envelope
 field, never test `status`, and stay open. A submitted body composes
 `core/task-submitted.json`, which requires `task_id`.
 
-The schema build generates each task's wire response,
-`<protocol>/<task>-wire-response.json`: a `oneOf` with one branch per status
+The schema build generates each task's response,
+`<protocol>/<task>-response.json`: a `oneOf` with one branch per status
 that has a body, discriminated by `status`. Each branch requires `status`, pins
 it to its own value and composes that status's body, so the branches are
-disjoint. The release manifest's `response_schema` and the MCP projection's
-`outputSchema` name the wire response, so validate a task response against it.
-`<task>-response.json` alone validates only a completed response.
+disjoint. `<task>-response.json` is the task's response for every outcome:
+`index.json`, the release manifest's `response_schema` and the MCP
+projection's `outputSchema` name it, so validate a task response against it.
+`<task>-completed.json` alone validates only a completed response.
 
 ## Compliance storyboards
 
@@ -234,11 +235,11 @@ Schema 2020-12 projection for MCP `2026-07-28` tool discovery:
 ```
 https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/manifest.json
 https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-request.json
-https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-wire-response.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-response.json
 ```
 
 The projection manifest maps every AdCP tool to downloadable `inputSchema` and
-`outputSchema` files. A tool's `outputSchema` is its wire response (see [Task
+`outputSchema` files. A tool's `outputSchema` is its task response (see [Task
 response schemas](#task-response-schemas)). Servers can select and embed these schemas when building
 their `tools/list` response; publishing the artifacts does not automatically
 change a server's MCP registration. MCP disables automatic network

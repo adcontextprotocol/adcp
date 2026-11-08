@@ -434,6 +434,30 @@ describe('OpenAIResponsesProvider', () => {
     expect(() => provider.prepare(request(GOOGLE_DIRECT_FULL_SUITE_MODEL))).toThrow('Unsupported Google router model');
   });
 
+  it.each([false, true])('accepts the documented response redirect only for production (stream=%s)', async stream => {
+    const response = googleResponse({ modelVersion: 'gemini-3.8-flash' });
+    const transport: GoogleGenerateContentTransport = { models: {
+      generateContent: vi.fn().mockResolvedValue(response),
+      generateContentStream: async () => (async function* () { yield response; })(),
+    } };
+    const production = GoogleGenerateContentProvider.forProductionResponses('unused', transport);
+    await expect(collectModelResponse(production.respond(request(GOOGLE_ROUTER_MODEL), { stream })))
+      .resolves.toMatchObject({ provider: 'google', model: 'gemini-3.8-flash' });
+    expect(() => production.prepare(request(GOOGLE_DIRECT_FULL_SUITE_MODEL))).toThrow('Unsupported Google router model');
+    const frozen = new GoogleGenerateContentProvider('unused', transport);
+    await expect(collectModelResponse(frozen.respond(request(GOOGLE_ROUTER_MODEL), { stream })))
+      .rejects.toBeInstanceOf(UnexpectedModelIdentityError);
+    expect(googleReturnedModelIdentityMatches(GOOGLE_ROUTER_MODEL, 'gemini-3.8-flash')).toBe(false);
+  });
+
+  it.each(['gemini-3.8-pro', 'gemini-3.8-flash-20260801', 'gemini-3.9-flash'])('rejects unreviewed production redirects to %s', async modelVersion => {
+    const provider = GoogleGenerateContentProvider.forProductionResponses('unused', { models: {
+      generateContent: vi.fn().mockResolvedValue(googleResponse({ modelVersion })),
+    } });
+    await expect(collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL))))
+      .rejects.toBeInstanceOf(UnexpectedModelIdentityError);
+  });
+
   it('allows Gemini 3.8 Flash only in the direct full-suite adapter scope', () => {
     expect(prepareGoogleGenerateContentEvaluationRequest(request(GOOGLE_DIRECT_FULL_SUITE_MODEL)))
       .toMatchObject({ model: GOOGLE_DIRECT_FULL_SUITE_MODEL });

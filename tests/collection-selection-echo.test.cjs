@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -13,7 +14,7 @@ function schemaPathFromId(schemaId) {
 
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
-  return JSON.parse(fs.readFileSync(schemaPathFromId(uri), 'utf8'));
+  return readSchemaFile(schemaPathFromId(uri));
 }
 
 async function compile(schemaId) {
@@ -24,7 +25,7 @@ async function compile(schemaId) {
     loadSchema: loadExternalSchema,
   });
   addFormats(ajv);
-  return ajv.compileAsync(JSON.parse(fs.readFileSync(schemaPathFromId(schemaId), 'utf8')));
+  return ajv.compileAsync(readSchemaFile(schemaPathFromId(schemaId)));
 }
 
 test('targeting accepts a selected collection set with explicit domain-qualified IDs', async () => {
@@ -129,11 +130,11 @@ test('canonical products expose collection composition for compact-lifecycle sel
   delete fixedBundle.overlay_support;
   assert.equal(validate(fixedBundle), true, JSON.stringify(validate.errors, null, 2));
 
-  const canonical = JSON.parse(fs.readFileSync(schemaPathFromId('/schemas/core/canonical-product.json'), 'utf8'));
-  const legacy = JSON.parse(fs.readFileSync(schemaPathFromId('/schemas/core/product.json'), 'utf8'));
+  const canonical = readSchemaFile(schemaPathFromId('/schemas/core/canonical-product.json'));
+  const legacy = readSchemaFile(schemaPathFromId('/schemas/core/product.json'));
   assert.deepEqual(canonical.properties.collections.items, legacy.properties.collections.items);
   assert.equal(canonical.properties.collection_targeting_allowed.default, false);
-  const fields = JSON.parse(fs.readFileSync(schemaPathFromId('/schemas/media-buy/product-fields.json'), 'utf8'));
+  const fields = readSchemaFile(schemaPathFromId('/schemas/media-buy/product-fields.json'));
   for (const field of ['collections', 'collection_targeting_allowed']) {
     assert.ok(fields.items.enum.includes(field), `list_products fields must project ${field}`);
   }

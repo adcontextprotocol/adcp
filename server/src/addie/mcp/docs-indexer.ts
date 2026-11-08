@@ -28,7 +28,11 @@ const WEBSITE_PAGES_TO_EXCLUDE = [
 // overwhelm keyword ranking. Their referenced component schemas are indexed.
 const SCHEMA_FILES_TO_EXCLUDE = new Set([
   'index.json',
+  // Released trees name the capabilities body get-adcp-capabilities-response.json;
+  // from 3.3 the body is get-adcp-capabilities-completed.json and the build
+  // generates the response from it.
   'protocol/get-adcp-capabilities-response.json',
+  'protocol/get-adcp-capabilities-completed.json',
   'brand.json',
 ]);
 

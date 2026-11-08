@@ -18000,6 +18000,26 @@ describe('get_adcp_capabilities handler', () => {
     expect(signals.signals).toMatchObject({ anonymous_discovery: true });
   });
 
+  it.each(['3.0', '3.1', '3.2'])('withholds provenance capability from the %s contract', async servedAdcpVersion => {
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion,
+    });
+
+    expect(result.creative).not.toHaveProperty('supports_provenance');
+  });
+
+  it('advertises provenance enforcement on the 3.3 seller contract', async () => {
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: '3.3-beta.1',
+    });
+
+    expect(result.creative).toMatchObject({ supports_provenance: true });
+  });
+
   it('advertises a served acceptance-policy catalog with an exact byte digest', async () => {
     const result = await handleGetAdcpCapabilities({}, {
       ...DEFAULT_CTX,
@@ -21182,6 +21202,72 @@ describe('proposal lifecycle', () => {
     });
   });
 
+  it('accepts explicit-package opportunity correlation without closing a planning cycle', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const correlationAccount = { account_id: 'public_sandbox' };
+    const opportunity = { opportunity_id: 'opp-package-correlation-2027' };
+    const requested = await simulateCallTool(server, 'request_proposals', {
+      account: correlationAccount,
+      brand: account.brand,
+      brief: 'social engagement display',
+      opportunity: { ...opportunity, status: 'open' },
+    });
+    expect(requested.isError, JSON.stringify(requested.result)).toBeFalsy();
+    const createArgs = {
+      account: correlationAccount,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [{
+        product_id: 'pinnacle_news_display_premium',
+        pricing_option_id: 'pinnacle_news_display_premium_pricing_0',
+        budget: 5000,
+      }],
+      opportunity,
+    };
+    for (const [suffix, update] of [
+      ['open', { status: 'open' }],
+      ['close', { status: 'closed', close_reason: 'accepted_with_seller' }],
+      ['consent', { later_proposals: { accepted: true } }],
+      ['withdraw', { later_proposals: { accepted: false } }],
+    ] as const) {
+      const rejected = await simulateCallTool(server, 'create_media_buy', {
+        ...createArgs,
+        idempotency_key: `package-correlation-${suffix}-0001`,
+        opportunity: { ...opportunity, ...update },
+      });
+      expect(rejected.isError, JSON.stringify(rejected.result)).toBe(true);
+      expect(rejected.result).toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    const first = await simulateCallTool(server, 'create_media_buy', {
+      ...createArgs,
+      idempotency_key: 'package-correlation-first-0001',
+    });
+    expect(first.isError, JSON.stringify(first.result)).toBeFalsy();
+    const second = await simulateCallTool(server, 'create_media_buy', {
+      ...createArgs,
+      idempotency_key: 'package-correlation-second-0001',
+    });
+    expect(second.isError, JSON.stringify(second.result)).toBeFalsy();
+    expect(second.result.media_buy_id).not.toBe(first.result.media_buy_id);
+    const replay = await simulateCallTool(server, 'create_media_buy', {
+      ...createArgs,
+      idempotency_key: 'package-correlation-first-0001',
+    });
+    expect(replay.isError, JSON.stringify(replay.result)).toBeFalsy();
+    expect(replay.result).toMatchObject({ media_buy_id: first.result.media_buy_id, replayed: true });
+    await runWithSessionContext(async () => {
+      const buySession = await findMediaBuyAcrossSessions(first.result.media_buy_id as string);
+      expect(buySession?.mediaBuys.size).toBe(2);
+      const session = await getSession(proposalSessionKey);
+      expect(session.lastGetProductsContext?.proposals?.length).toBeGreaterThan(0);
+      for (const proposal of session.lastGetProductsContext?.proposals ?? []) {
+        expect(proposal).toMatchObject({ __opportunity_id: opportunity.opportunity_id });
+        expect(proposal).not.toHaveProperty('__opportunity_update');
+        expect(proposal).not.toHaveProperty('__executed');
+      }
+    });
+  });
+
   it('connects the compact request, refine, and purchase lifecycle', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const lifecycleOpportunity = {
@@ -21264,6 +21350,7 @@ describe('proposal lifecycle', () => {
     };
     for (const [suffix, opportunity] of [
       ['missing-id', { status: 'closed', close_reason: 'accepted_with_seller' }],
+      ['wrong-id', { opportunity_id: 'opp-another-planning-cycle' }],
       ['wrong-close', {
         opportunity_id: 'opp-create-validation',
         status: 'closed',

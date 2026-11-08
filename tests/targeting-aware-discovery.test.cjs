@@ -414,7 +414,7 @@ test("frequency cap scope is determined by request location", async () => {
   );
 
   const getMediaBuys = JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "get-media-buys-response.json"), "utf8")
+    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "get-media-buys-completed.json"), "utf8")
   );
   assert.equal(
     getMediaBuys.properties.media_buys.items.properties.frequency_cap.$ref,
@@ -423,7 +423,7 @@ test("frequency cap scope is determined by request location", async () => {
   );
 
   const capabilities = JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, "protocol", "get-adcp-capabilities-response.json"), "utf8")
+    fs.readFileSync(path.join(SCHEMA_ROOT, "protocol", "get-adcp-capabilities-completed.json"), "utf8")
   );
   const mediaBuyCapabilities = capabilities.properties.media_buy.properties;
   assert.equal(
@@ -587,13 +587,13 @@ test("split proposal responses expose brief targeting resolution", async () => {
 
   const requestSchema = JSON.parse(
     fs.readFileSync(
-      path.join(SCHEMA_ROOT, "media-buy", "request-proposals-response.json"),
+      path.join(SCHEMA_ROOT, "media-buy", "request-proposals-completed.json"),
       "utf8"
     )
   );
   const refineSchema = JSON.parse(
     fs.readFileSync(
-      path.join(SCHEMA_ROOT, "media-buy", "refine-proposals-response.json"),
+      path.join(SCHEMA_ROOT, "media-buy", "refine-proposals-completed.json"),
       "utf8"
     )
   );
@@ -1039,7 +1039,7 @@ test("seller targeting rollups are explicit true-valued routing hints", async ()
       path.join(
         SCHEMA_ROOT,
         "protocol",
-        "get-adcp-capabilities-response.json"
+        "get-adcp-capabilities-completed.json"
       ),
       "utf8"
     )
@@ -1095,7 +1095,7 @@ test("3.2 targeting discovery is release-gated without a redundant feature flag"
       path.join(
         SCHEMA_ROOT,
         "protocol",
-        "get-adcp-capabilities-response.json"
+        "get-adcp-capabilities-completed.json"
       ),
       "utf8"
     )
@@ -1148,7 +1148,7 @@ test("wholesale cache scope includes targeting-aware discovery inputs everywhere
     "utf8"
   );
   const responseSchema = fs.readFileSync(
-    path.join(SCHEMA_ROOT, "media-buy", "get-products-response.json"),
+    path.join(SCHEMA_ROOT, "media-buy", "get-products-completed.json"),
     "utf8"
   );
   const taskReference = fs.readFileSync(
@@ -1204,9 +1204,12 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
         validation.path === path &&
         (value === undefined || validation.value === value)
     );
-  const hasFilterCheck = (id, check, path) =>
+  const hasFilterCheck = (id, check, path, value) =>
     filterStep(id).validations.some(
-      (validation) => validation.check === check && validation.path === path
+      (validation) =>
+        validation.check === check &&
+        validation.path === path &&
+        (value === undefined || validation.value === value)
     );
 
   assert.equal(storyboard.introduced_in, "3.2");
@@ -1256,20 +1259,19 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
       "the delivery negative probe checks every returned product while allowing valid empty results");
   }
 
-  assert.equal(
-    hasFilterCheck("get_filtered_brief_products", "field_absent", "products[1]"),
-    true,
-    "brief mode must grade exclusion of the negative-control product"
-  );
-  assert.equal(
-    hasFilterCheck(
-      "get_filtered_wholesale_products",
-      "field_absent",
-      "products[1]"
-    ),
-    true,
-    "wholesale mode must grade exclusion of the negative-control product"
-  );
+  for (const mode of ["brief", "wholesale"]) {
+    const id = `get_filtered_${mode}_products`;
+    assert.equal(
+      hasFilterCheck(id, "field_excludes", "products[*].product_id", "filter_behavior_negative_channel"),
+      true,
+      `${mode} mode must grade exclusion of the specific negative-control product`
+    );
+    assert.equal(
+      hasFilterCheck(id, "field_absent", "products[1]"),
+      false,
+      `${mode} mode must permit additional matching products`
+    );
+  }
   assert.equal(
     hasFilterCheck("filter_refined_product_out", "field_absent", "products[0]"),
     true,

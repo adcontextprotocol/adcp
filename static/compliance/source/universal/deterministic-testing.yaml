@@ -55,6 +55,14 @@ prerequisites:
   test_kit: 'test-kits/acme-outdoor.yaml'
   controller_seeding: true
 
+# Bind pre-flight product and pricing-option seeds to the fixture-consuming account.
+context:
+  account:
+    brand:
+      domain: "acmeoutdoor.example"
+    operator: "pinnacle-agency.example"
+    sandbox: true
+
 fixtures:
   products:
     - product_id: 'test-product'
@@ -368,6 +376,7 @@ phases:
           Return at least one account with an account_id.
 
         sample_request:
+          account: '$context.account'
           context:
             correlation_id: "deterministic_testing--list_accounts_for_state"
 
@@ -567,7 +576,7 @@ phases:
           media_buy_id is used for controller-driven state transitions.
         task: create_media_buy
         schema_ref: 'media-buy/create-media-buy-request.json'
-        response_schema_ref: 'media-buy/create-media-buy-wire-response.json'
+        response_schema_ref: 'media-buy/create-media-buy-response.json'
         doc_ref: '/media-buy/task-reference/create_media_buy'
         comply_scenario: deterministic_media_buy
         stateful: true
@@ -618,6 +627,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -700,6 +712,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -747,6 +762,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -801,7 +819,7 @@ phases:
           for controller-driven transitions.
         task: sync_creatives
         schema_ref: 'creative/sync-creatives-request.json'
-        response_schema_ref: 'creative/sync-creatives-wire-response.json'
+        response_schema_ref: 'creative/sync-creatives-response.json'
         doc_ref: '/creative/task-reference/sync_creatives'
         comply_scenario: deterministic_creative
         stateful: true
@@ -855,6 +873,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -897,6 +918,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -937,6 +961,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -975,7 +1002,7 @@ phases:
           the rejection path starts from processing rather than archived.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-wire-response.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/media-buy/task-reference/sync_creatives"
         comply_scenario: deterministic_creative
         stateful: true
@@ -1028,6 +1055,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -1211,7 +1241,7 @@ phases:
           Create a media buy to receive simulated delivery data.
         task: create_media_buy
         schema_ref: 'media-buy/create-media-buy-request.json'
-        response_schema_ref: 'media-buy/create-media-buy-wire-response.json'
+        response_schema_ref: 'media-buy/create-media-buy-response.json'
         doc_ref: '/media-buy/task-reference/create_media_buy'
         comply_scenario: deterministic_delivery
         stateful: true
@@ -1263,6 +1293,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -1355,7 +1388,7 @@ phases:
           Create a media buy with a known budget for spend simulation.
         task: create_media_buy
         schema_ref: 'media-buy/create-media-buy-request.json'
-        response_schema_ref: 'media-buy/create-media-buy-wire-response.json'
+        response_schema_ref: 'media-buy/create-media-buy-response.json'
         doc_ref: '/media-buy/task-reference/create_media_buy'
         comply_scenario: deterministic_budget
         stateful: true
@@ -1407,6 +1440,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
@@ -1445,6 +1481,9 @@ phases:
 
         sample_request:
           account:
+            brand:
+              domain: 'acmeoutdoor.example'
+            operator: 'pinnacle-agency.example'
             sandbox: true
           brand:
             domain: 'acmeoutdoor.example'

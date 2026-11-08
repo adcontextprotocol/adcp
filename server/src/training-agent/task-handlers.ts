@@ -54,8 +54,13 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
-import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
+import { packageReportingOfferingIds } from './package-reporting-offerings.js';
+import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
+import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
+import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
+import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
+import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem } from './assignment-operations.js';
+import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -1868,6 +1873,7 @@ function validateCreateAssignmentSemantics(
   session: SessionState,
   fieldPrefix: string,
   packageRequirements: CanonicalPackageFormat[] = [],
+  options: { declaresAssignmentSettings?: boolean } = {},
 ): TaskError[] {
   const errors: TaskError[] = [];
   const effectiveModes = new Set(assignments.map(assignment => assignment.rotation_mode ?? 'weighted'));
@@ -1921,6 +1927,28 @@ function validateCreateAssignmentSemantics(
     const creative = typeof assignment.creative_id === 'string'
       ? session.creatives.get(assignment.creative_id)
       : undefined;
+    const settings = assignment as unknown as { trackers?: unknown; landing_page_url?: unknown };
+    if (options.declaresAssignmentSettings === false) {
+      for (const field of ['trackers', 'landing_page_url'] as const) {
+        if (settings[field] !== undefined) {
+          errors.push({
+            code: 'UNSUPPORTED_FEATURE',
+            message: `${fieldPrefix}[${index}].${field} requires creative.supports_assignment_${field === 'trackers' ? 'trackers' : 'landing_page'}`,
+            field: `${fieldPrefix}[${index}].${field}`,
+          });
+        }
+      }
+    } else if (Array.isArray(settings.trackers) && settings.trackers.length > 0) {
+      const slotProblem = assignmentTrackerSlotProblem(
+        { formatsToProvide: packageRequirements },
+        creative?.manifest,
+        creative,
+        settings.trackers as Array<Record<string, unknown>>,
+      );
+      if (slotProblem) {
+        errors.push({ code: 'VALIDATION_ERROR', message: `${fieldPrefix}[${index}]: ${slotProblem}`, field: `${fieldPrefix}[${index}].trackers` });
+      }
+    }
     const routedPlacements: Record<string, unknown>[] = [];
     const hasExplicitRoute = (Array.isArray(assignment.placement_refs) && assignment.placement_refs.length > 0)
       || (Array.isArray(assignment.placement_ids) && assignment.placement_ids.length > 0);
@@ -3416,11 +3444,16 @@ function parsedSupportedReleaseVersions(supportedVersions: readonly string[]): P
     .sort(compareAdcpReleaseVersions);
 }
 
+/** The release a major-only request is served: the highest supported entry
+ * in that major, except the opt-in preview (candidate-version.ts), which is
+ * served only to an exact pin (versioning.mdx, "Pre-release pins"). A
+ * major-only request is never upgraded onto it. */
 function highestSupportedRelease(
   major?: number,
   supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
 ): string | undefined {
-  const parsedVersions = parsedSupportedReleaseVersions(supportedVersions);
+  const parsedVersions = parsedSupportedReleaseVersions(supportedVersions)
+    .filter(version => version.raw !== TRAINING_AGENT_PREVIEW_ADCP_VERSION);
   const candidates = major === undefined
     ? parsedVersions
     : parsedVersions.filter(version => version.major === major);
@@ -7773,7 +7806,20 @@ function withCanonicalProposalEnvelope(
     delete internal.__canonical_terms_digest;
   }
   internal.__commercial_start_time ??= new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  internal.__commercial_end_time ??= new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+  if (internal.__commercial_end_time === undefined) {
+    // A 3.3 hold plan (holds/context.ts) stretches the flight over the
+    // upcoming installments the draft buys; otherwise the default applies.
+    const defaultEnd = Date.now() + 31 * 24 * 60 * 60 * 1000;
+    const allocated = Array.isArray(internal.allocations)
+      ? (internal.allocations as Array<{ product_id?: unknown }>).map(allocation => (
+        typeof allocation.product_id === 'string'
+          ? products.get(allocation.product_id)
+            ?? getCatalog().find(entry => entry.product.product_id === allocation.product_id)?.product
+          : undefined
+      ))
+      : [];
+    internal.__commercial_end_time = new Date(installmentFlightEnd(allocated, defaultEnd) ?? defaultEnd).toISOString();
+  }
   internal.__proposal_kind ??= 'new_media_buy';
   const commercialTerms = buildCanonicalCommercialTerms(internal as unknown as Proposal, products, brand);
   internal.__canonical_commercial_terms = commercialTerms;
@@ -10335,6 +10381,9 @@ function legacyProposalOwnerMatches(
     && internal.__legacy_owner_account_scope === ownerAccountScope;
 }
 
+/** Product snapshots a session carries forward for later refinements. */
+const MAX_CARRIED_PRODUCT_SNAPSHOTS = 500;
+
 /** Compact proposal operations are partitioned by authenticated principal and
  * the SDK-restored account reference. */
 function productDiscoverySessionKey(args: ToolArgs, ctx: TrainingContext): string {
@@ -10595,7 +10644,7 @@ const ACCEPT_PROPOSAL_INPUT_SCHEMA = loadProductDiscoveryInputSchema('accept-pro
 const CONTROL_MEDIA_BUY_INPUT_SCHEMA = loadProductDiscoveryInputSchema('control-media-buy-request');
 const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
   type: 'object',
-  description: 'Planning-cycle closure for proposal execution. Omit status to infer accepted closure, or send closed with accepted_with_seller.',
+  description: 'Planning-cycle context. Explicit packages carry opportunity_id for account-scoped correlation only and omit status, close_reason, close_detail, and later_proposals; they never change opportunity status or consent. Proposal execution infers accepted closure when status is omitted, or accepts closed with accepted_with_seller. Canonical request validation enforces the mode-specific rules.',
   properties: {
     opportunity_id: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{1,255}$' },
     phase: { type: 'string', enum: ['exploratory', 'planning', 'active_sourcing'] },
@@ -10819,7 +10868,6 @@ const TOOLS = [
         },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
-      dependencies: { opportunity: ['proposal_id'] },
     },
   },
   {
@@ -12812,6 +12860,9 @@ async function handleGetProductsUnlocked(
           },
           { rebuild: true },
         );
+      // A 3.3 hold plan (holds/service.ts) sets the hold deadline it placed.
+      const plannedExpiry = refinement?.action === 'finalize' ? plannedHoldExpiry(sourceId) : undefined;
+      if (plannedExpiry) (successor as unknown as Record<string, unknown>).expires_at = plannedExpiry;
       if (refinement?.changeKind === 'cancellation') {
         const successorInternal = successor as unknown as Record<string, unknown>;
         const commercialTerms = structuredClone(successorInternal.__canonical_commercial_terms) as Record<string, unknown>;
@@ -12955,8 +13006,14 @@ async function handleGetProductsUnlocked(
   // Brief/wholesale discovery must remain read-only so concurrent reads cannot
   // overwrite a proposal committed by a serialized refine request.
   if (buyingMode === 'refine' || requireProposals) {
+    // Keep the snapshots that supported earlier drafts as well: a buyer may
+    // request several drafts and finalize an earlier one, whose seeded
+    // products are not otherwise addressable from a compact refine.
+    const responseProductIds = new Set(responseProducts.map(product => product.product_id));
+    const earlierProducts = (session.lastGetProductsContext?.products ?? [])
+      .filter(product => !responseProductIds.has(product.product_id));
     session.lastGetProductsContext = {
-      products: responseProducts,
+      products: [...responseProducts, ...earlierProducts].slice(0, MAX_CARRIED_PRODUCT_SNAPSHOTS),
       proposals: persistedProposals,
     };
   }
@@ -16678,6 +16735,7 @@ async function handleCreateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${i}].creative_assignments`,
         formatSnapshot.formats ?? [],
+        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
       ));
     }
 
@@ -16833,6 +16891,11 @@ async function handleCreateMediaBuyUnlocked(
   const mediaBuyId = typeof requestedMediaBuyId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(requestedMediaBuyId)
     ? requestedMediaBuyId
     : `mb_${randomUUID().slice(0, 8)}`;
+  // package_id is the seller's unique identifier for the package
+  // (core/package.json), and sync_creatives addresses a package by package_id
+  // alone, so number packages across the account's buys rather than per buy.
+  const firstPackageIndex = nextPackageIndex(session);
+  createdPackages.forEach((pkg, index) => { pkg.packageId = `pkg-${firstPackageIndex + index}`; });
   const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
   if (govCtx && governanceAgents[0] && governanceIntentClaims) {
@@ -17071,6 +17134,25 @@ async function handleCreateMediaBuyUnlocked(
   };
 }
 
+/**
+ * The media buys get_media_buys shows the caller for one account, without
+ * the compliance-fixture fallback a broad empty read returns. Reporting
+ * subscription coverage reads buys through this, so it covers exactly the
+ * buys the caller can see.
+ */
+export async function mediaBuysVisibleForAccount(account: AccountRef, ctx: TrainingContext): Promise<MediaBuyState[]> {
+  const req = { account } as GetMediaBuysArgs;
+  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const own = Array.from(session.mediaBuys.values());
+  if (own.length > 0) return own;
+  const ownerSession = await findSessionMatching(candidate => (
+    Array.from(candidate.mediaBuys.values()).some(mediaBuy => accountRefVisibleToRequest(mediaBuy.accountRef, account, ctx))
+  ));
+  return ownerSession
+    ? Array.from(ownerSession.mediaBuys.values()).filter(mediaBuy => accountRefVisibleToRequest(mediaBuy.accountRef, account, ctx))
+    : [];
+}
+
 export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = {
     ...(args as unknown as GetMediaBuysArgs),
@@ -17157,6 +17239,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
     paginationBlock = { has_more: false, total_count: buys.length };
   }
 
+  const subscriptionFields = supportsAccountSurfaces33(ctx.servedAdcpVersion);
   return {
     media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb, session);
@@ -17210,9 +17293,21 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             reason: mb.cancellationReason,
           },
         }),
+        // 3.3 reporting subscriptions: the training agent stops delivery when
+        // it records a cancellation, and a completed buy completed at its end.
+        ...(subscriptionFields && mb.canceledAt && { cancellation_effective_at: mb.canceledAt }),
+        ...(subscriptionFields && status === 'completed' && { completed_at: mb.endTime }),
         packages: mb.packages.map(pkg => {
           const pkgData = {
             package_id: pkg.packageId,
+            ...(subscriptionFields && {
+              reporting_delivery_offering_ids: packageReportingOfferingIds(
+                mb,
+                pkg,
+                session.configuredProducts as unknown as Map<string, { reporting_capabilities?: unknown }>,
+              ),
+            }),
+            ...(subscriptionFields && pkg.addedAt && { added_at: pkg.addedAt }),
             ...(pkg.legacyOmitProductId ? {} : { product_id: pkg.productId }),
             ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
             ...(pkg.dailyBudgetCap !== undefined && { daily_budget_cap: pkg.dailyBudgetCap }),
@@ -17232,6 +17327,12 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
+              ...(declaresAssignmentSettings(ctx) && assignmentReadbackFields(
+                assignmentRow(pkg, cid),
+                session.creatives.get(cid)
+                  ?? getSharedAccountCreative(resolveAccountIdForRef(sessionKey, ctx.principal, req.account), cid),
+                { supportsTrackers: true, supportsLandingPage: true },
+              )),
             })),
             ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
             ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
@@ -18160,13 +18261,50 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   const isDryRun = req.dry_run === true;
   const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
-  if (!req.creatives?.length) {
+  const assignmentOperations = (req as unknown as { assignment_operations?: Array<Record<string, unknown>> }).assignment_operations;
+  if (!req.creatives?.length && !req.assignments?.length && !assignmentOperations?.length) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'creatives array is required' }] as TaskError[],
+      errors: [{ code: 'INVALID_REQUEST', message: 'At least one of creatives, assignments, or assignment_operations is required' }] as TaskError[],
     };
   }
+  if (assignmentOperations?.length && (req as unknown as { validation_mode?: string }).validation_mode === 'lenient') {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'assignment_operations are atomic and require validation_mode strict.', field: 'validation_mode' }] as TaskError[],
+    };
+  }
+  // assignment_operations make the whole request atomic. When it also carries
+  // creatives or legacy assignments, rehearse it first so a failure leaves
+  // nothing changed.
+  if (assignmentOperations?.length && (req.creatives?.length || req.assignments?.length) && !isDryRun) {
+    const rehearsal = await handleSyncCreatives({ ...args, dry_run: true } as ToolArgs, ctx) as {
+      errors?: TaskError[];
+      creatives?: SyncCreativeResult[];
+    };
+    if (rehearsal.errors?.length) return { errors: rehearsal.errors };
+    const failedAssignment = (rehearsal as { assignments?: AssignmentResult[] }).assignments
+      ?.find(result => result.status === 'error');
+    if (failedAssignment) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `Assignment of ${failedAssignment.creative_id} to ${failedAssignment.package_id} failed, so the atomic request applied nothing: ${failedAssignment.message ?? 'invalid assignment'}`,
+          field: 'assignments',
+        }] as TaskError[],
+      };
+    }
+    const failed = rehearsal.creatives?.find(result => result.action === 'failed');
+    if (failed) {
+      return {
+        errors: [{
+          code: failed.errors?.[0]?.code ?? 'VALIDATION_ERROR',
+          message: `Creative ${failed.creative_id} was not accepted, so the atomic request applied nothing: ${failed.errors?.[0]?.message ?? 'validation failed'}`,
+          field: `creatives[${failed.creative_id}]`,
+        }] as TaskError[],
+      };
+    }
+  }
 
-  if (!isDryRun && session.creatives.size + req.creatives.length > MAX_CREATIVES_PER_SESSION) {
+  if (!isDryRun && session.creatives.size + (req.creatives?.length ?? 0) > MAX_CREATIVES_PER_SESSION) {
     return {
       errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_CREATIVES_PER_SESSION} creatives). Start a new session.` }] as TaskError[],
     };
@@ -18186,7 +18324,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   const results: SyncCreativeResult[] = [];
   const stagedCreativeManifests = new Map<string, CreativeManifest>();
-  for (const creative of req.creatives) {
+  for (const creative of req.creatives ?? []) {
     if (!creative.creative_id) {
       return {
         errors: [{
@@ -18621,6 +18759,36 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
   }
 
+  if (assignmentOperations?.length) {
+    const accepted = new Set(results.filter(result => result.action !== 'failed').map(result => result.creative_id));
+    const statusById = new Map(results.filter(result => result.status).map(result => [result.creative_id, result.status as string]));
+    const settings = declaresAssignmentSettings(ctx);
+    const plan = await planAssignmentOperations(session, assignmentOperations, {
+      supportsTrackers: settings,
+      supportsLandingPage: settings,
+      requestCreativeIds: accepted,
+      creativeStatus: creativeId => statusById.get(creativeId)
+        ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.status,
+      validateForPackage: async (creativeId, pkg) => {
+        const product = productValidationMap.get(pkg.productId);
+        const manifest = stagedCreativeManifests.get(creativeId)
+          ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.manifest;
+        if (!product || !manifest) return undefined;
+        const violations = await validateCreativeForProduct(product, manifest);
+        return violations.length > 0
+          ? `Creative ${creativeId} does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`
+          : undefined;
+      },
+      validateTrackers: (creativeId, pkg, trackers) => {
+        const stored = session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId);
+        const manifest = stagedCreativeManifests.get(creativeId) ?? stored?.manifest;
+        return assignmentTrackerSlotProblem(pkg, manifest, stored, trackers);
+      },
+    });
+    if ('errors' in plan) return { errors: plan.errors as TaskError[] };
+    if (!isDryRun) commitAssignmentPlan(session, plan, new Date().toISOString());
+  }
+
   return {
     ...(isDryRun && { dry_run: true }),
     creatives: results,
@@ -18698,6 +18866,19 @@ const FROZEN_PAGINATION_CREATIVE_IDS = new Set([
   'pagination_integrity_creative_3',
 ]);
 
+/** Next free pkg-N index across the account's buys. Deterministic, and the
+ * first buy in a fresh account still gets pkg-0, pkg-1, ... */
+function nextPackageIndex(session: Pick<SessionState, 'mediaBuys'>): number {
+  let max = -1;
+  for (const mb of session.mediaBuys.values()) {
+    for (const pkg of mb.packages) {
+      const match = /^pkg-(\d+)$/.exec(pkg.packageId);
+      if (match) max = Math.max(max, Number(match[1]));
+    }
+  }
+  return max + 1;
+}
+
 const EMPTY_FORMAT_IDENTITY = { formatId: undefined, formatKind: undefined, formatOptionRef: undefined } as const;
 
 /** Live creative updates ship with the creative library surfaces (3.2+ wire,
@@ -18716,6 +18897,46 @@ function liveCreativeUpdatesEnabled(ctx: TrainingContext): boolean {
 /** Only sellers with media buys can have live creatives to declare for. */
 function declaresLiveCreativeUpdates(ctx: TrainingContext): boolean {
   return liveCreativeUpdatesEnabled(ctx) && (ctx.tenantId === 'sales' || ctx.tenantId == null);
+}
+
+/**
+ * Assignment trackers and the creative's own trackers share each format's
+ * declared tracker slots. Check every format option the package accepts for
+ * the creative's format kind (or all of them when none matches).
+ */
+function assignmentTrackerSlotProblem(
+  pkg: Pick<PackageState, 'formatsToProvide' | 'formatKind' | 'params'>,
+  manifest: CreativeManifest | undefined,
+  stored: CreativeState | undefined,
+  trackers: ReadonlyArray<Record<string, unknown>>,
+): string | undefined {
+  const assets = (manifest?.assets ?? stored?.assets ?? {}) as Record<string, unknown>;
+  const formatKind = manifest?.format_kind ?? stored?.formatKind;
+  const formats = (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[];
+  const matching = formats.filter(format => !formatKind || format.format_kind === formatKind);
+  const candidates = matching.length > 0 ? matching : formats;
+  const declarations = candidates.length > 0
+    ? candidates.map(format => ({
+      label: format.format_option_id ?? format.format_kind ?? 'format',
+      slots: normalizeCanonicalSlots(format.params?.slots) ?? CANONICAL_FORMAT_SLOTS[format.format_kind ?? ''] ?? [],
+    }))
+    : [{
+      label: pkg.formatKind ?? 'format',
+      slots: normalizeCanonicalSlots(pkg.params?.slots) ?? CANONICAL_FORMAT_SLOTS[pkg.formatKind ?? ''] ?? [],
+    }];
+  for (const { label, slots } of declarations) {
+    const trackerSlots = slots.filter(isTrackerSlot);
+    const occupancy = Object.fromEntries(trackerSlots.map(slot => [slot.asset_group_id, slotCount(assets, slot.asset_group_id)]));
+    const problem = trackerAllocationProblem(trackerSlots, occupancy, trackers);
+    if (problem) return `${problem} (format option ${label})`;
+  }
+  return undefined;
+}
+
+/** Assignment trackers and landing-page overrides (3.3) ride the same gate:
+ * /sales on the 3.3 wire, where list_creatives and get_media_buys read them back. */
+function declaresAssignmentSettings(ctx: TrainingContext): boolean {
+  return declaresLiveCreativeUpdates(ctx);
 }
 
 function storedCreativeFormatRecord(creative: CreativeState): Record<string, unknown> {
@@ -18805,6 +19026,8 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     include_purged?: boolean;
     include_webhook_activity?: boolean;
     webhook_activity_limit?: number;
+    include_assignments?: boolean;
+    assignment_limit?: number;
     fields?: string[];
   };
   const filters = (req.filters ?? {}) as CreativeListFilters;
@@ -19020,6 +19243,29 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         if (c.stagedUpdate && (!selectedFields || selectedFields.has('staged_update'))) {
           base.staged_update = stagedUpdateWire(c.stagedUpdate);
         }
+      }
+      if (declaresAssignmentSettings(ctx) && req.include_assignments !== false
+        && (!selectedFields || selectedFields.has('assignments'))) {
+        const rows: Array<Record<string, unknown>> = [];
+        for (const mb of session.mediaBuys.values()) {
+          if (!isOpenMediaBuy(mb)) continue;
+          for (const pkg of mb.packages) {
+            if (pkg.canceled || !pkg.creativeAssignments.includes(c.creativeId)) continue;
+            rows.push({
+              package_id: pkg.packageId,
+              media_buy_id: mb.mediaBuyId,
+              assigned_date: mb.createdAt,
+              ...assignmentReadbackFields(assignmentRow(pkg, c.creativeId), c, { supportsTrackers: true, supportsLandingPage: true }),
+            });
+          }
+        }
+        const limit = Math.min(Math.max(req.assignment_limit ?? 50, 1), 200);
+        base.assignments = {
+          assignment_count: rows.length,
+          returned_assignment_count: Math.min(rows.length, limit),
+          assignments_truncated: rows.length > limit,
+          assigned_packages: rows.slice(0, limit),
+        };
       }
       if (c.purge) {
         base.purge = {
@@ -19738,6 +19984,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `packages[${pkgId}].creative_assignments`,
           (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20044,6 +20291,12 @@ async function handleUpdateMediaBuyUnlocked(
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
       };
     }
+    // Number new packages after every pkg-N in the account, including this
+    // buy's own (the working copy may hold packages the session doesn't yet).
+    const firstNewPackageIndex = Math.max(
+      nextPackageIndex(session),
+      nextPackageIndex({ mediaBuys: new Map([[mb.mediaBuyId, mb]]) }),
+    );
     for (let i = 0; i < newPackages.length; i++) {
       const npkg = newPackages[i];
       const productId = npkg.product_id;
@@ -20079,7 +20332,7 @@ async function handleUpdateMediaBuyUnlocked(
         formatSnapshot.selectedLegacyFormatIds,
       );
 
-      const pkgId = `pkg-${mb.packages.length + i}`;
+      const pkgId = `pkg-${firstNewPackageIndex + i}`;
       const newTargeting = genderTargetingMutation(undefined, npkg.targeting_overlay ?? npkg.targeting);
       const targetingResult = validateTargeting(newTargeting, `new_packages[${i}].targeting_overlay`);
       if (targetingResult.errors.length) {
@@ -20150,6 +20403,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `new_packages[${i}].creative_assignments`,
           formatSnapshot.formats ?? [],
+          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20192,6 +20446,9 @@ async function handleUpdateMediaBuyUnlocked(
         ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
         frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
+        // A package added to a confirmed buy is owed reporting-subscription
+        // periods from here, as the buy is from confirmed_at.
+        ...(mb.confirmedAt && { addedAt: now }),
       };
       stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
       mb.packages.push(newPkg);
@@ -20343,6 +20600,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${pkg.packageId}].creative_assignments`,
         (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
       );
       if (assignmentErrors.length) return { errors: assignmentErrors };
     }
@@ -20800,7 +21058,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
+      ...(!isThreeZeroStoryboardCompat(ctx) && { supports_provenance: true }),
       ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability() }),
+      ...(declaresAssignmentSettings(ctx) && {
+        supports_assignment_trackers: true,
+        supports_assignment_landing_page: true,
+      }),
       ...(supportedCreativeFormats ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
         supported_formats: supportedCreativeFormats,
@@ -20853,7 +21116,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   // property-breakdown feature flags on a 3.2 response.
   return omitFieldsAddedAfterRelease(
     capabilities,
-    'protocol/get-adcp-capabilities-response.json',
+    'protocol/get-adcp-capabilities-completed.json',
     isThreeZeroResponse ? '3.0' : servedAdcpVersion,
   );
 }
@@ -23178,10 +23441,23 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
     for (const product of session.lastGetProductsContext?.products ?? []) {
       if (!refinementProducts.has(product.product_id)) refinementProducts.set(product.product_id, product);
     }
+    // force_hold_unavailable directives (comply_test_controller) live in the
+    // compact session's hold ledger, which the controller writes for these
+    // routes too.
+    const holdLedger = loadHoldDocument(session);
+    const requestedRefinements = (args as unknown as { refinements?: unknown }).refinements;
+    const finalizeIds = new Set((Array.isArray(requestedRefinements) ? requestedRefinements as unknown[] : [])
+      .filter((entry): entry is { action: unknown; proposal_id: unknown } => typeof entry === 'object' && entry !== null)
+      .filter(entry => entry.action === 'finalize' && typeof entry.proposal_id === 'string')
+      .map(entry => entry.proposal_id as string));
+    const forcedHoldUnavailable = new Set(holdLedger.forced
+      .map(entry => entry.proposal_id)
+      .filter(id => finalizeIds.has(id)));
     const policyContext: TrainingProposalPolicyContext = {
       profile,
       now,
       activeHoldCount,
+      ...(forcedHoldUnavailable.size > 0 && { forcedHoldUnavailable }),
       purchaseForProduct: purchaseForTrainingProduct,
       productForPurchase: productId => refinementProducts.get(productId),
     };
@@ -23205,6 +23481,11 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       adcp_version: '3.2',
       adcp_major_version: 3,
     }, policyContext);
+    if (forcedHoldUnavailable.size > 0 && Array.isArray((response as { results?: unknown }).results)) {
+      // The finalize attempted the forced holds, so the directives are consumed.
+      holdLedger.forced = holdLedger.forced.filter(entry => !forcedHoldUnavailable.has(entry.proposal_id));
+      saveHoldDocument(session, holdLedger, now.getTime());
+    }
     await flushDirtySessions();
     return response;
   } catch (error) {
@@ -23237,6 +23518,57 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       key: lockKey,
       claimToken: claim.claimToken,
     });
+  }
+}
+
+// ── Compact proposal state for experimental 3.3 holds (holds/service.ts) ──
+
+/** The session holding the caller's compact proposal snapshots. */
+export function compactProposalSessionKey(ctx: TrainingContext): string {
+  return productDiscoverySessionKey({ __compact_proposal_lifecycle: true } as unknown as ToolArgs, ctx);
+}
+
+/** The canonical wire form of a stored compact proposal snapshot. */
+export function compactProposalOutward(internal: Record<string, unknown>): Record<string, unknown> {
+  return outwardProposal(internal, new Map(getCatalog().map(entry => [entry.product.product_id, entry.product])));
+}
+
+/** A catalog product, with its installments. */
+export function compactCatalogProduct(productId: string): Product | undefined {
+  return getCatalog().find(entry => entry.product.product_id === productId)?.product;
+}
+
+/**
+ * Run `fn` against the caller's compact proposal session while holding the
+ * same session mutex the proposal engine writes under, then persist it. A
+ * competing writer gets the engine's transient CONFLICT.
+ */
+export async function withCompactProposalSessionLock<T extends object>(
+  ctx: TrainingContext,
+  fn: (session: SessionState) => Promise<T> | T,
+): Promise<T | { errors: TaskError[] }> {
+  const sessionScope = compactProposalSessionKey(ctx);
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const lockPrincipal = 'get-products-session-mutex';
+  const lockKey = `get-products-session:${sessionHash}`;
+  const lockStore = getIdempotencyStore();
+  const claim = await lockStore.check({ principal: lockPrincipal, key: lockKey, payload: { session: sessionHash } });
+  if (claim.kind !== 'miss') {
+    return {
+      errors: [{
+        code: 'CONFLICT',
+        message: 'Another proposal lifecycle request is already updating this session. Retry shortly.',
+        recovery: 'transient',
+      }] as TaskError[],
+    };
+  }
+  try {
+    evictSessionFromRequestCache(sessionScope);
+    const result = await fn(await getSession(sessionScope));
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await lockStore.release({ principal: lockPrincipal, key: lockKey, claimToken: claim.claimToken });
   }
 }
 

@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/account/request-account-request.json",
+  "title": "Request Account Request",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "The single account write (experimental, account.requests). Open an account (brand and operator: the seller finds an existing one or creates one) or change one (account_id plus the attributes to change), possibly after human review on either side. Every write is a request with the same lifecycle. Experimental in 3.3 (#8280): sellers implementing this task MUST list account.requests in experimental_features. Retries are safe through idempotency_key; deduplicating separate requests for the same advertiser is seller discretion, with non-normative guidance in the task docs. Send either account_id, or brand and operator; sellers enforce this at runtime so the MCP input schema stays a plain root object, and reject a request carrying both, or neither, with INVALID_REQUEST. With account_id, every other field present is a requested change, validated as when the account opens: brand.domain and brand.brand_id must equal the account's (a different brand is a different account, INVALID_REQUEST), currency and timezone change only on sellers that list them in account.requests.changeable_attributes and are otherwise refused with UNSUPPORTED_FEATURE, and sandbox never changes. A timezone change is a reporting cutover for account_timezone periods. Authorization (change or select): the seller first resolves account_id against the caller's own access and answers an unreachable account exactly as an unknown one, before any other validation of the body. A change requires request_account in the caller's allowed_tasks for that account and read_only: false; when the grant lists request_account under field_scopes, every changed field (including billing, billing_entity, and payment_terms) must be in that allowlist, as field_scopes already works. Otherwise SCOPE_INSUFFICIENT, READ_ONLY_SCOPE, or FIELD_NOT_PERMITTED. A change that goes in_review re-checks revision when it resolves; if the account changed meanwhile, the request is rejected with CONFLICT. A new change request for the same account from the same caller supersedes that caller's open change request: the new request gets its own request_id and must carry every change still wanted, and the open one moves to rejected with CONFLICT and details.superseded_by. It never affects another caller's request.",
+  "x-tool-summary": "Request an advertiser account: the seller matches an existing account or creates one, possibly after human review.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key that makes retries of this call safe, with the standard replay semantics. A replayed key returns the original request; a new key is a new request. Use a fresh UUID v4 for each logical call.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Change, or select, an existing account. With other fields present, the request changes those attributes on this account; the account keeps its account_id, media buys, and history. With no other fields, it selects the account: a candidate from an ambiguous request, or, on a platform that owns its account namespace, an account the caller's credential does not reach yet. For an account_id the caller cannot reach, the seller MUST answer the same way whether or not the account exists: either always rejected with ACCOUNT_NOT_FOUND, or, for sellers that support access requests, always in_review with waiting_on: buyer and kind: grant. Mutually exclusive with operator; brand is allowed only to change countries.",
+      "x-entity": "account"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Continue one of the caller's own open requests. With account_id and no change fields: pick a candidate from an ambiguous request, or name the account a human created after a sign_up action; the open request resolves as matched. Change requests are never edited in place: send a new change request instead, which supersedes the open one. Unknown request_ids, or another caller's, are treated as not found."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Guard when changing an account (with account_id): the account revision the change is based on. Required when the change touches billing, billing_entity, or payment_terms, because a lost update there costs money; optional for other changes. Sellers enforce this at runtime and reject a money change without revision with INVALID_REQUEST. A stale revision fails the call with CONFLICT and changes nothing. Read it from list_accounts."
+    },
+    "allow_separate_account": {
+      "type": "boolean",
+      "default": false,
+      "description": "Change requests only (with account_id and change fields): whether the seller may answer by opening a separate account that carries the requested change, leaving this account unchanged (resolution: created). When false or absent, a seller that would accept the change only as a separate account rejects the request with ACCOUNT_CHANGE_REQUIRES_NEW_ACCOUNT instead. It never permits changing or retiring the named account, and it is ignored when opening an account."
+    },
+    "brand": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/brand-key.json",
+      "description": "Advertiser identity. Required to open an account. Sellers matching on brand use domain and brand_id; countries is an attribute. With account_id, send brand only to change countries; domain and brand_id must equal the account's."
+    },
+    "operator": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent."
+    },
+    "operator_unit": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/operator-unit.json",
+      "description": "Optional operator-owned business unit or seat. An account attribute; name is display metadata."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency for a currency-bound advertiser object, as in sync_accounts. An account attribute set when the account opens."
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Buyer-selected timezone when the seller declares account_fixed, buyer_selected timezones, as in sync_accounts. An account attribute set when the account opens."
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Request a sandbox account. An account attribute: a sandbox request does not match a production account."
+    },
+    "billing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/billing-party.json",
+      "description": "Requested invoiced party. A requested term, not account identity. The seller accepts it exactly or rejects the request; billing is never silently remapped."
+    },
+    "billing_entity": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/business-entity.json",
+      "description": "Requested business entity for the invoiced party. A requested term, not account identity. Bank details are write-only."
+    },
+    "payment_terms": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/payment-terms.json",
+      "description": "Requested payment terms. A requested term, not account identity. The seller accepts them or rejects the request."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Agency requests an operator-billed account for one advertiser",
+      "data": {
+        "adcp_version": "3.3",
+        "idempotency_key": "3f1d2a8c-6b0e-4c7a-9d51-8e2f4a6b9c10",
+        "brand": {
+          "domain": "renault.fr",
+          "countries": [
+            "FR"
+          ]
+        },
+        "operator": "wppmedia.fr",
+        "currency": "EUR",
+        "billing": "operator",
+        "billing_entity": {
+          "legal_name": "WPP Media France SAS"
+        }
+      }
+    },
+    {
+      "description": "Pick one candidate after an ambiguous result",
+      "data": {
+        "adcp_version": "3.3",
+        "idempotency_key": "8c2e7d41-0a9b-4f63-b5d8-1e4c7a2f9b30",
+        "account_id": "act_1029384756"
+      }
+    }
+  ]
+}

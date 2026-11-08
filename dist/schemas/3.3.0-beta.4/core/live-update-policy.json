@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/live-update-policy.json",
+  "title": "Live Update Policy",
+  "description": "Which kinds of change a seller applies in place to a live creative, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. The declaration is a floor (see get_adcp_capabilities creative.live_updates): a kind that is not listed may still be accepted for some creatives, and a sync_creatives dry_run returns the exact outcome of one change.",
+  "type": "object",
+  "properties": {
+    "in_place": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "Change kinds applied in place, each with its serving mode. At most one entry per change kind (sellers MUST NOT list a kind twice). An empty array means live creatives are immutable apart from name and tags.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "change": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/creative-change-kind.json"
+          },
+          "serving": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/live-update-serving-mode.json"
+          },
+          "on_rejection": {
+            "type": "string",
+            "enum": [
+              "keeps_prior",
+              "stops"
+            ],
+            "description": "Only with serving staged; defaults to keeps_prior. keeps_prior: if review rejects the staged update, the prior version keeps serving and the creative's status is unchanged. stops: the creative transitions to rejected and stops serving, with impairments on its media buys."
+          }
+        },
+        "required": [
+          "change",
+          "serving"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "serving": {
+                  "not": {
+                    "const": "staged"
+                  }
+                }
+              },
+              "required": [
+                "serving"
+              ]
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "on_rejection"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "in_place"
+  ],
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

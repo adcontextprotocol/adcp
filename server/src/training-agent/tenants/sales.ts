@@ -19,13 +19,18 @@ import {
 } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
-import { listAccountChangesTool, listAccountsTool, syncGovernanceTool } from './account-tools.js';
+import { listAccountChangesTool, listAccountsTool, requestAccountTool, syncGovernanceTool } from './account-tools.js';
+import { listCollectionsTool } from '../collections/list-collections.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
 import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleSyncCatalogs } from '../catalog-event-handlers.js';
-import { supportsAccountChangeFeed, type TrainingContext } from '../types.js';
+import {
+  supportsAccountChangeFeed,
+  TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33,
+  type TrainingContext,
+} from '../types.js';
 import { syncAgentNotificationConfigsLegacy } from '../agent-notification-configs.js';
 import { getPrincipalLegacy, syncPrincipalLegacy } from '../principal.js';
 
@@ -207,6 +212,20 @@ const SYNC_CATALOGS_SCHEMA = {
   ext: z.any().optional(),
 };
 
+// The SDK's get_principal input shape predates the experimental 3.3
+// reporting_subscription_page; MCP input parsing drops undeclared keys.
+const GET_PRINCIPAL_SCHEMA = {
+  ...TOOL_INPUT_SHAPES.get_principal!,
+  reporting_subscription_page: z.object({
+    subscription_id: z.string().min(1).max(64).regex(/^[A-Za-z0-9_.:-]{1,64}$/),
+    list: z.enum(['accounts_with_exceptions', 'accounts_unauthorized', 'prior_versions']),
+    pagination: z.object({
+      max_results: z.number().int().min(1).max(100).optional(),
+      cursor: z.string().min(1).max(1024).optional(),
+    }).optional(),
+  }).strict().optional(),
+};
+
 export function buildSalesTenantConfig(
   host: string,
   options: {
@@ -214,6 +233,8 @@ export function buildSalesTenantConfig(
     proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
     /** Set on the experimental 3.3 identity route's registry holder. */
     identity33?: unknown;
+    /** Set on the hosted 3.3 preview's registry holder. */
+    preview?: boolean;
   } = {},
   taskRegistry?: TaskRegistry,
 ): {
@@ -225,6 +246,7 @@ export function buildSalesTenantConfig(
     options.storyboardCompat,
     options.proposalNegotiationProfile ?? 'ask-only',
     taskRegistry,
+    options.preview === true,
   );
   return {
     tenantId: TENANT_ID,
@@ -260,6 +282,17 @@ export function buildSalesTenantConfig(
         },
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
+          // Experimental 3.3 account requests: registered where the 3.3 wire
+          // is served (the identity route, the hosted preview, and storyboard
+          // candidate mode).
+          ...(options.storyboardCompat?.version !== '3.0'
+            && (options.identity33 || options.preview || TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33)
+            && { request_account: requestAccountTool() }),
+          // Experimental 3.3 collection catalog (media_buy.collection_catalog),
+          // registered where the 3.3 wire is served, like request_account.
+          ...(options.storyboardCompat?.version !== '3.0'
+            && (options.identity33 || options.preview || TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33)
+            && { list_collections: listCollectionsTool() }),
           report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
           ...(options.storyboardCompat?.version !== '3.0' && {
             get_reporting_status: customToolFor(
@@ -319,7 +352,7 @@ export function buildSalesTenantConfig(
             get_principal: customToolFor(
               'get_principal',
               'Read the authenticated caller\'s seller-resolved identity, standing configuration, version, and destination setup states.',
-              TOOL_INPUT_SHAPES.get_principal!,
+              GET_PRINCIPAL_SCHEMA,
               getPrincipalLegacy,
               { annotations: { readOnlyHint: true, idempotentHint: true } },
             ),
