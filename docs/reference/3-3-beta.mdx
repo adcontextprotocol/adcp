@@ -70,13 +70,13 @@ Useful tests are:
 
 ## Try the preview on the public test agent
 
-The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.3` as an opt-in preview alongside its stable releases. It lists `"3.3-beta.3"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
+The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.4` as an opt-in preview alongside its stable releases. It lists `"3.3-beta.4"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
 
 | Request | Served |
 |---|---|
-| `adcp_version: "3.3-beta.3"` | The preview. Responses echo `"3.3-beta.3"` and validate against the published `3.3.0-beta.3` schemas. |
+| `adcp_version: "3.3-beta.4"` | The preview. Responses echo `"3.3-beta.4"` and validate against the published `3.3.0-beta.4` schemas. |
 | `adcp_version: "3.2"`, `"3.3"`, or a later release | 3.2. A release pin never resolves onto a prerelease. |
-| Any other 3.3 prerelease, such as `"3.3-beta.2"` | Never the preview. Prerelease pins match exactly. |
+| Any other 3.3 prerelease, such as `"3.3-beta.3"` or `"3.3-beta.5"` | Never the preview. Prerelease pins match exactly. |
 | `adcp_major_version` alone, or no version | The route's stable default, never the preview. |
 
 ```bash
@@ -84,7 +84,7 @@ curl -s https://test-agent.adcontextprotocol.org/sales/mcp \
   -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-beta.3"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-beta.4"}}}'
 ```
 
 At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the training agent implements:
@@ -114,10 +114,10 @@ Other products take the default: a hold that never contends.
 
 `tools/list` includes `request_account` and `list_collections` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it).
 
-With `@adcp/sdk`, use 17.0.0-beta.11 or later, which negotiates exactly `3.3-beta.3`. Earlier 17.0.0 betas bundle an older beta, so they settle on 3.2 with the test agent.
+With `@adcp/sdk`, use 17.0.0-beta.18 or later, which negotiates exactly `3.3-beta.4`. Earlier 17.0.0 betas negotiate an older beta, so they settle on 3.2 with the test agent. `3.3.0-beta.5` is published, but no `@adcp/sdk` release negotiates it yet; the preview moves to it when one does.
 
 <Warning>
-**The preview is experimental and can change without notice.** It follows the latest published beta and moves to the next one when it ships. Once it moves, the old pin is no longer served. AAO can also switch the preview off, after which the agent serves only its stable releases. Use it to try 3.3 surfaces, not as a stable integration target.
+**The preview is experimental and can change without notice.** It follows the 3.3 beta that the current `@adcp/sdk` prerelease negotiates, so it can trail the latest published beta, and it moves when the SDK does. Once it moves, the old pin is no longer served. AAO can also switch the preview off, after which the agent serves only its stable releases. Use it to try 3.3 surfaces, not as a stable integration target.
 </Warning>
 
 <Note>
@@ -238,9 +238,9 @@ Four records document surfaces merged for beta.0 and are accepted (decided 2026-
 | Delivery and measurement | [#7253](https://github.com/adcontextprotocol/adcp/issues/7253) | DOOH impression basis: typed tier, effective multiplier, and derivation link | — | — |
 | Security and signing | [#7812](https://github.com/adcontextprotocol/adcp/issues/7812) | `error.mutation_outcome` on failed mutations | — | `mutation_outcome` on `core/error.json` (#7935) |
 | Security and signing | [#7577](https://github.com/adcontextprotocol/adcp/issues/7577) | Checklist step position grading | — | — |
-| Targeting and inventory | [#8375](https://github.com/adcontextprotocol/adcp/issues/8375) | Supported match keys in capabilities and `Product.identity` | [#8446](https://github.com/adcontextprotocol/adcp/pull/8446) (draft) | — |
-| Targeting and inventory | [#8450](https://github.com/adcontextprotocol/adcp/issues/8450) | `required_match_keys` filter on `get_products` for cross-publisher cap planning | — (follow-up to draft [#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) | — |
-| Targeting and inventory | [#8451](https://github.com/adcontextprotocol/adcp/issues/8451) | Conformance coverage for match keys before graduating `media_buy.match_keys` | — (follow-up to draft [#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) | — |
+| Targeting and inventory | [#8375](https://github.com/adcontextprotocol/adcp/issues/8375) | Supported match keys in capabilities and `Product.identity` | — | Experimental `media_buy.supported_match_keys` and `Product.identity.match_keys` ([#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) |
+| Targeting and inventory | [#8450](https://github.com/adcontextprotocol/adcp/issues/8450) | `required_match_keys` filter on `get_products` for cross-publisher cap planning | — (follow-up to [#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) | — |
+| Targeting and inventory | [#8451](https://github.com/adcontextprotocol/adcp/issues/8451) | Conformance coverage for match keys before graduating `media_buy.match_keys` | — (follow-up to [#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) | — |
 | Creative and brand | [#8107](https://github.com/adcontextprotocol/adcp/issues/8107) | `3gp`, `mpeg`, and `m4v` video containers | — | — |
 | Creative and brand | [#8092](https://github.com/adcontextprotocol/adcp/issues/8092) | Creator and show cards on collections | — | Collection cards, follower counts, response collections, and `list_collections` (#8094, #8098, #8141, #8279) |
 | Signals, audiences, catalogs | [#8023](https://github.com/adcontextprotocol/adcp/issues/8023) | Audience overlap read | [#8031](https://github.com/adcontextprotocol/adcp/pull/8031) (draft) | Audience size ranges (#8024) |

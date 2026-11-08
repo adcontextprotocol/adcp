@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import express from 'express';
 import http from 'node:http';
+import { ADCP_VERSION as SDK_ADCP_VERSION, SingleAgentClient, closeMCPConnections } from '@adcp/sdk';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'preview-version-test-token';
 
@@ -33,8 +34,8 @@ type Structured = Record<string, any>;
 
 describe('hosted 3.3 preview selection', () => {
   it('serves the published preview by default, in every runtime', () => {
-    expect(PREVIEW).toBe('3.3-beta.3');
-    expect(TRAINING_AGENT_HOSTED_PREVIEW.bundle).toBe('3.3.0-beta.3');
+    expect(PREVIEW).toBe('3.3-beta.4');
+    expect(TRAINING_AGENT_HOSTED_PREVIEW.bundle).toBe('3.3.0-beta.4');
     expect(TRAINING_AGENT_PREVIEW_ADCP_VERSION).toBe(PREVIEW);
     for (const NODE_ENV of ['production', 'development', 'test', undefined]) {
       expect(trainingAgentPreviewVersion({ NODE_ENV })).toBe(PREVIEW);
@@ -52,10 +53,10 @@ describe('hosted 3.3 preview selection', () => {
   });
 
   it('yields to a trusted storyboard candidate', () => {
-    const candidate = { NODE_ENV: 'test', ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1', ADCP_TRAINING_CANDIDATE_VERSION: '3.3-beta.4' };
-    expect(trainingAgentPreviewVersion(candidate)).toBe('3.3-beta.4');
+    const candidate = { NODE_ENV: 'test', ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1', ADCP_TRAINING_CANDIDATE_VERSION: '3.3-beta.5' };
+    expect(trainingAgentPreviewVersion(candidate)).toBe('3.3-beta.5');
     // The kill switch governs only the hosted preview.
-    expect(trainingAgentPreviewVersion({ ...candidate, [TRAINING_AGENT_PREVIEW_KILL_SWITCH]: '1' })).toBe('3.3-beta.4');
+    expect(trainingAgentPreviewVersion({ ...candidate, [TRAINING_AGENT_PREVIEW_KILL_SWITCH]: '1' })).toBe('3.3-beta.5');
     // Candidate mode never applies outside the test runtime.
     expect(trainingAgentPreviewVersion({ ...candidate, NODE_ENV: 'production' })).toBe(PREVIEW);
   });
@@ -74,7 +75,7 @@ describe('hosted 3.3 preview selection', () => {
       expect(resolveServedAdcpVersion({ adcp_version })).toEqual({ ok: true, servedVersion: '3.2' });
     }
     // Other prereleases of the line are matched exactly, so they are refused.
-    for (const adcp_version of ['3.3-beta.1', '3.3-beta.4', '3.3-rc.1']) {
+    for (const adcp_version of ['3.3-beta.3', '3.3-beta.5', '3.3-rc.1']) {
       expect(resolveServedAdcpVersion({ adcp_version }).ok).toBe(false);
     }
     expect(resolveServedAdcpVersion({}).ok && resolveServedAdcpVersion({}).servedVersion).toBe('3.0');
@@ -89,7 +90,7 @@ describe('hosted 3.3 preview selection', () => {
     expect(requestPinsPreview(call({ adcp_version: PREVIEW }))).toBe(true);
     expect(requestPinsPreview({ method: 'tools/list', params: { _meta: { adcp_version: PREVIEW } } })).toBe(true);
     expect(requestPinsPreview({ method: 'tools/list', params: { adcp_version: PREVIEW } })).toBe(true);
-    for (const args of [{}, { adcp_major_version: 3 }, { adcp_version: '3.2' }, { adcp_version: '3.3' }, { adcp_version: '3.3-beta.1' }, { adcp_version: '3.3.0-beta.3' }]) {
+    for (const args of [{}, { adcp_major_version: 3 }, { adcp_version: '3.2' }, { adcp_version: '3.3' }, { adcp_version: '3.3-beta.3' }, { adcp_version: '3.3.0-beta.4' }]) {
       expect(requestPinsPreview(call(args)), JSON.stringify(args)).toBe(false);
     }
     expect(requestPinsPreview({ method: 'tools/list', params: {} })).toBe(false);
@@ -161,15 +162,42 @@ describe('hosted 3.3 preview negotiation over MCP', () => {
       expect(result.adcp.supported_versions.filter((version: string) => version === PREVIEW)).toHaveLength(1);
       expect(result.adcp.supported_versions).toContain('3.2');
       expect(result.adcp.supported_versions).not.toContain('3.3-beta.1');
+      // The previous preview is no longer served once the preview moves.
+      expect(result.adcp.supported_versions).not.toContain('3.3-beta.3');
     }
-    // A 3.3 prerelease the agent does not list never selects the preview,
-    // nor the SDK's own packaged 3.3 beta.
-    for (const adcp_version of ['3.3-beta.1', '3.3-beta.4']) {
+    // A 3.3 prerelease the agent does not list never selects the preview:
+    // neither the previous preview nor a later beta.
+    for (const adcp_version of ['3.3-beta.3', '3.3-beta.5']) {
       const result = await call(route, 'get_adcp_capabilities', { adcp_version });
       expect(result.adcp_version, `${route} ${adcp_version}: ${JSON.stringify(result).slice(0, 300)}`).not.toBe(PREVIEW);
       expect(result.adcp_version).not.toBe(adcp_version);
     }
   }, 120_000);
+
+  it('is the release a default client on the installed @adcp/sdk negotiates', async () => {
+    // @adcp/sdk negotiates only the 3.3 beta it bundles. A preview it does
+    // not bundle leaves every SDK buyer on 3.2 (candidate-version.ts).
+    expect(SDK_ADCP_VERSION).toBe(TRAINING_AGENT_HOSTED_PREVIEW.bundle);
+    const client = new SingleAgentClient({
+      id: 'preview-sdk-buyer',
+      name: 'Preview SDK buyer',
+      agent_uri: `${baseUrl}/sales`,
+      protocol: 'mcp',
+      auth_token: TOKEN,
+    });
+    try {
+      const capabilities = await client.getAdcpCapabilities({});
+      expect(capabilities.success, JSON.stringify(capabilities.error)).toBe(true);
+      expect(capabilities.data?.adcp?.supported_versions).toContain(PREVIEW);
+      const accounts = await client.listAccounts({});
+      expect(accounts.success, JSON.stringify(accounts.error)).toBe(true);
+      // Served at the preview, with no downshift to an older release.
+      expect(accounts.metadata.adcpVersion).toBe(PREVIEW);
+      expect(accounts.metadata.negotiatedAdcpVersion).toBeUndefined();
+    } finally {
+      await closeMCPConnections();
+    }
+  }, 60_000);
 
   it('reaches the experimental 3.3 sales surfaces at the preview pin only', async () => {
     const preview = await call('/sales/mcp', 'get_adcp_capabilities', { adcp_version: PREVIEW });
