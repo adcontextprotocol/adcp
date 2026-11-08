@@ -136,16 +136,22 @@ declares one body per envelope status. The file name carries the status:
 | `<task>-rejected.json` | `rejected`, a structured business rejection |
 | `<task>-failed.json` | `failed` |
 
-Each body serves only the status its file name carries. A status the task has
-no body for is not a valid response of that task. Bodies declare no envelope
-field, never test `status`, and stay open. A submitted body composes
-`core/task-submitted.json`, which requires `task_id`.
+Bodies declare no envelope field, never test `status`, and stay open. A
+submitted body composes `core/task-submitted.json`, which requires
+`task_id`.
 
 The schema build generates each task's response,
-`<protocol>/<task>-response.json`: a `oneOf` with one branch per status
-that has a body, discriminated by `status`. Each branch requires `status`, pins
-it to its own value and composes that status's body, so the branches are
-disjoint. `<task>-response.json` is the task's response for every outcome:
+`<protocol>/<task>-response.json`: a `oneOf` discriminated by `status`,
+with one branch per status that has a body or that the task's response
+admitted before the bodies were split (`scripts/task-response-statuses.json`).
+Each branch requires `status` and pins it to its own value, so the branches
+are disjoint. A status the earlier response admitted only through a branch
+that named it composes its own body. A status it admitted under its general
+rules, its open root or a branch that left `status` open, keeps those rules:
+its branch also composes the body that now holds that content, the completed
+body for success content and the failed body for an error branch's. A status
+with no branch is not a valid response of that task.
+`<task>-response.json` is the task's response for every outcome:
 `index.json`, the release manifest's `response_schema` and the MCP
 projection's `outputSchema` name it, so validate a task response against it.
 `<task>-completed.json` alone validates only a completed response.

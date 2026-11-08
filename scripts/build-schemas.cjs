@@ -1756,9 +1756,10 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
  * `refPaths` are `/schemas/...` refs without a fragment, e.g.
  * `/schemas/core/provenance.json`. A listed ref is hoisted only when it
  * appears 2+ times in the resolved schema; otherwise it is inlined as
- * before and no `$defs` entry is added.
+ * before and no `$defs` entry is added. A ref in `alwaysHoist` is hoisted
+ * however often it appears.
  */
-function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new Set()) {
+function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new Set(), { alwaysHoist = new Set() } = {}) {
   const hoistRefs = new Map();
   const bodies = new Map();
   for (const refPath of refPaths) {
@@ -1778,7 +1779,7 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
     bodies.set(refPath, source);
   }
 
-  let options = { hoistRefs };
+  let options = { hoistRefs, alwaysHoist };
   let result = resolveRefs(schema, sourceDir, ancestorRefs, options);
 
   // Like `hoistDuplicateInlineEnums`, only hoist what repeats. A single
@@ -1788,13 +1789,14 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
   // singletons so those bundles stay byte-identical to before.
   let hasSingleton = false;
   for (const [refPath, entry] of [...hoistRefs]) {
+    if (alwaysHoist.has(refPath)) continue;
     if (entry.count === 1) hasSingleton = true;
     if (entry.count < 2) hoistRefs.delete(refPath);
   }
   if (hasSingleton) {
     for (const refPath of [...bodies.keys()]) if (!hoistRefs.has(refPath)) bodies.delete(refPath);
     for (const entry of hoistRefs.values()) entry.count = 0;
-    options = { hoistRefs };
+    options = { hoistRefs, alwaysHoist };
     result = resolveRefs(schema, sourceDir, ancestorRefs, options);
   }
   if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
@@ -1933,7 +1935,7 @@ function hoistNestedDefsToRoot(schema) {
  * Complex object schemas ($defs hoisting for objects) is intentionally out of
  * scope — see issue #3145 for the RFC on opt-in x-hoist markers.
  */
-function hoistDuplicateInlineEnums(schema) {
+function hoistDuplicateInlineEnums(schema, scanDefs = []) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
     return schema;
   }
@@ -1981,6 +1983,9 @@ function hoistDuplicateInlineEnums(schema) {
   }
 
   collect(schema);
+  // Root $defs entries named in scanDefs (the status bodies of a task
+  // response) are part of the tree, not hoisted definitions.
+  for (const name of scanDefs) collect(schema.$defs[name]);
 
   // Build fingerprint → defName map for titled enums that appear 2+ times.
   // Untitled enums are left inline — we can't derive a meaningful type name
@@ -2033,6 +2038,7 @@ function hoistDuplicateInlineEnums(schema) {
   }
 
   replace(schema);
+  for (const name of scanDefs) replace(schema.$defs[name]);
   schema.$defs = rootDefs;
   return schema;
 }
@@ -2067,7 +2073,7 @@ function hoistDuplicateInlineEnums(schema) {
  */
 const HOIST_MARKER = 'x-adcp-hoist';
 
-function hoistMarkedSchemas(schema) {
+function hoistMarkedSchemas(schema, scanDefs = []) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
     return schema;
   }
@@ -2122,6 +2128,9 @@ function hoistMarkedSchemas(schema) {
   }
 
   collect(schema);
+  // Root $defs entries named in scanDefs (the status bodies of a task
+  // response) are part of the tree, not hoisted definitions.
+  for (const name of scanDefs) collect(schema.$defs[name]);
 
   if (seen.size === 0) {
     // No markers found at hoist-eligible sites. Still strip any stray
@@ -2209,6 +2218,7 @@ function hoistMarkedSchemas(schema) {
   }
 
   replace(schema);
+  for (const name of scanDefs) replace(schema.$defs[name]);
 
   // Final sweep: delete any stray `x-adcp-hoist` keys that survived (e.g.
   // markers authored inside a pre-existing $defs entry that Pass 1
@@ -2352,28 +2362,13 @@ function dedupBundledSchemaIds(schema) {
  */
 const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
 
-/**
- * In a bundled task response (scripts/task-responses.cjs), moves each
- * branch's inlined status body to root `$defs`, named after the body's title,
- * and points the branch at it. Inlined into one tree, the bodies of a task
- * like get_products make a validator that Ajv compiles into a single function
- * too large to run (its call stack overflows); as `$defs` each body compiles
- * on its own. Any other schema is left as it is.
- */
-function hoistStatusBodiesToDefs(schema) {
-  if (!schema || !schema['x-generated'] || !Array.isArray(schema.oneOf)) return;
-  schema.$defs = schema.$defs || {};
-  for (const branch of schema.oneOf) {
-    const body = Array.isArray(branch.allOf) && branch.allOf.length === 1 ? branch.allOf[0] : null;
-    if (!body || typeof body !== 'object' || body.$ref !== undefined) continue;
-    const name = typeof body.title === 'string' ? body.title.replace(/[^A-Za-z0-9_]/g, '') : '';
-    if (!name) throw new Error(`${schema.$id}: status body of branch ${branch.title} needs a title to name its $defs entry`);
-    if (Object.prototype.hasOwnProperty.call(schema.$defs, name)) {
-      throw new Error(`${schema.$id}: $defs already holds ${name}`);
-    }
-    schema.$defs[name] = body;
-    branch.allOf = [{ $ref: `#/$defs/${name}` }];
-  }
+/** The status bodies a generated task response's branches name, once each. */
+function statusBodyRefs(schema) {
+  if (!schema || !schema['x-generated'] || !Array.isArray(schema.oneOf)) return [];
+  const refs = schema.oneOf.flatMap((branch) => [...(branch.allOf || []), ...(branch.anyOf || [])])
+    .map((member) => member && member.$ref)
+    .filter((ref) => typeof ref === 'string');
+  return [...new Set(refs)];
 }
 
 /**
@@ -2428,7 +2423,16 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // Resolve all $refs. Schemas listed in IDENTITY_HOISTED_REFS are
       // written once to root $defs instead of being inlined at every
       // call-site, keeping per-call-site `description` siblings. See #4875.
-      const dereferenced = hoistBySourceIdentity(schema, sourceDir, IDENTITY_HOISTED_REFS, new Set([schemaPath]));
+      // A task response keeps each status body once in root $defs: its
+      // branches name the bodies by reference (a body serves every status
+      // its branch composes it for), and a validator compiles each body on
+      // its own (inlined, the get_products bodies compile into one function
+      // whose call stack overflows).
+      const statusBodies = statusBodyRefs(schema);
+      const dereferenced = hoistBySourceIdentity(
+        schema, sourceDir, [...IDENTITY_HOISTED_REFS, ...statusBodies], new Set([schemaPath]),
+        { alwaysHoist: new Set(statusBodies) },
+      );
 
 
       // After inlining, referenced schemas that carried local `#/$defs/...`
@@ -2441,19 +2445,17 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // Hoist pure-enum schemas that were inlined 2+ times to $defs and
       // replace duplicates with $ref pointers. Eliminates the Foo / Foo1
       // numbered-suffix codegen artifact. See #3145.
-      hoistDuplicateInlineEnums(dereferenced);
+      // The status bodies kept in root $defs are scanned like the rest.
+      const statusBodyDefs = Object.keys(dereferenced.$defs || {})
+        .filter((name) => statusBodies.includes(dereferenced.$defs[name] && dereferenced.$defs[name].$id));
+      hoistDuplicateInlineEnums(dereferenced, statusBodyDefs);
 
       // Hoist complex schemas explicitly marked with `x-adcp-hoist: true`
       // to $defs and replace inline occurrences with $ref. Opt-in companion
       // to the pure-enum auto-hoist for spec-author-declared canonical
       // shared types. See #4557.
-      hoistMarkedSchemas(dereferenced);
+      hoistMarkedSchemas(dereferenced, statusBodyDefs);
 
-      // A task response names one status body per branch. Keep each inlined
-      // body in root $defs, so a validator compiles every body on its own
-      // rather than all of them as one function. After the hoists above,
-      // which look for repeats in the inlined tree.
-      hoistStatusBodiesToDefs(dereferenced);
 
       // Stamp inlined sub-schema `$id`s with the version (#3868). Source
       // schemas declare `$id` as `/schemas/core/foo.json` (unversioned);

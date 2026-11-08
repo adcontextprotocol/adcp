@@ -15,12 +15,12 @@
  *
  * A task declares one body per envelope status: <task>-completed.json
  * (completed), <task>-async-response-<status>.json (submitted, working,
- * input-required), <task>-rejected.json and <task>-failed.json. Each body
- * serves only the status its file name carries and never tests `status`. The
- * build (scripts/task-responses.cjs) generates
+ * input-required), <task>-rejected.json and <task>-failed.json. No body tests
+ * `status`. The build (scripts/task-responses.cjs) generates
  * <protocol>/<task>-response.json, the task's response for every outcome: a
  * disjoint `oneOf`, discriminated by `status`, with one branch per status
- * that has a body.
+ * that has a body or that the response admitted before the bodies were split
+ * (scripts/task-response-statuses.json).
  *
  * A response node is a root, an inline `allOf`/`anyOf`/`oneOf` member at any
  * depth, or a document such a member names by whole-document `$ref` (the
@@ -54,8 +54,10 @@
  *      exactly its maxLength error on every response node and on both other
  *      carriers, so the bound does not depend on the delivery path.
  *   8. every tool's task response is a disjoint `oneOf` discriminated by
- *      `status`, with exactly one branch per status that has a body, each
- *      requiring `status`, pinning it and composing that body; no body tests
+ *      `status`, with exactly one branch per task status, each requiring
+ *      `status` and pinning it; a status with a body composes that body, and
+ *      any other status composes any of the bodies that do not pin a status
+ *      (the completed body and the <task>-<status>.json bodies); no body tests
  *      `status` itself (the core/task-<status>.json schemas the bodies
  *      compose are the core schemas that pin it);
  *   9. differential validation against the base build (the envelope
@@ -98,6 +100,7 @@ const addFormats = require('ajv-formats');
 
 const { discoverTools } = require('../scripts/build-schemas.cjs');
 const { taskStatusSchemas } = require('../scripts/task-responses.cjs');
+const { deriveTaskResponseStatuses } = require('../scripts/derive-task-response-statuses.cjs');
 const { collectResponseInstances } = require('./helpers/response-instance-corpus.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -802,7 +805,10 @@ test('every request that carries a task_id rejects an empty one, single fault', 
   ], 'every request task_id carrier must run');
 });
 
-test('every tool response has one branch per status that has a body', () => {
+// The statuses each task's response admitted before the bodies were split.
+const ADMITTED_STATUSES = readJson(path.join(REPO_ROOT, 'scripts', 'task-response-statuses.json'));
+
+test('every tool response has one branch per status with a body or admitted before the split', () => {
   const statuses = readSource('enums/task-status.json').enum;
   for (const tool of TOOLS) {
     const toolBase = tool.name.replace(/_/g, '-');
@@ -824,18 +830,34 @@ test('every tool response has one branch per status that has a body', () => {
 
     const union = readBuilt(tool.response_schema);
     assert.equal(union.$id, `${BUILT_ORIGIN}${tool.response_schema}`, `${tool.name}: task response $id`);
-    const branches = union.oneOf.map((branch) => {
-      assert.equal(branch.allOf.length, 1, `${tool.name}: a branch composes one body`);
-      const rel = documentOf(branch.allOf[0].$ref);
-      assert.ok(rel && fs.existsSync(path.join(BUILT_DIR, rel)), `${tool.name}: branch body ${branch.allOf[0].$ref} is published`);
-      return [branch.properties.status.const, rel];
-    });
-    const ordered = statuses.filter((status) => expected.has(status));
-    assert.deepEqual(branches.map(([status]) => status), ordered, `${tool.name}: one branch per status body, in task-status order`);
-    assert.deepEqual(Object.fromEntries(branches), Object.fromEntries(expected), `${tool.name}: branches`);
+    const before = ADMITTED_STATUSES[`${tool.protocol}/${toolBase}`] || { admitted: [], open: {} };
+    const admitted = new Set(before.admitted);
+    const openBefore = new Map(Object.entries(before.open));
     assert.deepEqual(
-      taskStatusSchemas(SOURCE_DIR, tool.protocol, toolBase).map(({ status, schema }) => [status, schema]),
-      branches,
+      union.oneOf.map((branch) => branch.properties.status.const),
+      statuses.filter((status) => expected.has(status) || admitted.has(status)),
+      `${tool.name}: one branch per status with a body or admitted before the split, in task-status order`,
+    );
+    // A status the response admitted only through a branch or condition that
+    // named it, or not at all, composes its body; a status it admitted openly
+    // also composes the body that holds the content it admitted then (the
+    // completed body for success content, the failed body for an error
+    // branch's), so it keeps that rule.
+    const contentBody = { completed: expected.get('completed'), failed: expected.get('failed') || expected.get('completed') };
+    const branches = union.oneOf.map((branch) => {
+      const status = branch.properties.status.const;
+      const kinds = openBefore.get(status) || (expected.has(status) ? [] : ['completed']);
+      const want = [...new Set([...(expected.has(status) ? [expected.get(status)] : []), ...kinds.map((kind) => contentBody[kind])])];
+      const members = branch.allOf || branch.anyOf;
+      const rels = members.map((member) => documentOf(member.$ref));
+      for (const rel of rels) assert.ok(rel && fs.existsSync(path.join(BUILT_DIR, rel)), `${tool.name}: branch body ${rel} is published`);
+      assert.deepEqual(rels, want, `${tool.name} ${status}: bodies`);
+      if (branch.allOf) assert.ok(want.length === 1 && expected.has(status), `${tool.name} ${status}: allOf names its own body`);
+      return [status, rels];
+    });
+    assert.deepEqual(
+      taskStatusSchemas(SOURCE_DIR, tool.protocol, toolBase).map(({ status, schema }) => [status, [schema]]),
+      branches.filter(([status]) => expected.has(status)).map(([status, rels]) => [status, rels.slice(0, 1)]),
       `${tool.name}: generator`,
     );
   }
@@ -858,7 +880,7 @@ test('every task response is a disjoint oneOf discriminated by status', () => {
   // The task-level annotations the completed body carries (x-status,
   // x-added-in, ...) describe the whole response, so the union carries them too.
   const ALLOWED_UNION_KEYS = ['$schema', '$id', 'title', 'description', 'deprecated', 'x-status', 'x-added-in', 'x-deprecated-in', 'type', 'discriminator', 'oneOf', 'x-generated'];
-  const ALLOWED_BRANCH_KEYS = ['title', 'allOf', 'properties', 'required'];
+  const ALLOWED_BRANCH_KEYS = ['title', 'allOf', 'anyOf', 'properties', 'required'];
   for (const tool of TOOLS) {
     const union = readBuilt(tool.response_schema);
     assert.deepEqual(Object.keys(union).filter((key) => !ALLOWED_UNION_KEYS.includes(key)), [], `${tool.name}: the union carries only its oneOf`);
@@ -870,7 +892,10 @@ test('every task response is a disjoint oneOf discriminated by status', () => {
       assert.deepEqual(Object.keys(branch.properties), ['status'], `${tool.name}: a branch declares only status`);
       assert.ok(pins(branch.properties.status), `${tool.name}: a branch pins status`);
       assert.deepEqual(branch.required, ['status'], `${tool.name}: a branch requires status`);
-      assert.deepEqual(Object.keys(branch.allOf[0]), ['$ref'], `${tool.name}: a branch composes its body by reference only`);
+      const members = branch.allOf || branch.anyOf;
+      assert.ok(!(branch.allOf && branch.anyOf) && Array.isArray(members) && members.length > 0, `${tool.name}: a branch composes its bodies through allOf or anyOf`);
+      if (branch.allOf) assert.equal(branch.allOf.length, 1, `${tool.name}: a branch with a body composes that one body`);
+      for (const member of members) assert.deepEqual(Object.keys(member), ['$ref'], `${tool.name}: a branch composes its bodies by reference only`);
       consts.push(branch.properties.status.const);
     }
     assert.equal(new Set(consts).size, consts.length, `${tool.name}: distinct status consts`);
@@ -923,108 +948,30 @@ const PINNED_BASE_REF = '023bbd26e7c230dcc74bea4087336ea6bc8d0f6a';
 // the status body and passed the base file, and keeps its verdict on the
 // tool surface.
 //
-// The task response is a disjoint oneOf that selects one body by status. The
-// base's tool response did not dispatch on status for most tasks, so three
-// kinds of tool-surface difference follow, each listed by tool and status:
-//   - OPEN_ROOT: a status with no body, which the base accepted through its
-//     open root (`canceled` with completed-body fields, for example) and the
-//     union rejects;
-//   - OTHER_BODY: a status with its own body, where the base accepted an
-//     instance only because the completed body did not restrict status, and
-//     the status's own body rejects it (a failed response with success
-//     fields, for example);
+// The task response is a disjoint oneOf with one branch per status that has
+// a body or that the base admitted (scripts/task-response-statuses.json). A
+// status the base admitted without pinning it composes any of its body and
+// the bodies that do not pin a status, so its branch accepts what the base's
+// open rule accepted. Every base verdict of acceptance therefore holds; the
+// differences are instances the base rejected and the union accepts, each
+// listed by tool and status:
 //   - STATUS_FILE: a status whose body is a status file that the base's tool
-//     response did not compose (a working payload, for example), which the
-//     union now accepts;
+//     response did not compose (a working payload, for example);
 //   - OVERLAP: an instance that matched two of the base's oneOf members (the
 //     completed body and the failed body), which the base therefore rejected
-//     and the status's own body accepts.
+//     and the status's own body accepts;
+//   - OPEN_BODIES: a status the base admitted without pinning it. The base
+//     applied a status condition (products required unless failed, say) or
+//     rejected an instance two of its oneOf members matched; one body the
+//     branch composes accepts it, and the base accepts it under that body's
+//     own status, or two bodies accept it, or that body's status is a listed
+//     OVERLAP.
 // No other tool-surface verdict changes, and the document surface has none.
 const CONTRADICTION = 'contradiction resolved toward the tool-response definition';
-const OPEN_ROOT = 'status with no defined body; base accepted it only through the open root';
-const OTHER_BODY = 'status with its own body; base accepted it only through the completed body';
 const STATUS_FILE = 'status defined by a status file the base tool response did not compose';
 const OVERLAP = 'instance matching two bodies; the base oneOf rejected it, its status body accepts it';
+const OPEN_BODIES = 'status the base admitted openly; a body its branch composes accepts what the base applied a status condition to';
 const TOOL_SURFACE_DIFFERENCES = {
-  [OPEN_ROOT]: { verdict: { base: true, built: false }, statuses: {
-    acquire_rights: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    activate_signal: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    build_creative: ['canceled', 'rejected', 'auth-required', 'unknown'],
-    calibrate_content: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    check_governance: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    comply_test_controller: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    create_collection_list: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    create_content_standards: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    delete_collection_list: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    delete_property_list: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    get_account_financials: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    get_adcp_capabilities: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    get_collection_list: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    get_content_standards: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    get_creative_features: ['working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    get_media_buy_artifacts: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    get_media_buy_delivery: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    get_media_buys: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    get_plan_audit_logs: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    get_principal: ['submitted', 'working', 'input-required', 'canceled', 'auth-required', 'unknown'],
-    get_products: ['canceled', 'auth-required', 'unknown'],
-    get_rights: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    get_signals: ['input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    list_accounts: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_collection_lists: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_collections: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_content_standards: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_creative_formats: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_creatives: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_products: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_property_lists: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_proposals: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    list_transformers: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    log_event: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    provide_performance_feedback: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    report_media_buy_issue: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    report_plan_outcome: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    report_usage: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    search_brands: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    si_get_offering: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    si_initiate_session: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    si_terminate_session: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    sync_accounts: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    sync_agent_notification_configs: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    sync_audiences: ['working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    sync_creatives: ['canceled', 'rejected', 'auth-required', 'unknown'],
-    sync_event_sources: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    sync_governance: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    sync_plans: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    sync_principal: ['submitted', 'working', 'input-required', 'canceled', 'auth-required', 'unknown'],
-    update_content_standards: ['submitted', 'working', 'input-required', 'canceled', 'rejected', 'auth-required', 'unknown'],
-    update_media_buy: ['canceled', 'rejected', 'auth-required', 'unknown'],
-    validate_content_delivery: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    validate_input: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-    validate_property_delivery: ['submitted', 'working', 'input-required', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
-  } },
-  [OTHER_BODY]: { verdict: { base: true, built: false }, statuses: {
-    acquire_rights: ['failed'],
-    activate_signal: ['failed'],
-    build_creative: ['submitted', 'failed'],
-    create_content_standards: ['failed'],
-    get_account_financials: ['failed'],
-    get_creative_features: ['failed'],
-    get_products: ['submitted'],
-    get_rights: ['failed'],
-    get_signals: ['submitted'],
-    log_event: ['failed'],
-    provide_performance_feedback: ['failed'],
-    report_media_buy_issue: ['failed'],
-    search_brands: ['failed'],
-    sync_accounts: ['failed'],
-    sync_audiences: ['failed'],
-    sync_creatives: ['failed'],
-    sync_event_sources: ['failed'],
-    sync_governance: ['failed'],
-    update_content_standards: ['failed'],
-    update_media_buy: ['submitted', 'failed'],
-  } },
   [STATUS_FILE]: { verdict: { base: false, built: true }, statuses: {
     accept_proposal: ['working', 'input-required'],
     build_creative: ['working', 'input-required'],
@@ -1042,6 +989,10 @@ const TOOL_SURFACE_DIFFERENCES = {
   } },
   [OVERLAP]: { verdict: { base: false, built: true }, statuses: {
     create_content_standards: ['failed'],
+  } },
+  [OPEN_BODIES]: { verdict: { base: false, built: true }, statuses: {
+    build_creative: ['submitted'],
+    create_content_standards: ['submitted', 'working', 'input-required', 'completed', 'canceled', 'rejected', 'auth-required', 'unknown'],
   } },
 };
 const SUBMITTED_CONTRADICTIONS = {
@@ -1223,13 +1174,26 @@ test('differential validation: every response instance keeps its verdict on each
     // A difference on the async surface is expected when it runs the way a
     // listed entry for that schema does and dropping every listed field of
     // the schema restores equal verdicts.
+    // scripts/task-response-statuses.json records what the base's task
+    // responses admitted: every recorded status is admitted by the base, and
+    // every status the base admits is recorded or has a body.
+    const derived = deriveTaskResponseStatuses(base.dir);
+    for (const tool of TOOLS) {
+      const key = `${tool.protocol}/${tool.name.replace(/_/g, '-')}`;
+      if (!derived[key]) continue;
+      const recorded = ADMITTED_STATUSES[key] || { admitted: [], open: {} };
+      const bodies = tool.status_schemas.map(({ status }) => status);
+      const lists = (entry) => ({ admitted: entry.admitted, open: Object.keys(entry.open) });
+      for (const kind of ['admitted', 'open']) {
+        const r = lists(recorded)[kind];
+        const d = lists(derived[key])[kind];
+        assert.deepEqual(r.filter((status) => !d.includes(status)), [], `${key}: recorded ${kind} statuses the base does not have`);
+        assert.deepEqual(d.filter((status) => !r.includes(status) && !bodies.includes(status)), [], `${key}: ${kind} statuses of the base, neither recorded nor with a body`);
+      }
+    }
     const expectedTool = EXPECTED_DIFFERENCES.tool;
     const branchStatuses = new Map(TOOLS.map((tool) => [tool.name, new Set(readBuilt(tool.response_schema).oneOf.map((b) => b.properties.status.const))]));
     const observedTool = new Set();
-    // Tasks with no submitted body whose base accepted a submitted response
-    // without task_id: the base no longer states that requirement outside
-    // core/task-submitted.json, which only submitted bodies compose.
-    const submittedWithoutTaskId = new Set();
     async function explained(pair, data, result) {
       if (pair.surface === 'tool') {
         const tool = TOOLS.find((candidate) => candidate.name === pair.tool);
@@ -1237,18 +1201,36 @@ test('differential validation: every response instance keeps its verdict on each
         const candidates = expectedTool.filter((e) => e.tool === pair.tool && e.status === data.status
           && e.verdict.base === result.baseValid && e.verdict.built === result.builtValid);
         for (const entry of candidates) {
-          // OPEN_ROOT: the status has no branch.
-          if (entry.reason === OPEN_ROOT && branch) continue;
-          if (entry.reason !== OPEN_ROOT && (!branch || data.status === 'completed')) continue;
-          // OTHER_BODY: the completed body accepts the instance.
-          if (entry.reason === OTHER_BODY && !(await validate('built', tool.completed_response_schema, data))) continue;
+          if (entry.reason === OPEN_BODIES) {
+            // The branch composes any of the status's body and the bodies that
+            // do not pin a status. One of them accepts the instance, and
+            // the base accepts it under that body's own status, or two open
+            // bodies accept it, or the accepting body's own status is a listed
+            // OVERLAP (the base oneOf rejected an instance two members match).
+            const unionBranch = readBuilt(tool.response_schema).oneOf.find((b) => b.properties.status.const === data.status);
+            if (!unionBranch || !unionBranch.anyOf) continue;
+            const open = unionBranch.anyOf.map((member) => {
+              const rel = documentOf(member.$ref);
+              return tool.status_schemas.find(({ schema }) => schema === rel);
+            }).filter(Boolean);
+            const accepting = [];
+            for (const body of open) if (await validate('built', body.schema, data)) accepting.push(body);
+            const underOwnStatus = [];
+            for (const body of accepting) {
+              if (await validate('base', tool.response_schema, { ...data, status: body.status })) underOwnStatus.push(body);
+            }
+            const overlap = accepting.some((body) => expectedTool.some((e) => e.reason === OVERLAP && e.tool === tool.name && e.status === body.status));
+            if (!underOwnStatus.length && accepting.length < 2 && !overlap) continue;
+            observedTool.add(`${entry.reason}|${entry.tool} ${entry.status}`);
+            return true;
+          }
+          if (!branch || data.status === 'completed') continue;
           // STATUS_FILE: the base's tool response never referenced the status's body.
           if (entry.reason === STATUS_FILE
             && fs.readFileSync(path.join(base.dir, tool.response_schema), 'utf8').includes(branch.schema)) continue;
           // OVERLAP: the completed body, which composes the status body, rejects it.
           if (entry.reason === OVERLAP && await validate('built', tool.completed_response_schema, data)) continue;
           observedTool.add(`${entry.reason}|${entry.tool} ${entry.status}`);
-          if (entry.reason === OPEN_ROOT && data.status === 'submitted' && !has(data, 'task_id')) submittedWithoutTaskId.add(entry.tool);
           return true;
         }
         return false;
@@ -1400,7 +1382,6 @@ test('differential validation: every response instance keeps its verdict on each
       'listed tool-surface differences that no instance showed',
     );
     t.diagnostic(`${expectedTool.length} listed tool-surface differences, each observed`);
-    t.diagnostic(`${submittedWithoutTaskId.size} tasks with no submitted body whose base accepted a submitted response without task_id`);
   } finally {
     base.cleanup?.();
   }

@@ -22,7 +22,7 @@
  *     experimental-only changes as patch-level.
  *   - The source tree includes the documents the schema build generates
  *     (scripts/task-responses.cjs): each task's `<task>-response.json`, a
- *     `oneOf` with one branch per status body. A base task response that
+ *     `oneOf` with one branch per status. A base task response that
  *     the candidate generates is compared as that union: the base root
  *     against the completed body, a base branch that pins `status` against
  *     that status's body, a property as removed only when no status body

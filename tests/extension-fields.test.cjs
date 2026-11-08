@@ -489,12 +489,14 @@ async function runTests() {
 
   // Test 3C: Response extensions
   // A tool response is its generated task response: a oneOf discriminated by
-  // status, one branch per status body. Every branch, through its body and
-  // the protocol envelope the body composes, reaches the ext extension point.
-  // validate_input's completed body has never declared ext; adding one is a
-  // schema change outside this check. The entry must stay accurate: it fails
-  // once the body declares ext.
-  const BRANCHES_WITHOUT_EXT = ['validate_input completed'];
+  // status, one branch per status. Every branch, through its bodies and the
+  // protocol envelope they compose, reaches the ext extension point.
+  // validate_input's completed body has never declared ext, and each of its
+  // branches composes that body; adding ext is a schema change outside this
+  // check. The entries must stay accurate: they fail once the body declares
+  // ext.
+  const BRANCHES_WITHOUT_EXT = ['submitted', 'working', 'input-required', 'completed', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown']
+    .map((status) => `validate_input ${status}`);
   await test('Every task-response branch reaches ext through its body', async () => {
     const missing = branchesMissing('ext');
     const unexpected = missing.filter((branch) => !BRANCHES_WITHOUT_EXT.includes(branch));

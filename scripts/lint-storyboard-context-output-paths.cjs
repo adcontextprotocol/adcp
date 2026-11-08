@@ -264,11 +264,10 @@ function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
   // A task response's branches are the statuses; an arm that no status names
   // is a branch of a status body (acquire_rights' rights_status, say).
   for (const entry of variants) {
-    const status = entry && entry.properties && entry.properties.status && entry.properties.status.const;
-    const body = typeof status === 'string' ? statusBranchBody(entry, status) : null;
-    if (!body) continue;
-    const arm = findArmByDiscriminator(body, expectedArm, seen);
-    if (arm) return arm;
+    for (const member of statusBranchMembers(entry)) {
+      const arm = findArmByDiscriminator(loadSchema(member.$ref), expectedArm, seen);
+      if (arm) return arm;
+    }
   }
   return null;
 }
@@ -284,12 +283,23 @@ function resolveVariant(variant) {
   return variant;
 }
 
-/** The body a generated task-response branch composes, when the branch pins `status`. */
+/** The bodies a generated task-response branch composes (allOf or anyOf), by reference. */
+function statusBranchMembers(variant) {
+  if (!variant || typeof variant.properties?.status?.const !== 'string') return [];
+  const members = Array.isArray(variant.allOf) ? variant.allOf : Array.isArray(variant.anyOf) ? variant.anyOf : [];
+  return members.filter((member) => member && typeof member.$ref === 'string');
+}
+
+/**
+ * The status's own body in a generated task-response branch that pins
+ * `status`: the one body it composes, or, among several, the one named for
+ * the status (`<task>-<status>.json`).
+ */
 function statusBranchBody(variant, status) {
   if (!variant || variant.properties?.status?.const !== status) return null;
-  const members = Array.isArray(variant.allOf) ? variant.allOf : [];
-  if (members.length !== 1 || typeof members[0].$ref !== 'string') return null;
-  return loadSchema(members[0].$ref);
+  const members = statusBranchMembers(variant);
+  const own = members.length === 1 ? members[0] : members.find((member) => member.$ref.endsWith(`-${status}.json`));
+  return own ? loadSchema(own.$ref) : null;
 }
 
 /** Mirrors `findErrorArm` in lint-storyboard-validations-paths.cjs. */

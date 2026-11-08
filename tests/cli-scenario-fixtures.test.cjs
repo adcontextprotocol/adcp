@@ -28,8 +28,8 @@ addFormats(ajv);
     }
   }
 })(path.join(__dirname, '../static/schemas/source'));
-// The schema build generates each task's response from its status bodies;
-// source schemas refer to some of them (compliance/task-completion-data.json).
+// The schema build generates each task's response, <task>-response.json, from
+// its status bodies; each payload below is validated against it.
 for (const schema of generatedSchemaDocuments(path.join(__dirname, '../static/schemas/source')).values()) {
   ajv.addSchema(structuredClone(schema));
 }
@@ -951,10 +951,7 @@ async function runDeterministicAccountIsolation({ removeResourceScope = false, r
       }
       data.context = request.context;
       data.status = success ? 'completed' : 'failed';
-      // The strict seller reports a refused controller call with status failed,
-      // and comply_test_controller has only a completed body, so each payload
-      // is checked against the task's completed body.
-      const validateResponse = ajv.getSchema(`/schemas/${schemas[task]}-completed.json`);
+      const validateResponse = ajv.getSchema(`/schemas/${schemas[task]}-response.json`);
       assert.ok(validateResponse, `missing ${task} response validator`);
       assert.equal(validateResponse(data), true, ajv.errorsText(validateResponse.errors));
       call.response = structuredClone(data);
