@@ -2383,9 +2383,12 @@ const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
  * (core/product.json from both the completed and the input-required
  * get_products bodies, say). Each is kept once in root $defs when two or more
  * call-sites use it, instead of inlined into every body. A document whose
- * title is missing or shared with another candidate is left inline.
+ * title is missing or shared with another candidate is left inline, and so is
+ * a document the response's own root composes (the protocol envelope): the
+ * root keeps the composition it publishes.
  */
 function sharedBodyDocumentRefs(schema, sourceDir, bodyRefs) {
+  const rootComposes = new Set((Array.isArray(schema.allOf) ? schema.allOf : []).map((member) => member && member.$ref));
   const refs = new Set();
   (function walk(node) {
     if (Array.isArray(node)) return node.forEach(walk);
@@ -2395,7 +2398,7 @@ function sharedBodyDocumentRefs(schema, sourceDir, bodyRefs) {
   })(bodyRefs.map((ref) => readSourceSchemaDocument(path.join(sourceDir, ref.replace('/schemas/', '')), sourceDir)));
   const byName = new Map();
   for (const ref of refs) {
-    if (bodyRefs.includes(ref) || IDENTITY_HOISTED_REFS.includes(ref)) continue;
+    if (bodyRefs.includes(ref) || IDENTITY_HOISTED_REFS.includes(ref) || rootComposes.has(ref)) continue;
     const file = path.join(sourceDir, ref.replace('/schemas/', ''));
     if (!fs.existsSync(file)) continue;
     const title = JSON.parse(fs.readFileSync(file, 'utf8')).title;

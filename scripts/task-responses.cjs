@@ -16,8 +16,11 @@
  * `oneOf` discriminated by `status`, with one branch per status that has a
  * body and one per status the task's response admitted before the bodies
  * were split (scripts/task-response-statuses.json, derived from that tree by
- * scripts/derive-task-response-statuses.cjs). Each branch requires `status`
- * and pins it to the branch's own value, so the branches are disjoint. A
+ * scripts/derive-task-response-statuses.cjs). Like every task response before
+ * the split, the response composes the protocol envelope at its root. Each
+ * branch requires `status` and pins it to the branch's own value, so the
+ * branches are disjoint, and requires what its status's own body requires at
+ * its root (a failed response carries the failed body's `errors`). A
  * status the response admitted only through a branch or a condition that
  * named it composes its body. A status the response admitted openly, through
  * its open root or a branch that left `status` open, keeps that rule: its
@@ -119,6 +122,10 @@ function buildTaskResponseSchema(sourceDir, protocol, toolBase) {
   // The body that holds each kind of content the response admitted openly:
   // its success content is the completed body, an error branch's content the
   // failed body (or the completed body, for a task without one).
+  const ownRequired = (rel) => {
+    const body = readJson(path.join(sourceDir, ...rel.split('/')));
+    return (Array.isArray(body.required) ? body.required : []).filter((name) => name !== 'status');
+  };
   const bodyOf = (status) => statuses.find((entry) => entry.status === status)?.schema;
   const contentBody = { completed: bodyOf('completed'), failed: bodyOf('failed') || bodyOf('completed') };
   const completed = readJson(path.join(sourceDir, ...completedBodyRel(protocol, toolBase).split('/')));
@@ -144,6 +151,9 @@ function buildTaskResponseSchema(sourceDir, protocol, toolBase) {
         : ''),
     ...annotations,
     type: 'object',
+    // Like every task response before the bodies were split, the response
+    // composes the protocol envelope at its root; each body composes it too.
+    allOf: [{ $ref: PROTOCOL_ENVELOPE_REF }],
     discriminator: { propertyName: 'status' },
     oneOf: branchStatuses.map((status) => {
       const own = statuses.find((entry) => entry.status === status);
@@ -155,7 +165,9 @@ function buildTaskResponseSchema(sourceDir, protocol, toolBase) {
           ? { allOf: [{ $ref: `/schemas/${own.schema}` }] }
           : { anyOf: members.map((schema) => ({ $ref: `/schemas/${schema}` })) }),
         properties: { status: { type: 'string', const: status } },
-        required: ['status'],
+        // The names the status's own body requires at its root (the failed
+        // body's errors, say) hold for every response with that status.
+        required: ['status', ...(own ? ownRequired(own.schema) : [])],
       };
     }),
     'x-generated': {

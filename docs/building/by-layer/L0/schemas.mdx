@@ -144,8 +144,11 @@ The schema build generates each task's response,
 `<protocol>/<task>-response.json`: a `oneOf` discriminated by `status`,
 with one branch per status that has a body or that the task's response
 admitted before the bodies were split (`scripts/task-response-statuses.json`).
-Each branch requires `status` and pins it to its own value, so the branches
-are disjoint. A status the earlier response admitted only through a branch
+The response composes the protocol envelope at its root, as every task
+response did. Each branch requires `status` and pins it to its own value, so
+the branches are disjoint, and it also requires what its status's own body
+requires at its root (a failed response carries the failed body's
+`errors`). A status the earlier response admitted only through a branch
 that named it composes its own body. A status it admitted under its general
 rules, its open root or a branch that left `status` open, keeps those rules:
 its branch also composes the body that now holds that content, the completed

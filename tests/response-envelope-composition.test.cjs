@@ -879,19 +879,25 @@ test('a schema tree without the task-status enum has no status bodies', () => {
 test('every task response is a disjoint oneOf discriminated by status', () => {
   // The task-level annotations the completed body carries (x-status,
   // x-added-in, ...) describe the whole response, so the union carries them too.
-  const ALLOWED_UNION_KEYS = ['$schema', '$id', 'title', 'description', 'deprecated', 'x-status', 'x-added-in', 'x-deprecated-in', 'type', 'discriminator', 'oneOf', 'x-generated'];
+  const ALLOWED_UNION_KEYS = ['$schema', '$id', 'title', 'description', 'deprecated', 'x-status', 'x-added-in', 'x-deprecated-in', 'type', 'allOf', 'discriminator', 'oneOf', 'x-generated'];
   const ALLOWED_BRANCH_KEYS = ['title', 'allOf', 'anyOf', 'properties', 'required'];
   for (const tool of TOOLS) {
     const union = readBuilt(tool.response_schema);
     assert.deepEqual(Object.keys(union).filter((key) => !ALLOWED_UNION_KEYS.includes(key)), [], `${tool.name}: the union carries only its oneOf`);
     assert.deepEqual(union.discriminator, { propertyName: 'status' }, `${tool.name}: discriminator`);
+    assert.deepEqual(union.allOf, [{ $ref: `${BUILT_ORIGIN}core/protocol-envelope.json` }], `${tool.name}: the union composes the protocol envelope at its root`);
     assert.ok(Array.isArray(union.oneOf) && union.oneOf.length > 0, `${tool.name}: oneOf`);
     const consts = [];
     for (const branch of union.oneOf) {
       assert.deepEqual(Object.keys(branch).filter((key) => !ALLOWED_BRANCH_KEYS.includes(key)), [], `${tool.name}: a branch carries no other keyword`);
       assert.deepEqual(Object.keys(branch.properties), ['status'], `${tool.name}: a branch declares only status`);
       assert.ok(pins(branch.properties.status), `${tool.name}: a branch pins status`);
-      assert.deepEqual(branch.required, ['status'], `${tool.name}: a branch requires status`);
+      // A branch requires status and the names its status's own body requires
+      // at its root (the failed body's errors, say).
+      const status = branch.properties.status.const;
+      const own = tool.status_schemas.find((entry) => entry.status === status);
+      const ownRequired = own ? (readSource(own.schema).required || []).filter((name) => name !== 'status') : [];
+      assert.deepEqual(branch.required, ['status', ...ownRequired], `${tool.name} ${status}: a branch requires status and its own body's required names`);
       const members = branch.allOf || branch.anyOf;
       assert.ok(!(branch.allOf && branch.anyOf) && Array.isArray(members) && members.length > 0, `${tool.name}: a branch composes its bodies through allOf or anyOf`);
       if (branch.allOf) assert.equal(branch.allOf.length, 1, `${tool.name}: a branch with a body composes that one body`);
@@ -952,9 +958,13 @@ const PINNED_BASE_REF = '023bbd26e7c230dcc74bea4087336ea6bc8d0f6a';
 // a body or that the base admitted (scripts/task-response-statuses.json). A
 // status the base admitted without pinning it composes any of its body and
 // the bodies that do not pin a status, so its branch accepts what the base's
-// open rule accepted. Every base verdict of acceptance therefore holds; the
-// differences are instances the base rejected and the union accepts, each
-// listed by tool and status:
+// open rule accepted, except that a branch also requires what its status's
+// own body requires. Each difference is listed by tool and status:
+//   - OWN_REQUIRED: the one kind of instance the base accepted and the union
+//     rejects. A branch requires the names its status's own body requires at
+//     the root, so a failed response without the failed body's errors is not
+//     a failed response of the task; the base accepted one with success
+//     fields through its open root. No repository instance is one;
 //   - STATUS_FILE: a status whose body is a status file that the base's tool
 //     response did not compose (a working payload, for example);
 //   - OVERLAP: an instance that matched two of the base's oneOf members (the
@@ -970,8 +980,29 @@ const PINNED_BASE_REF = '023bbd26e7c230dcc74bea4087336ea6bc8d0f6a';
 const CONTRADICTION = 'contradiction resolved toward the tool-response definition';
 const STATUS_FILE = 'status defined by a status file the base tool response did not compose';
 const OVERLAP = 'instance matching two bodies; the base oneOf rejected it, its status body accepts it';
+const OWN_REQUIRED = 'status with its own body; the base accepted it without a name that body requires';
 const OPEN_BODIES = 'status the base admitted openly; a body its branch composes accepts what the base applied a status condition to';
 const TOOL_SURFACE_DIFFERENCES = {
+  [OWN_REQUIRED]: { verdict: { base: true, built: false }, statuses: {
+    acquire_rights: ['failed'],
+    activate_signal: ['failed'],
+    build_creative: ['failed'],
+    create_content_standards: ['failed'],
+    get_account_financials: ['failed'],
+    get_creative_features: ['failed'],
+    get_rights: ['failed'],
+    log_event: ['failed'],
+    provide_performance_feedback: ['failed'],
+    report_media_buy_issue: ['failed'],
+    search_brands: ['failed'],
+    sync_accounts: ['failed'],
+    sync_audiences: ['failed'],
+    sync_creatives: ['failed'],
+    sync_event_sources: ['failed'],
+    sync_governance: ['failed'],
+    update_content_standards: ['failed'],
+    update_media_buy: ['failed'],
+  } },
   [STATUS_FILE]: { verdict: { base: false, built: true }, statuses: {
     accept_proposal: ['working', 'input-required'],
     build_creative: ['working', 'input-required'],
@@ -1201,6 +1232,13 @@ test('differential validation: every response instance keeps its verdict on each
         const candidates = expectedTool.filter((e) => e.tool === pair.tool && e.status === data.status
           && e.verdict.base === result.baseValid && e.verdict.built === result.builtValid);
         for (const entry of candidates) {
+          if (entry.reason === OWN_REQUIRED) {
+            // The instance lacks a name the status's branch requires.
+            const unionBranch = readBuilt(tool.response_schema).oneOf.find((b) => b.properties.status.const === data.status);
+            if (!unionBranch || !unionBranch.required.some((name) => !has(data, name))) continue;
+            observedTool.add(`${entry.reason}|${entry.tool} ${entry.status}`);
+            return true;
+          }
           if (entry.reason === OPEN_BODIES) {
             // The branch composes any of the status's body and the bodies that
             // do not pin a status. One of them accepts the instance, and
