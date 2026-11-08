@@ -28,7 +28,7 @@ The latest checkpoint is **`3.3.0-beta.5`, published 2026-11-07**. Each beta is 
 
 Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1).
 
-`@adcp/sdk` 17.0.0-beta.18 and later and Python `adcp` 10.0.0b12 support beta.4 ([SDK guidance](#sdk-guidance)). Adoption of beta.5 is in flight in both, and beta.5 is not SDK-backed until a published SDK supports it.
+`@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 support beta.4. `@adcp/sdk` 17.0.0-beta.21 and later support beta.5, and Python adoption of beta.5 is in flight ([SDK guidance](#sdk-guidance)).
 
 ## Know which version string to use
 
@@ -74,13 +74,13 @@ Useful tests are:
 
 ## Try the preview on the public test agent
 
-The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.4` as an opt-in preview alongside its stable releases. It lists `"3.3-beta.4"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
+The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.5` as an opt-in preview alongside its stable releases. It lists `"3.3-beta.5"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
 
 | Request | Served |
 |---|---|
-| `adcp_version: "3.3-beta.4"` | The preview. Responses echo `"3.3-beta.4"` and validate against the published `3.3.0-beta.4` schemas. |
+| `adcp_version: "3.3-beta.5"` | The preview. Responses echo `"3.3-beta.5"` and validate against the published `3.3.0-beta.5` schemas. |
 | `adcp_version: "3.2"`, `"3.3"`, or a later release | 3.2. A release pin never resolves onto a prerelease. |
-| Any other 3.3 prerelease, such as `"3.3-beta.3"` or `"3.3-beta.5"` | Never the preview. Prerelease pins match exactly. |
+| Any other 3.3 prerelease, such as the earlier preview `"3.3-beta.4"` | Never the preview. Prerelease pins match exactly. |
 | `adcp_major_version` alone, or no version | The route's stable default, never the preview. |
 
 ```bash
@@ -88,7 +88,7 @@ curl -s https://test-agent.adcontextprotocol.org/sales/mcp \
   -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-beta.4"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-beta.5"}}}'
 ```
 
 At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the training agent implements:
@@ -118,7 +118,7 @@ Other products take the default: a hold that never contends.
 
 `tools/list` includes `request_account` and `list_collections` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it).
 
-With `@adcp/sdk`, use 17.0.0-beta.18 or later, which negotiates exactly `3.3-beta.4`. Earlier 17.0.0 betas negotiate an older beta, so they settle on 3.2 with the test agent. `3.3.0-beta.5` is published, but no `@adcp/sdk` release negotiates it yet; the preview moves to it when one does.
+With `@adcp/sdk`, use 17.0.0-beta.21 or later, which negotiates exactly `3.3-beta.5`. Earlier 17.0.0 betas negotiate an older beta, so they settle on 3.2 with the test agent.
 
 <Warning>
 **The preview is experimental and can change without notice.** It follows the 3.3 beta that the current `@adcp/sdk` prerelease negotiates, so it can trail the latest published beta, and it moves when the SDK does. Once it moves, the old pin is no longer served. AAO can also switch the preview off, after which the agent serves only its stable releases. Use it to try 3.3 surfaces, not as a stable integration target.
@@ -144,9 +144,9 @@ SDK maintainers should report protocol ambiguities against the [AdCP repository]
 
 ## SDK guidance
 
-**TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, 17.0.0-beta.11 through 17.0.0-beta.17 bundle `3.3.0-beta.3`, and 17.0.0-beta.18 and later bundle `3.3.0-beta.4`. Adoption of `3.3.0-beta.5` is in flight. Each negotiates only its own beta, so a buyer and seller on different betas settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
+**TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, 17.0.0-beta.11 through 17.0.0-beta.17 bundle `3.3.0-beta.3`, 17.0.0-beta.18 through 17.0.0-beta.20 bundle `3.3.0-beta.4`, and 17.0.0-beta.21 and later bundle `3.3.0-beta.5`. Each negotiates only its own beta, so a buyer and seller on different betas settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
 
-**Python.** `adcp` **10.0.0b12**, a PyPI prerelease (`pip install adcp==10.0.0b12`), adopts the signed `3.3.0-beta.4` bundle. Adoption of `3.3.0-beta.5` is in flight. Keep production-line work on the `adcp` 3.2 release.
+**Python.** `adcp` **10.0.0b12**, a PyPI prerelease (`pip install adcp==10.0.0b12`), adopts the signed `3.3.0-beta.4` bundle. `adcp` 10.0.0-beta.13, which adopts `3.3.0-beta.5`, is tagged but not yet on PyPI. Keep production-line work on the `adcp` 3.2 release.
 
 **Go.** Check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases) for a published 3.3 support statement; this page names none.
 
