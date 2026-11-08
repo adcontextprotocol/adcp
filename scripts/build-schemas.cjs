@@ -1669,7 +1669,15 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
   const result = {};
 
   for (const [key, value] of Object.entries(schema)) {
-    if (key === '$ref' && typeof value === 'string' && options.hoistRefs && options.hoistRefs.has(value)) {
+    const hashAt = typeof value === 'string' ? value.indexOf('#') : -1;
+    const hoistedDocument = key === '$ref' && hashAt > 0 && options.alwaysHoist && options.alwaysHoist.has(value.slice(0, hashAt))
+      ? options.hoistRefs.get(value.slice(0, hashAt))
+      : null;
+    if (hoistedDocument) {
+      // A pointer into a document kept once in root $defs points into that
+      // entry instead of copying the node it names.
+      result[key] = `#/$defs/${hoistedDocument.defName}${value.slice(hashAt + 1)}`;
+    } else if (key === '$ref' && typeof value === 'string' && options.hoistRefs && options.hoistRefs.has(value)) {
       // Source-identity hoist (see `hoistBySourceIdentity`): point at the
       // root `$defs` entry instead of inlining. Sibling keys (notably the
       // per-call-site `description`) are visited as ordinary keys of this
@@ -1757,7 +1765,8 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
  * `/schemas/core/provenance.json`. A listed ref is hoisted only when it
  * appears 2+ times in the resolved schema; otherwise it is inlined as
  * before and no `$defs` entry is added. A ref in `alwaysHoist` is hoisted
- * however often it appears.
+ * however often it appears, and a ref with a fragment into its document
+ * points into the `$defs` entry.
  */
 function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new Set(), { alwaysHoist = new Set() } = {}) {
   const hoistRefs = new Map();
@@ -1781,6 +1790,13 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
 
   let options = { hoistRefs, alwaysHoist };
   let result = resolveRefs(schema, sourceDir, ancestorRefs, options);
+  // An always-hoisted document is written once, below; count the call-sites
+  // inside it too, since the schema itself only points at it.
+  for (const refPath of alwaysHoist) {
+    if (!bodies.has(refPath)) continue;
+    const refFile = path.join(sourceDir, refPath.replace('/schemas/', ''));
+    resolveRefs(bodies.get(refPath), sourceDir, new Set([...ancestorRefs, refFile]), options);
+  }
 
   // Like `hoistDuplicateInlineEnums`, only hoist what repeats. A single
   // call-site gains nothing from a `$defs` indirection, and the local
@@ -2362,6 +2378,34 @@ function dedupBundledSchemaIds(schema) {
  */
 const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
 
+/**
+ * The whole documents that a task response's status bodies name directly
+ * (core/product.json from both the completed and the input-required
+ * get_products bodies, say). Each is kept once in root $defs when two or more
+ * call-sites use it, instead of inlined into every body. A document whose
+ * title is missing or shared with another candidate is left inline.
+ */
+function sharedBodyDocumentRefs(schema, sourceDir, bodyRefs) {
+  const refs = new Set();
+  (function walk(node) {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.$ref === 'string' && node.$ref.startsWith('/schemas/') && !node.$ref.includes('#')) refs.add(node.$ref);
+    Object.values(node).forEach(walk);
+  })(bodyRefs.map((ref) => readSourceSchemaDocument(path.join(sourceDir, ref.replace('/schemas/', '')), sourceDir)));
+  const byName = new Map();
+  for (const ref of refs) {
+    if (bodyRefs.includes(ref) || IDENTITY_HOISTED_REFS.includes(ref)) continue;
+    const file = path.join(sourceDir, ref.replace('/schemas/', ''));
+    if (!fs.existsSync(file)) continue;
+    const title = JSON.parse(fs.readFileSync(file, 'utf8')).title;
+    const name = typeof title === 'string' ? title.replace(/[^A-Za-z0-9_]/g, '') : '';
+    if (!name) continue;
+    byName.set(name, byName.has(name) ? null : ref);
+  }
+  return [...byName.values()].filter(Boolean);
+}
+
 /** The status bodies a generated task response's branches name, once each. */
 function statusBodyRefs(schema) {
   if (!schema || !schema['x-generated'] || !Array.isArray(schema.oneOf)) return [];
@@ -2424,13 +2468,16 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // written once to root $defs instead of being inlined at every
       // call-site, keeping per-call-site `description` siblings. See #4875.
       // A task response keeps each status body once in root $defs: its
-      // branches name the bodies by reference (a body serves every status
-      // its branch composes it for), and a validator compiles each body on
-      // its own (inlined, the get_products bodies compile into one function
-      // whose call stack overflows).
+      // branches name the bodies by reference, so a validator compiles each
+      // body on its own (inlined, the get_products bodies compile into one
+      // function whose call stack overflows), and a body's pointers into
+      // another body (the failed body's completed fields) point into that
+      // entry instead of copying it.
       const statusBodies = statusBodyRefs(schema);
       const dereferenced = hoistBySourceIdentity(
-        schema, sourceDir, [...IDENTITY_HOISTED_REFS, ...statusBodies], new Set([schemaPath]),
+        schema, sourceDir,
+        [...IDENTITY_HOISTED_REFS, ...statusBodies, ...sharedBodyDocumentRefs(schema, sourceDir, statusBodies)],
+        new Set([schemaPath]),
         { alwaysHoist: new Set(statusBodies) },
       );
 
