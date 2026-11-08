@@ -324,10 +324,7 @@ checks:
           a 3.x seller run cannot send or observe it.
 
   - id: failed_task_errors_required_in_4_0
-    # TBD: the 4.0 tracking issue number goes here. The registry lint requires
-    # a positive issue number, so PR #8565, which this change builds on, holds
-    # the place until that issue exists.
-    issue: 8565
+    issue: 8811
     change: new_requirement
     applies_to: [all_agents]
     detection: "A response to a stable task with status failed carries no errors[] at the response root, or carries the task's success body instead of its error schema."

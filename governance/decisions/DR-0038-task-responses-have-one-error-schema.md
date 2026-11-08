@@ -5,7 +5,7 @@ class: breaking
 status: proposed
 date: 2026-11-08
 decided_by: pending WG ratification
-refs: ["PR #8565", "DR-0036", "DR-0009", "DR-0019"]
+refs: ["Issue #8811", "PR #8565", "DR-0036", "DR-0009", "DR-0019"]
 dissent: none recorded
 ---
 
