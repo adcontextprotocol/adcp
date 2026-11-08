@@ -18,17 +18,16 @@ export const TRAINING_AGENT_CANDIDATE_ADCP_VERSION = trainingAgentCandidateVersi
  * (`dist/schemas/<bundle>`) its responses validate against.
  *
  * It must name the prerelease the installed @adcp/sdk negotiates, or SDK
- * buyers settle on 3.2 instead: 17.0.0-beta.18 and later negotiate exactly
- * `3.3-beta.4`. Its published schemas must also match what the agent emits;
- * 3.3.0-beta.5 only adds match keys, which the agent does not declare. One
- * preview is served at a time, so advance it with the SDK's bundled beta;
+ * buyers settle on 3.2 instead: 17.0.0-beta.21 and later negotiate exactly
+ * `3.3-beta.5`. Its published schemas must also match what the agent emits.
+ * One preview is served at a time, so advance it with the SDK's bundled beta;
  * tenants/served-release-shape.test.ts grades the agent's preview responses
  * against this bundle, and training-agent-preview-version.test.ts checks
  * that the installed SDK selects it.
  */
 export const TRAINING_AGENT_HOSTED_PREVIEW = Object.freeze({
-  wireVersion: '3.3-beta.4',
-  bundle: '3.3.0-beta.4',
+  wireVersion: '3.3-beta.5',
+  bundle: '3.3.0-beta.5',
 } as const);
 
 /** Ops kill switch: set to `1` or `true` to stop advertising and serving the
