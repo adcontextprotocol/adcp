@@ -84,29 +84,58 @@ function versionEntry(version, build, extra = {}) {
     updateSchemaTools,
   } = await import('../scripts/update-release-docs-nav.mjs');
 
-  test('adds a released snapshot to the Docker build context exactly once', () => {
+  test('allows exactly the docs.json snapshots into the Docker build context', () => {
     const initial = [
       'dist/docs/*',
+      '# allowlist',
+      '!dist/docs/2.5.3',
+      '!dist/docs/2.5.3/**',
       '!dist/docs/3.1.19',
       '!dist/docs/3.1.19/**',
       '!dist/schemas',
+      'dist/schemas/latest',
       '',
     ].join('\n');
-    const updated = updateDockerignore(initial, '3.1.20');
+    const config = {
+      navigation: {
+        versions: [
+          versionEntry('3.1', '3.1.20', { default: true }),
+          versionEntry('3.2-rc', '3.2.0-rc.4'),
+          versionEntry('2.5', '2.5.3'),
+        ],
+      },
+    };
+    const updated = updateDockerignore(initial, config);
 
     assert.equal(
       updated,
       [
         'dist/docs/*',
-        '!dist/docs/3.1.19',
-        '!dist/docs/3.1.19/**',
+        '# allowlist',
         '!dist/docs/3.1.20',
         '!dist/docs/3.1.20/**',
+        '!dist/docs/3.2.0-rc.4',
+        '!dist/docs/3.2.0-rc.4/**',
+        '!dist/docs/2.5.3',
+        '!dist/docs/2.5.3/**',
         '!dist/schemas',
+        'dist/schemas/latest',
         '',
-      ].join('\n')
+      ].join('\n'),
+      'the superseded 3.1.19 snapshot leaves the image'
     );
-    assert.equal(updateDockerignore(updated, '3.1.20'), updated);
+    assert.equal(updateDockerignore(updated, config), updated);
+  });
+
+  test('the committed Docker build context allows exactly the docs.json snapshots', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const config = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs.json'), 'utf8'));
+    const dockerignore = fs.readFileSync(path.join(repoRoot, '.dockerignore'), 'utf8');
+    assert.equal(
+      updateDockerignore(dockerignore, config),
+      dockerignore,
+      '.dockerignore dist/docs allowlist drifted from docs.json; run updateDockerignore from scripts/update-release-docs-nav.mjs'
+    );
   });
 
   test('keeps Addie schema routing on the same frozen releases as docs, in picker order', () => {
