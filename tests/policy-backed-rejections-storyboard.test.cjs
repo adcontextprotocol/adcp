@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const yaml = require('js-yaml');
-const { runValidations } = require('@adcp/sdk/testing');
+const { parseStoryboard, runStoryboard, runValidations } = require('@adcp/sdk/testing');
 
 const STORYBOARD_PATH = path.join(
   __dirname,
@@ -128,3 +128,39 @@ test('runtime validations reject combined, duplicate, ambiguous, and extra entri
     );
   }
 });
+
+const GATE_TOOLS = ['get_adcp_capabilities', 'get_products', 'sync_creatives', 'comply_test_controller'];
+
+test('storyboard is gated on the explicit registry-policy enforcement capability', () => {
+  assert.deepEqual(loadStoryboard().requires_capability, {
+    path: 'creative.supports_registry_policy_enforcement',
+    equals: true,
+  });
+});
+
+for (const supported of [undefined, false]) {
+  test(`skips before seeding when registry-policy enforcement support is ${supported}`, async () => {
+    const storyboard = parseStoryboard(fs.readFileSync(STORYBOARD_PATH, 'utf8'));
+    const result = await runStoryboard('https://seller.example/mcp', storyboard, {
+      agentTools: GATE_TOOLS,
+      _profile: {
+        tools: GATE_TOOLS,
+        raw_capabilities: {
+          creative: {
+            has_creative_library: true,
+            ...(supported !== undefined && { supports_registry_policy_enforcement: supported }),
+          },
+        },
+      },
+      _client: {
+        resetContext() {},
+        async executeTask() {
+          assert.fail('Unsupported registry-policy enforcement must not seed or dispatch');
+        },
+      },
+    });
+    assert.equal(result.failed_count, 0);
+    assert.equal(result.skipped_count, 1);
+    assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
+  });
+}

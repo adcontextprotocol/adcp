@@ -3239,6 +3239,12 @@
           "default": false,
           "x-added-in": "3.3.0"
         },
+        "supports_registry_policy_enforcement": {
+          "type": "boolean",
+          "description": "When true, this seller supports registry-backed creative policy enforcement on sync_creatives: it publishes the registry policy IDs it enforces on products through enforced_policies and rejects a violating creative with one CREATIVE_REJECTED error entry per violated policy whose details.policy_id cites the registry policy. Merely hosting a creative library does not imply this capability. False or absent makes policy-backed rejection conformance storyboards not applicable; it does not exempt a seller from enforcing any policy it publishes in enforced_policies.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "stable_creative_ids": {
           "type": "boolean",
           "description": "When true, this agent gives every creative that entered its library outside sync_creatives (seller UI or API, automation, or another system) a creative_id that is stable for the creative's lifetime and unique within the account, so a buyer connecting to an existing advertiser can reference those creatives in later requests. The agent MUST keep such IDs stable, MUST NOT reuse a creative_id a buyer has used on the account, and under sync_creatives delete_missing MUST NOT archive those creatives. Requires has_creative_library: true. When false or absent, sellers SHOULD follow the same rules but buyers MUST NOT rely on them.",
