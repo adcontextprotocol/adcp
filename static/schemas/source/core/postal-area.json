@@ -54,6 +54,7 @@
         }
       },
       "required": ["system", "values"],
+      "not": { "required": ["country"] },
       "additionalProperties": true
     }
   ]
