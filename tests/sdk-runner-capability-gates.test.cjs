@@ -1105,15 +1105,13 @@ test('a brief filter failure blocks dependent refine but leaves wholesale covera
 
 test('advanced delivery reporting dispatches wholesale discovery only to opted-in sellers', async () => {
   const storyboard = loadMediaBuyStoryboard('advanced_delivery_reporting');
-  const discovery = storyboard.phases[0].steps.find(step => step.id === 'discover_product');
   const executable = {
     ...storyboard,
+    // Isolate the buying-mode gate from unrelated account setup. Retain the
+    // actual product/pricing declarations and resolver, whose catalog
+    // discovery replaced the old authored discover_product step.
     prerequisites: undefined,
-    fixtures: undefined,
-    phases: [{
-      ...storyboard.phases[0],
-      steps: [{ ...discovery, context_outputs: [], validations: [] }],
-    }],
+    fixtures: { ...storyboard.fixtures, accounts: undefined },
   };
   const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
 
@@ -1126,21 +1124,28 @@ test('advanced delivery reporting dispatches wholesale discovery only to opted-i
           media_buy: buyingModes ? { buying_modes: buyingModes } : {},
         },
       },
+      _controllerCapabilities: { detected: true, scenarios: [] },
       agentTools: tools,
       _client: {
         resetContext() {},
-        async getProducts(request) {
+        async executeTask(task, request) {
+          assert.equal(task, 'get_products');
+          assert.ok(buyingModes?.includes('wholesale'), 'an unadvertised wholesale read must never dispatch');
           requests.push(request);
-          return { success: true, data: { products: [] } };
+          return { success: true, status: 'completed', data: {
+            products: [], cache_scope: 'account', wholesale_feed_version: 'gate-test',
+          } };
         },
       },
     });
 
-    assert.equal(result.overall_passed, true);
+    assert.equal(result.overall_passed, true, JSON.stringify(result));
     if (buyingModes?.includes('wholesale')) {
       assert.equal(requests.length, 1);
       assert.equal(requests[0].buying_mode, 'wholesale');
-      assert.equal(result.passed_count, 1);
+      assert.equal(result.failed_count, 0);
+      assert.equal(result.passed_count, 0, 'a valid catalog no-match is not a feature pass');
+      assert.ok(result.coverage_gaps?.some(gap => gap.reason === 'fixture_unsatisfied'), JSON.stringify(result));
     } else {
       assert.deepEqual(requests, []);
       assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
@@ -1148,6 +1153,106 @@ test('advanced delivery reporting dispatches wholesale discovery only to opted-i
     }
   }
 });
+
+for (const name of ['collection_selection', 'owner_sold_channel_carriage']) {
+  test(`${name} grades only sellers whose catalog offers selectable collections`, async () => {
+    const storyboard = loadMediaBuyStoryboard(name);
+    const executable = {
+      ...storyboard,
+      prerequisites: undefined,
+      fixtures: { ...storyboard.fixtures, accounts: undefined },
+    };
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const nativeProduct = {
+      product_id: 'seller_native_bundle',
+      name: 'Native channel bundle',
+      description: 'A seller-owned channel bundle',
+      publisher_properties: [{ publisher_domain: 'owner.example', selection_type: 'all' }],
+      format_options: [{
+        format_option_id: 'video_30s',
+        format_kind: 'video_hosted',
+        params: { duration_ms_exact: 30000 },
+      }],
+      delivery_type: 'non_guaranteed',
+      pricing_options: [{ pricing_option_id: 'native_cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 10 }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 0,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions', 'spend'],
+        date_range_support: 'date_range',
+      },
+      collections: [{ publisher_domain: 'owner.example', collection_ids: ['evening_news'] }],
+      collection_targeting_allowed: true,
+    };
+
+    for (const [buyingModes, products] of [
+      [['brief'], []],
+      [['brief', 'wholesale'], []],
+      [['brief', 'wholesale'], [{ ...nativeProduct, collection_targeting_allowed: false }]],
+      [['brief', 'wholesale'], [nativeProduct]],
+    ]) {
+      const requests = [];
+      const result = await runStoryboard('https://agent.example/mcp', executable, {
+        _profile: { tools, raw_capabilities: { media_buy: { buying_modes: buyingModes } } },
+        _controllerCapabilities: { detected: true, scenarios: [] },
+        agentTools: tools,
+        _client: {
+          resetContext() {},
+          async executeTask(task, request) {
+            assert.equal(task, 'get_products', name);
+            assert.ok(buyingModes.includes('wholesale'), 'an unadvertised wholesale read must never dispatch');
+            requests.push(request);
+            return { success: true, status: 'completed', data: {
+              products, cache_scope: 'account', wholesale_feed_version: 'gate-test',
+            } };
+          },
+        },
+      });
+
+      assert.equal(result.failed_count, 0, JSON.stringify(result));
+      if (!buyingModes.includes('wholesale')) {
+        assert.equal(result.passed_count, 0, name);
+        assert.deepEqual(requests, [], name);
+        assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported', name);
+        continue;
+      }
+      assert.equal(requests.length, 1, name);
+      assert.equal(requests[0].buying_mode, 'wholesale', name);
+      const gate = result.fixture_resolutions.find(entry => entry.handle === 'native_collection_product');
+      if (products.some(product => product.collection_targeting_allowed === true)) {
+        // The gate binds the native product; the seeded fixtures then need a
+        // controller this fixture does not provide.
+        assert.equal(gate.status, 'resolved', name);
+        assert.ok(result.fixture_resolutions.some(entry => entry.handle !== gate.handle), name);
+      } else {
+        assert.equal(result.passed_count, 0, 'a catalog without selectable collections is not a feature pass');
+        assert.equal(gate.status, 'unsatisfied', name);
+        assert.ok(result.coverage_gaps?.some(gap => gap.reason === 'fixture_unsatisfied'), JSON.stringify(result));
+      }
+    }
+
+    // A malformed catalog is a discovery failure, not a no-match.
+    const malformed = await runStoryboard('https://agent.example/mcp', executable, {
+      _profile: { tools, raw_capabilities: { media_buy: { buying_modes: ['wholesale'] } } },
+      _controllerCapabilities: { detected: true, scenarios: [] },
+      agentTools: tools,
+      _client: {
+        resetContext() {},
+        async executeTask() {
+          return { success: true, status: 'completed', data: {
+            products: [{ product_id: 'incomplete', collection_targeting_allowed: true }],
+            cache_scope: 'account',
+            wholesale_feed_version: 'gate-test',
+          } };
+        },
+      },
+    });
+    assert.equal(malformed.overall_passed, false, name);
+    assert.equal(malformed.fixture_resolutions.find(entry => entry.handle === 'native_collection_product').status, 'failed', name);
+  });
+}
 
 test('proposal finalize skips unsupported replay while still executing the committed proposal', async () => {
   const storyboard = loadMediaBuyStoryboard('proposal_finalize');
