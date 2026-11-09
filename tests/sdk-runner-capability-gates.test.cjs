@@ -531,3 +531,117 @@ test('library-less sellers still execute delivery from the create-buy anchor', a
   assert.notEqual(deliveryResult.steps[0].skipped, true);
   assert.equal(deliveryResult.steps[0].passed, true);
 });
+
+// product_signal_targeting reads the wholesale product feed and the wholesale
+// signals feed. Every signals agent supports brief discovery, so a brief-only
+// declaration must not select it; neither must a declaration that opts into
+// only one of the two wholesale feeds. The compound gate needs the modern
+// runner, which the 3.1 line exercises through the test-only fixture SDK.
+const { runStoryboard: runModernStoryboard } = require('@adcp-protocol/fixture-test-sdk/testing');
+
+const WHOLESALE_SIGNAL_TARGETING_GATES = [
+  { path: 'media_buy.buying_modes', contains: 'wholesale' },
+  { path: 'signals.discovery_modes', contains: 'wholesale' },
+];
+
+test('product signal targeting requires both wholesale feeds', async () => {
+  const storyboard = loadMediaBuyScenario('product_signal_targeting');
+  assert.equal(storyboard.requires_capability, undefined);
+  assert.deepEqual(storyboard.requires_all_capabilities, WHOLESALE_SIGNAL_TARGETING_GATES);
+
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const outOfScope = [
+    { media_buy: { buying_modes: ['brief'] }, signals: { discovery_modes: ['brief'] } },
+    { media_buy: { buying_modes: ['brief', 'wholesale'] }, signals: { discovery_modes: ['brief'] } },
+    { media_buy: { buying_modes: ['brief'] }, signals: { discovery_modes: ['brief', 'wholesale'] } },
+    { media_buy: {}, signals: {} },
+  ];
+  for (const capabilities of outOfScope) {
+    const dispatched = [];
+    const result = await runModernStoryboard('https://agent.example/mcp', storyboard, {
+      _profile: { tools, raw_capabilities: capabilities },
+      _controllerCapabilities: { detected: true, scenarios: [] },
+      agentTools: tools,
+      _client: {
+        resetContext() {},
+        async executeTask(task) {
+          dispatched.push(task);
+          return { success: false, status: 'failed', error: 'must not dispatch' };
+        },
+      },
+    });
+    const label = JSON.stringify(capabilities);
+    assert.deepEqual(dispatched, [], label);
+    assert.equal(result.overall_passed, true, label);
+    assert.equal(result.phases[0].phase_id, 'capability_unsupported', label);
+    assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported', label);
+  }
+
+  const applicable = await runModernStoryboard(
+    'https://agent.example/mcp',
+    { ...storyboard, prerequisites: undefined, fixtures: undefined, phases: [] },
+    {
+      _profile: {
+        tools,
+        raw_capabilities: {
+          media_buy: { buying_modes: ['brief', 'wholesale'] },
+          signals: { discovery_modes: ['brief', 'wholesale'] },
+        },
+      },
+      agentTools: tools,
+    }
+  );
+  assert.equal(applicable.overall_passed, true);
+  assert.equal(applicable.phases[0].phase_id, 'no_phases');
+});
+
+test('product signal targeting never sends an unresolved product_id to its rejection probe', async () => {
+  const storyboard = loadMediaBuyScenario('product_signal_targeting');
+  const executable = {
+    ...storyboard,
+    requires: undefined,
+    prerequisites: undefined,
+    fixtures: undefined,
+  };
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const dispatched = [];
+  const result = await runModernStoryboard('https://agent.example/mcp', executable, {
+    _profile: {
+      tools,
+      raw_capabilities: {
+        media_buy: { buying_modes: ['brief', 'wholesale'] },
+        signals: { discovery_modes: ['brief', 'wholesale'] },
+      },
+    },
+    agentTools: tools,
+    _client: {
+      resetContext() {},
+      async executeTask(task, request) {
+        dispatched.push({ task, request });
+        if (task === 'get_products') {
+          // Discovery yields nothing to capture: product_id never materializes.
+          return { success: true, status: 'completed', data: { products: [], context: request.context } };
+        }
+        if (task === 'get_signals') {
+          return { success: true, status: 'completed', data: { signals: [], context: request.context } };
+        }
+        return { success: false, status: 'failed', error: `unexpected ${task}` };
+      },
+    },
+  });
+
+  assert.equal(result.overall_passed, false);
+  assert.deepEqual(
+    dispatched.map(call => call.task).filter(task => task === 'create_media_buy' || task === 'get_media_buys'),
+    [],
+    'no buy may be dispatched once product discovery failed'
+  );
+  for (const call of dispatched) {
+    assert.doesNotMatch(JSON.stringify(call.request), /\$context\./, `${call.task} carried an unresolved token`);
+  }
+  const probe = result.phases
+    .find(phase => phase.phase_id === 'reject_unknown_signal')
+    .steps.find(step => step.step_id === 'create_media_buy_with_unknown_signal');
+  assert.equal(probe.skipped, true);
+  assert.equal(probe.skip_reason, 'prerequisite_failed');
+});
