@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.9
+
+### Patch Changes
+
+- 03e8e2a: Compliance: the `typed_proposal_negotiation` and `refine_frequency_cap_negotiation` storyboards seeded their native product (`native_feed_q4` and `no_fcap_native_q4`) with `format_kind: "native"` and `channels: ["native"]`, neither of which is a valid value. The format declaration matched no `core/product-format-declaration.json` branch, so a seller that echoed the seeded product failed product schema validation. The declaration now uses `native_in_feed`, the canonical kind for in-feed native, and carries the `params` that every format declaration requires (title and body length limits and a 1200×627 main image). The channel is now `display`. Both fixtures now match `main`. No storyboard step depends on the format kind or channel, and the product's role in both storyboards is unchanged. Released bundles are unchanged.
+- 03e8e2a: Make shared signals error compliance runnable for discovery-only owned agents. Use malformed get_signals requests for error-code and context checks; move activation negatives into a required signal-marketplace scenario so marketplaces retain their activation checks. The training agent rejects non-string signal_spec inputs instead of silently dropping them and returning a catalog. Missing required tools, controller evidence and genuine assertion failures remain blocking. Existing released bundles are unchanged.
+
 ## 3.2.8
 
 ### Patch Changes
