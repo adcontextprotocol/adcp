@@ -53,6 +53,7 @@ const OBSOLETE_CURRENT_LLMS_REDIRECTS = new Set([
 const RELEASE_OPENAPI_URL = (releaseVersion) =>
   `https://raw.githubusercontent.com/adcontextprotocol/adcp/v${releaseVersion}/static/openapi/registry.yaml`;
 const DOCKERIGNORE_SCHEMA_MARKER = '!dist/schemas';
+const DOCKERIGNORE_DOCS_SNAPSHOT_RULE_RE = /^!dist\/docs\/[^/*]+(?:\/\*\*)?$/;
 
 function clone(value) {
   // docs.json navigation is JSON-pure, so JSON clone is sufficient here.
@@ -749,17 +750,34 @@ export function updateDocsConfig(config, releaseVersion, majorMinor, options = {
   return result;
 }
 
-export function updateDockerignore(content, releaseVersion) {
-  const directoryRule = `!dist/docs/${releaseVersion}`;
-  const contentsRule = `${directoryRule}/**`;
-  if (content.split('\n').includes(directoryRule)) return content;
+/**
+ * Allow exactly the docs.json snapshot builds into the Docker build context.
+ * When a selector moves to a new build, the build it pinned before leaves the
+ * runtime image; it stays in Git and on Mintlify. Appending without retiring
+ * let superseded snapshots accumulate until the image outgrew Fly's budget.
+ */
+export function updateDockerignore(content, config) {
+  const builds = docsSchemaReleases(config).map(([, build]) => build);
+  for (const build of builds) {
+    if (!CLI_RELEASE_VERSION_RE.test(build)) {
+      throw new Error(`docs.json pins an invalid dist/docs build: ${JSON.stringify(build)}`);
+    }
+  }
 
-  const markerIndex = content.indexOf(DOCKERIGNORE_SCHEMA_MARKER);
+  const lines = content
+    .split('\n')
+    .filter((line) => !DOCKERIGNORE_DOCS_SNAPSHOT_RULE_RE.test(line));
+  const markerIndex = lines.indexOf(DOCKERIGNORE_SCHEMA_MARKER);
   if (markerIndex < 0) {
     throw new Error(`.dockerignore must contain ${DOCKERIGNORE_SCHEMA_MARKER}`);
   }
 
-  return `${content.slice(0, markerIndex)}${directoryRule}\n${contentsRule}\n${content.slice(markerIndex)}`;
+  lines.splice(
+    markerIndex,
+    0,
+    ...[...new Set(builds)].flatMap((build) => [`!dist/docs/${build}`, `!dist/docs/${build}/**`])
+  );
+  return lines.join('\n');
 }
 
 /**
@@ -832,7 +850,7 @@ function main() {
   const config = JSON.parse(readFileSync(docsJsonPath, 'utf8'));
   const result = updateDocsConfig(config, releaseVersion, majorMinor);
   const currentLlmsIndex = renderCurrentLlmsIndex(config);
-  const dockerignore = updateDockerignore(readFileSync(dockerignorePath, 'utf8'), releaseVersion);
+  const dockerignore = updateDockerignore(readFileSync(dockerignorePath, 'utf8'), config);
   const schemaTools = updateSchemaTools(readFileSync(schemaToolsPath, 'utf8'), config);
 
   writeFileSync(docsJsonPath, `${JSON.stringify(config, null, 2)}\n`);

@@ -209,13 +209,17 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 3.3.0-beta.4: the reset_state scenario and the set_account_timezone result
 // (#8717) reach the controller on top of the beta.4 coverage fixes (#8718,
 // trimmed to 1_374_852); the controller measures 1_375_833 bytes, bound at
-// 1_376_000. Naming five repeated scalar subschemas (#8525) brings the
+// 1_376_000.
+// Experimental match keys (#8375) reach the seeded Product through
+// Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
+// Naming five repeated scalar subschemas (#8525) brings the
 // controller to 1_378_383 bytes, and the further repeated
 // scalar concepts to 1_401_918, repeated enums to 1_412_332, and every remaining
 // repeat to 1_442_008, pointing every site at one definition to 1_452_778,
 // and building the incomplete scope from the product incomplete scope to
-// 1_453_708; bound it at 1_454_000.
-const PARITY_COMPILE_LIMIT = 1_454_000;
+// 1_453_708, all measured before match keys. With match keys on top, the
+// controller measures 1_461_855 bytes; bound it at 1_462_000.
+const PARITY_COMPILE_LIMIT = 1_462_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

@@ -1746,8 +1746,17 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         brandDb,
         orgId,
         rawDomain,
+        replaceManualDomain: req.body?.replace_manual_domain === true,
       });
       if (!result.ok) {
+        if (result.code === 'manual_domain_upgrade') {
+          return res.status(409).json({
+            error: 'Administrator-added domain',
+            code: 'manual_domain_upgrade',
+            message: result.message,
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
         if (result.code === 'collision') {
           return res.status(409).json({
             error: 'Domain already registered',
@@ -1839,6 +1848,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             domain: canonical,
             state: result.state,
             ...(result.dns_record_name !== undefined ? { dns_record_name: result.dns_record_name } : {}),
+            ...(result.dns_record_value !== undefined ? { dns_record_value: result.dns_record_value } : {}),
             ...(result.retry_after_seconds !== undefined ? { retry_after_seconds: result.retry_after_seconds } : {}),
           });
         }

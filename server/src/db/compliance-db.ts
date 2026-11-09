@@ -153,7 +153,10 @@ export interface TrackSummaryEntry {
   scenario_count: number;
   passed_count: number;
   duration_ms: number;
+  /** A step in this track was not exercised for a setup reason (fixture, controller, contract). */
   has_coverage_gap_skip?: boolean;
+  /** Skipped steps per skip reason; absent when nothing was skipped. */
+  skipped_by_reason?: Record<string, number>;
 }
 
 export interface AgentComplianceStatus {

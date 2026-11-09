@@ -947,13 +947,25 @@ export class CrawlerService {
         ? this.stripLegacyCompatibilityMetadata(result.raw_data as Record<string, unknown>)
         : undefined;
       manifestPersisted = Boolean(manifest);
-      await this.brandDb.upsertDiscoveredBrand({
-        domain,
-        brand_name: brandName,
-        has_brand_manifest: Boolean(manifest),
-        brand_manifest: manifest,
-        source_type: 'brand_json',
-      });
+      // A verified owner's record refuses discovered-brand writes, but a
+      // document served from the domain itself is the owner's own statement:
+      // it replaces the hosted record.
+      const ownerHosted = manifest ? await this.brandDb.getHostedBrandByDomain(domain) : null;
+      if (manifest && ownerHosted?.workos_organization_id && ownerHosted.domain_verified) {
+        await this.brandDb.updateHostedBrand(ownerHosted.id, {
+          brand_json: manifest,
+          brand_name: brandName,
+          origin_validated: true,
+        });
+      } else {
+        await this.brandDb.upsertDiscoveredBrand({
+          domain,
+          brand_name: brandName,
+          has_brand_manifest: Boolean(manifest),
+          brand_manifest: manifest,
+          source_type: 'brand_json',
+        });
+      }
 
       // Extract properties from brand.json and upsert into catalog
       if (result.variant === 'house_portfolio' || result.variant === 'brand_canonical') {

@@ -6,7 +6,7 @@ import { AgentService } from "../agent-service.js";
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
 import { declaredSpecialismsNotApplicableForTarget } from '../compliance/forward-introduced-specialisms.js';
-import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
+import { isAuthoritativeComplianceRun, isCoverageIncomplete } from '../compliance/run-publication.js';
 import { withStoryboardSkipDetails } from '../compliance/storyboard-skip-details.js';
 import {
   HEARTBEAT_TIMEOUT_STREAK_WINDOW,
@@ -1436,7 +1436,10 @@ function storedBrandResolutionResponse(
   return withBrandResolutionProvenance({
     canonical_id: brand.canonical_domain || brand.domain,
     canonical_domain: brand.canonical_domain || brand.domain,
-    brand_name: brand.brand_name || brand.domain,
+    // A hosted row may carry only a manifest; take its name before the domain.
+    brand_name: brand.brand_name
+      || (brand.brand_manifest ? resolveBrandFromJson(brand.domain, brand.brand_manifest, false).name : undefined)
+      || brand.domain,
     ...(brand.brand_names?.length ? { names: brand.brand_names } : {}),
     ...(brand.keller_type ? { keller_type: brand.keller_type } : {}),
     ...(brand.parent_brand ? { parent_brand: brand.parent_brand } : {}),
@@ -7178,6 +7181,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
                 lifecycle_stage: cs.lifecycle_stage,
                 tracks: cs.tracks_summary_json || {},
                 track_details: cs.track_details_json || [],
+                coverage_incomplete: isCoverageIncomplete(cs.track_details_json),
                 provenance: cs.provenance_json ?? null,
                 streak_days: cs.streak_days,
                 last_checked_at: cs.last_checked_at?.toISOString() || null,
@@ -7704,6 +7708,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         refresh_availability: HUMAN_REFRESH_AVAILABILITY,
         tracks: status.tracks_summary_json || {},
         track_details: status.track_details_json || [],
+        coverage_incomplete: isCoverageIncomplete(status.track_details_json),
         provenance: status.provenance_json ?? null,
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
@@ -7973,6 +7978,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           tracks_skipped: run.tracks_skipped,
           tracks_partial: run.tracks_partial,
           tracks_json: run.tracks_json,
+          coverage_incomplete: isCoverageIncomplete(run.tracks_json),
           total_duration_ms: run.total_duration_ms,
           triggered_by: run.triggered_by,
           tested_at: run.tested_at,

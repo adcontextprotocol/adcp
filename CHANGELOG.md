@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.3.0-beta.5
+
+### Minor Changes
+
+- 5ae0658: feat(media-buy): declare supported match keys and connect them to cross-publisher frequency capping (experimental, #8375).
+  
+  Adds `core/match-key.json` (`uid_type`, `vendor` BrandRef, `scopes[]`, `uses[]`, seller-wide `property_types[]`) and `enums/match-key-use.json` (`audience_include`, `audience_exclude`, `frequency_cap`, `identity_match`, `conversion_attribution`). Match keys appear seller-wide as `media_buy.supported_match_keys` on `get_adcp_capabilities`, per product as `Product.identity.match_keys`, and on TMP provider registration as `match_keys` alongside `uid_types`.
+  
+  `frequency_cap` covers caps the seller enforces; `identity_match` declares that a product forwards the key to buyer-side TMP Identity Match, the only place a cap can count across sellers. Two keys are compatible at a scope when they share `uid_type`, both list the scope, and their vendor domains match when both declare one. A product with `persistent_identifier: false` cannot declare `frequency_cap` or `identity_match` keys; `pairid` and `hashed_email` keys cannot declare `identity_match`. `vendor` is required for `other`, for `households` scope, and for `maid` or `publisher_first_party` at `individuals`, because those scopes come from a graph. Match-key changes are material capability changes signalled through `adcp.capability_changes` and `capabilities.changed`.
+  
+  `supported_match_keys` holds at most 64 entries and `scopes` at most 5. `core/match-key.json` admits additional properties, like other capability entries, so it can grow after graduation. All fields are additive and optional. Sellers using them list the new `media_buy.match_keys` experimental feature. `enums/uid-type.json`, `supported_uid_types`, and TMP routing on `uid_types` are unchanged.
+- 35209cf: compliance: promote `sales-fixed-rate` from `preview` to `stable`
+  
+  DR-0028 kept the specialism in preview until the working group settled its name and the controller-scenario gating of the optional hold phases. The record is now accepted (WG Session C consent, 2026-10-30). The `sales_fixed_rate` storyboard is unchanged: it is fully graded, the training agent passes it in the storyboard matrix, and an independent fixed-price seller (sell.nofluffadvisory.com) passes it on the 3.3 bundle, 19 of 19 steps. A passing `sales-fixed-rate` claim now counts toward the AAO Verified media-buy badge and badge eligibility, so a seller whose only claim is `sales-fixed-rate` no longer reports `no_declared_specialisms`.
+
+### Patch Changes
+
+- c6ab3c2: Compliance: the `deterministic_testing` storyboard now declares the Acme Outdoor / Pinnacle sandbox account as the owner of its product and pricing-option fixtures, and explicitly scopes media-buy, creative, delivery and budget controller calls to that same consuming account. Its separate `test.example` account-provisioning and account-state checks keep their own identity, with account listing filtered to the effective run account so unrelated visible accounts cannot supply the state-transition account ID. The same filter preserves a caller-selected account ID when the seller does not support buyer account provisioning. This prevents later lifecycle controls from following the account selected by `sync_accounts` and targeting the wrong sandbox account.
+- cab2151: Define an explicitly gated, offline test-kit catalog for legacy creative asset fixtures. Require exact format references and distinguish missing preparation from malformed fixture inputs without imposing Creative Protocol tools on media-buy-only sellers.
+- a0f95e1: Public Suffix List (#8409, DR-0037): verifiers compute eTLD+1 with a PSL bundled with the verifier, ICANN and PRIVATE sections, never fetched at runtime, and refreshed through normal dependency updates. AdCP names no reference snapshot, and `security.mdx` no longer says two verifiers on different PSL versions are non-conformant against each other, or names PSL libraries. On the trust-record path, a verifier whose list lacks a newly added PRIVATE suffix fails closed. Spec R3a step 1, the threat table, L2 §Grants in trust records, and the trust.json `grantee` description now say the same.
+- 8b9fa18: Fetch historical file contents on demand in the authoritative current/frozen storyboard CI matrix while retaining the complete checked-out protocol corpus and the same conformance assertions and floors. This reduces checkout work that was preventing protocol conformance tests from running.
+
 ## 3.3.0-beta.4
 
 ### Minor Changes

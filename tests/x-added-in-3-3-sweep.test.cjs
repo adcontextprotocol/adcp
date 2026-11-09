@@ -42,6 +42,8 @@ const WHOLE_FILE_3_3 = [
   'core/reporting-subscription-state.json',
   'core/reporting-subscription-coverage.json',
   'enums/reporting-dimension.json',
+  'core/match-key.json',
+  'enums/match-key-use.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -147,6 +149,9 @@ const PROPERTIES_3_3 = [
   ['core/reporting-delivery-offering.json', ['properties', 'standard_dimensions']],
   ['core/reporting-delivery-offering.json', ['properties', 'unmapped_dimensions']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']],
+  ['core/product-identity.json', ['properties', 'match_keys']],
+  ['trusted-match/provider-registration.json', ['properties', 'match_keys']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'supported_match_keys']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

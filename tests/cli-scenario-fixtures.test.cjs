@@ -173,6 +173,21 @@ const DECLARATIONS = {
   }),
 };
 
+const LEGACY_FORMAT = {
+  format_id: { agent_url: 'https://creative.example/', id: 'non-projectable-legacy' },
+  name: 'Acme legacy display',
+  assets: [
+    { item_type: 'individual', asset_id: 'banner_image', asset_type: 'image', required: true,
+      requirements: { min_width: 300, max_width: 300, min_height: 250, max_height: 250 } },
+    { item_type: 'individual', asset_id: 'destination', asset_type: 'url', required: true },
+  ],
+};
+const INLINE_KIT = {
+  creative_formats: [LEGACY_FORMAT],
+  assets: { images: [{ url: 'https://assets.example/hero.jpg', width: 300, height: 250, mime_type: 'image/jpeg' }],
+    click_url: 'https://acmeoutdoor.example/q3' },
+};
+
 function buildProduct({
   product_id = 'advertised-product',
   pricing_option_id = 'fixed-cpm',
@@ -210,8 +225,12 @@ async function runInline({
   failDiscovery = null,
   sameKindCatalog = false,
   auction = false,
+  testKit = INLINE_KIT,
+  modifyStoryboard,
+  creativeTools = true,
 }) {
   const storyboard = loadStoryboardFile(path.join(SCENARIOS, 'inline_creatives_without_sync.yaml'));
+  modifyStoryboard?.(storyboard);
   // Strip only response_schema: the stub returns deliberately minimal payloads that are
   // not full schema instances, and independent schema lints already cover that grading.
   // Everything else stays live - an allowlist here would silently stop grading any step
@@ -274,6 +293,9 @@ async function runInline({
         for (const declaration of product.format_options ?? []) servedDeclarations.push(Object.freeze(declaration));
         data = { ...echo, products: [product] };
       } else if (task === 'create_media_buy') {
+        if (lane === 'legacy') {
+          assert.deepEqual(Object.keys(request.packages[0].creatives[0].assets), ['banner_image', 'destination']);
+        }
         if (failLane === lane) return { success: false, error: 'inline creative rejected' };
         const requested = request.packages[0];
         if (auction) assert.ok(requested.bid_price >= 8, 'inline auction purchases bid at least the discovered floor');
@@ -303,6 +325,9 @@ async function runInline({
         buys.set(lane, { media_buy_id: `${lane}-buy`, package: pkg });
         data = { ...echo, media_buy_id: `${lane}-buy`, packages: [pkg] };
       } else if (task === 'update_media_buy') {
+        if (lane === 'legacy') {
+          assert.deepEqual(Object.keys(request.packages[0].creatives[0].assets), ['banner_image', 'destination']);
+        }
         const updating = buys.get(lane);
         if (!updating) return { success: false, error: `no buy for lane ${lane}` };
         data = { ...echo, media_buy_id: request.media_buy_id, affected_packages: [updating.package] };
@@ -341,10 +366,11 @@ async function runInline({
     'create_media_buy',
     'update_media_buy',
     'get_media_buys',
-    'sync_creatives',
+    ...(creativeTools ? ['sync_creatives'] : []),
   ];
   const result = await runStoryboard('https://seller.example/mcp', storyboard, {
     protocol: 'mcp',
+    test_kit: testKit,
     agentTools: tools,
     _client: client,
     _profile: {
@@ -362,6 +388,59 @@ async function runInline({
 }
 
 const validateRef = ajv.getSchema('/schemas/core/format-option-ref.json');
+
+test('inline legacy manifests use the captured external format slot IDs on create and update', async () => {
+  const { result, calls } = await runInline({ canonical: true, legacy: true, creativeTools: false });
+  assert.equal(result.overall_passed, true, JSON.stringify(result));
+  const legacy = calls.filter(call => ['create_media_buy', 'update_media_buy'].includes(call.task)
+    && laneOf(call.request) === 'legacy');
+  assert.equal(legacy.length, 2);
+  for (const call of legacy) assert.deepEqual(call.request.packages[0].creatives[0].format_id, LEGACY_FORMAT.format_id);
+  assert.equal(calls.some(call => ['list_creative_formats', 'sync_creatives'].includes(call.task)), false);
+});
+
+for (const testKit of [
+  { assets: INLINE_KIT.assets },
+  { ...INLINE_KIT, creative_formats: [] },
+  { ...INLINE_KIT, creative_formats: [{ ...LEGACY_FORMAT,
+    format_id: { ...LEGACY_FORMAT.format_id, agent_url: 'https://other.example/' } }] },
+]) {
+  test(`inline mixed catalog fixture gaps prevent every purchase (${JSON.stringify(testKit.creative_formats)})`, async () => {
+    const { result, calls } = await runInline({ canonical: true, legacy: true, testKit });
+    assert.equal(calls.some(call => ['create_media_buy', 'update_media_buy'].includes(call.task)), false);
+    assert.equal(result.failed_count, 0);
+    assert.equal(result.phases.flatMap(phase => phase.steps).find(step => step.skipped).skip.reason, 'fixture_unavailable');
+  });
+}
+
+test('inline canonical-only catalog works without an operator legacy catalog', async () => {
+  const { result, creates } = await runInline({ canonical: true, legacy: false, testKit: {} });
+  assert.equal(result.overall_passed, true);
+  assert.equal(creates.length, 1);
+});
+
+test('inline unsupported update fixture is checked before legacy and canonical purchases', async () => {
+  const updated = { ...LEGACY_FORMAT, format_id: { ...LEGACY_FORMAT.format_id, id: 'unavailable_update' },
+    assets: [{ item_type: 'individual', asset_id: 'legal', asset_type: 'text', required: true }] };
+  const { result, calls } = await runInline({ canonical: true, legacy: true,
+    testKit: { ...INLINE_KIT, creative_formats: [LEGACY_FORMAT, updated] },
+    modifyStoryboard(source) {
+      const update = source.phases.flatMap(phase => phase.steps).find(step => step.id === 'update_buy_with_replacement_legacy_inline_creative');
+      update.sample_request.packages[0].creatives[0].assets.$build_assets_from_format.format_id = updated.format_id;
+    },
+  });
+  assert.equal(calls.some(call => ['create_media_buy', 'update_media_buy'].includes(call.task)), false);
+  assert.equal(result.failed_count, 0);
+  assert.equal(result.phases.flatMap(phase => phase.steps).find(step => step.skipped).skip.reason, 'fixture_unavailable');
+});
+
+test('inline malformed operator declarations stay visible as harness errors', async () => {
+  const { result } = await runInline({ canonical: false, legacy: true,
+    testKit: { ...INLINE_KIT, creative_formats: [{ ...LEGACY_FORMAT, assets: undefined }] } });
+  assert.equal(result.overall_passed, false);
+  assert.ok(result.failed_count > 0);
+  assert.equal(result.phases.flatMap(phase => phase.steps).some(step => step.skip?.reason === 'fixture_unavailable'), false);
+});
 
 for (const [canonical, legacy] of [[true, false], [false, true], [true, true]]) {
   test(`inline creatives: auction pricing completes advertised paths (${canonical}, ${legacy})`, async () => {

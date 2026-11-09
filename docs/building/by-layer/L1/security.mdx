@@ -805,11 +805,9 @@ Exp-based expiry alone does not cover execution-phase tokens that live for a med
 
 ```json
 {
+  "protected": "<b64url header with kid, alg, typ=adcp-gov-revocation+jws>",
   "payload": "<base64url of the JSON below>",
-  "signatures": [
-    { "protected": "<b64url header with kid, alg, typ=adcp-gov-revocation+jws>",
-      "signature": "<b64url signature>" }
-  ]
+  "signature": "<b64url signature>"
 }
 ```
 
@@ -2563,18 +2561,18 @@ loosening. The annotations are registered as a 4.0 tightening in the
 [4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
 **Worst case.** With the 4.0 bounds applied, the largest schema-valid
-capabilities document is 91,766,491 bytes (about 87 MiB), counting only the
+capabilities document is 99,051,189 bytes (about 94 MiB), counting only the
 members the schema declares. `scripts/capabilities-structural-bounds.cjs` computes it
 and `tests/capabilities-structural-bounds.test.cjs` pins it, so the figure moves
 only when a declared member or limit changes. The calculation assumes every declared member is
 present, every list and map is full, every string is at its maximum length, a
 position with both a keyword and an annotation takes the lower limit, a
 union takes its widest branch, free text takes four bytes per character, and
-patterned or formatted strings one. The largest blocks are `creative` (27 MiB),
-`media_buy` (27 MiB), `adcp` (12 MiB), `governance` (6 MiB), `account` (5 MiB),
+patterned or formatted strings one. The largest blocks are `media_buy` (34 MiB),
+`creative` (27 MiB), `adcp` (12 MiB), `governance` (6 MiB), `account` (5 MiB),
 and `measurement` (4 MiB). Objects that admit undeclared members, such as `ext`
 and context, are open: the schema cannot bound what a producer adds there, and
-107 positions in the response are open in this sense.
+108 positions in the response are open in this sense.
 
 The multipliers behind that figure are nested object lists inside shared
 schemas: a brand reference (`brand-ref`, up to 111 KiB each, most of it
