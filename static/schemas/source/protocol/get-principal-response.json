@@ -119,7 +119,7 @@
             }
           },
           "required": ["kind"],
-          "additionalProperties": true
+          "additionalProperties": false
         },
         {
           "title": "Failed principal read",
@@ -139,7 +139,7 @@
             }
           },
           "required": ["kind", "errors"],
-          "additionalProperties": true
+          "additionalProperties": false
         }
       ]
     },

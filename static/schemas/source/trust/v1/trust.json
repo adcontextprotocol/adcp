@@ -463,7 +463,7 @@
         },
         "ext": {
           "type": "object",
-          "description": "Vendor extensions, namespaced as ext.{vendor}. The top level is closed so it cannot become a catch-all. Never key material or authority.",
+          "description": "Vendor extensions, namespaced as ext.{vendor}. Vendor data goes here, not at the top level. Never key material or authority.",
           "additionalProperties": {
             "type": "object"
           }
