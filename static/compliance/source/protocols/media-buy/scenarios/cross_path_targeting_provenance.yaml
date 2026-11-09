@@ -7,13 +7,19 @@ track: media_buy
 requires:
   - controller
 
-# A scenario-level signal gate plus phase-level audience gates forms the
-# conjunction without extending the runner's single requires_capability shape.
-# Signal-only sellers still exercise exact signal readback; both cross-path
-# rejection probes run only when the seller also advertises audience targeting.
-requires_capability:
-  path: signals.discovery_modes
-  present: true
+# The scenario-level gate selects sellers that advertise both wholesale feeds
+# this storyboard reads (get_products buying_mode: wholesale and get_signals
+# discovery_mode: wholesale). `signals.discovery_modes present: true` is not
+# enough: every signals agent supports brief discovery, so a brief-only
+# declaration would select it. Phase-level audience gates add the audience
+# conjunction. Signal-only wholesale sellers still exercise exact signal
+# readback; both cross-path rejection probes run only when the seller also
+# advertises audience targeting.
+requires_all_capabilities:
+  - path: media_buy.buying_modes
+    contains: wholesale
+  - path: signals.discovery_modes
+    contains: wholesale
 
 required_tools:
   - get_products
@@ -56,8 +62,9 @@ caller:
 
 prerequisites:
   description: |
-    The seller advertises signals.discovery_modes. Cross-path rejection steps
-    additionally require media_buy.audience_targeting. The runner seeds a
+    The seller advertises wholesale in both media_buy.buying_modes and
+    signals.discovery_modes. Cross-path rejection steps additionally require
+    media_buy.audience_targeting. The runner seeds a
     signal-targetable wholesale product; the seller's get_signals feed supplies
     the canonical seller-signal identities used by the scenario.
   test_kit: "test-kits/acme-outdoor.yaml"
@@ -349,6 +356,9 @@ phases:
     requires_capability:
       path: media_buy.audience_targeting
       present: true
+    # The probes consume discovery and audience-registration context only, so
+    # a readback failure does not suppress rejection coverage.
+    depends_on: [discover_native_signal, register_buyer_audience]
     steps:
       - id: reject_signal_as_audience
         title: "Reject a discovered signal handle in audience_include"
@@ -358,7 +368,9 @@ phases:
         doc_ref: "/media-buy/advanced-topics/targeting#audience_include"
         expect_error: true
         negative_path: payload_well_formed
-        stateful: false
+        # Stateful: the request carries discovered context. A failed producer
+        # cascade-skips the probe instead of sending an unresolved token.
+        stateful: true
         expected: |
           Reject with INVALID_REQUEST because the discovered seller signal was
           never registered as a buyer-managed audience. Point error.field at
@@ -401,7 +413,9 @@ phases:
         doc_ref: "/media-buy/advanced-topics/targeting#signal_targeting_groups"
         expect_error: true
         negative_path: payload_well_formed
-        stateful: false
+        # Stateful: the request carries discovered context. A failed producer
+        # cascade-skips the probe instead of sending an unresolved token.
+        stateful: true
         expected: |
           Reject with INVALID_REQUEST because the buyer-managed audience was
           never advertised as a selectable seller signal. Point error.field at
