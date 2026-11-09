@@ -99,7 +99,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const { discoverTools } = require('../scripts/build-schemas.cjs');
-const { taskStatusSchemas } = require('../scripts/task-responses.cjs');
+const { TASK_ERROR_REL, errorSchemaCovers, isErrorBody, taskStatusSchemas } = require('../scripts/task-responses.cjs');
 const { deriveTaskResponseStatuses } = require('../scripts/derive-task-response-statuses.cjs');
 const { collectResponseInstances } = require('./helpers/response-instance-corpus.cjs');
 
@@ -226,10 +226,11 @@ function responseSchemas() {
   const out = [];
   const seen = new Set();
   for (const tool of TOOLS) {
-    for (const { schema: rel } of tool.status_schemas) {
+    for (const { status, schema: rel } of tool.status_schemas) {
       if (seen.has(rel)) continue;
       seen.add(rel);
-      out.push({ tool: tool.name, status: bodyStatus(rel), rel });
+      // The shared error schema is the failed body of a task without one of its own.
+      out.push({ tool: tool.name, status: rel === TASK_ERROR_REL ? status : bodyStatus(rel), rel });
     }
   }
   return out;
@@ -822,6 +823,10 @@ test('every tool response has one branch per status with a body or admitted befo
         expected.set(match[1], `${tool.protocol}/${name}`);
       }
     }
+    // A task the shared error schema covers (experimental in 3.x) and that has
+    // no failed body of its own takes core/task-error.json as its failed body.
+    const covered = errorSchemaCovers(SOURCE_DIR, tool.protocol, toolBase);
+    if (covered && !expected.has('failed')) expected.set('failed', TASK_ERROR_REL);
 
     assert.equal(tool.response_schema, `${tool.protocol}/${toolBase}-response.json`, `${tool.name}: manifest response_schema`);
     for (const rel of tool.async_response_schemas) {
@@ -842,11 +847,13 @@ test('every tool response has one branch per status with a body or admitted befo
     // named it, or not at all, composes its body; a status it admitted openly
     // also composes the body that holds the content it admitted then (the
     // completed body for success content, the failed body for an error
-    // branch's), so it keeps that rule.
+    // branch's), so it keeps that rule. An error body of a covered task is its
+    // status's whole response.
     const contentBody = { completed: expected.get('completed'), failed: expected.get('failed') || expected.get('completed') };
     const branches = union.oneOf.map((branch) => {
       const status = branch.properties.status.const;
-      const kinds = openBefore.get(status) || (expected.has(status) ? [] : ['completed']);
+      const closed = covered && expected.has(status) && isErrorBody(SOURCE_DIR, expected.get(status));
+      const kinds = closed ? [] : openBefore.get(status) || (expected.has(status) ? [] : ['completed']);
       const want = [...new Set([...(expected.has(status) ? [expected.get(status)] : []), ...kinds.map((kind) => contentBody[kind])])];
       const members = branch.allOf || branch.anyOf;
       const rels = members.map((member) => documentOf(member.$ref));
@@ -892,11 +899,15 @@ test('every task response is a disjoint oneOf discriminated by status', () => {
       assert.deepEqual(Object.keys(branch).filter((key) => !ALLOWED_BRANCH_KEYS.includes(key)), [], `${tool.name}: a branch carries no other keyword`);
       assert.deepEqual(Object.keys(branch.properties), ['status'], `${tool.name}: a branch declares only status`);
       assert.ok(pins(branch.properties.status), `${tool.name}: a branch pins status`);
-      // A branch requires status and the names its status's own body requires
-      // at its root (the failed body's errors, say).
+      // A branch requires status, the names its status's own body requires at
+      // its root, and, for an error body, what the shared error schema
+      // requires (a failed response's errors).
       const status = branch.properties.status.const;
       const own = tool.status_schemas.find((entry) => entry.status === status);
-      const ownRequired = own ? (readSource(own.schema).required || []).filter((name) => name !== 'status') : [];
+      const rootRequired = (rel) => (readSource(rel).required || []).filter((name) => name !== 'status');
+      const ownRequired = own
+        ? [...new Set([...rootRequired(own.schema), ...(isErrorBody(SOURCE_DIR, own.schema) ? rootRequired(TASK_ERROR_REL) : [])])]
+        : [];
       assert.deepEqual(branch.required, ['status', ...ownRequired], `${tool.name} ${status}: a branch requires status and its own body's required names`);
       const members = branch.allOf || branch.anyOf;
       assert.ok(!(branch.allOf && branch.anyOf) && Array.isArray(members) && members.length > 0, `${tool.name}: a branch composes its bodies through allOf or anyOf`);
@@ -905,6 +916,31 @@ test('every task response is a disjoint oneOf discriminated by status', () => {
       consts.push(branch.properties.status.const);
     }
     assert.equal(new Set(consts).size, consts.length, `${tool.name}: distinct status consts`);
+  }
+});
+
+test('a failed response of an experimental task is the task error schema', async () => {
+  // DR-0038: the failed branch of a task the shared error schema covers
+  // composes its error body alone, so a failed response needs at least one
+  // error and nothing else of the task's success content admits it.
+  const error = { code: 'SERVICE_UNAVAILABLE', message: 'Retry later.', recovery: 'transient' };
+  const covered = TOOLS.filter((tool) => errorSchemaCovers(SOURCE_DIR, tool.protocol, tool.name.replace(/_/g, '-')));
+  assert.ok(covered.length >= 16, `only ${covered.length} tasks are covered`);
+  for (const tool of covered) {
+    const branch = readBuilt(tool.response_schema).oneOf.find((b) => b.properties.status.const === 'failed');
+    assert.ok(branch && branch.allOf && branch.allOf.length === 1, `${tool.name}: the failed branch composes one body`);
+    assert.ok(isErrorBody(SOURCE_DIR, documentOf(branch.allOf[0].$ref)), `${tool.name}: the failed body is an error body`);
+    assert.deepEqual(branch.required.slice(0, 1), ['status'], `${tool.name}: the failed branch requires status`);
+    assert.ok(branch.required.includes('errors'), `${tool.name}: the failed branch requires errors`);
+    const validate = await validatorFor(`${BUILT_ORIGIN}${tool.response_schema}`);
+    assert.equal(validate({ status: 'failed' }), false, `${tool.name}: a failed response without errors`);
+    assert.equal(validate({ status: 'failed', errors: [] }), false, `${tool.name}: a failed response with no error`);
+    assert.equal(validate({ status: 'failed', errors: ['not an error'] }), false, `${tool.name}: errors entries are core/error.json`);
+    // get_reporting_status's failed body branches on failure_kind.
+    const kinds = tool.name === 'get_reporting_status' ? { view: 'summary', failure_kind: 'operational' } : {};
+    // The envelope's adcp_error carries the same failure (list_account_changes and
+    // request_account require it).
+    assert.equal(validate({ status: 'failed', ...kinds, adcp_error: error, errors: [error] }), true, `${tool.name}: a failed response with one error: ${JSON.stringify(validate.errors)}`);
   }
 });
 
@@ -975,13 +1011,20 @@ const PINNED_BASE_REF = '023bbd26e7c230dcc74bea4087336ea6bc8d0f6a';
 //     rejected an instance two of its oneOf members matched; one body the
 //     branch composes accepts it, and the base accepts it under that body's
 //     own status, or two bodies accept it, or that body's status is a listed
-//     OVERLAP.
+//     OVERLAP;
+//   - ERROR_SCHEMA: an experimental task's failed response is the task error
+//     schema (DR-0038): the status's branch composes its error body alone (the
+//     shared core/task-error.json, or a failed body built on it), so a failed
+//     response without errors, or with only the completed body's content, is
+//     rejected. get_principal and sync_principal reject the same for rejected,
+//     whose body is their failed body.
 // No other tool-surface verdict changes, and the document surface has none.
 const CONTRADICTION = 'contradiction resolved toward the tool-response definition';
 const STATUS_FILE = 'status defined by a status file the base tool response did not compose';
 const OVERLAP = 'instance matching two bodies; the base oneOf rejected it, its status body accepts it';
 const OWN_REQUIRED = 'status with its own body; the base accepted it without a name that body requires';
 const OPEN_BODIES = 'status the base admitted openly; a body its branch composes accepts what the base applied a status condition to';
+const ERROR_SCHEMA = 'experimental task: the status is the task error schema, its error body alone (DR-0038)';
 const TOOL_SURFACE_DIFFERENCES = {
   [OWN_REQUIRED]: { verdict: { base: true, built: false }, statuses: {
     acquire_rights: ['failed'],
@@ -1024,6 +1067,19 @@ const TOOL_SURFACE_DIFFERENCES = {
   [OPEN_BODIES]: { verdict: { base: false, built: true }, statuses: {
     build_creative: ['submitted'],
     create_content_standards: ['submitted', 'working', 'input-required', 'completed', 'canceled', 'rejected', 'auth-required', 'unknown'],
+  } },
+  [ERROR_SCHEMA]: { verdict: { base: true, built: false }, statuses: {
+    check_governance: ['failed'],
+    get_plan_audit_logs: ['failed'],
+    get_principal: ['failed', 'rejected'],
+    list_collections: ['failed'],
+    list_proposals: ['failed'],
+    report_plan_outcome: ['failed'],
+    si_get_offering: ['failed'],
+    si_initiate_session: ['failed'],
+    si_terminate_session: ['failed'],
+    sync_plans: ['failed'],
+    sync_principal: ['failed', 'rejected'],
   } },
 };
 const SUBMITTED_CONTRADICTIONS = {
@@ -1236,6 +1292,16 @@ test('differential validation: every response instance keeps its verdict on each
             // The instance lacks a name the status's branch requires.
             const unionBranch = readBuilt(tool.response_schema).oneOf.find((b) => b.properties.status.const === data.status);
             if (!unionBranch || !unionBranch.required.some((name) => !has(data, name))) continue;
+            observedTool.add(`${entry.reason}|${entry.tool} ${entry.status}`);
+            return true;
+          }
+          if (entry.reason === ERROR_SCHEMA) {
+            // The task is experimental, its status's branch composes one
+            // error body, and that body rejects the instance.
+            const unionBranch = readBuilt(tool.response_schema).oneOf.find((b) => b.properties.status.const === data.status);
+            const body = unionBranch?.allOf?.length === 1 ? documentOf(unionBranch.allOf[0].$ref) : null;
+            if (!body || !errorSchemaCovers(SOURCE_DIR, tool.protocol, tool.name.replace(/_/g, '-')) || !isErrorBody(SOURCE_DIR, body)) continue;
+            if (await validate('built', body, data)) continue;
             observedTool.add(`${entry.reason}|${entry.tool} ${entry.status}`);
             return true;
           }

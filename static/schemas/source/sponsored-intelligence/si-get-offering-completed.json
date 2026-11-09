@@ -146,13 +146,7 @@
       },
       "description": "Alternative offerings to consider if this one is unavailable"
     },
-    "errors": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      },
-      "description": "Errors during offering lookup"
-    },
+    "errors": { "$ref": "/schemas/core/protocol-envelope.json#/definitions/TaskErrors", "description": "Errors during offering lookup" },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

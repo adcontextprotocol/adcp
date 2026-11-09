@@ -343,8 +343,9 @@ export function buildSalesTenantConfig(
           // and fail the older response schema. Gate it off 3.0 like the
           // creative tools below. (/signals keeps it across versions.)
           // Experimental principal layer, keyed to the authenticated caller.
-          // Request-level failures ride the response's `kind: failed` arm;
-          // only a missing principal surfaces as an AUTH_REQUIRED error. The
+          // A failure carries its errors at the response root, the task error
+          // schema, and the wrapper sends it as an error response like any
+          // other custom tool's. The
           // 3.3 identity route always serves it: open onboarding binds a Web
           // Bot Auth agent through sync_principal, even where production gates
           // the other experimental tools off.

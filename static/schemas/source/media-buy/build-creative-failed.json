@@ -2,49 +2,25 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-failed.json",
   "title": "BuildCreativeError",
-  "description": "Body of a failed build_creative response: operation-level errors, and none of the success fields. The completed body also admits this body.",
+  "description": "Body of a failed build_creative response: operation-level errors, and none of the success fields. For a canonical multi-output request, an output-scoped failure MUST set `error.field` to `target_capability_ids[N]` and SHOULD include the rejected value in `error.details.capability_id`. Whole-batch failures may omit output attribution. Deprecated target_format_ids requests retain legacy attribution during the 3.x compatibility window. The completed body also admits this body.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
-  ],
-  "properties": {
-    "errors": {
-      "type": "array",
-      "description": "Array of errors explaining why creative generation failed. For a canonical multi-output request, an output-scoped failure MUST set `error.field` to `target_capability_ids[N]` and SHOULD include the rejected value in `error.details.capability_id`. Whole-batch failures may omit output attribution. Deprecated target_format_ids requests retain legacy attribution during the 3.x compatibility window.",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      },
-      "minItems": 1
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
-    }
-  },
-  "required": [
-    "errors"
+    { "$ref": "/schemas/core/task-error.json" }
   ],
   "additionalProperties": true,
   "not": {
     "anyOf": [
       {
-        "required": [
-          "creative_manifest"
-        ]
+        "required": ["creative_manifest"]
       },
       {
-        "required": [
-          "creative_manifests"
-        ]
+        "required": ["creative_manifests"]
       },
       {
-        "required": [
-          "creatives"
-        ]
+        "required": ["creatives"]
       },
       {
-        "required": [
-          "estimate"
-        ]
+        "required": ["estimate"]
       }
     ]
   }

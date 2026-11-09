@@ -5,41 +5,19 @@
   "description": "Body of a failed log_event response: operation-level errors, and none of the success fields. The completed body also admits this body.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
-  ],
-  "properties": {
-    "errors": {
-      "type": "array",
-      "description": "Operation-level errors",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      },
-      "minItems": 1
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
-    }
-  },
-  "required": [
-    "errors"
+    { "$ref": "/schemas/core/task-error.json" }
   ],
   "additionalProperties": true,
   "not": {
     "anyOf": [
       {
-        "required": [
-          "events_received"
-        ]
+        "required": ["events_received"]
       },
       {
-        "required": [
-          "events_processed"
-        ]
+        "required": ["events_processed"]
       },
       {
-        "required": [
-          "sandbox"
-        ]
+        "required": ["sandbox"]
       }
     ]
   }

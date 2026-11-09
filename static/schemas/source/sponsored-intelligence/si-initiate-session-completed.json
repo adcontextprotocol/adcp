@@ -51,13 +51,7 @@
       "minimum": 1,
       "description": "Session inactivity timeout in seconds. After this duration without a message, the brand agent may terminate the session. Hosts SHOULD warn users before timeout when possible."
     },
-    "errors": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      },
-      "description": "Errors during session initiation"
-    },
+    "errors": { "$ref": "/schemas/core/protocol-envelope.json#/definitions/TaskErrors", "description": "Errors during session initiation" },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

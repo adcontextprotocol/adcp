@@ -5,28 +5,17 @@
   "description": "Body of a failed get_media_buy_issue response: outcome failed and at least one error. The completed body also admits this body.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" }
+    { "$ref": "/schemas/core/task-error.json" }
   ],
   "properties": {
     "outcome": {
       "type": "string",
       "const": "failed"
-    },
-    "errors": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      }
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "outcome",
-    "errors"
-  ],
+  "required": ["outcome"],
   "additionalProperties": true,
-  "not": { "required": ["issue"] }
+  "not": {
+    "required": ["issue"]
+  }
 }

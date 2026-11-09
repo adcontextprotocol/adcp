@@ -111,12 +111,7 @@
       },
       "additionalProperties": true
     },
-    "errors": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      }
-    },
+    "errors": { "$ref": "/schemas/core/protocol-envelope.json#/definitions/TaskErrors" },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

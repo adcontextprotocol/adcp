@@ -367,13 +367,13 @@ export function customToolFor(
           options,
         );
         if (claim) {
+          // A response that carries errors (a failed response, for example a
+          // stale-version CONFLICT) is not a completed operation: release the
+          // claim so a retry with the same key and body re-executes instead of
+          // replaying the failure.
           const hasPayloadErrors = Array.isArray((result as { errors?: unknown[] } | null | undefined)?.errors)
             && ((result as { errors?: unknown[] }).errors ?? []).length > 0;
-          // A `kind: failed` result (for example a stale-version CONFLICT) is not
-          // a completed operation: release the claim so a retry with the same
-          // key and body re-executes instead of replaying the failure.
-          const failedResult = (result as { result?: { kind?: unknown } } | null | undefined)?.result?.kind === 'failed';
-          if (!response.isError && !hasPayloadErrors && !failedResult) {
+          if (!response.isError && !hasPayloadErrors) {
             await getIdempotencyStore().save({
               principal: claim.principal,
               key: claim.key,

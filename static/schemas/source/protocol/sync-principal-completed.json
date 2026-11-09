@@ -3,7 +3,7 @@
   "$id": "/schemas/protocol/sync-principal-completed.json",
   "title": "Sync Principal - Completed",
   "x-status": "experimental",
-  "description": "Result of synchronizing selected sections of the principal's standing configuration. Applied responses return the complete current credential-free configuration. Validated dry-run responses report the would-be action without issuing durable identifiers. A failed result, which only the failed and rejected bodies carry, deliberately cannot carry principal identifiers, versions, or configuration state.",
+  "description": "Result of synchronizing selected sections of the principal's standing configuration. Applied responses return the complete current credential-free configuration. Validated dry-run responses report the would-be action without issuing durable identifiers. A failed or rejected response carries no result: it is the task error schema, with its errors at the response root, and cannot carry principal identifiers, versions, or configuration state.",
   "type": "object",
   "allOf": [
     {

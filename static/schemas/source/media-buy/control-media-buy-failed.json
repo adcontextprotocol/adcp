@@ -4,12 +4,18 @@
   "title": "Control Media Buy - Failed",
   "description": "Body of a failed control_media_buy response: at least one error, and no media buy or warnings.",
   "type": "object",
-  "allOf": [{ "$ref": "/schemas/core/protocol-envelope.json" }],
-  "properties": {
-    "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 },
-    "ext": { "$ref": "/schemas/core/ext.json" }
-  },
-  "required": ["errors"],
+  "allOf": [
+    { "$ref": "/schemas/core/task-error.json" }
+  ],
   "additionalProperties": true,
-  "not": { "anyOf": [{ "required": ["media_buy_id"] }, { "required": ["warnings"] }] }
+  "not": {
+    "anyOf": [
+      {
+        "required": ["media_buy_id"]
+      },
+      {
+        "required": ["warnings"]
+      }
+    ]
+  }
 }

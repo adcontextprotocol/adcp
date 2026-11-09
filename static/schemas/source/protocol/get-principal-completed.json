@@ -3,7 +3,7 @@
   "$id": "/schemas/protocol/get-principal-completed.json",
   "title": "Get Principal - Completed",
   "x-status": "experimental",
-  "description": "Result of reading the authenticated principal's identity and standing configuration. Current responses return a durable principal record with complete credential-free configuration and its version. Recognized responses return an existing durable principal identity before standing configuration exists. Unconfigured responses indicate that the stable authenticated caller has no durable principal record. A failed result, which only the failed and rejected bodies carry, deliberately cannot carry principal identifiers, versions, or configuration state.",
+  "description": "Result of reading the authenticated principal's identity and standing configuration. Current responses return a durable principal record with complete credential-free configuration and its version. Recognized responses return an existing durable principal identity before standing configuration exists. Unconfigured responses indicate that the stable authenticated caller has no durable principal record. A failed or rejected response carries no result: it is the task error schema, with its errors at the response root, and cannot carry principal identifiers, versions, or configuration state.",
   "type": "object",
   "allOf": [
     {

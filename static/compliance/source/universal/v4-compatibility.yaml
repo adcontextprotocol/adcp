@@ -323,6 +323,50 @@ checks:
           The canonical schema is closed in 3.x and does not carry the field, so
           a 3.x seller run cannot send or observe it.
 
+  - id: failed_task_errors_required_in_4_0
+    issue: 8811
+    change: new_requirement
+    applies_to: [all_agents]
+    detection: "A response to a stable task with status failed carries no errors[] at the response root, or carries the task's success body instead of its error schema."
+    fix: >-
+      Send at least one entry in errors[] at the response root on every
+      failed response, alongside adcp_error, and send none of the task's
+      success fields on it. 4.0 applies DR-0038 to every task: the envelope
+      declares errors once, status failed selects the task's error schema,
+      which composes core/task-error.json, and a failed response without
+      errors[] or with the success body is schema-invalid. 3.3 applies the
+      rule to experimental tasks only; these stable tasks keep what their
+      responses accept until 4.0, because they have no failed body that
+      requires errors: calibrate_content, comply_test_controller,
+      create_collection_list, create_property_list, decline_proposals,
+      delete_collection_list, delete_property_list, get_adcp_capabilities,
+      get_collection_list, get_content_standards, get_creative_delivery,
+      get_media_buy_artifacts, get_media_buy_delivery, get_media_buys,
+      get_products, get_property_list, get_signals, get_task_status,
+      list_accounts, list_collection_lists, list_content_standards,
+      list_creative_formats, list_creatives, list_products,
+      list_property_lists, list_tasks, list_transformers, preview_creative,
+      refine_proposals, report_usage, request_proposals,
+      sync_agent_notification_configs, update_collection_list,
+      update_property_list, validate_content_delivery, validate_input and
+      validate_property_delivery.
+    follow_ups:
+      - >-
+        Move the stable top-level errors declarations that match
+        core/protocol-envelope.json#/definitions/TaskErrors into the envelope,
+        and resolve the stable failed bodies whose errors differ from the
+        shared error schema: create_content_standards and
+        get_creative_features allow an empty list, sync_catalogs narrows its
+        items, and get_products and get_signals do not require errors.
+    observed_by:
+      none:
+        reason: >-
+          Not graded yet. The steps that provoke a failed task grade its error
+          code, which a runner reads from adcp_error when errors[] is absent,
+          so no step tells a failed response without errors[] from one with
+          it. An advisory validation with this id on those steps lands with
+          the tracking issue.
+
 # Schema nodes marked for 4.0 removal that no check covers yet. `change` names
 # the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
 # why a 3.x agent is not graded on it.

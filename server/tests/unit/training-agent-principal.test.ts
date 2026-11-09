@@ -91,9 +91,9 @@ describe('principal layer: identity', () => {
   it('refuses identity supplied in the request body', async () => {
     for (const field of ['buyer_agent_url', 'agent_url', 'principal_id', 'connection_id']) {
       const synced = await sync({ declarations: {} }, caller(), { [field]: 'https://evil.example' });
-      expect(synced.result).toMatchObject({ kind: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
+      expect(synced).toMatchObject({ status: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
       const got = await read(caller(), T0, { [field]: 'https://evil.example' });
-      expect(got.result).toMatchObject({ kind: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
+      expect(got).toMatchObject({ status: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
     }
   });
 
@@ -232,7 +232,7 @@ describe('principal layer: reporting destinations', () => {
     ['an access key id in the location authority', destination({ location: 's3://AKIAEXAMPLE@bucket/prefix/' }), 'INVALID_REQUEST'],
   ])('fails the whole request for %s', async (_label, bad, code) => {
     const result = await sync({ reporting_destinations: [bad] });
-    expect(result).toMatchObject({ status: 'failed', result: { kind: 'failed', errors: [{ code }] } });
+    expect(result).toMatchObject({ status: 'failed', errors: [{ code }] });
     expect(JSON.stringify(result)).not.toContain('principal_id');
   });
 
@@ -243,7 +243,7 @@ describe('principal layer: reporting destinations', () => {
       declarations: { async_adcp_versions: ['3.1'] },
       reporting_destinations: [destination(), destination()],
     });
-    expect(result.result).toMatchObject({ kind: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
+    expect(result).toMatchObject({ status: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
     expect(await read()).toEqual(before);
   });
 });
@@ -251,7 +251,7 @@ describe('principal layer: reporting destinations', () => {
 describe('principal layer: concurrency and fences', () => {
   it('enforces expected_configuration_version and expected_principal_kind', async () => {
     const stale = await sync({ declarations: {} }, caller(), { expected_configuration_version: 'cfg_nothing' });
-    expect(stale.result.errors[0]).toMatchObject({ code: 'CONFLICT', field: 'expected_configuration_version' });
+    expect(stale.errors[0]).toMatchObject({ code: 'CONFLICT', field: 'expected_configuration_version' });
 
     const applied = await sync({ reporting_destinations: [destination()] });
     const guarded = await sync({ reporting_destinations: [] }, caller(), {
@@ -264,10 +264,10 @@ describe('principal layer: concurrency and fences', () => {
     const reused = await sync({ reporting_destinations: [destination()] }, caller(), {
       expected_configuration_version: applied.result.configuration_version,
     });
-    expect(reused.result.errors[0].code).toBe('CONFLICT');
+    expect(reused.errors[0].code).toBe('CONFLICT');
 
     const kind = await sync({ declarations: {} }, caller(), { expected_principal_kind: 'operator' });
-    expect(kind.result.errors[0]).toMatchObject({ code: 'CONFLICT', field: 'expected_principal_kind' });
+    expect(kind.errors[0]).toMatchObject({ code: 'CONFLICT', field: 'expected_principal_kind' });
   });
 });
 
@@ -306,7 +306,7 @@ describe('principal layer: declarations', () => {
       notification_configs: [subscriber({ active: true })],
     } as never, caller()));
     const result = await sync({ declarations: { webhook_signing_algorithms: ['ecdsa-p256-sha256'] } });
-    expect(result.result).toMatchObject({ kind: 'failed', errors: [{ code: 'UNSUPPORTED_FEATURE' }] });
+    expect(result).toMatchObject({ status: 'failed', errors: [{ code: 'UNSUPPORTED_FEATURE' }] });
     expect((await read()).result.kind).toBe('recognized');
 
     // The same declaration is fine once no subscriber is active.
@@ -327,13 +327,13 @@ describe('principal layer: request validation', () => {
     ['a signed-URL location', { reporting_destinations: [destination({ location: 's3://pinnacle/p?X-Amz-Signature=abc' })] }],
   ])('rejects %s without persisting', async (_label, configuration) => {
     const result = await sync(configuration);
-    expect(result.result).toMatchObject({ kind: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
+    expect(result).toMatchObject({ status: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
     expect((await read()).result.kind).toBe('recognized');
   });
 
   it('rejects the notification_configs section because it is not advertised', async () => {
     const result = await sync({ notification_configs: [subscriber()] });
-    expect(result.result).toMatchObject({ kind: 'failed', errors: [{ code: 'UNSUPPORTED_FEATURE' }] });
+    expect(result).toMatchObject({ status: 'failed', errors: [{ code: 'UNSUPPORTED_FEATURE' }] });
     expect(PRINCIPAL_CAPABILITY.supported_sections).not.toContain('notification_configs');
   });
 });
@@ -356,12 +356,15 @@ describe('principal layer: through the custom-tool wrapper', () => {
     await call({ idempotency_key: 'wrapped-key-0000000002', configuration: { reporting_destinations: [] } });
     expect((await call(body)).structuredContent.result).toEqual(applied.structuredContent.result);
 
-    // A failed (stale-version) result is not a completed operation: it is not
-    // cached, so a retry re-executes instead of replaying the failure.
+    // A failed (stale-version) response is not a completed operation: it is
+    // not cached, so a retry re-executes instead of replaying the failure.
     const stale = { idempotency_key: 'wrapped-key-0000000003', expected_configuration_version: 'cfg_stale', configuration: { declarations: {} } };
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const failedAttempt = await call(stale);
-      expect(failedAttempt.structuredContent.result.errors[0].code).toBe('CONFLICT');
+      // The wrapper sends a failure that carries errors as an error response
+      // whose adcp_error is the first error, as it does for every custom tool.
+      expect(failedAttempt.isError).toBe(true);
+      expect(failedAttempt.structuredContent.adcp_error.code).toBe('CONFLICT');
       expect(failedAttempt.structuredContent.replayed).toBeUndefined();
     }
   });

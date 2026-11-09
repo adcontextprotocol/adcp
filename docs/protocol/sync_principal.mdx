@@ -381,7 +381,7 @@ For `notification_configs`, the endpoint proof and webhook-signing rules are ide
 
 ## Errors
 
-Failed responses carry `result.kind: "failed"` with structured errors and deliberately cannot carry a principal ID, version, or configuration state.
+A failed response has `status: "failed"` and the task error schema (`core/task-error.json`): at least one entry in `errors[]` at the response root, at most 16, and no `result`. It deliberately can't carry a principal ID, version, or configuration state. A rejected response has the same schema.
 
 | Code | When | Recovery |
 |---|---|---|

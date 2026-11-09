@@ -6,28 +6,11 @@
   "description": "Body of a failed request_account response. Both error layers are present: the envelope's adcp_error and at least one errors[] entry.",
   "type": "object",
   "allOf": [
-    {
-      "$ref": "/schemas/core/protocol-envelope.json"
-    }
+    { "$ref": "/schemas/core/task-error.json" }
   ],
   "properties": {
-    "errors": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      },
-      "minItems": 1
-    },
-    "request": {
-      "$ref": "/schemas/account/request-account-completed.json#/properties/request"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
-    }
+    "request": { "$ref": "/schemas/account/request-account-completed.json#/properties/request" }
   },
-  "required": [
-    "adcp_error",
-    "errors"
-  ],
+  "required": ["adcp_error"],
   "additionalProperties": true
 }
