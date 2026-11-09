@@ -1,0 +1,159 @@
+# Grades the `preferred_delivery_types` row of the field-specific obligations
+# table: specs/legacy-compact-lifecycle-compatibility.md#field-specific-obligations
+#   "Preserve the ordered, non-excluding curation preference. Do not turn it
+#   into `offer_filters.delivery_type`, which is an exclusion filter."
+# Only the non-excluding half is graded. The released request schema says the
+# field "signals preference for curation" and states no ranking rule, so the
+# ordering half has no observable pass/fail outcome. When the seller cannot
+# honor the field, the preflight rejection rule applies (same section, and
+# #legacy-request-preservation-on-a-32-seller). Issue #7403.
+id: media_buy_seller/legacy_get_products_preferred_delivery_types
+version: "1.0.0"
+title: "Retained get_products keeps preferred_delivery_types non-excluding"
+category: media_buy_seller
+summary: "Checks that preferred_delivery_types on a retained wholesale get_products read does not exclude products of other delivery types, or is rejected at its original path."
+track: media_buy
+requires:
+  - controller
+  - collect_product_pages_runner
+
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
+
+introduced_in: "3.2"
+required_tools: [get_products, comply_test_controller]
+
+narrative: |
+  A 3.1 buyer can send preferred_delivery_types on retained get_products. It
+  is a curation preference, not a filter: filters.delivery_type excludes, and
+  this field does not. A compact facade that maps the preference onto
+  offer_filters.delivery_type turns a preference into an exclusion.
+
+  The request is a wholesale read. Wholesale is the exhaustive feed read, and
+  only filters remove products from it. No filter is supplied, so the feed
+  must still contain every product, including products of a delivery type
+  the buyer did not list.
+
+  The controller seeds one non-guaranteed product, and the buyer prefers
+  guaranteed delivery. The runner reads every page. A seller that applies
+  the preference as an exclusion filter omits the seeded product. A seller
+  that cannot honor the field rejects it at its original path.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  description: "Seed one non-guaranteed product with USD pricing."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_1f0f72b099a9"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_legacy_get_products-b162fec8"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: preferred_delivery_non_guaranteed
+      delivery_type: non_guaranteed
+      channels: [display]
+  pricing_options:
+    - product_id: preferred_delivery_non_guaranteed
+      pricing_option_id: preferred_delivery_non_guaranteed_cpm
+      pricing_model: cpm
+      currency: USD
+      floor_price: 10
+
+phases:
+  - id: preference_preserved
+    title: "Keep the preference non-excluding"
+    optional: true
+    branch_set:
+      id: legacy_preferred_delivery_types_handled
+      semantics: any_of
+    steps:
+      - id: legacy_preference_preserved
+        title: "Return the non-preferred product in the wholesale feed"
+        task: get_products
+        collect_product_pages: true
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        stateful: false
+        contributes_to: legacy_preferred_delivery_types_handled
+        expected: |
+          Return the complete wholesale feed. The non-guaranteed product is
+          present even though the buyer prefers guaranteed delivery.
+        sample_request: &preferred_delivery_request
+          buying_mode: wholesale
+          account:
+            brand: {domain: acmeoutdoor.example}
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: "compliance-media_buy_seller_legacy_get_products-b162fec8"
+            sandbox: true
+          preferred_delivery_types: [guaranteed]
+        validations:
+          - check: response_schema
+            description: "Every page validates against the invoked tool's contract"
+          - check: field_contains
+            path: "products[*].product_id"
+            value: preferred_delivery_non_guaranteed
+            description: "A product of a non-preferred delivery type is not excluded"
+
+  - id: preference_rejected
+    title: "Reject a preference the seller cannot honor"
+    optional: true
+    branch_set:
+      id: legacy_preferred_delivery_types_handled
+      semantics: any_of
+    steps:
+      - id: legacy_preference_rejected
+        title: "Identify preferred_delivery_types as unsupported"
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        contributes_to: legacy_preferred_delivery_types_handled
+        expected: |
+          Reject before any side effect with a published error code, and
+          identify preferred_delivery_types at its original path.
+        sample_request: *preferred_delivery_request
+        validations:
+          - check: field_absent
+            path: products
+            description: "The request is rejected rather than answered"
+          - check: error_code
+            description: "The seller rejects with an error code (the spec gives UNSUPPORTED_FEATURE as an example, not a requirement)"
+          - check: field_pattern
+            path: adcp_error.field
+            pattern: "^preferred_delivery_types(\\[\\d+\\])?$"
+            description: "The error identifies the unsupported legacy input at its original path"
+
+  - id: preference_assertion
+    title: "Require one conformant outcome"
+    steps:
+      - id: assert_legacy_preferred_delivery_types_handled
+        title: "Require preservation or rejection"
+        task: assert_contribution
+        stateful: false
+        expected: |
+          The seller either kept the preference non-excluding or rejected
+          preferred_delivery_types at its original path.
+        validations:
+          - check: any_of
+            allowed_values: ["legacy_preferred_delivery_types_handled"]
+            description: "The seller did not turn the preference into an exclusion filter"

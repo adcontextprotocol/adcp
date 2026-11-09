@@ -1,0 +1,166 @@
+# Grades the `fields` row of the field-specific obligations table:
+# specs/legacy-compact-lifecycle-compatibility.md#field-specific-obligations
+#   "Return the requested legacy projection, including legacy-only members
+#   when available, plus fields the served contract makes mandatory. Do not
+#   substitute the intersection with compact `product-fields`."
+# `delivery_measurement` is a released 3.1 `fields` member that compact
+# `media-buy/product-fields.json` does not carry. When the seller cannot honor
+# the projection, the preflight rejection rule applies (same section, and
+# #legacy-request-preservation-on-a-32-seller). Issue #7403.
+id: media_buy_seller/legacy_get_products_fields
+version: "1.0.0"
+title: "Retained get_products returns legacy-only fields members"
+category: media_buy_seller
+summary: "Checks that a retained get_products fields projection returns a legacy-only member the seller has, instead of the intersection with compact product-fields, or rejects fields at its original path."
+track: media_buy
+requires:
+  - controller
+  - collect_product_pages_runner
+
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
+
+introduced_in: "3.2"
+required_tools: [get_products, comply_test_controller]
+
+narrative: |
+  A 3.1 buyer can ask retained get_products for a sparse projection. Some
+  legacy fields members, such as delivery_measurement, have no member in the
+  compact product-fields enum. A compact facade that projects only the
+  intersection silently drops them.
+
+  The controller seeds one product with a delivery_measurement vendor that no
+  other product declares. The buyer requests delivery_type and
+  delivery_measurement. The intersection with compact product-fields is
+  delivery_type alone, so a seller that substitutes it returns the product
+  without its measurement vendor. The runner reads every page.
+
+  The served product schema still applies, so mandatory product fields are
+  returned alongside the requested members. A seller that cannot honor the
+  projection rejects fields at its original path.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  description: "Seed one product with a delivery_measurement vendor and USD pricing."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_34aba7277245"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_legacy_get_products-7d4ada29"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: legacy_fields_measured
+      delivery_type: non_guaranteed
+      channels: [display]
+      delivery_measurement:
+        vendors:
+          - {domain: legacy-fields-measurement.example}
+  pricing_options:
+    - product_id: legacy_fields_measured
+      pricing_option_id: legacy_fields_measured_cpm
+      pricing_model: cpm
+      currency: USD
+      floor_price: 10
+
+phases:
+  - id: legacy_projection_returned
+    title: "Return the requested legacy projection"
+    optional: true
+    branch_set:
+      id: legacy_fields_handled
+      semantics: any_of
+    steps:
+      - id: legacy_fields_projected
+        title: "Return the legacy-only member the seller has"
+        task: get_products
+        collect_product_pages: true
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        stateful: false
+        contributes_to: legacy_fields_handled
+        expected: |
+          Return the seeded product with its delivery_measurement vendor and
+          every field the served product schema makes mandatory.
+        sample_request: &legacy_fields_request
+          buying_mode: wholesale
+          account:
+            brand: {domain: acmeoutdoor.example}
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: "compliance-media_buy_seller_legacy_get_products-7d4ada29"
+            sandbox: true
+          fields: [delivery_type, delivery_measurement]
+        validations:
+          - check: response_schema
+            description: "Every page validates against the served product schema, including its mandatory fields"
+          - check: field_contains
+            path: "products[*].product_id"
+            value: legacy_fields_measured
+            description: "The seeded product is in the feed"
+          - check: field_contains
+            path: "products[*].delivery_measurement.vendors[*].domain"
+            value: legacy-fields-measurement.example
+            description: "The legacy-only delivery_measurement member is returned, not dropped by a compact intersection"
+
+  - id: legacy_projection_rejected
+    title: "Reject a projection the seller cannot honor"
+    optional: true
+    branch_set:
+      id: legacy_fields_handled
+      semantics: any_of
+    steps:
+      - id: legacy_fields_rejected
+        title: "Identify fields as unsupported"
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        contributes_to: legacy_fields_handled
+        expected: |
+          Reject before any side effect with a published error code, and
+          identify fields at its original path.
+        sample_request: *legacy_fields_request
+        validations:
+          - check: field_absent
+            path: products
+            description: "The request is rejected rather than answered"
+          - check: error_code
+            description: "The seller rejects with an error code (the spec gives UNSUPPORTED_FEATURE as an example, not a requirement)"
+          - check: field_pattern
+            path: adcp_error.field
+            pattern: "^fields(\\[\\d+\\])?$"
+            description: "The error identifies the unsupported legacy input at its original path"
+
+  - id: legacy_projection_assertion
+    title: "Require one conformant outcome"
+    steps:
+      - id: assert_legacy_fields_handled
+        title: "Require the legacy projection or rejection"
+        task: assert_contribution
+        stateful: false
+        expected: |
+          The seller either returned the legacy projection or rejected fields
+          at its original path.
+        validations:
+          - check: any_of
+            allowed_values: ["legacy_fields_handled"]
+            description: "The seller did not substitute the compact product-fields intersection"

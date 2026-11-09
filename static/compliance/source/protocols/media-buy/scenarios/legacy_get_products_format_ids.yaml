@@ -1,0 +1,189 @@
+# Grades the `filters.format_ids` row of the field-specific obligations table:
+# specs/legacy-compact-lifecycle-compatibility.md#field-specific-obligations
+#   "Evaluate the full declaring-agent identity and supplied format parameters
+#   against the seller's authoritative compatibility metadata. A matching slug
+#   or a guessed `format_kind` is not an equivalent predicate. Keep legacy
+#   evaluation when no exact canonical mapping exists."
+# When that evaluation is unavailable, the preflight rejection rule applies
+# (same section, and #legacy-request-preservation-on-a-32-seller): reject at
+# the original input path before any side effect. Those are the two conformant
+# outcomes, so they are peer branches. Issue #7403.
+id: media_buy_seller/legacy_get_products_format_ids
+version: "1.0.0"
+title: "Retained get_products matches the full legacy format identity"
+category: media_buy_seller
+summary: "Checks that filters.format_ids on retained get_products compares the declaring agent and format parameters, not the slug alone, or rejects the filter at its original path."
+track: media_buy
+requires:
+  - controller
+
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
+
+introduced_in: "3.2"
+required_tools: [get_products, comply_test_controller]
+
+narrative: |
+  A 3.1 buyer can filter retained get_products by legacy format_ids. A format
+  ID names a format by its declaring agent and slug, and parameterized IDs
+  such as width and height name distinct variants. A compact facade that
+  matches the slug, or guesses a format_kind, answers a different question.
+
+  The controller seeds three products whose legacy format IDs share one slug.
+  The matching product declares the requested agent and dimensions. One
+  negative control declares the same slug and dimensions under another agent.
+  The other declares the requested agent and slug with different dimensions.
+  Each part of the identity must exclude its own negative control.
+
+  The request asks for two rows, one per negative control. Both negative IDs
+  sort before the matching ID, so a seller that drops the filter, or filters
+  after paginating, cannot return the matching product alone.
+
+  A seller that cannot evaluate the full identity must say so: it rejects the
+  request and identifies filters.format_ids as the unsupported input.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media, product_filtering]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  description: "Seed three products that share a legacy format slug and differ in declaring agent or dimensions, with USD pricing."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_d37ad1eb3c23"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_legacy_get_products-04f88bf6"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - product_id: format_ids_z_matching
+      delivery_type: non_guaranteed
+      channels: [display]
+      format_ids:
+        - {agent_url: "https://creative.acmeoutdoor.example", id: display_image, width: 300, height: 250}
+    - product_id: format_ids_a_agent
+      delivery_type: non_guaranteed
+      channels: [display]
+      format_ids:
+        - {agent_url: "https://creative.pinnacle-agency.example", id: display_image, width: 300, height: 250}
+    - product_id: format_ids_b_parameters
+      delivery_type: non_guaranteed
+      channels: [display]
+      format_ids:
+        - {agent_url: "https://creative.acmeoutdoor.example", id: display_image, width: 728, height: 90}
+  pricing_options:
+    - product_id: format_ids_z_matching
+      pricing_option_id: format_ids_z_matching_cpm
+      pricing_model: cpm
+      currency: USD
+      floor_price: 10
+    - product_id: format_ids_a_agent
+      pricing_option_id: format_ids_a_agent_cpm
+      pricing_model: cpm
+      currency: USD
+      floor_price: 10
+    - product_id: format_ids_b_parameters
+      pricing_option_id: format_ids_b_parameters_cpm
+      pricing_model: cpm
+      currency: USD
+      floor_price: 10
+
+phases:
+  - id: format_identity_evaluated
+    title: "Evaluate the full format identity"
+    optional: true
+    branch_set:
+      id: legacy_format_ids_handled
+      semantics: any_of
+    steps:
+      - id: legacy_format_ids_evaluated
+        title: "Exclude the other-agent and other-dimension negative controls"
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        stateful: false
+        contributes_to: legacy_format_ids_handled
+        expected: |
+          Return only format_ids_z_matching. Its declaring agent, slug, and
+          dimensions all equal the requested format ID.
+        sample_request: &format_ids_request
+          buying_mode: wholesale
+          pagination: {max_results: 2}
+          account:
+            brand: {domain: acmeoutdoor.example}
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: "compliance-media_buy_seller_legacy_get_products-04f88bf6"
+            sandbox: true
+          filters:
+            format_ids:
+              - {agent_url: "https://creative.acmeoutdoor.example", id: display_image, width: 300, height: 250}
+        validations:
+          - check: response_schema
+            description: "Response validates against the invoked tool's contract"
+          - check: field_value
+            path: products[0].product_id
+            value: format_ids_z_matching
+            description: "The product declaring the full requested format identity is returned"
+          - check: field_absent
+            path: products[1]
+            description: "Neither the other-agent nor the other-dimension negative control is returned"
+
+  - id: format_identity_rejected
+    title: "Reject a format identity the seller cannot evaluate"
+    optional: true
+    branch_set:
+      id: legacy_format_ids_handled
+      semantics: any_of
+    steps:
+      - id: legacy_format_ids_rejected
+        title: "Identify filters.format_ids as unsupported"
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        contributes_to: legacy_format_ids_handled
+        expected: |
+          Reject before any side effect with a published error code, and
+          identify filters.format_ids at its original path.
+        sample_request: *format_ids_request
+        validations:
+          - check: field_absent
+            path: products
+            description: "The request is rejected rather than answered"
+          - check: error_code
+            description: "The seller rejects with an error code (the spec gives UNSUPPORTED_FEATURE as an example, not a requirement)"
+          - check: field_pattern
+            path: adcp_error.field
+            pattern: "^filters\\.format_ids(\\[\\d+\\])?$"
+            description: "The error identifies the unsupported legacy input at its original path"
+
+  - id: format_identity_assertion
+    title: "Require one conformant outcome"
+    steps:
+      - id: assert_legacy_format_ids_handled
+        title: "Require evaluation or rejection"
+        task: assert_contribution
+        stateful: false
+        expected: |
+          The seller either evaluated the full format identity or rejected
+          filters.format_ids at its original path.
+        validations:
+          - check: any_of
+            allowed_values: ["legacy_format_ids_handled"]
+            description: "The seller did not drop or approximate filters.format_ids"
