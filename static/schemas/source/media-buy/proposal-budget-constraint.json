@@ -11,5 +11,5 @@
   },
   "required": ["currency"],
   "anyOf": [{ "required": ["min"] }, { "required": ["max"] }],
-  "additionalProperties": true
+  "additionalProperties": false
 }
