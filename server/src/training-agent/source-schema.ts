@@ -76,11 +76,14 @@ function linkedSchemaType(uri: string): unknown {
   return linked && typeof linked === 'object' ? (linked as JsonSchema).type : undefined;
 }
 
-function keepDefinitionKey(key: string): boolean {
+function keepDefinitionKey(key: string, value?: unknown): boolean {
   return key !== '$id'
     && key !== '$schema'
     && (key === 'x-adcp-schema-uri' || !key.startsWith('x-'))
-    && !definitionAnnotationKeys.has(key);
+    && !definitionAnnotationKeys.has(key)
+    // `additionalProperties: true` is JSON Schema's default and carries no
+    // information, so referenced definitions omit it from tools/list.
+    && !(key === 'additionalProperties' && value === true);
 }
 
 /** Build one self-contained schema without duplicating referenced schemas or
@@ -146,7 +149,7 @@ function bundleSchema(root: JsonSchema): JsonSchema {
 
       const siblings = Object.fromEntries(
         Object.entries(record)
-          .filter(([key]) => key !== '$ref' && (!definitionPath || keepDefinitionKey(key)))
+          .filter(([key, entry]) => key !== '$ref' && (!definitionPath || keepDefinitionKey(key, entry)))
           .map(([key, entry]) => [key, rewrite(entry, definitionPath)]),
       );
       if (Object.keys(siblings).length === 0) return { $ref: rewrittenRef };
@@ -157,7 +160,7 @@ function bundleSchema(root: JsonSchema): JsonSchema {
 
     return Object.fromEntries(
       Object.entries(record)
-        .filter(([key]) => !definitionPath || keepDefinitionKey(key))
+        .filter(([key, entry]) => !definitionPath || keepDefinitionKey(key, entry))
         .map(([key, entry]) => [key, rewrite(entry, definitionPath)]),
     );
   }
