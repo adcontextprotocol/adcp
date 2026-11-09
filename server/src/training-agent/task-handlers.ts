@@ -2023,9 +2023,21 @@ function formatsPendingForPackage(pkg: PackageState, session: SessionState): Can
   });
 }
 
-function packageNeedsCreative(pkg: PackageState, session: SessionState): boolean {
+/**
+ * Whether `pending_creatives` means required creative coverage is missing.
+ * Through 3.2 the status means the buy "has no creatives assigned"; 3.3
+ * redefines it as missing coverage. A response follows the release it serves
+ * (DR-0024), so a 3.1 or 3.2 buyer with every package assigned sees the buy
+ * advance even while `formats_pending` still lists uncovered formats (#8833).
+ */
+function pendingCreativesTracksCoverage(servedAdcpVersion: string | undefined): boolean {
+  const version = parseAdcpReleaseVersion(servedAdcpVersion ?? DEFAULT_ADCP_VERSION);
+  return version !== undefined && (version.major > 3 || (version.major === 3 && version.minor >= 3));
+}
+
+function packageNeedsCreative(pkg: PackageState, session: SessionState, tracksCoverage: boolean): boolean {
   if (pkg.canceled) return false;
-  if (pkg.formatsToProvide?.length) return formatsPendingForPackage(pkg, session).length > 0;
+  if (tracksCoverage && pkg.formatsToProvide?.length) return formatsPendingForPackage(pkg, session).length > 0;
   return pkg.creativeAssignments.length === 0;
 }
 
@@ -4805,12 +4817,16 @@ const SYNONYM_MAP: Record<string, string[]> = {
   subscriber: ['subscriber', 'engagement'],
 };
 
-/** Derive lifecycle status from stored status and flight dates. */
-export function deriveStatus(mb: MediaBuyState, session?: SessionState): string {
+/**
+ * Derive lifecycle status from stored status and flight dates, in the
+ * vocabulary of the release the response is served at.
+ */
+export function deriveStatus(mb: MediaBuyState, session?: SessionState, servedAdcpVersion?: string): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
+  const tracksCoverage = pendingCreativesTracksCoverage(servedAdcpVersion);
   const needsCreative = session
-    ? mb.packages.some(pkg => packageNeedsCreative(pkg, session))
+    ? mb.packages.some(pkg => packageNeedsCreative(pkg, session, tracksCoverage))
     : mb.packages.some(pkg => pkg.creativeAssignments.length === 0);
   if (needsCreative && mb.status !== 'completed' && !mb.complyControllerForced) {
     return 'pending_creatives';
@@ -17078,7 +17094,7 @@ async function handleCreateMediaBuyUnlocked(
     ),
   );
 
-  const status = deriveStatus(mediaBuy, session);
+  const status = deriveStatus(mediaBuy, session, lifecycleSplitVersionForContext(ctx));
   const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
   if (productAvailableActions !== undefined) mediaBuy.availableActions = productAvailableActions;
   // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
@@ -17197,9 +17213,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   const statusFilter = req.status_filter;
   if (!filterIds?.length) {
     const effectiveFilter = statusFilter || ['active'];
-    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb, session)));
+    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx))));
   } else if (statusFilter?.length) {
-    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb, session)));
+    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx))));
   }
 
   const includeSnapshot = req.include_snapshot === true;
@@ -17242,7 +17258,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   const subscriptionFields = supportsAccountSurfaces33(ctx.servedAdcpVersion);
   return {
     media_buys: pageBuys.map(mb => {
-      const status = deriveStatus(mb, session);
+      const status = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
       const totalBudget = mb.totalBudget
         ?? mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const openImpairments = mb.impairments ?? [];
@@ -18163,7 +18179,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     currency: mb.currency,
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
-      status: deriveStatus(mb, session),
+      status: deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx)),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       totals: requestedMetrics ? narrowDeliveryMetricObject(totals, requestedMetrics) : totals,
@@ -19426,7 +19442,7 @@ async function handleUpdateMediaBuyUnlocked(
 
   // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
   // media_buy_seller/invalid_transitions pins this error code explicitly.
-  const currentStatus = deriveStatus(mb, session);
+  const currentStatus = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
   if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
     const isRecancel = req.canceled === true && currentStatus === 'canceled';
     const code = isRecancel ? 'NOT_CANCELLABLE' : 'INVALID_STATE';
@@ -19608,7 +19624,7 @@ async function handleUpdateMediaBuyUnlocked(
       captureAccountRef,
     );
 
-    const status = deriveStatus(mb, session);
+    const status = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
     return {
       media_buy_id: mb.mediaBuyId,
       ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
@@ -19941,7 +19957,7 @@ async function handleUpdateMediaBuyUnlocked(
         }
       }
       if (assignments?.length === 0) {
-        const currentStatus = deriveStatus(mb, session);
+        const currentStatus = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
         if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
           return {
             errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments cannot be cleared on a buy in "${currentStatus}" status`, field: `packages[${pkgId}].creative_assignments` }] as TaskError[],
@@ -20667,7 +20683,7 @@ async function handleUpdateMediaBuyUnlocked(
     await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal, req.idempotency_key);
   }
 
-  const status = deriveStatus(mb, session);
+  const status = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
   const updatedPackages = mb.packages.map(pkg => ({
     package_id: pkg.packageId,
     product_id: pkg.productId,
@@ -24494,7 +24510,7 @@ async function handleControlMediaBuyUnlocked(
     }
     const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
     if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
-    const currentStatus = deriveStatus(mediaBuy, session);
+    const currentStatus = deriveStatus(mediaBuy, session, lifecycleSplitVersionForContext(ctx));
     const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
     if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
     overlaySeededProducts(session, productMap);
