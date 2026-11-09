@@ -29,6 +29,7 @@ const {
   findingKey,
   historyPairs,
   lintAdditiveMinor,
+  loadComparedTrees,
   recordedCorrections,
   readBaselineAtRef,
 } = require('../scripts/lint-additive-minor.cjs');
@@ -138,15 +139,6 @@ function writeTree(directory, files) {
     fs.mkdirSync(path.join(directory, path.dirname(relativePath)), { recursive: true });
     fs.writeFileSync(path.join(directory, relativePath), JSON.stringify(schema));
   }
-}
-
-/** Every JSON file under `directory`, as [relative path, text]. */
-function walk(directory, root = directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) return walk(full, root);
-    return entry.name.endsWith('.json') ? [[path.relative(root, full).split(path.sep).join('/'), fs.readFileSync(full, 'utf8')]] : [];
-  });
 }
 
 /** Applies one change to a copy of the fixture and returns every finding. */
@@ -434,6 +426,7 @@ function fixtureRoot() {
     '| `core/explicit-open.json` | root | `*` | A root. |',
     '| `core/union.json` | `/oneOf/0`, `/oneOf/1` | `*` | Response branches. |',
     '| `core/closed.json` | `/properties/missing` | `*` | A location no schema has. |',
+    '| `widget/frob-response.json` | `/oneOf/0` | `*` | A generated task response\'s failed branch. |',
     '',
     '#### (b) Declare one property',
     '',
@@ -661,6 +654,113 @@ test('fails when a correction names a location that does not exist', () => {
   assert.deepEqual(result.errors, ['correction core/closed.json#/properties/missing does not exist in source']);
 });
 
+// A task whose response the build generates (scripts/task-responses.cjs). The
+// base release published widget/frob-response.json by hand with the failed
+// branch first and closed; the source declares only the status bodies, and
+// the generated union orders its branches by the task-status enum, so its
+// `/oneOf/0` is the completed branch.
+const FROB_ENVELOPE = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  $id: '/schemas/core/protocol-envelope.json',
+  type: 'object',
+  properties: { status: { $ref: '/schemas/enums/task-status.json' }, context: { type: 'object' } },
+  required: ['status'],
+};
+const FROB_STATUS = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  $id: '/schemas/enums/task-status.json',
+  type: 'string',
+  enum: ['submitted', 'working', 'input-required', 'completed', 'canceled', 'failed', 'rejected', 'auth-required', 'unknown'],
+};
+
+function frobBase() {
+  return {
+    'core/protocol-envelope.json': FROB_ENVELOPE,
+    'enums/task-status.json': FROB_STATUS,
+    'widget/frob-response.json': {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/widget/frob-response.json',
+      type: 'object',
+      allOf: [{ $ref: '/schemas/core/protocol-envelope.json' }],
+      oneOf: [
+        {
+          title: 'Frob Error',
+          type: 'object',
+          properties: { status: { type: 'string', const: 'failed' }, errors: { type: 'array' } },
+          required: ['status', 'errors'],
+          additionalProperties: false,
+        },
+        {
+          title: 'Frob Done',
+          type: 'object',
+          properties: { status: { type: 'string', const: 'completed' }, frob_id: { type: 'string' } },
+          required: ['status', 'frob_id'],
+        },
+      ],
+    },
+  };
+}
+
+/** The source: the status bodies the build generates widget/frob-response.json from. */
+function frobSource({ failedOpen = true } = {}) {
+  const body = (name, properties, required, extra = {}) => ({
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: `/schemas/widget/${name}`,
+    type: 'object',
+    allOf: [{ $ref: '/schemas/core/protocol-envelope.json' }],
+    properties,
+    required,
+    ...extra,
+  });
+  return {
+    'core/protocol-envelope.json': FROB_ENVELOPE,
+    'enums/task-status.json': FROB_STATUS,
+    'widget/frob-completed.json': body('frob-completed.json', { frob_id: { type: 'string' } }, ['frob_id']),
+    'widget/frob-failed.json': failedOpen
+      ? body('frob-failed.json', { errors: { type: 'array' }, detail: { type: 'string' } }, ['errors'])
+      : body('frob-failed.json', { errors: { type: 'array' } }, ['errors'], { additionalProperties: false }),
+  };
+}
+
+function lintFrob(source, correctionsValue) {
+  const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'additive-minor-'));
+  try {
+    writeTree(sourceDir, source);
+    return lintAdditiveMinor({
+      repoRoot: fixtureRoot(),
+      sourceDir,
+      baseTree: tree('3.2.7', frobBase()),
+      baseVersion: '3.2.7',
+      candidateVersion: '3.3.0-beta.0',
+      baselineValue: { base: '3.2.7', entries: [] },
+      correctionsValue,
+    });
+  } finally {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+  }
+}
+
+const FROB_FAILED_BRANCH = correction({ file: 'widget/frob-response.json', pointer: '/oneOf/0' });
+
+test('a correction in a generated task response names the base branch the lint pairs with a status body', () => {
+  const without = lintFrob(frobSource(), corrections());
+  assert.deepEqual(without.findings.map((f) => [f.file, f.pointer, f.detail]),
+    [['widget/frob-response.json', '/oneOf/0', 'property detail added']]);
+  const result = lintFrob(frobSource(), corrections(FROB_FAILED_BRANCH));
+  assert.equal(result.ok, true, result.errors.join('\n'));
+  assert.deepEqual(result.notices.map((n) => [n.file, n.pointer, n.detail, n.corrected]),
+    [['widget/frob-response.json', '/oneOf/0', 'additionalProperties false → absent', true]]);
+});
+
+test('fails when a correction in a generated task response reopens a status body that is still closed', () => {
+  // The base's /oneOf/0 is the failed branch. The generated union's
+  // /oneOf/0 is the open completed branch, so only a check that pairs the
+  // base branch with the failed body sees the closure.
+  const result = lintFrob(frobSource({ failedOpen: false }), corrections(FROB_FAILED_BRANCH));
+  assert.deepEqual(result.errors,
+    ['correction widget/frob-response.json#/oneOf/0 reopens a schema that is still closed in source']);
+});
+
 test('fails when a property correction is not declared in the candidate', () => {
   const result = analyzePair(() => {}, { correctionsValue: corrections(correction({ property: 'extra' })) });
   assert.deepEqual(result.errors, ['correction core/closed.json# does not declare extra in source']);
@@ -743,11 +843,16 @@ test('fails when the corrections list names no existing decision record', () => 
 test('the repository corrections list is valid', () => {
   const value = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lint-additive-minor-corrections.json'), 'utf8'));
   assert.equal(value.decision, 'DR-0036');
-  const sourceTree = buildTree('source', new Map(walk(path.join(__dirname, '..', 'static', 'schemas', 'source'))));
+  // A correction names a location in the trees the CI check compares: the
+  // default base release and the source tree as the release publishes it,
+  // generated task responses included. Version 9.9.9 puts every correction
+  // in effect.
+  const { base, baseTree, candTree } = loadComparedTrees();
+  assert.ok(base, 'the source major line has a stable release to compare against');
   const result = analyze({
-    base: null,
-    baseTree: sourceTree,
-    candTree: sourceTree,
+    base,
+    baseTree,
+    candTree,
     candidateVersion: '9.9.9',
     earlierTrees: [],
     correctionsValue: value,
