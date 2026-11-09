@@ -90,7 +90,7 @@
     "status",
     "received_at"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "if": {

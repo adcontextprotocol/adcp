@@ -29,7 +29,7 @@
         }
       },
       "required": ["kind", "vendor", "locator"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Platform segment",
@@ -49,7 +49,7 @@
         }
       },
       "required": ["kind", "vendor", "segment_ref"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ],
   "examples": [

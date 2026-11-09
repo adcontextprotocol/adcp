@@ -101,7 +101,7 @@
                 }
               },
               "required": ["property_name", "value"],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             "x-max-items-4.0": 8
           }

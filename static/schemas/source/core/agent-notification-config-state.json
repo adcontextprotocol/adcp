@@ -63,7 +63,7 @@
       "required": [
         "schemes"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "active": {
       "type": "boolean",
@@ -78,5 +78,5 @@
     "url",
     "event_types"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

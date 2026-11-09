@@ -76,7 +76,7 @@
     "expires_at",
     "offer_reason"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "A creator postponed a scheduled installment and the seller offered a new date",

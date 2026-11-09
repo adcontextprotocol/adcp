@@ -14,7 +14,7 @@
         }
       },
       "required": ["account_id"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -46,7 +46,7 @@
         }
       },
       "required": ["brand", "operator"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ],
   "examples": [

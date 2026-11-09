@@ -94,7 +94,7 @@
                       "description": "Maximum percentage of total budget for this purchase type."
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               },
               "periods": {
@@ -136,7 +136,7 @@
                     "end",
                     "amount"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             },
@@ -171,7 +171,7 @@
                 }
               }
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "channels": {
             "type": "object",
@@ -204,11 +204,11 @@
                       "type": "number"
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "flight": {
             "type": "object",
@@ -229,7 +229,7 @@
               "start",
               "end"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "countries": {
             "type": "array",
@@ -341,7 +341,7 @@
                     "amount",
                     "currency"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "markets": {
                   "type": "array",
@@ -360,7 +360,7 @@
                 "agent_url",
                 "authority"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "portfolio": {
@@ -390,7 +390,7 @@
                   "amount",
                   "currency"
                 ],
-                "additionalProperties": false
+                "additionalProperties": true
               },
               "shared_policy_ids": {
                 "type": "array",
@@ -411,7 +411,7 @@
             "required": [
               "member_plan_ids"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "ext": {
             "$ref": "/schemas/core/ext.json"
@@ -481,7 +481,7 @@
             }
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "context": {

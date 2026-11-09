@@ -67,11 +67,11 @@
                 { "if": { "properties": { "list": { "const": "accounts_unauthorized" } }, "required": ["list"] }, "then": { "required": ["accounts_unauthorized"], "not": { "anyOf": [{ "required": ["accounts_with_exceptions"] }, { "required": ["prior_versions"] }] } } },
                 { "if": { "properties": { "list": { "const": "prior_versions" } }, "required": ["list"] }, "then": { "required": ["prior_versions"], "not": { "anyOf": [{ "required": ["accounts_with_exceptions"] }, { "required": ["accounts_unauthorized"] }] } } }
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "required": ["kind", "principal_id", "principal_kind", "configuration_version", "configuration"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "title": "Recognized principal without standing configuration",
@@ -101,7 +101,7 @@
             }
           },
           "required": ["kind", "principal_id", "principal_kind"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "title": "Unconfigured principal",
@@ -119,7 +119,7 @@
             }
           },
           "required": ["kind"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "title": "Failed principal read",
@@ -139,7 +139,7 @@
             }
           },
           "required": ["kind", "errors"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },

@@ -99,7 +99,7 @@
               }
             },
             "required": ["scope", "ask"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "properties": {
@@ -137,7 +137,7 @@
                 "then": { "properties": { "action": { "const": "include" } } }
               }
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "properties": {
@@ -164,7 +164,7 @@
               }
             },
             "required": ["scope", "proposal_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       }

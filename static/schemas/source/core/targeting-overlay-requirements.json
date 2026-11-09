@@ -20,7 +20,7 @@
             }
           },
           "required": ["systems"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -38,7 +38,7 @@
             }
           },
           "required": ["supported_match_types"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -57,7 +57,7 @@
             }
           },
           "required": ["families"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -177,7 +177,7 @@
             { "required": ["geometry"] },
             { "required": ["transport_modes"] }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },

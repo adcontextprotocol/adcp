@@ -195,7 +195,7 @@
                       "description": "For a buying agent (role adcp:buying): how it considers sellers. Overrides the record-level profiles.adcp.onboarding for this agent. trust.json is the only home for the buyer posture."
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -210,7 +210,7 @@
         "url",
         "roles"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "granted_agent": {
       "type": "object",
@@ -223,7 +223,7 @@
       "required": [
         "url"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "grant": {
       "type": "object",
@@ -288,7 +288,7 @@
                       "minItems": 1
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -303,7 +303,7 @@
         "grantee",
         "scopes"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "acknowledgement": {
       "type": "object",
@@ -342,7 +342,7 @@
                       "description": "Optional operator-side assertion of the commercial relationship, for sellers.json-style cross-checking. When present it MUST equal the publisher's delegation_type; a mismatch fails the acknowledgement (state 'mismatch'). Omit to defer entirely to the publisher."
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -358,7 +358,7 @@
         "agent_url",
         "via"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "record_profiles": {
       "allOf": [
@@ -384,7 +384,7 @@
                   "description": "Default buyer onboarding posture for every buying agent this record lists; an agent entry's profiles.adcp.onboarding overrides it."
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": true
             }
           }
         }
@@ -412,7 +412,7 @@
       "required": [
         "authoritative_location"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -502,7 +502,7 @@
           "acknowledgements_url"
         ]
       },
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

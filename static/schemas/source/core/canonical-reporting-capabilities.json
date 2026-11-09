@@ -28,7 +28,7 @@
           "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" }
         },
         "required": ["vendor", "metric_id"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "supports_creative_breakdown": { "type": "boolean" },

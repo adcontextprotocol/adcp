@@ -85,7 +85,7 @@
           "width": { "type": "integer", "minimum": 1 },
           "height": { "type": "integer", "minimum": 1 }
         },
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "description": "Selectable entry-canvas sizes in logical pixels at which the same representation can render, rather than placement constraints or expanded states. Mutually exclusive with width/height. Omit all size fields for an unsized or responsive asset; absence does not establish compatibility with a size-constrained option."
     },

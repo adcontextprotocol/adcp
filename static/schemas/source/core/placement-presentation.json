@@ -22,7 +22,7 @@
           "default": "#ffffff"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "creative_slot": {
       "type": "object",
@@ -44,7 +44,7 @@
           "description": "Slot overflow is always clipped so composition is deterministic."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "decorations": {
       "type": "array",
@@ -68,7 +68,7 @@
         "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
         "height": { "type": "integer", "minimum": 1, "maximum": 8192 }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "box_decoration": {
       "type": "object",
@@ -79,7 +79,7 @@
         "bounds": { "$ref": "#/definitions/rectangle" },
         "fill_color": { "$ref": "#/definitions/color" }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "text_decoration": {
       "type": "object",
@@ -92,7 +92,7 @@
         "text_color": { "$ref": "#/definitions/color" },
         "font_size": { "type": "integer", "minimum": 6, "maximum": 256 }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "image_decoration": {
       "type": "object",
@@ -117,11 +117,11 @@
               "description": "SHA-256 digest of the exact image bytes. Consumers MUST fail closed on mismatch."
             }
           },
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "fit": { "type": "string", "enum": ["contain", "cover", "stretch"] }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "layer": {
       "type": "string",
@@ -132,7 +132,7 @@
       "pattern": "^#[0-9A-Fa-f]{6}$"
     }
   },
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-adcp-validation": {
     "verifier_constraints": {
       "bounds": "creative_slot_and_decoration_rectangles_fit_within_canvas"

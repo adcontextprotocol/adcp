@@ -32,5 +32,5 @@
   "required": [
     "_truncation"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

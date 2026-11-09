@@ -14,7 +14,7 @@
         "height": { "type": "integer", "minimum": 1 }
       },
       "required": ["width", "height"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "CanonicalDoohAddress": {
       "title": "Canonical DOOH Address",
@@ -27,7 +27,7 @@
         "postal_code": { "type": "string", "description": "Postal or ZIP code." },
         "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "CanonicalDoohLocation": {
       "title": "Canonical DOOH Location",
@@ -48,7 +48,7 @@
         },
         "address": { "$ref": "#/definitions/CanonicalDoohAddress" }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "CanonicalDoohPlacementAttributes": {
       "title": "Canonical DOOH Placement Attributes",
@@ -139,5 +139,5 @@
       "required": ["kind", "name"]
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

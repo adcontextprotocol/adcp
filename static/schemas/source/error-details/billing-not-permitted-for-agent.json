@@ -17,7 +17,7 @@
   "required": [
     "rejected_billing"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "rejected_billing": "agent",

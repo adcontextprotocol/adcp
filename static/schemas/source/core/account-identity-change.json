@@ -29,7 +29,7 @@
         "status",
         "requested_operator_identity"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AccountIdentityChangeRejected",
@@ -61,7 +61,7 @@
         "requested_operator_identity",
         "reason"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

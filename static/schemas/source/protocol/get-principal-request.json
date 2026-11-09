@@ -32,7 +32,7 @@
         "pagination": { "$ref": "/schemas/core/pagination-request.json" }
       },
       "required": ["subscription_id", "list"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "context": {
       "$ref": "/schemas/core/context.json"

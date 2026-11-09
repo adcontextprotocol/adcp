@@ -151,7 +151,7 @@
             "start",
             "end"
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "cumulative_spend": {
           "type": "number",
@@ -186,7 +186,7 @@
           "then": { "required": ["seller_statement_id", "seller_statement_digest"] }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "error": {
       "$ref": "/schemas/governance/reported-outcome-error.json",

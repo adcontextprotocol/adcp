@@ -17,5 +17,5 @@
     }
   },
   "required": ["system", "values"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

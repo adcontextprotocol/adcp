@@ -79,7 +79,7 @@
         "accepted_formats",
         "accepted_verification_profiles"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Warehouse materialization destination",
@@ -138,7 +138,7 @@
         "location",
         "accepted_verification_profiles"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Dataset share recipient",
@@ -201,7 +201,7 @@
         "recipient",
         "accepted_verification_profiles"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ],
   "x-adcp-validation": {

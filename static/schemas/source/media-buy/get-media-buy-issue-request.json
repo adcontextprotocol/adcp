@@ -58,7 +58,7 @@
     "media_buy_id",
     "issue_id"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"

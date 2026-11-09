@@ -23,7 +23,7 @@
               }
             },
             "required": ["all_values"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -41,7 +41,7 @@
               }
             },
             "required": ["values"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
@@ -74,7 +74,7 @@
     }
   },
   "required": ["countries"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-adcp-validation": {
     "verifier_constraints": {
       "country_prefix_matches_map_key": {

@@ -89,7 +89,7 @@
     "category",
     "description"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"

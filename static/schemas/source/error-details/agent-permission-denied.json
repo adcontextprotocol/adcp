@@ -16,7 +16,7 @@
     }
   },
   "required": ["scope", "reason"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "scope": "agent",

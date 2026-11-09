@@ -236,7 +236,7 @@
           "creative_id",
           "package_id"
         ],
-        "additionalProperties": false,
+        "additionalProperties": true,
         "x-adcp-validation": {
           "verifier_constraints": {
             "product_format_locale_policy": {
@@ -292,7 +292,7 @@
               }
             },
             "required": ["operation", "creative_id", "package_id"],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "x-adcp-validation": {
               "verifier_constraints": {
                 "product_format_locale_policy": {
@@ -316,7 +316,7 @@
               "package_id": { "type": "string", "minLength": 1, "x-entity": "package" }
             },
             "required": ["operation", "creative_id", "package_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "title": "Replace assignment",
@@ -336,7 +336,7 @@
               }
             },
             "required": ["operation", "creative_id", "replaces_creative_id", "package_id"],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "x-adcp-validation": {
               "verifier_constraints": {
                 "product_format_locale_policy": {
@@ -362,7 +362,7 @@
               "merged_creative_id": { "type": "string", "minLength": 1, "description": "Seller-created creative (one that entered the library outside sync_creatives, under a seller-assigned creative_id) currently assigned to package_id that the seller verifies is the same creative as creative_id.", "x-entity": "creative" }
             },
             "required": ["operation", "creative_id", "package_id", "merged_creative_id"],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "x-added-in": "3.3.0",
             "x-adcp-validation": {
               "verifier_constraints": {

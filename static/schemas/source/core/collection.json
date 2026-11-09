@@ -135,7 +135,7 @@
           }
         },
         "required": ["collection_id", "relationship"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "ext": {

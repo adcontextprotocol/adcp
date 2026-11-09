@@ -544,7 +544,7 @@
             }
           },
           "required": ["p25", "p50", "p75", "p90", "p95"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "viewed_seconds_histogram": {
           "type": "array",
@@ -570,7 +570,7 @@
               }
             },
             "required": ["lower_bound_seconds", "impressions"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "standard": {

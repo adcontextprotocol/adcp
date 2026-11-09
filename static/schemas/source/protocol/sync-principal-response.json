@@ -60,7 +60,7 @@
             }
           },
           "required": ["kind", "action", "dry_run", "principal_id", "principal_kind", "configuration_version", "configuration"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "title": "Validated principal dry run",
@@ -87,7 +87,7 @@
             }
           },
           "required": ["kind", "action", "dry_run"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "title": "Failed principal sync",
@@ -107,7 +107,7 @@
             }
           },
           "required": ["kind", "errors"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },

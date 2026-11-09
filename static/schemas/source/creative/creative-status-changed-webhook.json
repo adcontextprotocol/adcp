@@ -91,7 +91,7 @@
         "to",
         "observed_at"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "allOf": [
         {
           "if": {
@@ -180,7 +180,7 @@
     "reason_code",
     "initiator"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Approved → rejected post-approval revocation (paired with a media-buy impairment)",

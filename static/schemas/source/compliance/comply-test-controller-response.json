@@ -334,7 +334,7 @@
           "required": [
             "arm"
           ],
-          "additionalProperties": false,
+          "additionalProperties": true,
           "allOf": [
             {
               "if": {
@@ -708,7 +708,7 @@
                     "identifier_value_sha256",
                     "found"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               },
               "timestamp": {
@@ -732,7 +732,7 @@
               "payload_length",
               "timestamp"
             ],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "discriminator": {
               "propertyName": "attestation_mode"
             },

@@ -94,10 +94,10 @@
         }
       },
       "required": ["installment_ref", "type"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["installment_id", "collection_ref"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

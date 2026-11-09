@@ -81,7 +81,7 @@
   },
   "required": ["account"],
   "allOf": [{ "$ref": "/schemas/core/version-envelope.json" }],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Read the open proposals for one opportunity after a proposal.created notification",

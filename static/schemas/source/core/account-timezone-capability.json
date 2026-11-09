@@ -76,5 +76,5 @@
       "then": { "not": { "required": ["supported_timezones"] } }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

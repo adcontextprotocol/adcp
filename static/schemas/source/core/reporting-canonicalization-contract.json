@@ -40,7 +40,7 @@
             "sha256": { "type": "string", "const": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945" }
           },
           "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "ordering_encoding": {
           "title": "OrderingEncodingGoldenVector",
@@ -53,7 +53,7 @@
             "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
           },
           "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         "additional": {
           "type": "array",
@@ -68,12 +68,12 @@
               "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
             },
             "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         }
       },
       "required": ["empty_report", "ordering_encoding"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "description": "Named cross-language conformance cases: exactly one empty_report vector, exactly one ordering_encoding vector, and an optional list of additional vectors."
     }
   },
@@ -82,5 +82,5 @@
     "algorithm": "adcp_jcs_rows_v1 rejects duplicate JSON object keys, non-finite numbers, lone Unicode surrogates, missing/non-scalar primary keys, and duplicate primary-key tuples. Validate every row against the pinned row schema; do not normalize Unicode. RFC 8785-encode each primary-key value array and sort rows by unsigned lexicographic comparison of those UTF-8 bytes. RFC 8785-encode each complete row, then emit the UTF-8 bytes for '[' + the encoded rows joined by ',' + ']'. SHA-256 is computed over exactly those bytes.",
     "binding": "schema_sha256 and primary_keys MUST exactly equal the selected offering. Golden-vector names MUST be unique across empty_report, ordering_encoding, and additional. empty_report is the exact [] case. ordering_encoding is non-trivial: its input row order differs from canonical primary-key order and its object member order differs from JCS order. SDKs MUST strictly base64-decode canonical_utf8_base64, reproduce every golden vector's exact bytes and sha256, and reject any mismatch before using the contract."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }
