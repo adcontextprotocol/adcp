@@ -174,11 +174,16 @@ describe('Trusted Match Context targeting merge vectors', () => {
       { targeting_kv_mapping: { provider_a: {} } },
       { targeting_kv_mapping: { provider_a: { key: '' } } },
       {},
-      { targeting_kv_mapping: {}, unexpected: true },
     ];
     for (const config of invalidConfigs) {
       assert.equal(validatePublisherConfig(config), false, `${JSON.stringify(config)} unexpectedly validated`);
     }
+  });
+
+  it('accepts an unknown key on the publisher targeting config', () => {
+    // Open by default (WG decision of 2026-11-09, DR-0036): an unknown key validates.
+    const config = { targeting_kv_mapping: {}, unexpected: true };
+    assert.equal(validatePublisherConfig(config), true, JSON.stringify(validatePublisherConfig.errors));
   });
 
   it('rejects invalid merged response shapes', () => {

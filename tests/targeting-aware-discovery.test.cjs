@@ -659,8 +659,9 @@ test("product responses expose symmetric property and collection list applicatio
   );
   assert.equal(
     validateReceipt({ ...collectionReceipt, entries_total: 200 }),
-    false,
-    "counts are represented only by the closed summary partition"
+    // Open by default (DR-0036): `entries_total` is an unknown key and validates.
+    true,
+    "counts are declared only by the summary partition; entries_total is ignored"
   );
   assert.equal(
     validateCanonicalProduct({
@@ -2088,7 +2089,6 @@ test("required overlay requirements exclude seller limit fields", async () => {
     { geo_countries: {} },
     { geo_countries: { ext: { vendor: "hint" } } },
     { geo_countries: { max_values_per_package: 0 } },
-    { geo_countries: { max_values_per_package: 1, unknown: true } },
     { geo_proximity: { radius: true, max_values_per_package: 0 } },
     { geo_proximity: { max_values_per_package: 1 } },
   ]) {
@@ -2100,6 +2100,13 @@ test("required overlay requirements exclude seller limit fields", async () => {
       )}`
     );
   }
+
+  // Open by default (DR-0036): an unknown key beside a valid seller maximum validates.
+  assert.equal(
+    validateSupport({ geo_countries: { max_values_per_package: 1, unknown: true } }),
+    true,
+    errors(validateSupport)
+  );
 
   const requirements = JSON.parse(
     fs.readFileSync(

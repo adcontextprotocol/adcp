@@ -222,8 +222,11 @@ test('issue receipts omit revision and duplicated commitment metadata', async ()
   accepts(validate, { ...issue, severity: 'warning' });
   for (const fields of [
     { revision: 1 }, { sla: escalation },
-    { response_due_at: issue.received_at }, { completion_due_at: issue.received_at },
   ]) rejects(validate, { ...issue, ...fields });
+  // Open by default (DR-0036): response_due_at and completion_due_at are declared nowhere, so they validate.
+  for (const fields of [{ response_due_at: issue.received_at }, { completion_due_at: issue.received_at }]) {
+    accepts(validate, { ...issue, ...fields });
+  }
 });
 
 test('report and polling responses separate stored snapshots from task errors', async () => {
