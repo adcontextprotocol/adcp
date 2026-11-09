@@ -142,7 +142,7 @@
         },
         "audience_size": {
           "$ref": "/schemas/core/audience-size.json",
-          "description": "People matched, as a range with stated precision (the #8024 shape), for platforms that report an interval. May replace matched_count. Omit when match_status is too_small.",
+          "description": "People matched (or households or devices, as stated in the size's unit), as a range with stated precision (the #8024 shape), for platforms that report an interval. May replace matched_count. Omit when match_status is too_small.",
           "x-status": "experimental",
           "x-added-in": "3.3.0"
         }

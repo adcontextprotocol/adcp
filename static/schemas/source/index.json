@@ -282,7 +282,7 @@
         },
         "audience-size": {
           "$ref": "/schemas/core/audience-size.json",
-          "description": "Count of people reported as a range with a stated precision (lower_bound, upper_bound, precision, optional as_of)"
+          "description": "Count reported as a range with a stated precision (lower_bound, upper_bound, precision, optional unit and as_of); people unless unit says otherwise"
         },
         "audience-evidence-pin": {
           "$ref": "/schemas/core/audience-evidence-pin.json",
