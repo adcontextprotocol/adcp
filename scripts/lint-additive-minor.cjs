@@ -27,8 +27,10 @@
  *     against the completed body, a base branch that pins `status` against
  *     that status's body, a property as removed only when no status body
  *     declares it, and a name as newly required at the root only when every
- *     status body requires it. A correction at such a file's location names
- *     the completed body's node there.
+ *     status body requires it. A correction names a location in the base
+ *     release's file; at a file the candidate generates, it names the status
+ *     body node the comparison pairs with it: the completed body's node, or,
+ *     under a base branch that pins `status`, that status's body.
  *
  * Default base (CI and `--candidate` without `--base`)
  *   The highest released stable version in the candidate's major line that
@@ -1507,6 +1509,26 @@ function readJsonFile(file, fallback) {
 }
 
 /**
+ * The trees the CI check compares: the candidate is the source tree as the
+ * release publishes it, generated task responses included (loadSourceTree),
+ * and the base is `baseTree`, else release `baseVersion`, else the default
+ * base of `candidateVersion`. A correction names a location in these trees,
+ * so whatever checks the corrections list loads them here. `base` is null,
+ * and the trees are not loaded, when the major line has no stable release.
+ */
+function loadComparedTrees({
+  repoRoot = REPO_ROOT,
+  sourceDir = DEFAULT_SOURCE_DIR,
+  baseTree,
+  baseVersion,
+  candidateVersion = readSourceVersion(repoRoot),
+} = {}) {
+  const base = baseVersion || (baseTree ? null : defaultBaseVersion(candidateVersion, listReleasedVersions(repoRoot)));
+  if (!base && !baseTree) return { base: null, baseTree: null, candTree: null };
+  return { base, baseTree: baseTree || loadReleasedTree(base, repoRoot), candTree: loadSourceTree(sourceDir) };
+}
+
+/**
  * CI check: source against the default base, filtered through the baseline.
  * Options exist for tests; the defaults read the repository.
  */
@@ -1523,14 +1545,11 @@ function lintAdditiveMinor({
   earlierTrees,
   previousBaseline = null,
 } = {}) {
-  let base = baseVersion;
   const version = candidateVersion || readSourceVersion(repoRoot);
-  if (!baseTree && !base) {
-    base = defaultBaseVersion(version, listReleasedVersions(repoRoot));
-    if (!base) return { ok: true, skipped: true, base: null, errors: [], warnings: [], findings: [], notices: [] };
-  }
-  const baseSchemas = baseTree || loadReleasedTree(base, repoRoot);
-  const candTree = loadSourceTree(sourceDir);
+  const { base, baseTree: baseSchemas, candTree } = loadComparedTrees({
+    repoRoot, sourceDir, baseTree, baseVersion, candidateVersion: version,
+  });
+  if (!candTree) return { ok: true, skipped: true, base: null, errors: [], warnings: [], findings: [], notices: [] };
   const { findings, notices, filesCompared, errors: analysisErrors } = analyze({
     base,
     baseTree: baseSchemas,
@@ -1673,6 +1692,7 @@ module.exports = {
   findingKey,
   historyPairs,
   lintAdditiveMinor,
+  loadComparedTrees,
   recordedCorrections,
 };
 
