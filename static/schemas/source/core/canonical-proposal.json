@@ -86,7 +86,8 @@
           }
         },
         "required": ["product_id", "installment_ref"],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "not": { "required": ["expires_at"] }
       }
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },

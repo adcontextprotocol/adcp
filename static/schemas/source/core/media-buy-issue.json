@@ -91,6 +91,7 @@
     "received_at"
   ],
   "additionalProperties": true,
+  "not": { "anyOf": [{ "required": ["revision"] }, { "required": ["sla"] }] },
   "allOf": [
     {
       "if": {

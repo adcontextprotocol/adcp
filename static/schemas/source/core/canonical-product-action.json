@@ -24,5 +24,6 @@
       "then": { "properties": { "sla": { "$ref": "/schemas/core/escalation-sla.json" }, "modes": { "items": { "const": "seller_managed" } }, "constraints": false, "terms_ref": false } }
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["review_sla"] }
 }

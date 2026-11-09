@@ -81,7 +81,8 @@
         "evaluated_at",
         "summary"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["auth_token"] }
     },
     {
       "title": "Collection list application",
@@ -146,7 +147,8 @@
         "evaluated_at",
         "summary"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["auth_token"] }
     }
   ]
 }

@@ -316,7 +316,8 @@
               "package_id": { "type": "string", "minLength": 1, "x-entity": "package" }
             },
             "required": ["operation", "creative_id", "package_id"],
-            "additionalProperties": true
+            "additionalProperties": true,
+            "not": { "anyOf": [{ "required": ["trackers"] }, { "required": ["landing_page_url"] }] }
           },
           {
             "title": "Replace assignment",
@@ -337,6 +338,7 @@
             },
             "required": ["operation", "creative_id", "replaces_creative_id", "package_id"],
             "additionalProperties": true,
+            "not": { "anyOf": [{ "required": ["trackers"] }, { "required": ["landing_page_url"] }] },
             "x-adcp-validation": {
               "verifier_constraints": {
                 "product_format_locale_policy": {
@@ -363,6 +365,7 @@
             },
             "required": ["operation", "creative_id", "package_id", "merged_creative_id"],
             "additionalProperties": true,
+            "not": { "anyOf": [{ "required": ["trackers"] }, { "required": ["landing_page_url"] }, { "required": ["weight"] }] },
             "x-added-in": "3.3.0",
             "x-adcp-validation": {
               "verifier_constraints": {

@@ -20,7 +20,8 @@
             }
           },
           "required": ["systems"],
-          "additionalProperties": true
+          "additionalProperties": true,
+          "not": { "anyOf": [{ "required": ["max_values_per_package"] }, { "required": ["max_packages"] }] }
         }
       ]
     },
@@ -177,7 +178,8 @@
             { "required": ["geometry"] },
             { "required": ["transport_modes"] }
           ],
-          "additionalProperties": true
+          "additionalProperties": true,
+          "not": { "required": ["max_values_per_package"] }
         }
       ]
     },

@@ -59,6 +59,7 @@
     "issue_id"
   ],
   "additionalProperties": true,
+  "not": { "required": ["context_id"] },
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"

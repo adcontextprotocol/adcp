@@ -159,6 +159,7 @@
     }
   ],
   "additionalProperties": true,
+  "not": { "anyOf": [{ "required": ["decision"] }, { "required": ["confidence"] }] },
   "examples": [
     {
       "issuer": {

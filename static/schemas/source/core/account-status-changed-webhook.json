@@ -95,7 +95,8 @@
       "required": [
         "message"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["url"] }
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

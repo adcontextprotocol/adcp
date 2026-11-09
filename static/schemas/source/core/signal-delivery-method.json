@@ -64,7 +64,8 @@
         "pattern",
         "vendor"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["consumer_identities"] }
     },
     {
       "title": "Clean room",
@@ -104,7 +105,8 @@
         "pattern",
         "vendor"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "anyOf": [{ "required": ["destination_ref"] }, { "required": ["bind_expiry_days"] }] }
     }
   ],
   "examples": [

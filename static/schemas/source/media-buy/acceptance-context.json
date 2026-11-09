@@ -52,5 +52,6 @@
     ]
   },
   "minProperties": 1,
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["political"] }
 }

@@ -922,14 +922,16 @@
                   }
                 },
                 "required": ["name", "version", "components"],
-                "additionalProperties": true
+                "additionalProperties": true,
+                "not": { "anyOf": [{ "required": ["approved"] }, { "required": ["verified"] }] }
               },
               "uniqueItems": true,
               "maxItems": 16
             }
           },
           "required": ["sdks"],
-          "additionalProperties": true
+          "additionalProperties": true,
+          "not": { "anyOf": [{ "required": ["approved"] }, { "required": ["verified"] }] }
         },
         "idempotency": {
           "type": "object",

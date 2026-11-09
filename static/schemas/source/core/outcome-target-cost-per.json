@@ -21,5 +21,6 @@
     }
   },
   "required": ["amount", "currency", "strength"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["max_bid"] }
 }

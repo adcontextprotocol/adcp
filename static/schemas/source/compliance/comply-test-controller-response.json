@@ -55,7 +55,8 @@
             "allOf": [
               { "$ref": "/schemas/core/reporting-subscription-coverage.json#/properties/timezone_cutovers/items" },
               { "required": ["offering_id", "previous_timezone"] }
-            ]
+            ],
+            "not": { "required": ["changed_at"] }
           }
         }
       },

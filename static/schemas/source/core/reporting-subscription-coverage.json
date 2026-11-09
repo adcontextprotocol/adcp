@@ -142,6 +142,7 @@
     { "if": { "properties": { "status": { "const": "inactive" } }, "required": ["status"] }, "then": { "required": ["deactivated_at"] }, "else": { "not": { "required": ["deactivated_at"] } } }
   ],
   "additionalProperties": true,
+  "not": { "required": ["covered"] },
   "examples": [
     {
       "description": "Active account: one buy's products carry no matching offering, and an earlier capacity refusal has ended",

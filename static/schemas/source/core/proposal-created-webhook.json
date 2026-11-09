@@ -74,6 +74,7 @@
   },
   "required": ["idempotency_key", "notification_id", "notification_type", "fired_at", "subscriber_id", "account_id", "proposal_id", "opportunity_id", "later_reason", "expires_at"],
   "additionalProperties": true,
+  "not": { "required": ["proposal"] },
   "examples": [
     {
       "description": "New event inventory for an open opportunity",

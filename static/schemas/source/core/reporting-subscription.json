@@ -96,7 +96,8 @@
         }
       },
       "required": ["feed_purpose", "period_duration", "required_finality"],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["offering_id"] }
     },
     "reconciliation_mode": {
       "$ref": "/schemas/core/reporting-reconciliation-mode.json",

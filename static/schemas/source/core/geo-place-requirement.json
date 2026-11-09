@@ -41,5 +41,6 @@
     }
   },
   "required": ["systems"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "anyOf": [{ "required": ["max_values_per_package"] }, { "required": ["max_packages"] }] }
 }

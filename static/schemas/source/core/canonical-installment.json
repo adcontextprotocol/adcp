@@ -99,5 +99,6 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["installment_id", "collection_ref"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["collection_id"] }
 }

@@ -49,6 +49,7 @@
   },
   "required": ["countries"],
   "additionalProperties": true,
+  "not": { "anyOf": [{ "required": ["max_values_per_package"] }, { "required": ["max_packages"] }] },
   "x-adcp-validation": {
     "verifier_constraints": {
       "country_prefix_matches_map_key": {
