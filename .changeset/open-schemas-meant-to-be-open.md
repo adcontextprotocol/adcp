@@ -17,7 +17,7 @@ Open the schemas that were meant to be open (working-group decision of 2026-11-0
 - No key material or markup: `trust.json`, on the signature-verification fetch path, and the declarative `placement-presentation` frame.
 - Maps keyed by identifiers (`patternProperties`).
 
-Where closure also rejected a specific field the protocol defines elsewhere, the opened schema names it in `not: { anyOf: [{ required: [...] }] }`, as #8531 did for `canonical-product`. For example, `trackers` and `landing_page_url` stay `assign`-only, hold entries carry no `expires_at`, and reporting recipients and delivery-ready webhooks carry no credential.
+Where closure also rejected a specific field the protocol defines elsewhere, the opened schema names it in `not: { anyOf: [{ required: [...] }] }`, as #8531 did for `canonical-product`. For example, `trackers` and `landing_page_url` stay `assign`-only, hold entries carry no `expires_at`, and delivery-ready webhooks carry no access token.
 
 The additive-minor check now flags an added property only where the schema stays closed. It still fails on removals, renames, retypes, removed enum values, tightened bounds, new required names, and closing an open schema. The closed-anywhere-in-the-major rule and the reopening corrections are gone, and the baseline keeps 4 entries, each with its resolution.
 
