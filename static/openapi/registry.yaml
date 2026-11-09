@@ -5566,6 +5566,11 @@ components:
                 incomplete_bundle_count:
                   type: integer
                   minimum: 0
+                not_applicable_universal_bundle_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Universal bundles left partial only because the agent advertises none of the tools for a surface it does not declare. They do not count as incomplete.
                 relevant_failure_count:
                   type: integer
                   minimum: 0
