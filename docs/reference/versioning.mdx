@@ -8,14 +8,14 @@ AdCP uses a three-tier numbering system: **VERSION.RELEASE.PATCH** (e.g., 3.1.2)
 
 ## What can change in a release
 
-1. **A minor only adds.** New fields go on open schemas. Nothing is removed, renamed, retyped or made required, and closed schemas stay closed until the next major ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). The [additive-minor check](https://github.com/adcontextprotocol/adcp/blob/main/scripts/lint-additive-minor.cjs) enforces this for schemas in CI.
+1. **A minor only adds.** New fields go on open schemas. Nothing is removed, renamed, retyped or made required. Schemas are open, and a schema is closed only for a structural reason ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). The [additive-minor check](https://github.com/adcontextprotocol/adcp/blob/main/scripts/lint-additive-minor.cjs) enforces this for schemas in CI.
 2. **To replace a field, add the new one and deprecate the old one.** Senders emit both until the next major.
 3. **Removals and breaking changes happen in a major.**
 4. **A minor never adds a field to a mutating request if an older seller that ignores it would commit to something different.** Spend, targeting, caps, bidding, creative activation, measurement and account identity are examples, not the full list. Such a field waits for the next major, or ships behind a capability the seller declares first, and buyers MUST NOT send it to a seller that does not declare that capability.
 
-These rules cover stable surfaces. [Experimental surfaces](#experimental-surfaces) have their own contract. The only other changes a minor may make to a closed schema are the corrections and named exceptions that DR-0036 allows, each listed in [the corrections register](https://github.com/adcontextprotocol/adcp/blob/main/scripts/lint-additive-minor-corrections.json).
+These rules cover stable surfaces. [Experimental surfaces](#experimental-surfaces) have their own contract. Opening a schema that was closed without a structural reason rejects nothing that was valid, so it is a correction: 3.3 opens such schemas, and so does a 3.2.x patch. The only other corrections apply a bound or a required name that the published text already set. DR-0036 allows both kinds, and each correction the additive-minor check would otherwise report is listed in [the corrections register](https://github.com/adcontextprotocol/adcp/blob/main/scripts/lint-additive-minor-corrections.json).
 
-The shipped 3.0 → 3.1 → 3.2 moves did not all follow these rules; they and the 12 released entries in the [additive-minor baseline](https://github.com/adcontextprotocol/adcp/blob/main/scripts/lint-additive-minor-baseline.json) stay as shipped until 4.0 and set no precedent.
+The shipped 3.0 → 3.1 → 3.2 moves did not all follow these rules. They stay as shipped until 4.0 and set no precedent.
 
 This page defines what goes on the wire. How a library gets there is up to that library.
 
@@ -172,7 +172,7 @@ See [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for the full
 - Removing or renaming a field, method, or enum value
 - Changing a field's type, or making an optional field required
 - Tightening validation rules on an existing field
-- Adding a property to a closed schema, or closing an open one
+- Adding a property to a schema kept closed for a structural reason, or closing a published open schema
 - Architectural or structural redesign of the protocol
 - Changes to authentication, transport, or core security requirements
 - Changes that alter fundamental behavioral semantics
@@ -290,7 +290,7 @@ AdCP 3.3 adds optional stable fields, enum values, and capability declarations, 
 
 Three other guarantees loosen rather than narrow. The brand.json body cap rises from 256 KiB to 2 MiB (#8057), so a verifier still on the 3.2 cap can reject a brand.json a 3.3 verifier accepts. A `ready` audience no longer promises `matched_count` and `effective_match_rate` (#8024). The recommended client response-size default rises from 1 MiB to 4 MiB (#8200), so a client on the older figure can reject a response a 3.3 client accepts. The new SHOULD that clients bound response size (#8192) is a recommendation, not an exception. See [the migration guide](/docs/reference/migration/3-2-to-3-3#brand-json-size-cap-rises-to-2-mib).
 
-**Correction: proposal-flow schemas reopened.** 3.2 published the proposal-flow task roots and their containers closed, against [DR-0019](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md), which keeps roots and containers open. 3.3 and a 3.2.x patch reopen them, as a correction recorded in [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md). Opening a schema rejects nothing that was valid before. New 3.3 fields on these schemas go only to peers that negotiated 3.3. See [the migration guide](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers).
+**Correction: schemas opened.** Some 3.x schemas were published closed with no structural reason, among them the 3.2 proposal-flow task roots and their containers. 3.3 opens them, and a 3.2.x patch opens them too, as a correction under [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md). Opening a schema rejects nothing that was valid before. New 3.3 fields on these schemas go only to peers that negotiated 3.3. See [the migration guide](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers).
 
 ### Experimental surfaces
 
@@ -302,7 +302,7 @@ Experimental status is deliberately scoped. If a surface is not marked experimen
 
 ### Patch releases
 
-A patch release (`3.0.1`, `3.1.2`) changes only documentation, wording, validation that was diverging from the documented stable spec, registry-versioned artifacts, conformance-suite artifacts, or experimental-only surfaces. For stable AdCP surfaces, patches never change schema — no new fields, no renamed fields, no new enum values. Upgrading to the latest patch of your current release is always safe for stable AdCP surfaces; experimental adopters must also follow the release notes for the experimental features they declared.
+A patch release (`3.0.1`, `3.1.2`) changes only documentation, wording, validation that was diverging from the documented stable spec, registry-versioned artifacts, conformance-suite artifacts, or experimental-only surfaces. For stable AdCP surfaces, a patch changes a schema only by a correction under [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md): opening a schema that was closed without a structural reason, or applying a bound or required name that the published text already set. It adds no fields, renames none, and adds no enum values. Upgrading to the latest patch of your current release is always safe for stable AdCP surfaces; experimental adopters must also follow the release notes for the experimental features they declared.
 
 ### Security fixes
 
