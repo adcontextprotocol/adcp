@@ -566,7 +566,8 @@ in `experimental_features`.
 | Field | Meaning |
 |---|---|
 | `uid_type` | Identifier type from `enums/uid-type.json`. Match keys draw from this enum only. `supported_identifier_types` (`hashed_email`, `hashed_phone`) remains the list of PII-derived identifiers that `sync_audiences` accepts, and is not a source of match keys. |
-| `vendor` | BrandRef domain of the graph or resolution vendor that produces the key at the declared scopes. Required when `uid_type` is `other`, when `scopes` include `households`, and when a `maid` or `publisher_first_party` key lists `individuals`. Those scopes always come from a graph, so the graph is named. |
+| `vendor` | BrandRef domain of the party that forms the entity at the declared scopes: the graph or resolution vendor, or the seller itself when it forms the entity. It names who forms the entity, not who supplied input data such as an IP or device-signal feed. Required when `uid_type` is `other`, when `scopes` include `households`, and when a `maid` or `publisher_first_party` key lists `individuals`, so the party that forms those entities is always named. |
+| `scope_resolution` | `graph` or `serve_time`. How the key reaches its non-native scopes. `graph`: a persistent graph, licensed or run by the seller, resolves it. `serve_time`: the seller groups the key at request time from network and device signals (for example IP address and user agent) without a persistent graph, and names its own domain as `vendor`. Absent means `graph`. See [Households a seller forms at serve time](#households-a-seller-forms-at-serve-time). |
 | `scopes` | One or more values from `enums/reach-unit.json`, excluding `custom`. A key that resolves at more than one scope lists each. |
 | `uses` | `audience_include`, `audience_exclude`, `frequency_cap`, `identity_match`, `conversion_attribution`. Retargeting is `audience_include` with a `crm` audience. |
 | `property_types` | Seller-wide entries only. The property types (`website`, `mobile_app`, `ctv_app`, …) on which the key resolves. Omitted means every property type the seller sells. |
@@ -631,10 +632,12 @@ Two match keys are compatible at scope `S` when:
 
 1. they have the same `uid_type`,
 2. both list `S` in `scopes`, and
-3. when both declare `vendor`, the vendor domains are equal. Because `vendor`
-   is required for `other` and for every graph-derived scope, two keys at
-   `households`, or two `other` keys, are compatible only under the same
-   vendor.
+3. when both declare `vendor`, the vendor domains are equal, and
+4. they declare the same `scope_resolution` (absent means `graph`).
+
+Because `vendor` is required for `other` and for every non-native scope, two
+keys at `households`, or two `other` keys, are compatible only under the same
+vendor.
 
 A buyer planning a cap per `households` across sellers counts it only on
 products whose `identity_match` keys are compatible at `households` with a
@@ -642,6 +645,38 @@ key the buyer's Identity Match provider declares. The cap is only as wide as
 that set of products. Products without a compatible key are still capped by
 any seller-enforced cap, but their impressions don't count toward the buyer's
 cross-seller cap.
+
+#### Households a seller forms at serve time
+
+Many CTV and streaming sellers do not license a household graph. They group
+devices into households themselves when the ad request arrives, mostly from
+the IP address plus device signals. Such a seller declares the key with its
+own domain as `vendor` and `scope_resolution: serve_time`, for example:
+
+```json
+{
+  "uid_type": "maid",
+  "vendor": { "domain": "streamhaus.example" },
+  "scopes": ["devices", "households"],
+  "scope_resolution": "serve_time",
+  "uses": ["audience_exclude", "frequency_cap"]
+}
+```
+
+Two consequences follow from the compatibility rule:
+
+- A serve-time household is compatible only with keys that name the same
+  forming party, in practice the same seller or the same platform. Two sellers that each group by IP form different households for the same
+  home, so a buyer MUST NOT count a household cap across them on the strength
+  of both being IP-based.
+- `vendor` names the party that forms the household. A seller that groups
+  devices itself while using another company's IP or device data names its
+  own domain, not the data supplier's, so its key does not look compatible
+  with a buyer whose Identity Match provider uses that supplier's graph.
+
+Serve-time households can change between requests as addresses are reassigned
+or devices move between networks. Buyers planning a household cap across a
+flight should expect that drift on `serve_time` keys.
 
 #### Freshness and privacy
 
