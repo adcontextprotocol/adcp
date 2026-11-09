@@ -6,6 +6,7 @@ summary: "Two creatives on two packages of the same buy. Rejects them sequential
 track: media_buy
 required_tools:
   - get_products
+  - list_creative_formats
   - create_media_buy
   - get_media_buys
   - sync_creatives
@@ -126,10 +127,8 @@ phases:
             key: "product_id"
           - path: "products[0].pricing_options[0].pricing_option_id"
             key: "pricing_option_id"
-          - path: "products[0].format_ids[0].agent_url"
-            key: "format_agent_url"
-          - path: "products[0].format_ids[0].id"
-            key: "format_id"
+          - path: "products[0].format_ids[0]"
+            key: "format_ref"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -139,6 +138,44 @@ phases:
           - check: field_present
             path: "products[0].pricing_options[0].pricing_option_id"
             description: "Product exposes a selectable pricing option; auction and fixed pricing are both valid"
+
+      - id: list_selected_format
+        title: "Resolve the selected product format"
+        narrative: |
+          Read the seller's declaration for the product's first format so the
+          runner builds the test creatives from that format's required assets
+          (adcp#8770). When the test kit cannot supply a required asset, for
+          example a third-party display tag or a VAST tag, the runner grades
+          the scenario not_applicable with fixture_unavailable before any buy
+          is created, instead of sending an image the format does not take.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return the format definition referenced by the selected product, including
+          every required asset slot the buyer must provide to sync_creatives.
+        sample_request:
+          format_ids:
+            - "$context.format_ref"
+          context:
+            correlation_id: "dependency_impairment_cardinality--list_selected_format"
+        # Older SDK request builders discard list_creative_formats filters. Inject
+        # after request construction so the selected FormatId reaches the seller.
+        context_inputs:
+          - key: format_ref
+            inject_at: "format_ids[0]"
+        context_outputs:
+          - path: "formats"
+            key: "formats"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats[0]"
+            description: "The product's selected format resolves to a seller-declared format"
 
       - id: create_buy_two_packages
         title: "Create a media buy with two packages"
@@ -211,28 +248,14 @@ phases:
           creatives:
             - creative_id: "acme_card_banner_a"
               name: "Acme Outdoor cardinality A"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_id: "$context.format_ref"
               assets:
-                image:
-                  asset_type: "image"
-                  url: "https://cdn.pinnacle-agency.example/acme-card-a.png"
-                  width: 300
-                  height: 250
-                  mime_type: "image/png"
+                $build_assets_from_format: "$context.format_ref"
             - creative_id: "acme_card_banner_b"
               name: "Acme Outdoor cardinality B"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_id: "$context.format_ref"
               assets:
-                image:
-                  asset_type: "image"
-                  url: "https://cdn.pinnacle-agency.example/acme-card-b.png"
-                  width: 300
-                  height: 250
-                  mime_type: "image/png"
+                $build_assets_from_format: "$context.format_ref"
           idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_sync_creatives"
           context:
             correlation_id: "dependency_impairment_cardinality--sync_creatives"
@@ -668,16 +691,9 @@ phases:
           creatives:
             - creative_id: "acme_card_banner_c"
               name: "Acme Outdoor cardinality C"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_id: "$context.format_ref"
               assets:
-                image:
-                  asset_type: "image"
-                  url: "https://cdn.pinnacle-agency.example/acme-card-c.png"
-                  width: 300
-                  height: 250
-                  mime_type: "image/png"
+                $build_assets_from_format: "$context.format_ref"
           idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_sync_c"
           context:
             correlation_id: "dependency_impairment_cardinality--sync_replacement_c"
@@ -824,16 +840,9 @@ phases:
           creatives:
             - creative_id: "acme_card_banner_d"
               name: "Acme Outdoor cardinality D"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_id: "$context.format_ref"
               assets:
-                image:
-                  asset_type: "image"
-                  url: "https://cdn.pinnacle-agency.example/acme-card-d.png"
-                  width: 300
-                  height: 250
-                  mime_type: "image/png"
+                $build_assets_from_format: "$context.format_ref"
           idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_sync_d"
           context:
             correlation_id: "dependency_impairment_cardinality--sync_replacement_d"

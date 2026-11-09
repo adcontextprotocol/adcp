@@ -894,12 +894,14 @@ async function runDeterministicTesting({ omitPhases = [] } = {}) {
     _profile: { name: 'deterministic seller', tools },
   });
   // Every step that ran must pass, so no controller step is silently skipped. Only
-  // the SI phase is skipped: the stub advertises no si_* tools, and SI carries no account.
+  // the SI phase and the creative format query are skipped: the stub advertises no
+  // si_* tools and no list_creative_formats, and neither carries an account. Without
+  // that query the creative state machine still runs (adcp#8770).
   const steps = result.phases.flatMap(phase => phase.steps);
   assert.deepEqual(steps.filter(step => !step.passed && !step.skipped).map(step => step.step_id), []);
   assert.deepEqual(
     [...new Set(steps.filter(step => step.skipped).map(step => step.phase_id))],
-    ['deterministic_session']
+    ['deterministic_creative_formats', 'deterministic_session']
   );
   const stepOf = call => (call.request.context?.correlation_id ?? '').replace(/^deterministic_testing--/, '');
   // Negative-path steps are sent as authored, without account enrichment, so they

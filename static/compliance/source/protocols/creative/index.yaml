@@ -128,8 +128,76 @@ phases:
           - check: field_present
             path: "formats[0].format_id.id"
             description: "Format IDs include id — must match those in get_products"
+  - id: find_image_formats
+    title: "Find formats that accept image assets"
+    narrative: |
+      The phases below push a fixed image creative. They run only when the
+      seller's catalog can take one, so a seller that offers only third-party
+      display tags or VAST tags is not failed for refusing it (adcp#8770).
+
+    steps:
+      - id: list_image_formats
+        title: "Find formats that accept image assets"
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return the seller's formats that accept image assets. An empty list is
+          valid and means the image phases do not apply to this seller.
+        sample_request:
+          asset_types:
+            - "image"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "creative_lifecycle--list_image_formats"
+        context_outputs:
+          - path: "formats"
+            key: "image_formats"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+
+  - id: confirm_no_image_formats
+    title: "Record that no format accepts image assets"
+    skip_if: "!context.image_formats || context.image_formats.0"
+    narrative: |
+      Runs only when the seller answered the format query with an empty list,
+      and records that answer so the image phases below are skipped.
+
+    steps:
+      - id: confirm_no_image_formats
+        title: "Find formats that accept image assets"
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return the same empty list of formats that accept image assets.
+        sample_request:
+          asset_types:
+            - "image"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "creative_lifecycle--confirm_no_image_formats"
+        context_outputs:
+          - path: "formats"
+            key: "no_image_formats"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+
   - id: sync_multiple
     title: "Sync display creative"
+    skip_if: "context.no_image_formats"
     narrative: |
       The buyer pushes a display banner to your platform. Your platform validates the
       creative against its format specs and returns per-creative status.
@@ -194,6 +262,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: list_and_filter
     title: "List creatives with filtering"
+    skip_if: "context.no_image_formats"
     narrative: |
       The buyer queries the creative library to see their synced creatives. First a broad
       list, then filtered by format. This verifies the library correctly stores and indexes
@@ -294,6 +363,7 @@ phases:
             description: "Filtered list_creatives returns the display creative synced earlier"
   - id: build_and_preview
     title: "Preview display creative"
+    skip_if: "context.no_image_formats"
     narrative: |
       The buyer previews renderings for the synced display creative. Video/VAST tag
       generation is covered by the creative-ad-server specialism, where the agent has
