@@ -21,12 +21,13 @@ RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 RUN node scripts/deduplicate-runtime-artifacts.cjs
 
 # Historical releases remain immutable in git and in the public R2 artifact
-# CDN. Fly still carries every compliance, docs, and protocol artifact, but its
-# local schema tree only needs hosted-compliance pairs, current docs, aliases,
-# and the training-agent checkpoint. Prune the builder copy so repository
-# release records are never deleted or rewritten.
+# CDN. Fly retains every compliance bundle, configured docs snapshot and required
+# schema bundle. Versioned protocol tarball bodies are offloaded only after byte
+# verification against the CDN; a required release's archive that R2 does not
+# list yet stays local, and every sidecar plus a discovery inventory stays local.
+# Prune only the builder copy, never Git records.
 FROM builder AS runtime-artifacts
-RUN node scripts/prune-runtime-artifacts.cjs \
+RUN node scripts/prune-runtime-artifacts.cjs --offload-protocol \
  && DOCS_SMOKE_APP_ROOT=/app node scripts/smoke-docs-index-runtime.mjs \
  && HOSTED_COMPLIANCE_SMOKE_APP_ROOT=/app node scripts/smoke-hosted-compliance-runtime.mjs
 

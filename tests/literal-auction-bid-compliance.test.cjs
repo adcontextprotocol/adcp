@@ -7,7 +7,7 @@ const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { InMemoryTransport } = require('@modelcontextprotocol/sdk/inMemory.js');
 const { z } = require('zod');
-const { AgentClient } = require('@adcp/sdk');
+const { ADCP_VERSION, AgentClient, wireVersion } = require('@adcp/sdk');
 const { loadStoryboardFile, runStoryboard } = require('@adcp/sdk/testing');
 
 const sourceRoot = process.env.ADCP_COMPLIANCE_TEST_ROOT
@@ -25,7 +25,7 @@ test('literal auction buys reach pricing admission over official MCP without dis
   const receipts = [];
   let prices = [];
   server.registerTool('get_adcp_capabilities', { inputSchema: z.object({}).passthrough() }, async () => {
-    const data = { status: 'completed', adcp: { major_versions: [3], supported_versions: ['3.3-beta.1'] }, supported_protocols: ['media_buy'] };
+    const data = { status: 'completed', adcp: { major_versions: [3], supported_versions: [wireVersion.normalize(ADCP_VERSION)] }, supported_protocols: ['media_buy'] };
     return { structuredContent: data, content: [{ type: 'text', text: JSON.stringify(data) }] };
   });
   server.registerTool('create_media_buy', { inputSchema: z.object({}).passthrough() }, async request => {

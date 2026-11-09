@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.3.0-beta.5
+
+### Minor Changes
+
+- 5ae0658: feat(media-buy): declare supported match keys and connect them to cross-publisher frequency capping (experimental, #8375).
+  
+  Adds `core/match-key.json` (`uid_type`, `vendor` BrandRef, `scopes[]`, `uses[]`, seller-wide `property_types[]`) and `enums/match-key-use.json` (`audience_include`, `audience_exclude`, `frequency_cap`, `identity_match`, `conversion_attribution`). Match keys appear seller-wide as `media_buy.supported_match_keys` on `get_adcp_capabilities`, per product as `Product.identity.match_keys`, and on TMP provider registration as `match_keys` alongside `uid_types`.
+  
+  `frequency_cap` covers caps the seller enforces; `identity_match` declares that a product forwards the key to buyer-side TMP Identity Match, the only place a cap can count across sellers. Two keys are compatible at a scope when they share `uid_type`, both list the scope, and their vendor domains match when both declare one. A product with `persistent_identifier: false` cannot declare `frequency_cap` or `identity_match` keys; `pairid` and `hashed_email` keys cannot declare `identity_match`. `vendor` is required for `other`, for `households` scope, and for `maid` or `publisher_first_party` at `individuals`, because those scopes come from a graph. Match-key changes are material capability changes signalled through `adcp.capability_changes` and `capabilities.changed`.
+  
+  `supported_match_keys` holds at most 64 entries and `scopes` at most 5. `core/match-key.json` admits additional properties, like other capability entries, so it can grow after graduation. All fields are additive and optional. Sellers using them list the new `media_buy.match_keys` experimental feature. `enums/uid-type.json`, `supported_uid_types`, and TMP routing on `uid_types` are unchanged.
+- 35209cf: compliance: promote `sales-fixed-rate` from `preview` to `stable`
+  
+  DR-0028 kept the specialism in preview until the working group settled its name and the controller-scenario gating of the optional hold phases. The record is now accepted (WG Session C consent, 2026-10-30). The `sales_fixed_rate` storyboard is unchanged: it is fully graded, the training agent passes it in the storyboard matrix, and an independent fixed-price seller (sell.nofluffadvisory.com) passes it on the 3.3 bundle, 19 of 19 steps. A passing `sales-fixed-rate` claim now counts toward the AAO Verified media-buy badge and badge eligibility, so a seller whose only claim is `sales-fixed-rate` no longer reports `no_declared_specialisms`.
+
+### Patch Changes
+
+- c6ab3c2: Compliance: the `deterministic_testing` storyboard now declares the Acme Outdoor / Pinnacle sandbox account as the owner of its product and pricing-option fixtures, and explicitly scopes media-buy, creative, delivery and budget controller calls to that same consuming account. Its separate `test.example` account-provisioning and account-state checks keep their own identity, with account listing filtered to the effective run account so unrelated visible accounts cannot supply the state-transition account ID. The same filter preserves a caller-selected account ID when the seller does not support buyer account provisioning. This prevents later lifecycle controls from following the account selected by `sync_accounts` and targeting the wrong sandbox account.
+- cab2151: Define an explicitly gated, offline test-kit catalog for legacy creative asset fixtures. Require exact format references and distinguish missing preparation from malformed fixture inputs without imposing Creative Protocol tools on media-buy-only sellers.
+- a0f95e1: Public Suffix List (#8409, DR-0037): verifiers compute eTLD+1 with a PSL bundled with the verifier, ICANN and PRIVATE sections, never fetched at runtime, and refreshed through normal dependency updates. AdCP names no reference snapshot, and `security.mdx` no longer says two verifiers on different PSL versions are non-conformant against each other, or names PSL libraries. On the trust-record path, a verifier whose list lacks a newly added PRIVATE suffix fails closed. Spec R3a step 1, the threat table, L2 §Grants in trust records, and the trust.json `grantee` description now say the same.
+- 8b9fa18: Fetch historical file contents on demand in the authoritative current/frozen storyboard CI matrix while retaining the complete checked-out protocol corpus and the same conformance assertions and floors. This reduces checkout work that was preventing protocol conformance tests from running.
+
 ## 3.3.0-beta.4
 
 ### Minor Changes
@@ -1977,6 +1999,35 @@ This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version
 - 0547bde: Seed fixture accounts in package_correlation_legacy_fallback storyboard so account-scoped requests resolve before attribution is checked.
 - 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
 - e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
+
+## 3.1.32
+
+### Patch Changes
+
+- c6ab3c2: Compliance: the `deterministic_testing` storyboard now declares the Acme Outdoor / Pinnacle sandbox account as the owner of its product and pricing-option fixtures, and explicitly scopes media-buy, creative, delivery and budget controller calls to that same consuming account. Its separate `test.example` account-provisioning and account-state checks keep their own identity, with account listing filtered to the effective run account so unrelated visible accounts cannot supply the state-transition account ID. The same filter preserves a caller-selected account ID when the seller does not support buyer account provisioning. This prevents later lifecycle controls from following the account selected by `sync_accounts` and targeting the wrong sandbox account.
+- a68851b: Correct maintained discovery conformance without changing the 3.1 wire schemas.
+  Replace product-count assumptions with explicit negative-control exclusion,
+  requiring executable runner support before fixtures are seeded. Auction discovery
+  no longer requires optional price guidance: this fixture-backed flow chooses buyer
+  bids of 6 and 16 against the seeded floors of 5 and 15, then reallocates budgets
+  without changing accepted bids. Discovery binds the exact seeded products and
+  pricing options independently of catalog order through a wholesale read; a
+  curated brief may legitimately rank other products ahead of the fixtures.
+  If that discovery fails, skip the dependent creation and update steps.
+  The reference seller now echoes preserved bids in budget-update responses,
+  matching the existing main-line behavior.
+
+  Keep provenance checks behind their explicit 3.3 capability declaration, so
+  3.1-pinned sellers report that coverage unavailable instead of failing optional
+  policy publication. Retain complete 3.1 account references on audit queries and
+  consistent sandbox identity on auction fixtures. No new capability field is
+  added to the 3.1 schemas.
+
+  Bind canonical product-validation fixtures and vendor-metric catalog fixtures to
+  the same explicit sandbox account used by their product probes and buy requests,
+  so automatic seeding does not infer an account from unrelated sample requests.
+
+- fec2a80: Fix the `get_products_pagination_integrity` storyboard fixtures on 3.1.x: both seeded products' `publisher_properties` entries now declare `selection_type: "all"`, matching main and 3.2. `core/publisher-property-selector.json` is a discriminated `oneOf` on `selection_type` and every branch requires it, so an entry naming only `publisher_domain` matched no branch — a seller that echoed the seeded product verbatim failed the storyboard's own response-schema validation. Refs #8646.
 
 ## 3.1.31
 

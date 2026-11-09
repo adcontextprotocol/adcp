@@ -589,6 +589,26 @@
       "pullRequestNo": 8697,
       "comment_id": 6591275100,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8697#issuecomment-6591275100"
+    },
+    {
+      "name": "aymeric45",
+      "id": 427187,
+      "created_at": "2026-11-04T17:28:18Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 8736,
+      "comment_id": 6637397142,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8736#issuecomment-6637397142"
+    },
+    {
+      "name": "unreconciled",
+      "id": 306199,
+      "created_at": "2026-11-09T06:28:52Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 8832,
+      "comment_id": 6733793150,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8832#issuecomment-6733793150"
     }
   ]
 }

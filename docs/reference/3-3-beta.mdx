@@ -1,7 +1,7 @@
 ---
 title: AdCP 3.3 beta program
 sidebarTitle: 3.3 beta program
-description: "Where the AdCP 3.3 beta stands at beta.3, how to test a beta before SDK support or against the public test agent's preview, which SDK versions bundle which beta, and which proposals are still in review for 3.3."
+description: "Where the AdCP 3.3 beta stands at beta.5, how to test a beta before SDK support or against the public test agent's preview, which SDK versions bundle which beta, and which proposals are still in review for 3.3."
 "og:title": "AdCP — 3.3 beta program"
 ---
 
@@ -15,42 +15,46 @@ description: "Where the AdCP 3.3 beta stands at beta.3, how to test a beta befor
 
 ## Beta status
 
-The latest checkpoint is **`3.3.0-beta.3`, published 2026-10-31**. Each beta is an immutable, signed checkpoint, and later betas may change 3.3 surfaces before GA. GA follows the first beta that meets every one of the proposed GA criteria in [#8600](https://github.com/adcontextprotocol/adcp/issues/8600): SDK support for the latest beta, green storyboards, the closed-schema triage ([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)), no open objections on consent items and decision records, and current release docs. Objections are due by 2026-11-06, or at the 2026-11-09 working-group session.
+The latest checkpoint is **`3.3.0-beta.5`, published 2026-11-07**. Each beta is an immutable, signed checkpoint, and later betas may change 3.3 surfaces before GA. GA follows the first beta that meets every one of the GA criteria in [#8600](https://github.com/adcontextprotocol/adcp/issues/8600): SDK support for the latest beta, green storyboards, the closed-schema triage ([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)), no open objections on consent items and decision records, and current release docs. The criteria stand as written: their consent closed on 2026-11-07 with no objections. The closed-schema triage lands after its own consent closes on 2026-11-13, and the GA-candidate beta follows in the week of 2026-11-16.
 
 | Checkpoint | Published | Purpose | Who should test |
 |---|---|---|---|
 | `3.3.0-beta.0` | 2026-10-22 | Canonical schemas, compliance assets, skills, and protocol manifest for SDK implementation | SDK maintainers, code-generator maintainers, raw-wire implementers, and agent teams that can validate without generated 3.3 SDK types |
 | `3.3.0-beta.1` | 2026-10-29 | Beta.0 integration corrections, the account identity model, `request_account`, principal-level reporting subscriptions, undisclosed rosters, and the first commercial experiments | Buyer and seller teams running end-to-end integrations, and SDK maintainers ingesting the bundle |
 | `3.3.0-beta.2` | 2026-10-30 | Account change outcomes, seller offers, measurement provenance, structural capability bounds, the principal clarification, reporting-subscription convergence, and the withdrawal of definition pins, purchase rights, and installment selection | The same teams, against the withdrawn surfaces removed |
-| `3.3.0-beta.3` | 2026-10-31 | Live creative updates, the protocol envelope on every task response, money terms on resolved account requests, revocation as no access, and reporting-subscription coverage computable from the wire | The same teams; this is the checkpoint the docs describe |
+| `3.3.0-beta.3` | 2026-10-31 | Live creative updates, the protocol envelope on every task response, money terms on resolved account requests, revocation as no access, and reporting-subscription coverage computable from the wire | The same teams |
+| `3.3.0-beta.4` | 2026-11-05 | Reporting-subscription coverage fixes (per-package `added_at`, a reduced grant as a loss of authority) and the probe reset, `replace` that transfers assignment settings, tracker-slot limits only where a format declares slots, `BUDGET_TOO_LOW` details, `creative.supports_provenance`, `opportunity` on explicit-package buys, undefined-property reporting, and the hold, account-request, and reporting-subscription storyboards | The same teams, and SDK maintainers adopting the two coverage rule changes |
+| `3.3.0-beta.5` | 2026-11-07 | Experimental match keys for cross-publisher frequency capping, `sales-fixed-rate` promoted to stable, and the bundled Public Suffix List (DR-0037) | The same teams; this is the checkpoint the docs describe |
 
 Beta.0 did not wait for the SDKs. A checkpoint is SDK-backed only after the matching SDK versions and integration evidence are published. `@adcp/sdk` 17.0.0-beta.11 is the first published SDK that bundles beta.3 ([SDK guidance](#sdk-guidance)). Three features that shipped in the betas are [withdrawn after beta.1](#withdrawn-after-beta-1).
+
+`@adcp/sdk` 17.0.0-beta.18 through 17.0.0-beta.20 and Python `adcp` 10.0.0b12 support beta.4. `@adcp/sdk` 17.0.0-beta.21 and later and Python `adcp` 10.0.0b13 and later support beta.5 ([SDK guidance](#sdk-guidance)).
 
 ## Know which version string to use
 
 The artifact version, wire pin, and documentation selector are related but not interchangeable:
 
-| Surface | beta.0 | beta.1 | beta.2 | beta.3 |
-|---|---|---|---|---|
-| Protocol artifact | `3.3.0-beta.0` | `3.3.0-beta.1` | `3.3.0-beta.2` | `3.3.0-beta.3` |
-| Git tag | `v3.3.0-beta.0` | `v3.3.0-beta.1` | `v3.3.0-beta.2` | `v3.3.0-beta.3` |
-| `adcp_version` wire pin | `"3.3-beta.0"` | `"3.3-beta.1"` | `"3.3-beta.2"` | `"3.3-beta.3"` |
-| Documentation selector | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` |
+| Surface | beta.0 | beta.1 | beta.2 | beta.3 | beta.4 | beta.5 |
+|---|---|---|---|---|---|---|
+| Protocol artifact | `3.3.0-beta.0` | `3.3.0-beta.1` | `3.3.0-beta.2` | `3.3.0-beta.3` | `3.3.0-beta.4` | `3.3.0-beta.5` |
+| Git tag | `v3.3.0-beta.0` | `v3.3.0-beta.1` | `v3.3.0-beta.2` | `v3.3.0-beta.3` | `v3.3.0-beta.4` | `v3.3.0-beta.5` |
+| `adcp_version` wire pin | `"3.3-beta.0"` | `"3.3-beta.1"` | `"3.3-beta.2"` | `"3.3-beta.3"` | `"3.3-beta.4"` | `"3.3-beta.5"` |
+| Documentation selector | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` | `3.3-beta` |
 
-Only send a prerelease wire pin to a peer that advertises that exact value in `get_adcp_capabilities.adcp.supported_versions`. Prerelease pins are exact: a buyer pinned to `"3.3-beta.2"` must not silently negotiate to beta.3, and a stable `"3.2"` pin must not silently negotiate to a beta.
+Only send a prerelease wire pin to a peer that advertises that exact value in `get_adcp_capabilities.adcp.supported_versions`. Prerelease pins are exact: a buyer pinned to `"3.3-beta.4"` must not silently negotiate to beta.5, and a stable `"3.2"` pin must not silently negotiate to a beta.
 
 ## Test a beta without an SDK
 
-Download the signed protocol bundle of the beta you test (the commands use the latest, `3.3.0-beta.3`; substitute another published checkpoint) rather than copying schemas from `main` or from the moving `/schemas/latest/` path:
+Download the signed protocol bundle of the beta you test (the commands use the latest, `3.3.0-beta.5`; substitute another published checkpoint) rather than copying schemas from `main` or from the moving `/schemas/latest/` path:
 
 ```bash
-curl -fLO https://adcontextprotocol.org/protocol/3.3.0-beta.3.tgz
-curl -fLO https://adcontextprotocol.org/protocol/3.3.0-beta.3.tgz.sha256
-shasum -a 256 -c 3.3.0-beta.3.tgz.sha256
-tar -xzf 3.3.0-beta.3.tgz
+curl -fLO https://adcontextprotocol.org/protocol/3.3.0-beta.5.tgz
+curl -fLO https://adcontextprotocol.org/protocol/3.3.0-beta.5.tgz.sha256
+shasum -a 256 -c 3.3.0-beta.5.tgz.sha256
+tar -xzf 3.3.0-beta.5.tgz
 ```
 
-The extracted `adcp-3.3.0-beta.3/` directory contains:
+The extracted `adcp-3.3.0-beta.5/` directory contains:
 
 - `manifest.json`: release version, bundle contents, skills, and file count;
 - `schemas/`: source-shaped and bundled request/response schemas, including `schemas/manifest.json` for the task and capability inventory;
@@ -63,20 +67,20 @@ Verify the Sigstore signature before using the bundle as a build input. See [Ver
 Useful tests are:
 
 1. Generate or refresh types from the pinned bundled schemas.
-2. Validate representative requests and responses for the roles you implement, including the new 3.3 surfaces you plan to adopt: the `account_id` identity model and, if you support it, `request_account`; `status` on every response through the protocol envelope; `expected_confirmation_at`, vendor-metric `outcome_target` goals, `reporting_webhook.operation_id`, `media_buy.features.catalog_ingestion`, the DOOH `location` and `dooh_inventory_summary` fields, `sync_audiences` audience sizes, and the experimental spot, print, daypart, loudness, reporting-subscription, live-creative-update, and governance `budget.periods[]` fields.
+2. Validate representative requests and responses for the roles you implement, including the new 3.3 surfaces you plan to adopt: the `account_id` identity model and, if you support it, `request_account`; `status` on every response through the protocol envelope; `expected_confirmation_at`, vendor-metric `outcome_target` goals, `reporting_webhook.operation_id`, `media_buy.features.catalog_ingestion`, the DOOH `location` and `dooh_inventory_summary` fields, `sync_audiences` audience sizes, and the experimental spot, print, daypart, loudness, reporting-subscription, live-creative-update, match-key, and governance `budget.periods[]` fields.
 3. Compare your advertised tools with `schemas/manifest.json`.
-4. Exercise raw MCP or A2A calls with `adcp_version: "3.3-beta.3"` against a staging peer that advertises the same pin.
+4. Exercise raw MCP or A2A calls with `adcp_version: "3.3-beta.5"` against a staging peer that advertises the same pin.
 5. Run the compliance assets with a source-compatible runner if you maintain one. Do not weaken production authentication to accommodate a beta runner.
 
 ## Try the preview on the public test agent
 
-The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.3` as an opt-in preview alongside its stable releases. It lists `"3.3-beta.3"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
+The public test agent at `https://test-agent.adcontextprotocol.org` serves `3.3.0-beta.5` as an opt-in preview alongside its stable releases. It lists `"3.3-beta.5"` in `adcp.supported_versions` and serves the preview only to a request that pins exactly that value:
 
 | Request | Served |
 |---|---|
-| `adcp_version: "3.3-beta.3"` | The preview. Responses echo `"3.3-beta.3"` and validate against the published `3.3.0-beta.3` schemas. |
+| `adcp_version: "3.3-beta.5"` | The preview. Responses echo `"3.3-beta.5"` and validate against the published `3.3.0-beta.5` schemas. |
 | `adcp_version: "3.2"`, `"3.3"`, or a later release | 3.2. A release pin never resolves onto a prerelease. |
-| Any other 3.3 prerelease, such as `"3.3-beta.2"` | Never the preview. Prerelease pins match exactly. |
+| Any other 3.3 prerelease, such as the earlier preview `"3.3-beta.4"` | Never the preview. Prerelease pins match exactly. |
 | `adcp_major_version` alone, or no version | The route's stable default, never the preview. |
 
 ```bash
@@ -84,7 +88,7 @@ curl -s https://test-agent.adcontextprotocol.org/sales/mcp \
   -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-beta.3"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_adcp_capabilities","arguments":{"adcp_version":"3.3-beta.5"}}}'
 ```
 
 At the preview pin, `/sales/mcp` serves the experimental 3.3 surfaces the training agent implements:
@@ -114,10 +118,10 @@ Other products take the default: a hold that never contends.
 
 `tools/list` includes `request_account` and `list_collections` only when the listing is pinned to the preview (`params._meta.adcp_version`, as `@adcp/sdk` sends it).
 
-With `@adcp/sdk`, use 17.0.0-beta.11 or later, which negotiates exactly `3.3-beta.3`. Earlier 17.0.0 betas bundle an older beta, so they settle on 3.2 with the test agent.
+With `@adcp/sdk`, use 17.0.0-beta.21 or later, which negotiates exactly `3.3-beta.5`. Earlier 17.0.0 betas negotiate an older beta, so they settle on 3.2 with the test agent.
 
 <Warning>
-**The preview is experimental and can change without notice.** It follows the latest published beta and moves to the next one when it ships. Once it moves, the old pin is no longer served. AAO can also switch the preview off, after which the agent serves only its stable releases. Use it to try 3.3 surfaces, not as a stable integration target.
+**The preview is experimental and can change without notice.** It follows the 3.3 beta that the current `@adcp/sdk` prerelease negotiates, so it can trail the latest published beta, and it moves when the SDK does. Once it moves, the old pin is no longer served. AAO can also switch the preview off, after which the agent serves only its stable releases. Use it to try 3.3 surfaces, not as a stable integration target.
 </Warning>
 
 <Note>
@@ -140,9 +144,9 @@ SDK maintainers should report protocol ambiguities against the [AdCP repository]
 
 ## SDK guidance
 
-**TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, and 17.0.0-beta.11 and later bundle `3.3.0-beta.3`. Each negotiates only its own beta, so a buyer and seller on different betas settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
+**TypeScript.** Use `@adcp/sdk` **17.0.0-beta.6 or later** (npm `beta` dist-tag) to test 3.3. The published prereleases bundle a signed AdCP release: 17.0.0-beta.6 bundles `3.3.0-beta.1`, 17.0.0-beta.10 bundles `3.3.0-beta.2`, 17.0.0-beta.11 through 17.0.0-beta.17 bundle `3.3.0-beta.3`, 17.0.0-beta.18 through 17.0.0-beta.20 bundle `3.3.0-beta.4`, and 17.0.0-beta.21 and later bundle `3.3.0-beta.5`. Each negotiates only its own beta, so a buyer and seller on different betas settle on a stable release. Pin the exact SDK version, and send a prerelease `adcp_version` only to a peer that advertises that exact pin. `@adcp/sdk` 17 is a major release; read its [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md) first.
 
-**Python.** There is no Python SDK release that bundles a 3.3 beta. Support is pending [adcp-client-python#1560](https://github.com/adcontextprotocol/adcp-client-python/issues/1560), which is open. Until it lands, use the `adcp` 3.2 release for production-line work and validate 3.3 behavior over the raw wire against the signed bundle.
+**Python.** `adcp` **10.0.0b13**, a PyPI prerelease (`pip install --pre "adcp==10.0.0b13"`), adopts the signed `3.3.0-beta.5` bundle and negotiates only `3.3-beta.5`; 10.0.0b12 adopts `3.3.0-beta.4`. Keep production-line work on the `adcp` 3.2 release.
 
 **Go.** Check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases) for a published 3.3 support statement; this page names none.
 
@@ -195,7 +199,7 @@ Milestone assignment means **candidate for the 3.3 line**, not a commitment to a
 ### In review for 3.3
 
 <Info>
-**These are proposals, not features.** Each row is an issue that was open in the 3.3.0 milestone on 2026-10-31 (28 issues, not counting the [GA tracking issue](https://github.com/adcontextprotocol/adcp/issues/8600)), with its open pull request where one exists. An issue stays open while part of it is still in review, so a row can list merged work. Issues whose work has fully merged have been closed and are not listed; see [What's new](/docs/reference/whats-new-in-3-3) and the [release notes](/docs/reference/release-notes#version-3-3-0) for what they shipped. None is part of a beta unless it merges before that beta's tag. "Merged so far" names the slice that already shipped on `main`; the rest of the issue is still in review. The live lists are the [open 3.3 issues](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.3.0) and [open pull requests](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Afalse) and [drafts](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Atrue).
+**These are proposals, not features.** The first table lists the issues open in the 3.3.0 milestone on 2026-11-08 (six, not counting the [GA tracking issue](https://github.com/adcontextprotocol/adcp/issues/8600)), with the open pull request for each where one exists. The second lists the issues that were open at beta.3 and have since moved to a later milestone. An issue stays open while part of it is still in review, so a row can list merged work. Issues whose work has fully merged have been closed and are not listed; see [What's new](/docs/reference/whats-new-in-3-3) and the [release notes](/docs/reference/release-notes#version-3-3-0) for what they shipped. None is part of a beta unless it merges before that beta's tag. "Merged so far" names the slice that already shipped on `main`; the rest of the issue is still in review. The live lists are the [open 3.3 issues](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.3.0) and [open pull requests](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Afalse) and [drafts](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Atrue).
 </Info>
 
 #### Decisions
@@ -203,14 +207,15 @@ Milestone assignment means **candidate for the 3.3 line**, not a commitment to a
 | Decision | What it changes | Status |
 |---|---|---|
 | Agent identity is an origin ([DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md)) | Agents are identified by origin and sign HTTP requests and webhooks with the Web Bot Auth profile; the RFC 9421 brand.json profile is deprecated in 3.3 and removed in 4.0. | Merged: [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) [#7894](https://github.com/adcontextprotocol/adcp/pull/7894), Web Bot Auth identities and RFC 9421 deprecation [#8162](https://github.com/adcontextprotocol/adcp/pull/8162), first-contact binding [#8168](https://github.com/adcontextprotocol/adcp/pull/8168), walkthrough and migration [#8172](https://github.com/adcontextprotocol/adcp/pull/8172), R7/R8 erratum [#8219](https://github.com/adcontextprotocol/adcp/pull/8219), experimental production security profile [#8155](https://github.com/adcontextprotocol/adcp/pull/8155), onboarding posture [#8170](https://github.com/adcontextprotocol/adcp/pull/8170). `request_account` and pending-action naming [#8293](https://github.com/adcontextprotocol/adcp/pull/8293); single account write and reporting subscriptions [#8551](https://github.com/adcontextprotocol/adcp/pull/8551), [#8552](https://github.com/adcontextprotocol/adcp/pull/8552). |
-| Responses conform to the served release ([DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md)) | Every response validates against the release the seller served, including `get_adcp_capabilities` and webhook payloads. See [Serving an older pin](/docs/reference/versioning#serving-an-older-pin). | Merged: [#8117](https://github.com/adcontextprotocol/adcp/pull/8117). Grading is open in [#8156](https://github.com/adcontextprotocol/adcp/pull/8156). |
+| Responses conform to the served release ([DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md)) | Every response validates against the release the seller served, including `get_adcp_capabilities` and webhook payloads. See [Serving an older pin](/docs/reference/versioning#serving-an-older-pin). | Merged: [#8117](https://github.com/adcontextprotocol/adcp/pull/8117); advisory grading of undefined properties merged in [#8156](https://github.com/adcontextprotocol/adcp/pull/8156) (beta.4). |
 | Demand-side grants ([DR-0025](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0025-demand-side-grants-in-trust-json.md)) | An operator declares in trust.json which agents may act for it, and sellers report `grant_absent`. | Merged: [#8157](https://github.com/adcontextprotocol/adcp/pull/8157), [#8169](https://github.com/adcontextprotocol/adcp/pull/8169). |
 | JWS artifacts use the Web Bot Auth key directory ([DR-0026](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0026-jws-artifacts-use-the-wba-key-directory.md)) | Governance contexts, designated-task response signatures, and rights attestations from an origin its trust record lists verify against that origin's Web Bot Auth key directory in 3.3; amends DR-0023. | Merged: [#8299](https://github.com/adcontextprotocol/adcp/pull/8299). |
 | Seller revisions advance on every committed change ([DR-0031](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0031-seller-revision-any-origin.md)) | A seller-maintained revision (media-buy and account `revision`, creative `seller_revision`) advances on every committed change, whatever its origin; the `sync_creatives` assignment carve-out is removed. Other resource families are deferred to 3.4. | Merged: [#8159](https://github.com/adcontextprotocol/adcp/pull/8159); recorded in [#8389](https://github.com/adcontextprotocol/adcp/pull/8389). |
 | A major-only request is served the oldest supported release ([DR-0034](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0034-major-only-requests-are-served-the-oldest-release.md)) | A request that carries `adcp_major_version` and no `adcp_version` is served the oldest release the seller supports in that major, 3.0 where supported, and the response echoes it. `adcp_major_version` is removed in 4.0 ([DR-0035](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0035-adcp-major-version-removed-in-4-0.md)). | Accepted 2026-10-26; ratified in [#8410](https://github.com/adcontextprotocol/adcp/pull/8410). |
-| Closed schemas stay closed within a major ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)) | A minor adds only to open schemas, and four recorded corrections are the only exceptions. This is why definition pins, purchase rights, and installment selection are [withdrawn](#withdrawn-after-beta-1). | Proposed, awaiting ratification. The corrections merged in [#8531](https://github.com/adcontextprotocol/adcp/pull/8531) and [#8547](https://github.com/adcontextprotocol/adcp/pull/8547), and the CI guard in [#8502](https://github.com/adcontextprotocol/adcp/pull/8502). |
+| Closed schemas stay closed within a major ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)) | A minor adds only to open schemas, and four recorded corrections are the only exceptions. This is why definition pins, purchase rights, and installment selection are [withdrawn](#withdrawn-after-beta-1). | Proposed; goes to ratification at the 2026-11-09 working-group session. The corrections merged in [#8531](https://github.com/adcontextprotocol/adcp/pull/8531) and [#8547](https://github.com/adcontextprotocol/adcp/pull/8547), and the CI guard in [#8502](https://github.com/adcontextprotocol/adcp/pull/8502). |
+| Verifiers bundle the Public Suffix List ([DR-0037](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0037-psl-bundled-not-pinned.md)) | Verifiers compute eTLD+1 with a Public Suffix List bundled with the verifier, never fetched at runtime, and AdCP names no reference snapshot. On the trust-record path, a verifier whose list lacks a newly added PRIVATE suffix fails closed. | Ratified 2026-11-02: [#8702](https://github.com/adcontextprotocol/adcp/pull/8702). |
 
-Four records document surfaces merged for beta.0 and are accepted (decided 2026-10-30): [DR-0027](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0027-mutation-outcome-on-error.md) (`error.mutation_outcome`), [DR-0028](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0028-sales-fixed-rate-specialism.md) (`sales-fixed-rate`), [DR-0029](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0029-delivery-projection-advisory.md) (delivery projection), and [DR-0030](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0030-media-buy-lineage-forward-only.md) (media-buy lineage).
+Four records document surfaces merged for beta.0 and are accepted (decided 2026-10-30): [DR-0027](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0027-mutation-outcome-on-error.md) (`error.mutation_outcome`), [DR-0028](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0028-sales-fixed-rate-specialism.md) (`sales-fixed-rate`), [DR-0029](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0029-delivery-projection-advisory.md) (delivery projection), and [DR-0030](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0030-media-buy-lineage-forward-only.md) (media-buy lineage). `sales-fixed-rate` is promoted from preview to stable in beta.5 ([#8445](https://github.com/adcontextprotocol/adcp/pull/8445)).
 
 #### Open 3.3.0 milestone issues
 
@@ -224,34 +229,38 @@ Four records document surfaces merged for beta.0 and are accepted (decided 2026-
 
 | Area | Issue | Topic | Open PR | Merged so far |
 |---|---|---|---|---|
+| Commercial flow | [#7659](https://github.com/adcontextprotocol/adcp/issues/7659) | Price adjustments for buyer-selectable product dimensions | — | Experimental selection-dependent `price_adjustments` on fixed-price pricing options (#7955) |
+| Delivery and measurement | [#7253](https://github.com/adcontextprotocol/adcp/issues/7253) | DOOH impression basis: typed tier, effective multiplier, and derivation link | [#8736](https://github.com/adcontextprotocol/adcp/pull/8736) (draft) | — |
+| Delivery and measurement | [#8149](https://github.com/adcontextprotocol/adcp/issues/8149) | Reliable Reporting HTTPS push authenticates as the seller and holds no buyer secret | [#8793](https://github.com/adcontextprotocol/adcp/pull/8793) (draft) | — |
+| Targeting and inventory | [#8375](https://github.com/adcontextprotocol/adcp/issues/8375) | Supported match keys in capabilities and `Product.identity` | — | Experimental `media_buy.supported_match_keys` and `Product.identity.match_keys` ([#8446](https://github.com/adcontextprotocol/adcp/pull/8446)), in beta.5 |
+| Creative and brand | [#8107](https://github.com/adcontextprotocol/adcp/issues/8107) | `3gp`, `mpeg`, and `m4v` video containers | [#8668](https://github.com/adcontextprotocol/adcp/pull/8668) | — |
+| Conformance and governance | [#8398](https://github.com/adcontextprotocol/adcp/issues/8398) | URL validation is over-specified: eight patterns where `^https://` is enough | [#8792](https://github.com/adcontextprotocol/adcp/pull/8792) | `setup_url` pattern relaxed to `^https://` with `format: uri` (#8548) |
+
+#### Moved out of 3.3 since beta.3
+
+These were open in the 3.3.0 milestone at beta.3 and have since moved, so they are not part of 3.3: [#8010](https://github.com/adcontextprotocol/adcp/issues/8010), [#5683](https://github.com/adcontextprotocol/adcp/issues/5683), and [#8009](https://github.com/adcontextprotocol/adcp/issues/8009) to 4.0, and the rest to 3.4.0. "Merged so far" names the slice that already shipped in 3.3. The issues closed since beta.3 (#8543, #7812, #8092, #8182, and #8181) shipped in the betas and are covered in [What's new](/docs/reference/whats-new-in-3-3).
+
+| Area | Issue | Topic | Open PR | Merged so far |
+|---|---|---|---|---|
 | Commercial flow | [#7902](https://github.com/adcontextprotocol/adcp/issues/7902) | Core `opportunity` on `get_products` | [#8034](https://github.com/adcontextprotocol/adcp/pull/8034) (draft) | — |
 | Commercial flow | [#8010](https://github.com/adcontextprotocol/adcp/issues/8010) | Booking rounds for scheduled media | [#8022](https://github.com/adcontextprotocol/adcp/pull/8022) (draft) | `expected_confirmation_at` (#8016) |
 | Commercial flow | [#5673](https://github.com/adcontextprotocol/adcp/issues/5673) | Best-first ordering of products and proposals | [#8037](https://github.com/adcontextprotocol/adcp/pull/8037) (draft) | — |
 | Commercial flow | [#7852](https://github.com/adcontextprotocol/adcp/issues/7852) | Delivery-mode-aware media-buy baseline | [#7973](https://github.com/adcontextprotocol/adcp/pull/7973) (draft) | — |
 | Commercial flow | [#6810](https://github.com/adcontextprotocol/adcp/issues/6810) | Complete account change visibility across seller-managed state | — | `idempotency_key` echo and required `changed_paths` on change records (#8160) |
-| Delivery and measurement | [#8543](https://github.com/adcontextprotocol/adcp/issues/8543) | Reporting subscriptions on the principal | — | `request_account` as the single account write (#8551); experimental `reporting_subscriptions` on `sync_principal` and exceptions-only `subscription_coverage` (#8552); beta.2 and beta.3 convergence (#8585, #8588, #8593, #8596, #8607, #8613, #8616, #8617, #8618, #8619, #8621, #8622) |
 | Delivery and measurement | [#5683](https://github.com/adcontextprotocol/adcp/issues/5683) | Linear TV preemption notice and replacement offer | — | Report-time spot lifecycle (#8017); the offer-and-accept loop as experimental seller offers (#8102); contract-time preemption criteria planned for 3.4 |
 | Delivery and measurement | [#8009](https://github.com/adcontextprotocol/adcp/issues/8009) | Book and report position in break | — | Reporting half (#8017) |
 | Delivery and measurement | [#7777](https://github.com/adcontextprotocol/adcp/issues/7777) | Delivery evidence gaps for scheduled and offline channels | — | `change_cutoff` (#8054) |
 | Delivery and measurement | [#6878](https://github.com/adcontextprotocol/adcp/issues/6878) | Seller-initiated trackers and measurement sources | — | Experimental `collection-mechanism` vocabulary, `counting_mechanisms[]`, and `vendor_metric_provenance[]` (#7940); seller-initiated trackers and `impression_id` joinability remain open |
 | Delivery and measurement | [#6628](https://github.com/adcontextprotocol/adcp/issues/6628) | Reporting metric coherence findings | — | Flat totals omitted for multi-qualifier metrics (#8055) |
-| Delivery and measurement | [#7253](https://github.com/adcontextprotocol/adcp/issues/7253) | DOOH impression basis: typed tier, effective multiplier, and derivation link | — | — |
-| Security and signing | [#7812](https://github.com/adcontextprotocol/adcp/issues/7812) | `error.mutation_outcome` on failed mutations | — | `mutation_outcome` on `core/error.json` (#7935) |
 | Security and signing | [#7577](https://github.com/adcontextprotocol/adcp/issues/7577) | Checklist step position grading | — | — |
-| Targeting and inventory | [#8375](https://github.com/adcontextprotocol/adcp/issues/8375) | Supported match keys in capabilities and `Product.identity` | [#8446](https://github.com/adcontextprotocol/adcp/pull/8446) (draft) | — |
-| Targeting and inventory | [#8450](https://github.com/adcontextprotocol/adcp/issues/8450) | `required_match_keys` filter on `get_products` for cross-publisher cap planning | — (follow-up to draft [#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) | — |
-| Targeting and inventory | [#8451](https://github.com/adcontextprotocol/adcp/issues/8451) | Conformance coverage for match keys before graduating `media_buy.match_keys` | — (follow-up to draft [#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) | — |
-| Creative and brand | [#8107](https://github.com/adcontextprotocol/adcp/issues/8107) | `3gp`, `mpeg`, and `m4v` video containers | — | — |
-| Creative and brand | [#8092](https://github.com/adcontextprotocol/adcp/issues/8092) | Creator and show cards on collections | — | Collection cards, follower counts, response collections, and `list_collections` (#8094, #8098, #8141, #8279) |
+| Targeting and inventory | [#8450](https://github.com/adcontextprotocol/adcp/issues/8450) | `required_match_keys` filter on `get_products` for cross-publisher cap planning | — (follow-up to [#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) | — |
+| Targeting and inventory | [#8451](https://github.com/adcontextprotocol/adcp/issues/8451) | Conformance coverage for match keys before graduating `media_buy.match_keys` | — (follow-up to [#8446](https://github.com/adcontextprotocol/adcp/pull/8446)) | — |
 | Signals, audiences, catalogs | [#8023](https://github.com/adcontextprotocol/adcp/issues/8023) | Audience overlap read | [#8031](https://github.com/adcontextprotocol/adcp/pull/8031) (draft) | Audience size ranges (#8024) |
 | Signals, audiences, catalogs | [#6872](https://github.com/adcontextprotocol/adcp/issues/6872) | `uids[].value` shape per type | — | Wire form documented (#8059) |
 | Conformance and governance | [#7068](https://github.com/adcontextprotocol/adcp/issues/7068) | Machine-observed implementation matrix | [#8040](https://github.com/adcontextprotocol/adcp/pull/8040) (draft) | — |
 | Conformance and governance | [#3959](https://github.com/adcontextprotocol/adcp/issues/3959) | Governance framework mapping | [#8035](https://github.com/adcontextprotocol/adcp/pull/8035) (draft) | — |
 | Conformance and governance | [#8093](https://github.com/adcontextprotocol/adcp/issues/8093) | Creator marketplace training fixtures | — | CreatorLoop seller and proposal fixtures (#8106) |
-| Conformance and governance | [#8182](https://github.com/adcontextprotocol/adcp/issues/8182) | `hold_policy` and `extend_hold` storyboards and controller scenario | — | `force_hold_unavailable` controller scenario and hold-policy vector gaps (#8214); storyboards still open |
 | Conformance and governance | [#8201](https://github.com/adcontextprotocol/adcp/issues/8201) | 3.2 compact proposal storyboards and `sales-dooh` opt into fixture resolution | — | `olv` channel match for `outdoor_video_auction` discovery (#8211) |
-| Conformance and governance | [#8181](https://github.com/adcontextprotocol/adcp/issues/8181) | Training agent serves the experimental 3.3 hold-policy, `extend_hold`, and response-collection surfaces | — | — |
-| Conformance and governance | [#8398](https://github.com/adcontextprotocol/adcp/issues/8398) | URL validation is over-specified: eight patterns where `^https://` is enough | — | `setup_url` pattern relaxed to `^https://` with `format: uri` (#8548) |
 
 Also open, without a 3.3 milestone issue: [#7958](https://github.com/adcontextprotocol/adcp/pull/7958) composable delivery breakdowns and [#7957](https://github.com/adcontextprotocol/adcp/pull/7957) metric aggregation semantics (both drafts; their issues moved to 3.4.0), [#7446](https://github.com/adcontextprotocol/adcp/pull/7446) TMP Context Match cache isolation (on the 3.3.0 milestone), and [#8346](https://github.com/adcontextprotocol/adcp/pull/8346) signed creative addons (open; asks the working group to reconsider a 3.4 deferral, and WG approval is pending).
 

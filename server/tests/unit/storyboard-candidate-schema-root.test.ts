@@ -22,6 +22,7 @@ type DeclineResponse = {
   adcp_error?: unknown;
 };
 type Witness = {
+  commonjsCandidateSchemaVersion: string | null;
   candidate: { httpStatus: number; body: DeclineResponse };
   stable?: { httpStatus: number; body: DeclineResponse; schemaVersion: string; schemaValid: boolean; errors: unknown };
 };
@@ -34,6 +35,7 @@ function runWireWitness(schemaRoot: string, register: boolean): Witness {
     import express from 'express';
     import http from 'node:http';
     import { randomUUID } from 'node:crypto';
+    import { createRequire } from 'node:module';
     import { getCanonicalToolValidator, getToolResponseSchema } from '@adcp/sdk/schemas';
     const { registerStoryboardCandidateSchemaRoot } = await import(${JSON.stringify(helper)});
     if (${register}) {
@@ -63,14 +65,21 @@ function runWireWitness(schemaRoot: string, register: boolean): Witness {
       const envelope = await response.json();
       return { httpStatus: response.status, body: envelope.result?.structuredContent ?? envelope };
     }
-    const result = { candidate: await call('decline_proposals', {
+    const cjsSchemas = createRequire(import.meta.url)('@adcp/sdk/schemas');
+    let commonjsCandidateSchemaVersion = null;
+    try {
+      commonjsCandidateSchemaVersion = cjsSchemas.getToolResponseSchema('decline_proposals', {
+        adcpVersion: ${JSON.stringify(CANDIDATE_WIRE)},
+      })?.resolvedVersion ?? null;
+    } catch { /* An unregistered candidate has no CommonJS schema authority. */ }
+    const result = { commonjsCandidateSchemaVersion, candidate: await call('decline_proposals', {
       adcp_version: ${JSON.stringify(CANDIDATE_WIRE)}, idempotency_key: randomUUID(),
       declines: [{ proposal_id: 'proposal-not-visible-to-caller', reason: 'inventory_fit' }],
     }) };
     if (${register}) {
       const stable = await call('get_adcp_capabilities', { adcp_version: '3.2' });
-      const validate = getCanonicalToolValidator('get_adcp_capabilities', 'sync', { adcpVersion: '3.2.7' });
-      const schemaVersion = getToolResponseSchema('get_adcp_capabilities', { adcpVersion: '3.2.7' })?.resolvedVersion;
+      const validate = getCanonicalToolValidator('get_adcp_capabilities', 'sync', { adcpVersion: '3.2' });
+      const schemaVersion = getToolResponseSchema('get_adcp_capabilities', { adcpVersion: '3.2' })?.resolvedVersion;
       result.stable = { ...stable, schemaVersion, schemaValid: typeof validate === 'function' && validate(stable.body), errors: validate?.errors };
     }
     stopSessionCleanup();
@@ -145,18 +154,22 @@ describe('candidate server schema registration', () => {
     expect(() => registerStoryboardCandidateSchemaRoot('3.3.0-beta.999998', schemaRoot)).toThrow('must match the package and compliance bundle version');
   });
 
-  it('reproduces the invalid raw envelope when the CommonJS server schema root is unbound', () => {
-    const { candidate } = runWireWitness(schemaRoot, false);
+  it('detects an unbound CommonJS schema even when the current envelope happens to conform', () => {
+    const { candidate, commonjsCandidateSchemaVersion } = runWireWitness(schemaRoot, false);
     expect(candidate.httpStatus, JSON.stringify(candidate)).toBe(200);
     expect(candidate.body.adcp_error).toBeUndefined();
     expect(candidate.body.adcp_version).toBe(CANDIDATE_WIRE);
     expect(candidate.body.results).toEqual([expect.objectContaining({ proposal_id: 'proposal-not-visible-to-caller', outcome: 'unable' })]);
-    expect(candidate.body).toHaveProperty('status', 'completed');
-    expect(validate(candidate.body)).toBe(false);
+    expect(commonjsCandidateSchemaVersion).not.toBe(CANDIDATE_BUNDLE);
+    // SDK 17 beta.16 omits the stale completed status even without the future
+    // root. That coincidence does not establish the candidate schema binding.
+    expect(Object.hasOwn(candidate.body, 'status')).toBe(false);
+    expect(validate(candidate.body), JSON.stringify(validate.errors)).toBe(true);
   }, 90_000);
 
   it('serves strict raw future-candidate declines without changing explicit stable 3.2', () => {
-    const { candidate, stable } = runWireWitness(schemaRoot, true);
+    const { candidate, stable, commonjsCandidateSchemaVersion } = runWireWitness(schemaRoot, true);
+    expect(commonjsCandidateSchemaVersion).toBe(CANDIDATE_BUNDLE);
     expect(candidate.httpStatus, JSON.stringify(candidate)).toBe(200);
     expect(candidate.body.adcp_error).toBeUndefined();
     expect(candidate.body.adcp_version).toBe(CANDIDATE_WIRE);
@@ -167,7 +180,7 @@ describe('candidate server schema registration', () => {
     expect(stable?.httpStatus).toBe(200);
     expect(stable?.body.adcp_error).toBeUndefined();
     expect(stable?.body.adcp_version).toBe('3.2');
-    expect(stable?.schemaVersion).toBe('3.2.7');
+    expect(stable?.schemaVersion).toBe('3.2.8');
     expect(stable?.schemaValid, JSON.stringify(stable?.errors)).toBe(true);
   }, 90_000);
 });

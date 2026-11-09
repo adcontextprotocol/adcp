@@ -6,6 +6,17 @@ import {
 import { createModelProviderAdapterError } from '../../../src/addie/model-providers/model-provider.js';
 
 describe('provider error classification', () => {
+  it.each(['anthropic', 'openai', 'google'] as const)('classifies HTTP 402 as %s billing exhaustion', provider => {
+    expect(classifyProviderFailure(provider, { status: 402 })).toEqual({
+      category: 'billing_exhausted', status: 402,
+    });
+  });
+
+  it('recognizes payment-required failures through the private Google adapter receipt', () => {
+    const error = createModelProviderAdapterError('provider_transport', 402);
+    expect(classifyProviderFailure('google', error)).toEqual({ category: 'billing_exhausted', status: 402 });
+  });
+
   it.each([[429, 'rate_limited'], [503, 'unavailable'], [401, 'authentication']] as const)(
     'uses the private adapter status receipt for Google HTTP %s', (status, category) => {
       const error = createModelProviderAdapterError('provider_transport', status);

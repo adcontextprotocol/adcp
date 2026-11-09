@@ -199,7 +199,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // (#8717) reach the controller on top of the beta.4 coverage fixes (#8718,
 // trimmed to 1_374_852); the controller measures 1_375_833 bytes, bound at
 // 1_376_000.
-const PARITY_COMPILE_LIMIT = 1_376_000;
+// Experimental match keys (#8375) reach the seeded Product through
+// Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
+const PARITY_COMPILE_LIMIT = 1_384_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

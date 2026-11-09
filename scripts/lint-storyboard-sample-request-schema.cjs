@@ -307,16 +307,19 @@ function normalizeSubstitutions(value, schema) {
  * Keep ordinary slots, malformed instructions, and every other request field
  * visible to schema validation. Direct validateStep calls remain wire-strict.
  */
-function normalizeExecutionOnlyAssetDirectives(value, isAssetMap = false) {
-  if (Array.isArray(value)) return value.map(item => normalizeExecutionOnlyAssetDirectives(item));
+function normalizeExecutionOnlyAssetDirectives(value, isAssetMap = false, allowTestKitCatalog = false) {
+  if (Array.isArray(value)) return value.map(item => normalizeExecutionOnlyAssetDirectives(item, false, allowTestKitCatalog));
   if (!value || typeof value !== 'object') return value;
   const out = {};
   for (const [key, item] of Object.entries(value)) {
-    if (isAssetMap && key === '$build_assets_from_format'
-        && typeof item === 'string' && /^\$context\.[A-Za-z_][A-Za-z0-9_]*$/.test(item)) {
+    const contextRef = candidate => typeof candidate === 'string'
+      && /^\$context\.[A-Za-z_][A-Za-z0-9_]*$/.test(candidate);
+    const catalogDirective = allowTestKitCatalog && item && typeof item === 'object' && !Array.isArray(item)
+      && Object.keys(item).length === 2 && item.catalog === 'test_kit' && contextRef(item.format_id);
+    if (isAssetMap && key === '$build_assets_from_format' && (contextRef(item) || catalogDirective)) {
       continue;
     }
-    out[key] = normalizeExecutionOnlyAssetDirectives(item, key === 'assets');
+    out[key] = normalizeExecutionOnlyAssetDirectives(item, key === 'assets', allowTestKitCatalog);
   }
   return out;
 }
@@ -329,7 +332,8 @@ function normalizeExecutionOnlyAssetDirectives(value, isAssetMap = false) {
  * coverage; this lint must still catch broken bindings and authored payloads.
  */
 function normalizeStoryboardSampleRequests(storyboard, step, schema) {
-  const sampleRequest = normalizeExecutionOnlyAssetDirectives(step.sample_request);
+  const sampleRequest = normalizeExecutionOnlyAssetDirectives(step.sample_request, false,
+    Array.isArray(storyboard.requires) && storyboard.requires.includes('test_kit_format_catalog_runner'));
   if (!storyboard.creative_build_probe || step.task !== 'build_creative'
       || step.requires_contract !== 'creative_build_probe_runner') {
     return [normalizeSubstitutions(sampleRequest, schema)];

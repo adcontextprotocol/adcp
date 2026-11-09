@@ -167,3 +167,182 @@ describe('verification profile role assessment', () => {
     expect(assessments.every(assessment => assessment.adcp_version === '3.1')).toBe(true);
   });
 });
+
+describe('Strict Spec universal bundles for surfaces the agent does not declare', () => {
+  // Every universal storyboard the 3.2.8 bundle reports as missing tools for a
+  // signals-only agent (#8527) under the hosted SDK's applicability order.
+  const signalsOnlyMissing = [
+    'agent_notification_configs',
+    'billing_gate_dispatch',
+    'canonical_format_validate_input',
+    'pagination_integrity_collection_lists',
+    'pagination_integrity_content_standards',
+    'ctv_experience_validate_input',
+    'error_compliance',
+    'get_media_buys_pagination_integrity',
+    'notification_config_event_scope',
+    'notification_config_lifecycle',
+    'notification_config_rejections',
+    'pagination_integrity_creative_formats',
+    'pagination_integrity_list_accounts',
+    'pagination_integrity',
+    'premium_display_canonical_validation',
+    'principal',
+    'pagination_integrity_property_lists',
+    'schema_validation',
+    'stale_response_advisory',
+  ];
+
+  function universalRun(input: {
+    missing: string[];
+    protocols?: string[];
+    specialism: string;
+    protocolBundle: string;
+    specialismStoryboard: string;
+    tools: string[];
+    rawCapabilities?: unknown;
+  }): ComplianceResult {
+    return result({
+      adcp_version: '3.2.8',
+      agent_profile: {
+        name: 'Example agent',
+        tools: input.tools,
+        specialisms: [input.specialism],
+        adcp_supported_versions: ['3.2'],
+        ...(input.protocols && { supported_protocols: input.protocols }),
+        ...(input.rawCapabilities !== undefined && { raw_capabilities: input.rawCapabilities }),
+      },
+      storyboards_executed: ['capability_discovery'],
+      storyboards_missing_tools: input.missing,
+      bundle_results: [
+        { kind: 'universal', id: 'capability-discovery', storyboard_ids: ['capability_discovery'], status: 'passing' },
+        ...input.missing.map(id => ({
+          kind: 'universal' as const,
+          id: id.replace(/_/g, '-'),
+          storyboard_ids: [id],
+          status: 'partial' as const,
+        })),
+        { kind: 'protocol', id: input.protocolBundle, storyboard_ids: [`${input.protocolBundle}_baseline`], status: 'passing' },
+        { kind: 'specialism', id: input.specialism, storyboard_ids: [input.specialismStoryboard], status: 'passing' },
+      ],
+    });
+  }
+
+  function signalsRun(overrides: Partial<Parameters<typeof universalRun>[0]> = {}): ComplianceResult {
+    return universalRun({
+      missing: signalsOnlyMissing,
+      protocols: ['signals'],
+      specialism: 'signal-owned',
+      protocolBundle: 'signals',
+      specialismStoryboard: 'signal_owned',
+      tools: ['get_adcp_capabilities', 'get_signals', 'activate_signal', 'comply_test_controller'],
+      rawCapabilities: { adcp: { major_versions: [3] }, supported_protocols: ['signals'] },
+      ...overrides,
+    });
+  }
+
+  function spec(run: ComplianceResult, specialismStoryboard: string) {
+    return deriveVerificationProfileRoleAssessments({
+      result: run,
+      lifecycleStage: 'production',
+      requestedComplianceTarget: '3.2',
+      storyboardStatuses: [{
+        storyboard_id: specialismStoryboard,
+        status: 'passing',
+        steps_passed: 3,
+        steps_total: 3,
+      }],
+    }).find(assessment => assessment.grading_profile === 'spec')!;
+  }
+
+  it('lets a signals-only agent reach Strict when only undeclared surfaces lack tools', () => {
+    const assessment = spec(signalsRun(), 'signal_owned');
+    expect(assessment.role).toBe('signals');
+    expect(assessment.status).toBe('passing');
+    expect(assessment.evidence.incomplete_bundle_count).toBe(0);
+    expect(assessment.evidence.not_applicable_universal_bundle_ids).toHaveLength(signalsOnlyMissing.length);
+  });
+
+  it('keeps a missing signals tool incomplete for the agent that declares signals', () => {
+    const assessment = spec(signalsRun({
+      missing: [...signalsOnlyMissing, 'get_signals_pagination_integrity'],
+      tools: ['get_adcp_capabilities', 'comply_test_controller'],
+    }), 'signal_owned');
+    expect(assessment.status).toBe('partial');
+    expect(assessment.evidence.incomplete_bundle_count).toBe(1);
+  });
+
+  it.each([
+    // Five 3.2.8 universal storyboards need sync_accounts or list_accounts.
+    ['an account block', { account: { supported_billing: ['operator'] } }, 'billing_gate_dispatch', 5],
+    ['principal support', { adcp: { principal: { supported: true } } }, 'principal', 1],
+    [
+      'capability-change notifications',
+      { adcp: { capability_changes: { notifications: { supported: true } } } },
+      'agent_notification_configs',
+      1,
+    ],
+  ])('keeps a shared surface incomplete when the agent declares %s', (_label, capabilities, storyboard, incomplete) => {
+    const assessment = spec(signalsRun({ rawCapabilities: { supported_protocols: ['signals'], ...capabilities } }), 'signal_owned');
+    expect(assessment.status).toBe('partial');
+    expect(assessment.evidence.incomplete_bundle_count).toBe(incomplete);
+    expect(assessment.evidence.not_applicable_universal_bundle_ids).not.toContain(storyboard.replace(/_/g, '-'));
+  });
+
+  it('fails closed on shared surfaces when the raw capabilities are unavailable', () => {
+    const assessment = spec(signalsRun({ rawCapabilities: undefined }), 'signal_owned');
+    expect(assessment.status).toBe('partial');
+    // Media-buy, creative and governance tools stay not applicable. The five
+    // account storyboards, principal and agent notification configs do not.
+    expect(assessment.evidence.incomplete_bundle_count).toBe(7);
+  });
+
+  it('fails closed when the agent profile carries no protocol declarations', () => {
+    const assessment = spec(signalsRun({ protocols: undefined }), 'signal_owned');
+    expect(assessment.status).toBe('partial');
+    expect(assessment.evidence.incomplete_bundle_count).toBe(signalsOnlyMissing.length);
+  });
+
+  it('fails closed when the missing-tools record contradicts an advertised tool', () => {
+    const assessment = spec(signalsRun({
+      tools: ['get_adcp_capabilities', 'get_signals', 'activate_signal', 'comply_test_controller', 'sync_principal'],
+    }), 'signal_owned');
+    expect(assessment.status).toBe('partial');
+    expect(assessment.evidence.not_applicable_universal_bundle_ids).not.toContain('principal');
+  });
+
+  it('fails closed on a storyboard the graded release does not define', () => {
+    const assessment = spec(signalsRun({ missing: ['not_a_released_storyboard'] }), 'signal_owned');
+    expect(assessment.status).toBe('partial');
+  });
+
+  it('keeps media-buy tools incomplete for a media-buy seller', () => {
+    const mediaBuyMissing = ['error_compliance', 'schema_validation', 'stale_response_advisory', 'pagination_integrity'];
+    for (const missing of mediaBuyMissing) {
+      const assessment = spec(universalRun({
+        missing: [missing],
+        protocols: ['media_buy'],
+        specialism: 'sales-non-guaranteed',
+        protocolBundle: 'media-buy',
+        specialismStoryboard: 'sales_non_guaranteed',
+        tools: ['get_adcp_capabilities', 'create_media_buy', 'sync_accounts'],
+        rawCapabilities: { supported_protocols: ['media_buy'], account: { supported_billing: ['operator'] } },
+      }), 'sales_non_guaranteed');
+      expect(assessment.status, missing).toBe('partial');
+      expect(assessment.evidence.not_applicable_universal_bundle_ids, missing).toEqual([]);
+    }
+  });
+
+  it('treats the badge role as declared even when supported_protocols omits it', () => {
+    const assessment = spec(universalRun({
+      missing: ['error_compliance'],
+      protocols: [],
+      specialism: 'sales-non-guaranteed',
+      protocolBundle: 'media-buy',
+      specialismStoryboard: 'sales_non_guaranteed',
+      tools: ['get_adcp_capabilities', 'create_media_buy'],
+      rawCapabilities: { supported_protocols: [] },
+    }), 'sales_non_guaranteed');
+    expect(assessment.status).toBe('partial');
+  });
+});

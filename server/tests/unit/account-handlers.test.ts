@@ -1062,7 +1062,7 @@ describe('sync_governance', () => {
     expect(sessionKeyFromArgs({}, 'open')).toBe('open:default');
     expect(sessionKeyFromArgs({ accounts: [{ account }] }, 'open')).toBe('open:acmeoutdoor.example');
 
-    const seeded = seedAccountFixture({
+    const seeded = await seedAccountFixture({
       params: {
         account_id: 'acc_sales_dooh_partition',
         fixture: {

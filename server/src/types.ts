@@ -612,6 +612,13 @@ export interface BrandAgentConfig {
 /**
  * Hosted brand record
  */
+/**
+ * How an organization's claim to a brand domain was established. `manual` is
+ * a WorkOS domain an administrator marked verified with no other evidence; it
+ * links the brand to the organization but leaves `domain_verified` false.
+ */
+export type DomainVerificationMethod = 'dns' | 'brand_json' | 'member_email' | 'manual';
+
 export interface HostedBrand {
   id: string;
   workos_organization_id?: string;
@@ -622,6 +629,8 @@ export interface HostedBrand {
   /** Registry provenance of the underlying brands row; 'brand_json' once the domain points at this hosted document. */
   source_type?: DiscoveredBrand['source_type'];
   domain_verified: boolean;
+  /** How the owning organization's claim to the domain was established; null on rows verified before it was recorded. */
+  domain_verification_method?: DomainVerificationMethod | null;
   verification_token?: string;
   is_public: boolean;
   /** True when a prior owner relinquished and the manifest is awaiting adoption. */
@@ -1221,7 +1230,9 @@ export interface AgentCompliance {
     passed_count: number;
     duration_ms: number;
     has_coverage_gap_skip?: boolean;
+    skipped_by_reason?: Record<string, number>;
   }>;
+  coverage_incomplete?: boolean;
   streak_days: number;
   last_checked_at: string | null;
   headline: string | null;

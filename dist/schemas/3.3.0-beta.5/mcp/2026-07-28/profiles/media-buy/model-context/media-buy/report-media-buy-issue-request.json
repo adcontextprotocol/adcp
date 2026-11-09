@@ -1,0 +1,212 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "media_buy_id": {
+      "type": "string"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "package_id": {
+      "type": "string"
+    },
+    "creative_id": {
+      "type": "string"
+    },
+    "severity": {
+      "enum": [
+        "critical",
+        "warning"
+      ]
+    },
+    "category": {
+      "enum": [
+        "malicious_creative",
+        "wrong_creative",
+        "brand_safety",
+        "tracking",
+        "delivery",
+        "other"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "governance_context": {
+      "type": "string"
+    },
+    "push_notification_config": {
+      "$ref": "#/$defs/external:core~1push-notification-config.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "media_buy_id",
+    "severity",
+    "category",
+    "description"
+  ],
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id"
+          ]
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "sandbox": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/brand-id.json": {
+      "type": "string"
+    },
+    "external:core/operator-unit.json": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object"
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "authentication": {
+          "type": "object",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              }
+            },
+            "credentials": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ]
+        },
+        "signing_profile": {
+          "$ref": "#/$defs/external:enums~1webhook-signing-profile.json"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "not": {
+        "required": [
+          "authentication",
+          "signing_profile"
+        ]
+      }
+    },
+    "external:enums/auth-scheme.json": {
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:enums/webhook-signing-profile.json": {
+      "enum": [
+        "adcp/webhook-signing/v1",
+        "web-bot-auth"
+      ]
+    }
+  }
+}
