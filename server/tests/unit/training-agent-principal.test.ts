@@ -321,14 +321,28 @@ describe('principal layer: declarations', () => {
 describe('principal layer: request validation', () => {
   it.each([
     ['an empty configuration', {}],
-    ['an unknown section', { bogus: [] }],
     ['an unknown destination property', { reporting_destinations: [destination({ access_key: 'AKIAEXAMPLE' })] }],
-    ['an unknown declarations property', { declarations: { api_token: 'x' } }],
     ['a signed-URL location', { reporting_destinations: [destination({ location: 's3://pinnacle/p?X-Amz-Signature=abc' })] }],
   ])('rejects %s without persisting', async (_label, configuration) => {
     const result = await sync(configuration);
     expect(result.result).toMatchObject({ kind: 'failed', errors: [{ code: 'INVALID_REQUEST' }] });
     expect((await read()).result.kind).toBe('recognized');
+  });
+
+  // The request schema is open (WG decision 2026-11-09). A section the seller
+  // doesn't support is still refused, now by the handler rather than the
+  // schema, and nothing persists.
+  it('refuses an unknown section without persisting', async () => {
+    const result = await sync({ bogus: [] });
+    expect(result.result).toMatchObject({ kind: 'failed', errors: [{ code: 'UNSUPPORTED_FEATURE' }] });
+    expect((await read()).result.kind).toBe('recognized');
+  });
+
+  // An unknown declarations property is ignored, and never read back.
+  it('ignores an unknown declarations property', async () => {
+    const result = await sync({ declarations: { api_token: 'x' } });
+    expect(result.result.kind).toBe('applied');
+    expect(JSON.stringify(await read())).not.toContain('api_token');
   });
 
   it('rejects the notification_configs section because it is not advertised', async () => {
