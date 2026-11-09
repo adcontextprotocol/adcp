@@ -20,6 +20,7 @@ const FIXTURE_PATH = path.join(
   'static/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js',
 );
 const MINTIGNORE_PATH = path.join(__dirname, '..', '.mintignore');
+const GATE_TOOLS = ['get_adcp_capabilities', 'get_products', 'sync_creatives', 'comply_test_controller'];
 
 function loadStoryboard() {
   return yaml.load(fs.readFileSync(STORYBOARD_PATH, 'utf8'));
@@ -128,8 +129,6 @@ test('runtime validations reject combined, duplicate, ambiguous, and extra entri
     );
   }
 });
-
-const GATE_TOOLS = ['get_adcp_capabilities', 'get_products', 'sync_creatives', 'comply_test_controller'];
 
 test('storyboard is gated on the explicit registry-policy enforcement capability', () => {
   assert.deepEqual(loadStoryboard().requires_capability, {
