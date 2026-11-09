@@ -13,7 +13,7 @@ import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import YAML from 'yaml';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
 
@@ -189,10 +189,11 @@ function collectSamples(node: unknown): void {
 }
 
 function loadStoryboardSamples(dir: string): void {
-  for (const entry of readdirSync(dir).sort()) {
-    const file = path.join(dir, entry);
-    if (statSync(file).isDirectory()) loadStoryboardSamples(file);
-    else if (entry.endsWith('.yaml')) collectSamples(YAML.parse(readFileSync(file, 'utf8')));
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) loadStoryboardSamples(file);
+    else if (entry.isFile() && entry.name.endsWith('.yaml')) collectSamples(YAML.parse(readFileSync(file, 'utf8')));
   }
 }
 
