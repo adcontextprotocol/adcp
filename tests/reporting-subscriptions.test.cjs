@@ -980,7 +980,8 @@ test('destination_overrides items declare their fields at the top level, for cod
     assert.equal(item.type, 'object', file);
     assert.deepEqual(Object.keys(item.properties).sort(), ['account_ids', 'destination_id', 'operator_domains', 'path_template'], file);
     for (const keyword of ['anyOf', 'oneOf', 'allOf', 'not', '$ref']) assert.equal(item[keyword], undefined, `${file}: ${keyword} at the item level`);
-    assert.equal(item.additionalProperties, false, file);
+    // Open by default (DR-0036).
+    assert.equal(item.additionalProperties, true, file);
   }
   const vs = validate('/schemas/core/reporting-subscription.json');
   const accept = [
@@ -995,8 +996,9 @@ test('destination_overrides items declare their fields at the top level, for cod
     [{ account_ids: ['a'], operator_domains: ['b.example'], destination_id: 'x' }, 'two selectors'],
     [{ account_ids: ['a', 'b'], destination_id: 'x', path_template: 'flat' }, 'several accounts, not partitioned'],
     [{ operator_domains: ['b.example'], destination_id: 'x', path_template: 'flat' }, 'operator, not partitioned'],
-    [{ account_ids: ['a'], destination_id: 'x', extra: true }, 'unknown field'],
   ];
+  // Open by default (DR-0036): an unknown key on an override validates.
+  accept.push([{ account_ids: ['a'], destination_id: 'x', extra: true }, 'unknown field']);
   for (const [override, label] of accept) assert.ok(vs({ ...allAccounts, destination_overrides: [override] }), `${label}: ${JSON.stringify(vs.errors)}`);
   for (const [override, label] of reject) assert.equal(vs({ ...allAccounts, destination_overrides: [override] }), false, label);
 });
