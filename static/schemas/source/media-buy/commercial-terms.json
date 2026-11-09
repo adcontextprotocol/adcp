@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/commercial-terms.json",
   "title": "Commercial Terms",
-  "description": "Complete typed commercial envelope for a compact-lifecycle proposal. This is the authoritative audit and refinement snapshot; allocations and narrative fields are explanatory views rather than substitutes for these terms.",
+  "description": "Complete typed commercial envelope for a compact-lifecycle proposal. This is the authoritative audit and refinement snapshot; allocations and narrative fields are explanatory views rather than substitutes for these terms. terms_digest covers this entire JSON value: every member at every depth, including ext and members a party does not recognize. Accepting the terms binds the accepting party to every member, so a party that cannot interpret every member MUST NOT accept them: a buyer declines the proposal with decline_proposals reason unrecognized_terms, a seller rejects the request that carries them (such as buy_products purchases) with UNRECOGNIZED_TERMS, and a governance agent denies through its existing deny path. A member whose schema defines it as opaque, such as context, is interpreted by that definition. A party computes or verifies terms_digest over the JSON value as received, never over a re-serialized parsed model, which can drop members the model does not declare.",
   "type": "object",
   "x-adcp-validation": {
     "verifier_constraints": {

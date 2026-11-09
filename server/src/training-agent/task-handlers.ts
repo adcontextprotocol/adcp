@@ -81,7 +81,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
-import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease } from './served-release-fields.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease, undeclaredMembers } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -23751,6 +23751,20 @@ export async function handleBuyProducts(
   const targetedPackageCounts = new Map<string, number>();
   for (let index = 0; index < args.purchases.length; index++) {
     const purchase = args.purchases[index]!;
+    // Each purchase becomes accepted commercial_terms the seller is bound by,
+    // member for member (media-buy/commercial-terms.json). A member the agent
+    // cannot interpret is rejected, never dropped or carried uninterpreted.
+    const [unrecognized] = undeclaredMembers(purchase, 'media-buy/product-purchase-input.json');
+    if (unrecognized) {
+      return {
+        errors: [{
+          code: 'UNRECOGNIZED_TERMS',
+          message: 'The purchase carries a member this seller cannot interpret, so it cannot accept the terms.',
+          field: `purchases[${index}]${unrecognized.map(segment => (/^\d+$/.test(segment) ? `[${segment}]` : `.${segment}`)).join('')}`,
+          recovery: 'correctable',
+        }],
+      };
+    }
     const product = catalog.get(purchase.product_id);
     const pricing = product?.pricing_options.find(
       option => option.pricing_option_id === purchase.pricing_option_id,

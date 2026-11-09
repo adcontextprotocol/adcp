@@ -324,13 +324,15 @@ An honest refusal that produces no draft uses the same response envelope but no 
 
 For every returned proposal:
 
-1. Recompute `sha256:base64url(SHA-256(JCS(commercial_terms)))` using RFC 8785 JSON Canonicalization Scheme bytes.
+1. Recompute `sha256:base64url(SHA-256(JCS(commercial_terms)))` using RFC 8785 JSON Canonicalization Scheme bytes, over the `commercial_terms` JSON value as received. Never compute it over a re-serialized parsed model, which can drop members the model does not declare.
 2. Compare the recomputed digest byte-for-byte with `terms_digest`.
 3. Verify `parent_proposal_id` equals `source_proposal_id`.
 4. Re-evaluate budgets, fixed rates, impression totals, flight bounds, product membership, and structured criteria from `commercial_terms`.
 5. Verify any `targeting_resolution.brief_targeting` against the hard targeting in `ask`, and review every sparse product `targeting_resolution.modifications` departure before selecting that configured product.
 6. On `partial`, enforce the partial invariant: every requirement absent from the unsatisfied sets still passes.
 7. Treat `reason`, `description`, `suggestions`, and `ask` as non-contractual prose.
+
+`terms_digest` covers the entire `commercial_terms` value: every member at every depth, including `ext` and members you don't recognize. Several schemas inside `commercial_terms` are open, so the terms can carry members your release does not define. Accepting the terms binds you to every member, so a buyer that cannot interpret every member MUST NOT accept them. Decline the proposal with [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) reason `unrecognized_terms` instead. A member whose schema defines it as opaque, such as `context`, is interpreted by that definition. The same rule binds every party: a seller rejects a request carrying terms it cannot interpret with [`UNRECOGNIZED_TERMS`](/docs/building/verification/compliance-catalog#error-code-unrecognized-terms) (see [`buy_products`](/docs/media-buy/task-reference/buy_products)), and a governance agent denies the check (see [`check_governance`](/docs/governance/campaign/tasks/check_governance)).
 
 Digest uniqueness alone is not enough for alternatives. Verify that `commercial_terms` are distinct after canonicalization; a seller cannot create fake diversity by changing only IDs, names, descriptions, or digest strings.
 
