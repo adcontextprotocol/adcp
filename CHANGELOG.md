@@ -1106,6 +1106,35 @@ This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version
 - 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
 - e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
 
+## 3.1.32
+
+### Patch Changes
+
+- c6ab3c2: Compliance: the `deterministic_testing` storyboard now declares the Acme Outdoor / Pinnacle sandbox account as the owner of its product and pricing-option fixtures, and explicitly scopes media-buy, creative, delivery and budget controller calls to that same consuming account. Its separate `test.example` account-provisioning and account-state checks keep their own identity, with account listing filtered to the effective run account so unrelated visible accounts cannot supply the state-transition account ID. The same filter preserves a caller-selected account ID when the seller does not support buyer account provisioning. This prevents later lifecycle controls from following the account selected by `sync_accounts` and targeting the wrong sandbox account.
+- a68851b: Correct maintained discovery conformance without changing the 3.1 wire schemas.
+  Replace product-count assumptions with explicit negative-control exclusion,
+  requiring executable runner support before fixtures are seeded. Auction discovery
+  no longer requires optional price guidance: this fixture-backed flow chooses buyer
+  bids of 6 and 16 against the seeded floors of 5 and 15, then reallocates budgets
+  without changing accepted bids. Discovery binds the exact seeded products and
+  pricing options independently of catalog order through a wholesale read; a
+  curated brief may legitimately rank other products ahead of the fixtures.
+  If that discovery fails, skip the dependent creation and update steps.
+  The reference seller now echoes preserved bids in budget-update responses,
+  matching the existing main-line behavior.
+
+  Keep provenance checks behind their explicit 3.3 capability declaration, so
+  3.1-pinned sellers report that coverage unavailable instead of failing optional
+  policy publication. Retain complete 3.1 account references on audit queries and
+  consistent sandbox identity on auction fixtures. No new capability field is
+  added to the 3.1 schemas.
+
+  Bind canonical product-validation fixtures and vendor-metric catalog fixtures to
+  the same explicit sandbox account used by their product probes and buy requests,
+  so automatic seeding does not infer an account from unrelated sample requests.
+
+- fec2a80: Fix the `get_products_pagination_integrity` storyboard fixtures on 3.1.x: both seeded products' `publisher_properties` entries now declare `selection_type: "all"`, matching main and 3.2. `core/publisher-property-selector.json` is a discriminated `oneOf` on `selection_type` and every branch requires it, so an entry naming only `publisher_domain` matched no branch — a seller that echoed the seeded product verbatim failed the storyboard's own response-schema validation. Refs #8646.
+
 ## 3.1.30
 
 ### Patch Changes

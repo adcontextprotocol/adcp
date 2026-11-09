@@ -319,7 +319,7 @@ describe('wrapper contract', () => {
     // manifest cannot silently lose a hosted release.
     const aliases: Array<{ alias: string; channel: RegExp; floor: string }> = [
       { alias: '3.0', channel: /^3\.0\.\d+$/, floor: '3.0.25' },
-      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.30' },
+      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.32' },
       { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.5' },
       { alias: '3.1-beta', channel: /^3\.1\.0-beta\.\d+$/, floor: '3.1.0-beta.7' },
       { alias: '3.1-rc', channel: /^3\.1\.0-rc\.\d+$/, floor: '3.1.0-rc.14' },
@@ -353,7 +353,6 @@ describe('wrapper contract', () => {
     expect(loadComplianceIndex(options).adcp_version).toBe(target.version);
 
     const storyboards = listAllComplianceStoryboards(options);
-    expect(storyboards).toHaveLength(122);
     for (const storyboard of storyboards) {
       expect(storyboard.adcp_version).toBe(target.version);
       expect(storyboard.phases.some(phase => phase.id === 'synthesis_error'), storyboard.id).toBe(false);
@@ -363,7 +362,7 @@ describe('wrapper contract', () => {
     expect(signing?.phases.find(phase => phase.id === 'negative_vectors')?.steps).toHaveLength(28);
   });
 
-  it.each(['3.0.25', '3.1.20', '3.1.22', '3.1.23', '3.1.24', '3.1.29',
+  it.each(['3.0.25', '3.1.20', '3.1.22', '3.1.23', '3.1.24', '3.1.29', '3.1.30',
     '3.2.1', '3.2.2', '3.2.3', '3.2.4', '3.2.5'])('keeps explicit hosted target %s exact after 3.1 advancement', version => {
     const target = hostedComplianceTarget(version);
     const options = hostedComplianceOptions(target);
@@ -642,8 +641,20 @@ describe('compareAdcpVersions', () => {
 });
 
 describe('getStoryboardsForVersion', () => {
-  it('preserves introduced storyboards for exact stable and prerelease versions', () => {
-    expect(getStoryboardsForVersion('3.1.18').length).toBe(getStoryboardsForVersion('3.1').length);
+  it('keeps exact stable snapshots pinned while line aliases advance', () => {
+    const frozen = getStoryboardsForVersion('3.1.18');
+    const current = getStoryboardsForVersion('3.1');
+    expect(frozen).toHaveLength(122);
+    expect(frozen.every(storyboard => storyboard.adcp_version === '3.1.18')).toBe(true);
+    expect(current.every(storyboard => storyboard.adcp_version === hostedComplianceTarget('3.1').version)).toBe(true);
+    for (const id of [
+      'media_buy_seller/canonical_custom_formats',
+      'media_buy_seller/canonical_experimental_formats',
+      'media_buy_seller/product_filter_behavior',
+    ]) {
+      expect(current.some(storyboard => storyboard.id === id)).toBe(true);
+      expect(frozen.some(storyboard => storyboard.id === id)).toBe(false);
+    }
     expect(getStoryboardsForVersion('3.2.0-beta.9').length).toBe(
       getStoryboardsForVersion('3.2-beta.9').length,
     );
