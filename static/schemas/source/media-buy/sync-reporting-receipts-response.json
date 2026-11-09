@@ -28,6 +28,7 @@
               }
             },
             "required": ["result", "receipt"],
+            "not": { "required": ["adjustment_receipt"] },
             "additionalProperties": true
           },
           {
@@ -43,6 +44,7 @@
               }
             },
             "required": ["result", "receipt"],
+            "not": { "required": ["adjustment_receipt"] },
             "additionalProperties": true
           },
           {
@@ -58,6 +60,7 @@
               }
             },
             "required": ["result", "adjustment_receipt"],
+            "not": { "required": ["receipt"] },
             "additionalProperties": true
           },
           {
@@ -73,6 +76,7 @@
               }
             },
             "required": ["result", "adjustment_receipt"],
+            "not": { "required": ["receipt"] },
             "additionalProperties": true
           },
           {

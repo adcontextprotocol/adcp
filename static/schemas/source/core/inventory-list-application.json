@@ -82,7 +82,7 @@
         "summary"
       ],
       "additionalProperties": true,
-      "not": { "required": ["auth_token"] }
+      "not": { "anyOf": [{ "required": ["auth_token"] }, { "required": ["mode"] }] }
     },
     {
       "title": "Collection list application",
@@ -148,7 +148,7 @@
         "summary"
       ],
       "additionalProperties": true,
-      "not": { "required": ["auth_token"] }
+      "not": { "anyOf": [{ "required": ["auth_token"] }, { "required": ["mode"] }] }
     }
   ]
 }

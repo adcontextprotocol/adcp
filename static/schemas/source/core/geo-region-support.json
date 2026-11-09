@@ -23,6 +23,7 @@
               }
             },
             "required": ["all_values"],
+            "not": { "required": ["values"] },
             "additionalProperties": true
           },
           {
@@ -40,6 +41,7 @@
               }
             },
             "required": ["values"],
+            "not": { "required": ["all_values"] },
             "additionalProperties": true
           }
         ]

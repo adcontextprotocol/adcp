@@ -3570,13 +3570,14 @@ async function runTests() {
     },
     'SignalCoverageForecast scope accepts seller-specific extra qualifier (inventory_class)'
   );
-  await testSchemaRejection(
+  // Open by default (DR-0009): the typo is an unknown key and is ignored.
+  await testSchemaValidation(
     '/schemas/core/signal-coverage-forecast.json',
     {
       ...signalCoverageForecast,
       bucket_completness: 'partial'
     },
-    'SignalCoverageForecast rejects unknown top-level field (bucket_completness typo)'
+    'SignalCoverageForecast ignores unknown top-level field (bucket_completness typo)'
   );
   log('');
 
