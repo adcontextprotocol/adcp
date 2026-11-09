@@ -25,7 +25,7 @@
         { "$ref": "/schemas/enums/reach-unit.json" },
         { "not": { "const": "custom" } }
       ],
-      "description": "What the bounds count. Absent means individuals, so existing sizes keep their meaning. A seller that matches to households or devices, as many CTV and streaming platforms do, says so here rather than reporting those counts as people. Buyers MUST NOT compare or rank two sizes whose units differ. custom is excluded because it is not comparable across parties."
+      "description": "What the bounds count. Absent means individuals, unless the field that carries the object states another default (collection-distribution followers counts accounts), so existing sizes keep their meaning. A seller that matches to households or devices, as many CTV and streaming platforms do, says so here rather than reporting those counts as people. Buyers MUST NOT compare or rank two sizes whose units differ. custom is excluded because it is not comparable across parties."
     },
     "as_of": {
       "type": "string",

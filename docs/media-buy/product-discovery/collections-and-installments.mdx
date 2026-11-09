@@ -1227,7 +1227,7 @@ Composition and views are inline on the product. The follower count lives on the
 
 ### Follower counts
 
-`distribution[].followers` is the platform-reported follower or subscriber count for the collection on that `publisher_domain`. It reuses [`audience-size`](https://adcontextprotocol.org/schemas/latest/core/audience-size.json), so it carries a range, a `precision`, and an `as_of`:
+`distribution[].followers` is the platform-reported follower or subscriber count for the collection on that `publisher_domain`. It reuses [`audience-size`](https://adcontextprotocol.org/schemas/latest/core/audience-size.json), so it carries a range, a `precision`, an `as_of`, and a `unit`, which is `accounts` here:
 
 ```json
 {
@@ -1237,6 +1237,7 @@ Composition and views are inline on the product. The follower count lives on the
     "lower_bound": 1230000,
     "upper_bound": 1239999,
     "precision": "approximate",
+    "unit": "accounts",
     "as_of": "2026-09-01T00:00:00Z"
   }
 }
@@ -1244,7 +1245,7 @@ Composition and views are inline on the product. The follower count lives on the
 
 - Use `precision: "approximate"` when the platform rounds publicly, as video platforms do with subscriber counts: a displayed "1.23M" is the interval 1,230,000 to 1,239,999. Use `exact` only when the platform reports an exact count, in which case `lower_bound` equals `upper_bound`.
 - `as_of` is when the count last changed, not when it was last read. A refresh that leaves `lower_bound`, `upper_bound` and `precision` unchanged is not a change: the seller keeps the earlier `as_of`, no feed or `list_collections` version moves, and no [collection card webhook](/docs/media-buy/task-reference/list_collections#collection-card-webhooks) fires. A scheduled sweep can therefore check every count without forcing buyers to resync. Buyers comparing two creators compare `as_of` first.
-- The value counts accounts, not de-duplicated people, even though `audience-size` is worded for people. A person who follows the same creator on two platforms is counted twice, so buyers MUST NOT sum `followers` across `distribution` entries or treat it as reach.
+- The value counts accounts, not de-duplicated people. Sellers SHOULD set `unit` to `accounts`; a `followers` object with no `unit` still counts accounts, because the `audience-size` default of `individuals` does not apply to this field. A person who follows the same creator on two platforms is counted twice, so buyers MUST NOT sum `followers` across `distribution` entries or treat it as reach.
 - Display and comparison only. It is not a targeting predicate and does not size a buyable audience.
 
 A seller that serves or relays collection objects carrying `followers` MUST list `media_buy.collection_cards` in `experimental_features` on `get_adcp_capabilities`. A publisher authoring the field directly in `adagents.json` has no capabilities response; the field is experimental either way. See [experimental status](/docs/reference/experimental-status).

@@ -202,7 +202,7 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Experimental match keys (#8375) reach the seeded Product through
 // Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
 // Audience size gains unit, reached through the seeded sync_audiences
-// response and Product sizes: 1_383_804 → 1_384_409 bytes. Bound at
+// response and Product sizes: 1_383_804 → 1_384_668 bytes. Bound at
 // 1_385_000.
 const PARITY_COMPILE_LIMIT = 1_385_000;
 
