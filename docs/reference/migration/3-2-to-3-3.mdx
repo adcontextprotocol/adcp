@@ -383,7 +383,7 @@ A request that carries `adcp_major_version` and no `adcp_version` is served the 
 
 ### Schemas are open by default
 
-([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), working-group decision of 2026-11-09.) 3.3 opens the schemas that were meant to be open. Closing a schema only breaks validators that hard-code it, so opening one is not a protocol break. `additionalProperties` goes from `false` to `true` at 760 of the 859 closed locations in the 3.3 source. Nothing else in those schemas changes, and every payload that was valid stays valid. 3.2.10 opens the same locations that 3.2 has.
+([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), working-group decision of 2026-11-09.) 3.3 opens the schemas that were meant to be open. Closing a schema only breaks validators that hard-code it, so opening one is not a protocol break. `additionalProperties` goes from `false` to `true` at 744 of the 859 closed locations in the 3.3 source. Nothing else in those schemas changes, and every payload that was valid stays valid. 3.2.10 opens the same locations that 3.2 has.
 
 A location stays closed only where closure enforces something:
 
@@ -391,7 +391,8 @@ A location stays closed only where closure enforces something:
 - **Signed commercial terms.** `commercial-terms` and the term objects inside it: `product-purchase`, `change-term`, `change-term-constraints`, `sla-window`, `bidding-policy`, and the canonical measurement terms, performance standard, reporting commitment, pricing option and budget allocation. `terms_digest` binds them, and a buyer must not be bound by a term it cannot read.
 - **Join keys.** Metric `qualifier` objects and forecast dimensions. Consumers join on their key sets.
 - **Canonical identity and signatures.** `canonical-installment-ref` and the JWS response-payload envelope.
-- **Privacy clamps.** The TMP identity and context match requests, `catalog-item-reference-not-found-error`, the per-agent `PERMISSION_DENIED` and `BILLING_NOT_PERMITTED_FOR_AGENT` details, the failed and unconfigured `get_principal` results, and the `get_reporting_status` `lookup_unavailable` failure. That failure was open in `3.3.0-beta.1` through `beta.5` and is closed again, as in 3.2, so that unknown and unauthorized identifiers return one identical shape.
+- **Privacy clamps.** The TMP identity and context match requests, `catalog-item-reference-not-found-error`, the per-agent `PERMISSION_DENIED` and `BILLING_NOT_PERMITTED_FOR_AGENT` details, the `get_principal` and `sync_principal` results, and the `get_reporting_status` `lookup_unavailable` failure. That failure was open in `3.3.0-beta.1` through `beta.5` and is closed again, as in 3.2, so that unknown and unauthorized identifiers return one identical shape.
+- **Credentials and hard constraints.** Reporting destinations, which are credential-free by contract, and `proposal-budget-constraint`, the strict peer of `budget-range`, because a seller that ignored an unknown member of a hard constraint would violate it.
 - **No key material or markup.** `trust.json`, which sits on the signature-verification fetch path and whose keys are published only in the key directory, and `placement-presentation`, a declarative frame that consumers render.
 - **Maps keyed by identifiers,** where closure checks the keys (`patternProperties`).
 
