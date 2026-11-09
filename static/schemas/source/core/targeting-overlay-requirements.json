@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-requirements.json",
   "title": "Targeting Overlay Requirements",
-  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement except daypart_targets, where true promises inventory_local and whole-hour granularity only. daypart_targets time_granularity is ordered rather than a subset: support matches when its granularity is at least as fine as the requirement (hour < quarter_hour < minute). Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching. Legacy frequency_cap: true matches only the unchanged broad declaration. frequency_cap_support matches either legacy true or a containing structured declaration; an empty object requests either positive form. A requirement carries at most one of the two.",
+  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request schema deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement except daypart_targets, where true promises inventory_local and whole-hour granularity only. For demographics, true on either side is the deprecated shorthand for { age: true } and matches as that object. daypart_targets time_granularity is ordered rather than a subset: support matches when its granularity is at least as fine as the requirement (hour < quarter_hour < minute). Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching. Legacy frequency_cap: true matches only the unchanged broad declaration. frequency_cap_support matches either legacy true or a containing structured declaration; an empty object requests either positive form. A requirement carries at most one of the two.",
   "type": "object",
   "definitions": {
     "required": { "type": "boolean", "const": true },
@@ -107,7 +107,7 @@
               }
             }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     }
@@ -187,7 +187,13 @@
     "signal_targeting_groups": { "$ref": "#/definitions/required" },
     "demographics": {
       "anyOf": [
-        { "$ref": "#/definitions/required" },
+        {
+          "$ref": "#/definitions/required",
+          "deprecated": true,
+          "x-deprecated-in": "3.3.0",
+          "x-removed-in": "4.0.0",
+          "description": "Deprecated in 3.3. The 3.2 shorthand for { age: true }. Senders MUST send the object; receivers MUST accept true."
+        },
         {
           "type": "object",
           "properties": {
@@ -196,11 +202,11 @@
               "$ref": "#/definitions/required",
               "x-status": "experimental",
               "x-added-in": "3.3.0",
-              "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
+              "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). Only product support with gender: true satisfies it."
             }
           },
           "anyOf": [{ "required": ["age"] }, { "required": ["gender"] }],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -231,5 +237,5 @@
   },
   "minProperties": 1,
   "not": { "required": ["frequency_cap", "frequency_cap_support"] },
-  "additionalProperties": false
+  "additionalProperties": true
 }

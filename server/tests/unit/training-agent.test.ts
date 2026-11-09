@@ -20338,6 +20338,43 @@ describe('proposal lifecycle', () => {
     expect(unsupported.isError).toBeFalsy();
     expect(unsupported.result).toMatchObject({ outcome: 'listed', products: [] });
 
+    // The requirements container is open, so an unknown requirement validates.
+    // It still fails closed: "Missing or unknown required fields do not match."
+    // The only difference from allRegions above is the unknown key.
+    const unknownRequirement = {
+      geo_regions: { countries: { FR: { values: ['FR-49'] } } },
+      future_unknown_dimension: true,
+    };
+    const unknownRequirementValidation = validateSourceSchema(
+      'core/targeting-overlay-requirements.json',
+      unknownRequirement,
+    );
+    expect(unknownRequirementValidation.valid, JSON.stringify(unknownRequirementValidation.errors)).toBe(true);
+    const unknownListed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        required_overlay_support: unknownRequirement,
+      },
+    });
+    expect(unknownListed.isError, JSON.stringify(unknownListed.result)).toBeFalsy();
+    expect(unknownListed.result).toMatchObject({ outcome: 'listed', products: [] });
+    const discover = (required_overlay_support: Record<string, unknown>) => executeTrainingAgentTool('get_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      account,
+      buying_mode: 'brief',
+      brief: 'Regional display inventory in France',
+      required_overlay_support,
+    }, DEFAULT_CTX);
+    const knownDiscovered = await discover({ geo_regions: unknownRequirement.geo_regions });
+    expect(knownDiscovered.success, knownDiscovered.error).toBe(true);
+    expect((knownDiscovered.data as { products: Array<{ product_id: string }> }).products)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ product_id: targetedProductId })]));
+    const unknownDiscovered = await discover(unknownRequirement);
+    expect(unknownDiscovered.success, unknownDiscovered.error).toBe(true);
+    expect(unknownDiscovered.data).not.toHaveProperty('errors');
+    expect((unknownDiscovered.data as { products: unknown[] }).products).toEqual([]);
+
     const concurrentListings = await Promise.all(['US', 'CA'].map(country => simulateCallTool(
       server,
       'list_products',
