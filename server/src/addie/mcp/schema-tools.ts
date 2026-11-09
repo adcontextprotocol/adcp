@@ -30,7 +30,7 @@ const SCHEMA_HOST = 'https://adcontextprotocol.org';
 export const DOCS_SCHEMA_RELEASES: Readonly<Record<string, string>> = Object.freeze({
   '3.2': '3.2.8',
   '3.3-beta': '3.3.0-beta.5',
-  '3.1': '3.1.32',
+  '3.1': '3.1.33',
   '3.0': '3.0.28',
   '2.5': '2.5.3',
 });
