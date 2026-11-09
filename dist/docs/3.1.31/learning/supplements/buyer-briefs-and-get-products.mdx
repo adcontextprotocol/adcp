@@ -1,0 +1,103 @@
+---
+title: "Buyer briefs and get_products request shape"
+sidebarTitle: "Buyer briefs"
+description: "How buyer agents decide what belongs in the get_products brief string, structured filters, and follow-up refinement requests."
+"og:title": "AdCP - Buyer briefs and get_products request shape"
+---
+
+# Buyer briefs and get_products request shape
+
+This supplement prepares buyer-side implementers to turn a human campaign request into a precise `get_products` call.
+
+The goal is not to make the brief verbose. The goal is to put intent in the brief and hard constraints in typed fields so the seller can curate inventory without guessing which parts are negotiable.
+
+## Mental model
+
+| Input | Use it for | Avoid putting here |
+|---|---|---|
+| `brief` | Buyer intent, audience language, context, tone, business goal, and success definition | Machine-enforceable constraints that already have typed fields |
+| `filters` | Hard constraints that should silently exclude non-matching products | Soft preferences that a seller could satisfy through curation |
+| `brand` | The buyer brand identity the seller uses for eligibility, safety, and fit | A second copy of the campaign brief |
+| `catalog` | Commerce or product-set context when the campaign is catalog-driven | General brand positioning |
+| `refine` | Specific changes to a prior discovery response | New unrelated discovery goals |
+
+## What goes in the brief
+
+Use the brief for context that a seller or curator needs to make judgment calls:
+
+- campaign objective: awareness, consideration, qualified traffic, store visits, conversion, renewal
+- audience description in human terms
+- product, offer, seasonal context, or creative direction
+- must-understand sensitivities such as family suitability or competitive adjacency
+- success language that is not a metric filter, such as "favor trusted editorial environments"
+
+Example:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Launch Nova Running's spring trail shoe line with outdoor enthusiasts. Favor trusted adventure and fitness contexts, avoid discount-led positioning, and prioritize packages that can support a brand-lift readout.",
+  "brand": {
+    "domain": "novarunning.example"
+  }
+}
+```
+
+## What goes in filters
+
+Use filters when a product that fails the condition should not come back.
+
+Good filter candidates:
+
+- required channels or formats
+- required geo targeting support
+- required measurement or reporting capabilities
+- pricing currency constraints
+- budget ranges
+- fixed-price requirements
+- product categories for wholesale/catalog use
+
+Example:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Launch Nova Running's spring trail shoe line with outdoor enthusiasts. Favor trusted adventure and fitness contexts.",
+  "brand": {
+    "domain": "novarunning.example"
+  },
+  "filters": {
+    "channels": ["ctv", "display"],
+    "pricing_currencies": ["USD"],
+    "required_metrics": ["impressions", "clicks"]
+  }
+}
+```
+
+If the buyer says "ideally CTV, but display is okay," keep that preference in the brief. If they say "CTV only," use `filters.channels`.
+
+## Brief vs. refine
+
+Use `buying_mode: "refine"` when the buyer is reacting to a previous discovery response. A refine request should point at what changed: remove a product, adjust budget, request more premium placements, narrow geography, or ask for alternatives.
+
+Do not send a totally new campaign in `refine`; start a new `brief` request instead.
+
+## Implementation checklist
+
+- Normalize the human request into intent, hard constraints, and follow-up changes before calling the seller.
+- Preserve the buyer's business language in `brief`; do not collapse it into only keywords.
+- Put typed constraints in `filters` so sellers can explain exclusions through `filter_diagnostics`.
+- Keep `brief` out of `wholesale` mode.
+- Persist the request tuple with the response so later `refine` calls and `wholesale_feed_version` comparisons are scoped correctly.
+
+## Practice prompt
+
+A buyer says:
+
+> We need a six-week launch for Acme Meals' new family dinner kits. We want CTV or online video, only USD pricing, something suitable for parents with kids, and we need completion-rate reporting.
+
+Expected decomposition:
+
+- Brief: family dinner kit launch, parent audience, suitable contexts, six-week launch.
+- Filters: video-capable channel/format constraints, USD pricing, completion-rate reporting.
+- Brand: Acme Meals domain or BrandRef.

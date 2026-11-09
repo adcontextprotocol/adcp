@@ -13,7 +13,6 @@ import {
   setAgentTesterLogger,
   comply as sdkComply,
   loadComplianceIndex as sdkLoadComplianceIndex,
-  getComplianceStoryboardById,
   resolveStoryboardsForCapabilities,
   testCapabilityDiscovery,
   CapabilityResolutionError,
@@ -26,6 +25,7 @@ import {
   type TestOptions,
   type AgentCapabilities,
 } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from '../../compliance/storyboard-cache.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
@@ -378,7 +378,7 @@ export async function comply(
   // An agent that echoes a newer release in the target's major has its
   // capabilities validated against that release by the SDK, using the hosted
   // roots withHostedComplianceOptions supplies (servedReleaseSchemaRoots).
-  const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
+  const result = normalizeControllerPreflightGapVerdicts(redactHostedGovernanceSecrets(rawResult, mintedSecrets));
   result.adcp_version ??= target.version;
   const notApplicableSpecialisms = markSpecialismsNotApplicableForTarget(result, target);
   if (overlayComplianceDir) restoreReleasedComplianceDirInFixCommands(result, overlayComplianceDir, target);
@@ -970,7 +970,7 @@ function mapOverallStatus(status: string): OverallRunStatus {
   }
 }
 
-const pinnedStoryboardContexts = new WeakMap<ComplianceResult, Map<string, ReturnType<typeof getComplianceStoryboardById>>>();
+const pinnedStoryboardContexts = new WeakMap<ComplianceResult, Map<string, ReturnType<typeof getCachedComplianceStoryboardById>>>();
 
 function pinnedStoryboard(result: ComplianceResult, storyboardId: string) {
   if (!result.adcp_version) return undefined;
@@ -982,7 +982,7 @@ function pinnedStoryboard(result: ComplianceResult, storyboardId: string) {
   const key = `${result.adcp_version}:${storyboardId}`;
   if (!context.has(key)) {
     try {
-      context.set(key, getComplianceStoryboardById(storyboardId,
+      context.set(key, getCachedComplianceStoryboardById(storyboardId,
         hostedComplianceOptions(hostedComplianceTarget(result.adcp_version))));
     } catch {
       context.set(key, undefined);
@@ -1016,22 +1016,42 @@ function classifyRunStep(result: ComplianceResult, scenario: string, step: Param
     }
   }
   if (optionalToolUnavailable) return 'not_applicable';
-  if (step.skipped && step.skip_reason === 'prerequisite_failed') {
-    // fixture_unavailable is the SDK's whole-storyboard preflight abort. Once
-    // emitted, subsequent legacy cascades did not exercise seller behavior.
-    const storyboardId = scenarioStoryboardIdForFallback(scenario);
-    let fixtureAborted = false;
-    for (const track of result.tracks) {
-      for (const phase of track.scenarios) {
-        if (scenarioStoryboardIdForFallback(phase.scenario) !== storyboardId) continue;
-        for (const prior of phase.steps ?? []) {
-          if (prior === step) return fixtureAborted ? 'setup_gap' : classifyComplianceStep(step, scenario);
-          if (prior.skipped && prior.skip_reason === 'fixture_unavailable') fixtureAborted = true;
-        }
+  if (step.skipped && step.skip_reason === 'prerequisite_failed' && followsFixtureAbort(result, scenario, step)) {
+    return 'setup_gap';
+  }
+  return classifyComplianceStep(step, scenario);
+}
+
+/**
+ * fixture_unavailable is the SDK's whole-storyboard preflight abort. Once
+ * emitted, subsequent legacy prerequisite_failed cascades in the same
+ * storyboard did not exercise seller behavior.
+ */
+function followsFixtureAbort(result: ComplianceResult, scenario: string, step: object): boolean {
+  const storyboardId = scenarioStoryboardIdForFallback(scenario);
+  let fixtureAborted = false;
+  for (const track of result.tracks) {
+    for (const phase of track.scenarios) {
+      if (scenarioStoryboardIdForFallback(phase.scenario) !== storyboardId) continue;
+      for (const prior of phase.steps ?? []) {
+        if (prior === step) return fixtureAborted;
+        if (prior.skipped && prior.skip_reason === 'fixture_unavailable') fixtureAborted = true;
       }
     }
   }
-  return classifyComplianceStep(step, scenario);
+  return false;
+}
+
+/**
+ * A runner-owned fixture gap: the test kit could not build an input the
+ * seller's contract requires, or a step cascaded from that abort.
+ * runner-output-contract.yaml grades it not_applicable and calls it
+ * runner-owned, so it is missing coverage, never a signal about the agent.
+ */
+function isRunnerFixtureGap(result: ComplianceResult, scenario: string, step: TrackStep): boolean {
+  if (!step.skipped) return false;
+  if (step.skip_reason === 'fixture_unavailable') return true;
+  return step.skip_reason === 'prerequisite_failed' && followsFixtureAbort(result, scenario, step);
 }
 
 export function isNonExecutableCoverageGapScenario(scenario: {
@@ -1048,9 +1068,18 @@ export function isNonExecutableCoverageGapScenario(scenario: {
   });
 }
 
+type TrackStep = NonNullable<TrackResult['scenarios'][number]['steps']>[number];
+
 function trackHasCoverageGapSkip(result: ComplianceResult, track: TrackResult): boolean {
   return track.scenarios.some(scenario => scenario.steps?.some(step =>
     classifyRunStep(result, String(scenario.scenario), step) === 'setup_gap'));
+}
+
+/** Coverage gaps the runner did not cause, e.g. a missing comply_test_controller. */
+function trackHasNonFixtureCoverageGapSkip(result: ComplianceResult, track: TrackResult): boolean {
+  return track.scenarios.some(scenario => scenario.steps?.some(step =>
+    classifyRunStep(result, String(scenario.scenario), step) === 'setup_gap' &&
+    !isRunnerFixtureGap(result, String(scenario.scenario), step)));
 }
 
 function trackHasFixtureUnavailableSkip(track: TrackResult): boolean {
@@ -1058,8 +1087,103 @@ function trackHasFixtureUnavailableSkip(track: TrackResult): boolean {
     step.skipped && step.skip_reason === 'fixture_unavailable'));
 }
 
+const SKIP_REASON_KEY = /^[a-z][a-z0-9_]{0,63}$/;
+
+/**
+ * Count a track's skipped steps by reason, as the runner contract's
+ * skipped_by_reason does for a run. The detailed SDK reason is kept because it
+ * separates fixture_unavailable from capability_unsupported, which the
+ * canonical not_applicable would merge. Only enum-shaped keys are stored.
+ */
+function trackSkippedByReason(track: TrackResult): Record<string, number> | undefined {
+  const counts: Record<string, number> = {};
+  for (const scenario of track.scenarios) {
+    for (const step of scenario.steps ?? []) {
+      if (step.skipped !== true) continue;
+      const raw = step.skip_reason ?? (step as { skip?: { reason?: string } }).skip?.reason;
+      const reason = typeof raw === 'string' && SKIP_REASON_KEY.test(raw) ? raw : 'other';
+      counts[reason] = (counts[reason] ?? 0) + 1;
+    }
+  }
+  return Object.keys(counts).length > 0 ? counts : undefined;
+}
+
+/**
+ * SDK17 adds an empty failed /storyboard row when legacy controller preflight
+ * skipped the entire storyboard. That row describes missing coverage, not an
+ * additional seller assertion. Recover only this exact, structurally proven
+ * case; unknown verdicts, executed checks and assertion failures stay intact.
+ */
+function normalizeControllerPreflightGapVerdicts(result: ComplianceResult): ComplianceResult {
+  // Never substitute a line alias or latest catalog for an exact run bundle.
+  if (typeof result.adcp_version !== 'string' ||
+    !/^[1-9][0-9]*\.[0-9]+\.[0-9]+(?:-(?:beta|rc)\.[0-9]+)?$/.test(result.adcp_version)) return result;
+  type Scenario = TrackResult['scenarios'][number];
+  const byStoryboard = new Map<string, Scenario[]>();
+  for (const track of result.tracks) {
+    for (const scenario of track.scenarios) {
+      const id = scenarioStoryboardIdForFallback(scenario.scenario);
+      if (!id) continue;
+      const siblings = byStoryboard.get(id) ?? [];
+      siblings.push(scenario);
+      byStoryboard.set(id, siblings);
+    }
+  }
+  const replacements = new Map<Scenario, Scenario>();
+  for (const [id, scenarios] of byStoryboard) {
+    const verdicts = scenarios.filter(scenario => scenario.scenario === `${id}/storyboard`);
+    if (verdicts.length !== 1) continue;
+    const verdict = verdicts[0];
+    if (verdict.overall_passed !== false || !Array.isArray(verdict.steps) || verdict.steps.length !== 0) continue;
+    const storyboard = pinnedStoryboard(result, id);
+    if (storyboard?.prerequisites?.controller_seeding !== true ||
+      storyboard.phases.some(phase => phase.id === 'storyboard')) continue;
+    const phases = scenarios.filter(scenario => scenario !== verdict);
+    if (phases.length === 0 || phases.some(phase => !phase.steps?.length || phase.overall_passed !== true ||
+      phase.steps.some(step => step.skipped !== true || step.passed !== true ||
+        step.skip_reason !== 'missing_test_controller' ||
+        step.validations?.some(validation => validation.passed === false)))) continue;
+    const preflight = phases.find(phase => phase.scenario === `${id}/__controller_seeding__`);
+    if (!preflight?.steps?.length || preflight.steps.some(step => step.task !== 'comply_test_controller')) continue;
+    if ((result.failures ?? []).some(failure => !failure.storyboard_id || failure.storyboard_id === id)) continue;
+    const observations = [...(result.observations ?? []), ...result.tracks.flatMap(track => track.observations ?? [])];
+    if (observations.some(observation => observation.source?.code === 'storyboard-assertion-failed' &&
+      (!('storyboard_id' in observation.source) || !observation.source.storyboard_id ||
+        observation.source.storyboard_id === id))) continue;
+    const detail = 'Not tested: comply_test_controller is unavailable; required fixture state was not established.';
+    replacements.set(verdict, {
+      ...verdict,
+      overall_passed: true,
+      summary: detail,
+      steps: [{
+        step: 'Controller fixture setup unavailable',
+        step_id: 'requirement_unmet:controller',
+        task: 'comply_test_controller',
+        passed: true,
+        skipped: true,
+        skip_reason: 'requirement_unmet',
+        requirement: 'controller',
+        duration_ms: 0,
+        warnings: [detail],
+      }],
+    });
+  }
+  if (replacements.size === 0) return result;
+  const normalized = {
+    ...result,
+    tracks: result.tracks.map(track => ({
+      ...track,
+      scenarios: track.scenarios.map(scenario => replacements.get(scenario) ?? scenario),
+    })),
+  };
+  const context = pinnedStoryboardContexts.get(result);
+  if (context) pinnedStoryboardContexts.set(normalized, context);
+  return normalized;
+}
+
 /** Reconcile SDK aggregates with the same structural policy as storyboard rows. */
 function normalizeGradedTracks(result: ComplianceResult): ComplianceResult {
+  result = normalizeControllerPreflightGapVerdicts(result);
   const tracks = result.tracks.map(track => {
     // Preserve legacy phase-only results, including their failure verdicts.
     if (!track.scenarios.some(scenario => scenario.steps?.length)) return track;
@@ -1126,10 +1250,15 @@ function effectiveRunStatus(result: ComplianceResult): {
   // e.g. a signals-only agent skipping controller-gated media-buy pagination
   // storyboards with `missing_test_controller` — are expected and must not
   // degrade an otherwise all-pass run (#5429, regression of #5328).
+  //
+  // A runner fixture gap (fixture_unavailable and its cascade) never blocks
+  // promotion: it is the test kit's missing coverage, not the agent's
+  // (adcp-client#3596). tracks_json keeps it visible through
+  // has_coverage_gap_skip and skipped_by_reason.
   const hasFixtureUnavailable = result.tracks.some(trackHasFixtureUnavailableSkip);
-  const hasCoverageGapSkip = hasFixtureUnavailable || result.tracks
+  const hasCoverageGapSkip = result.tracks
     .filter((track: TrackResult) => track.status === 'skip')
-    .some(track => trackHasCoverageGapSkip(result, track));
+    .some(track => trackHasNonFixtureCoverageGapSkip(result, track));
   const hasGenuineFailure = activeTracks.some((track: TrackResult) => track.status === 'fail') ||
     result.overall_status === 'failing' ||
     result.overall_status === 'auth_required' ||
@@ -1137,14 +1266,6 @@ function effectiveRunStatus(result: ComplianceResult): {
   if (hasGenuineFailure) {
     return {
       overall_status: mapOverallStatus(result.overall_status),
-      tracks_passed: result.summary.tracks_passed,
-      tracks_failed: result.summary.tracks_failed,
-      tracks_partial: result.summary.tracks_partial,
-    };
-  }
-  if (hasFixtureUnavailable) {
-    return {
-      overall_status: 'partial',
       tracks_passed: result.summary.tracks_passed,
       tracks_failed: result.summary.tracks_failed,
       tracks_partial: result.summary.tracks_partial,
@@ -1160,6 +1281,16 @@ function effectiveRunStatus(result: ComplianceResult): {
       tracks_passed: activeTracks.length,
       tracks_failed: 0,
       tracks_partial: 0,
+    };
+  }
+  // Without passing behavior to stand on, a fixture gap is still not a pass:
+  // nothing it skipped was verified.
+  if (hasFixtureUnavailable) {
+    return {
+      overall_status: 'partial',
+      tracks_passed: result.summary.tracks_passed,
+      tracks_failed: result.summary.tracks_failed,
+      tracks_partial: result.summary.tracks_partial,
     };
   }
   return {
@@ -1200,6 +1331,7 @@ export function deriveStoryboardStatuses(
   result: ComplianceResult,
   storyboardIds?: string[],
 ): StoryboardStatusEntry[] {
+  result = normalizeControllerPreflightGapVerdicts(result);
   interface FirstFailure {
     stepId: string | null;
     title: string | null;
@@ -1743,14 +1875,18 @@ export function complianceResultToDbInput(
     : result.bundle_results?.length
       ? [...new Set(result.bundle_results.flatMap(bundle => bundle.storyboard_ids))].sort()
       : undefined;
-  const tracksJson: TrackSummaryEntry[] = gradedResult.tracks.map((t: TrackResult) => ({
-    track: t.track,
-    status: t.status,
-    scenario_count: t.scenarios.length,
-    passed_count: t.scenarios.filter((s: { overall_passed: boolean }) => s.overall_passed).length,
-    duration_ms: t.duration_ms,
-    has_coverage_gap_skip: trackHasCoverageGapSkip(gradedResult, t),
-  }));
+  const tracksJson: TrackSummaryEntry[] = gradedResult.tracks.map((t: TrackResult) => {
+    const skippedByReason = trackSkippedByReason(t);
+    return {
+      track: t.track,
+      status: t.status,
+      scenario_count: t.scenarios.length,
+      passed_count: t.scenarios.filter((s: { overall_passed: boolean }) => s.overall_passed).length,
+      duration_ms: t.duration_ms,
+      has_coverage_gap_skip: trackHasCoverageGapSkip(gradedResult, t),
+      ...(skippedByReason && { skipped_by_reason: skippedByReason }),
+    };
+  });
 
   const { overall_status, tracks_passed, tracks_failed, tracks_partial } = effectiveRunStatus(gradedResult);
   const resultWithCompatibleNotices = result as unknown as {

@@ -34,11 +34,14 @@ vi.mock('@adcp/sdk/testing', () => ({
   setAgentTesterLogger: vi.fn(),
   comply: mocks.sdkComply,
   loadComplianceIndex: vi.fn(),
-  getComplianceStoryboardById: vi.fn(),
   getComplianceCacheDir: vi.fn(() => ''),
   testCapabilityDiscovery: mocks.discovery,
   isComplianceVersionSupported: () => true,
   CapabilityResolutionError: mocks.CapabilityResolutionError,
+}));
+
+vi.mock('../../src/compliance/storyboard-cache.js', () => ({
+  getCachedComplianceStoryboardById: vi.fn(),
 }));
 
 vi.mock('../../src/utils/sdk-safe-fetch.js', () => ({

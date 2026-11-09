@@ -68,6 +68,8 @@ primary_region = 'iad'
   # open sandbox onboarding, and demand-side trust.json grants at
   # /sales/identity/mcp. Only its fictional fixture identities resolve.
   ENABLE_ADCP_3_3_IDENTITY_ROUTE = "true"
+  # Isolated, synchronous creative buyer lab on the frozen 3.3 beta contract.
+  ENABLE_ADCP_3_3_CREATIVE_ROUTE = "true"
   # Deployment-time ceiling for the issue #6827 read-only authorization canary.
   # The database runtime gate remains independently disabled until explicitly armed.
   ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true"

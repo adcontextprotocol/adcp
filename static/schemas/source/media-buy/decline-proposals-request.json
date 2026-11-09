@@ -53,5 +53,5 @@
     "required": ["declines"]
   },
   "then": { "required": ["opportunity"] },
-  "additionalProperties": false
+  "additionalProperties": true
 }

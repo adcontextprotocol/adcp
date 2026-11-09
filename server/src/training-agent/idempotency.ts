@@ -104,6 +104,7 @@ export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
   'report_plan_adjustment',
   'report_plan_outcome',
   'report_usage',
+  'request_account',
   'si_initiate_session',
   'si_send_message',
   'sync_accounts',

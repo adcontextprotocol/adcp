@@ -101,10 +101,16 @@ fixtures:
             height: 250
     - product_id: "native_feed_q4"
       delivery_type: "guaranteed"
-      channels: ["native"]
+      channels: ["display"]
       format_options:
         - format_option_id: "native_article"
-          format_kind: "native"
+          format_kind: "native_in_feed"
+          params:
+            title_max_chars: 90
+            body_text_max_chars: 140
+            main_image_sizes:
+              - width: 1200
+                height: 627
   pricing_options:
     - product_id: "premium_video_q4"
       pricing_option_id: "cpm_guaranteed"

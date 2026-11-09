@@ -210,7 +210,7 @@ After the package is created, a separate request assigns the already reviewed li
 }
 ```
 
-For a recurring campaign, check the library status again and assign the same `creative_id` to each new package if it remains approved and eligible. To stage changed content, sync it under a new `revision_id` when revision support is advertised, wait for that revision's review, then assign it. If the earlier creative is still serving, use a separate `creative_id` for the candidate so the sync does not update the live library item. Do not reuse a `revision_id` for changed content. Sellers set review timing and policy; this workflow does not promise approval by the launch date or bypass package review.
+For a recurring campaign, check the library status again and assign the same `creative_id` to each new package if it remains approved and eligible. To stage changed content, sync it under a new `revision_id` when revision support is advertised, wait for that revision's review, then assign it. If the earlier creative is still serving, use a separate `creative_id` for the candidate so the sync does not update the live library item, unless the seller declares [`creative.live_updates`](/docs/creative/task-reference/sync_creatives#live-creative-updates) and applies that change in `staged` mode, which keeps the earlier version serving until the change is approved. Do not reuse a `revision_id` for changed content. Sellers set review timing and policy; this workflow does not promise approval by the launch date or bypass package review.
 
 ### Uploading with assignments
 

@@ -3,7 +3,9 @@
   "$id": "/schemas/enums/principal-kind.json",
   "title": "Principal Kind",
   "x-status": "experimental",
-  "description": "Seller-resolved kind of the authenticated principal: an autonomous buyer-agent workload or an operator-side identity such as a person at the operator.",
+  "deprecated": true,
+  "x-deprecated-in": "3.3.0",
+  "description": "Deprecated in 3.3: a principal is always the bound buyer agent, so the kind carries no information. Seller-resolved kind of the authenticated principal: an autonomous buyer-agent workload or an operator-side identity such as a person at the operator.",
   "type": "string",
   "enum": ["buyer_agent", "operator"]
 }

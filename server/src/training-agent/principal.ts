@@ -29,11 +29,25 @@ import { agentNotificationDocumentId, trainingCallerPrincipal } from './agent-no
 import { validateSourceSchema } from './source-schema.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import {
+  supportsAccountSurfaces33,
   TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS,
   type SessionState,
   type ToolArgs,
   type TrainingContext,
 } from './types.js';
+import { loadSandbox } from './account-sandbox.js';
+import { deliveryConfigIdsForPrincipal } from './reporting-reliability.js';
+import {
+  applySubscriptions,
+  SubscriptionRejection,
+  subscriptionPage,
+  subscriptionsChanged,
+  subscriptionState,
+  validateSubscriptions,
+  type SubscriptionReadbackExtras,
+  type SubscriptionRecord,
+} from './reporting-subscriptions.js';
+import { subscriptionReadbackExtras } from './subscription-coverage-service.js';
 
 type Json = Record<string, unknown>;
 type PrincipalKind = 'buyer_agent' | 'operator';
@@ -41,6 +55,12 @@ type PrincipalKind = 'buyer_agent' | 'operator';
 const TENANT_ID = 'training-agent';
 
 export const PRINCIPAL_SECTIONS = ['reporting_destinations', 'declarations'] as const;
+/** 3.3 adds principal-level reporting subscriptions (experimental). */
+export const PRINCIPAL_SECTIONS_33 = [...PRINCIPAL_SECTIONS, 'reporting_subscriptions'] as const;
+
+function sectionsFor(servedVersion: string | undefined): readonly string[] {
+  return supportsAccountSurfaces33(servedVersion) ? PRINCIPAL_SECTIONS_33 : PRINCIPAL_SECTIONS;
+}
 
 /** Simulated provider-side proof latency. A destination applied with
  * `active: true` reads back `action_required` until this much time has passed,
@@ -103,6 +123,8 @@ interface PrincipalDocument extends Json {
   destinations: DestinationRecord[];
   retired: RetiredRecord[];
   declared: Json;
+  /** Experimental 3.3 reporting subscriptions (reporting-subscriptions.ts). */
+  subscriptions?: SubscriptionRecord[];
 }
 
 interface Caller {
@@ -401,12 +423,38 @@ function configurationVersion(document: PrincipalDocument): string {
   return `cfg_${sha256(String(document.revision)).slice(0, 26).toUpperCase()}`;
 }
 
-function principalState(document: PrincipalDocument, now: number): Json {
+function destinationViews(destinations: DestinationRecord[]) {
+  return destinations.map(record => ({
+    destination_id: record.destination_id,
+    destination_ref: record.destination_ref,
+    pattern: String(record.configuration.pattern),
+    transport: String(record.configuration.transport),
+  }));
+}
+
+function principalState(
+  document: PrincipalDocument,
+  now: number,
+  subscriptions?: Map<string, SubscriptionReadbackExtras>,
+): Json {
   return {
     reporting_destinations: document.destinations.map(record => destinationState(record, now)),
     declarations: declarationsState(document.declared),
+    ...(subscriptions && {
+      reporting_subscriptions: (document.subscriptions ?? []).map(record => subscriptionState(
+        record,
+        destinationViews(document.destinations),
+        subscriptions.get(record.subscription_id) ?? { accounts_with_exceptions: [], accounts_unauthorized: [] },
+      )),
+    }),
     ...(document.retired.length > 0 && { retired_destinations: document.retired }),
   };
+}
+
+/** Subscription extras for a 3.3 readback; undefined below 3.3. */
+async function subscriptionExtras(trainingCtx: TrainingContext): Promise<Map<string, SubscriptionReadbackExtras> | undefined> {
+  if (!supportsAccountSurfaces33(trainingCtx.servedAdcpVersion)) return undefined;
+  return subscriptionReadbackExtras(trainingCtx);
 }
 
 // ── get_principal ───────────────────────────────────────────────────
@@ -426,11 +474,41 @@ export async function getPrincipalLegacy(
     }]);
   }
   const { document } = await load(trainingCtx, caller);
+  const pageRequest = (args as { reporting_subscription_page?: {
+    subscription_id: string;
+    list: 'accounts_with_exceptions' | 'accounts_unauthorized' | 'prior_versions';
+    pagination?: { max_results?: number; cursor?: string };
+  } }).reporting_subscription_page;
+  if (pageRequest !== undefined && !supportsAccountSurfaces33(trainingCtx.servedAdcpVersion)) {
+    return failed([{
+      code: 'UNSUPPORTED_FEATURE',
+      message: 'reporting_subscription_page is an experimental AdCP 3.3 field',
+      recovery: 'correctable',
+      field: 'reporting_subscription_page',
+    }]);
+  }
   if (!document) {
+    if (pageRequest) {
+      return failed([{ code: 'NOT_FOUND', message: 'No such reporting subscription', recovery: 'correctable', field: 'reporting_subscription_page.subscription_id' }]);
+    }
     return {
       status: 'completed',
       result: { kind: 'recognized', principal_id: caller.principalId, principal_kind: caller.kind },
     };
+  }
+  const extras = await subscriptionExtras(trainingCtx);
+  let page: Json | undefined;
+  if (pageRequest) {
+    const record = (document.subscriptions ?? []).find(candidate => candidate.subscription_id === pageRequest.subscription_id);
+    if (!record) {
+      return failed([{ code: 'NOT_FOUND', message: 'No such reporting subscription', recovery: 'correctable', field: 'reporting_subscription_page.subscription_id' }]);
+    }
+    page = subscriptionPage(
+      record,
+      extras?.get(record.subscription_id) ?? { accounts_with_exceptions: [], accounts_unauthorized: [] },
+      pageRequest.list,
+      pageRequest.pagination,
+    );
   }
   return {
     status: 'completed',
@@ -439,9 +517,17 @@ export async function getPrincipalLegacy(
       principal_id: caller.principalId,
       principal_kind: caller.kind,
       configuration_version: configurationVersion(document),
-      configuration: principalState(document, now()),
+      configuration: principalState(document, await clockNow(trainingCtx, now), extras),
+      ...(page && { reporting_subscription_page: page }),
     },
   };
+}
+
+/** The caller's sandbox clock once a storyboard has moved it, else `now`. */
+async function clockNow(trainingCtx: TrainingContext, now: () => number): Promise<number> {
+  if (!supportsAccountSurfaces33(trainingCtx.servedAdcpVersion)) return now();
+  const simulated = (await loadSandbox(trainingCtx.principal)).doc.simulated_now;
+  return simulated ? Date.parse(simulated) : now();
 }
 
 // ── sync_principal ──────────────────────────────────────────────────
@@ -453,6 +539,7 @@ interface SyncRequest {
     notification_configs?: Json[];
     reporting_destinations?: Json[];
     declarations?: Json;
+    reporting_subscriptions?: Json[];
   };
   dry_run?: boolean;
 }
@@ -473,16 +560,15 @@ function requireSignableWebhooks(declared: Json, hasActiveSubscriber: boolean): 
   }
 }
 
-function validateRequest(request: SyncRequest): void {
+function validateRequest(request: SyncRequest, servedVersion: string | undefined): void {
   const validation = validateSourceSchema('protocol/sync-principal-request.json', request);
   if (!validation.valid) {
     const first = validation.errors[0];
     const path = first?.instancePath.replace(/^\//, '').replaceAll('/', '.');
     reject('INVALID_REQUEST', `request does not match sync-principal-request.json: ${first?.message ?? 'invalid'}`, path || undefined);
   }
-  const unsupported = Object.keys(request.configuration).filter(
-    section => !(PRINCIPAL_SECTIONS as readonly string[]).includes(section),
-  );
+  const supported = sectionsFor(servedVersion);
+  const unsupported = Object.keys(request.configuration).filter(section => !supported.includes(section));
   if (unsupported.length > 0) {
     reject('UNSUPPORTED_FEATURE', `unsupported configuration section: ${unsupported.join(', ')}`, `configuration.${unsupported[0]}`);
   }
@@ -505,7 +591,8 @@ export async function syncPrincipalLegacy(
   const request = args as unknown as SyncRequest;
   const loaded = await load(trainingCtx, caller);
   const prior = loaded.document ?? emptyDocument();
-  const nowIso = new Date(now()).toISOString();
+  const clock = await clockNow(trainingCtx, now);
+  const nowIso = new Date(clock).toISOString();
 
   if (request.expected_principal_kind !== undefined && request.expected_principal_kind !== caller.kind) {
     return failed([{
@@ -530,10 +617,19 @@ export async function syncPrincipalLegacy(
   const submitted = request.configuration;
   let next: PrincipalDocument = structuredClone(prior);
   try {
-    validateRequest(request);
+    validateRequest(request, trainingCtx.servedAdcpVersion);
     if (submitted.reporting_destinations !== undefined) {
       const { destinations, retired } = applyDestinations(prior, submitted.reporting_destinations, nowIso);
       next = { ...next, destinations, retired };
+    }
+    if (submitted.reporting_subscriptions !== undefined) {
+      // Destinations are checked against the result of this same request.
+      validateSubscriptions(
+        submitted.reporting_subscriptions,
+        destinationViews(next.destinations),
+        deliveryConfigIdsForPrincipal(trainingCtx.principal),
+      );
+      next = { ...next, subscriptions: applySubscriptions(prior.subscriptions ?? [], submitted.reporting_subscriptions, nowIso) };
     }
     if (submitted.declarations !== undefined) {
       next = { ...next, declared: structuredClone(submitted.declarations) };
@@ -541,6 +637,9 @@ export async function syncPrincipalLegacy(
     requireSignableWebhooks(next.declared, loaded.hasActiveSubscriber);
   } catch (error) {
     if (error instanceof SectionRejection) return failed([error.error]);
+    if (error instanceof SubscriptionRejection) {
+      return failed([{ code: error.code, message: error.message, recovery: 'correctable', field: error.field }]);
+    }
     throw error;
   }
 
@@ -564,6 +663,10 @@ export async function syncPrincipalLegacy(
     );
     sectionChanged.push(!isDeepStrictEqual(asSets(prior.declared), asSets(next.declared)));
     emptied.push(isEmptySection(submitted.declarations));
+  }
+  if (submitted.reporting_subscriptions !== undefined) {
+    sectionChanged.push(subscriptionsChanged(prior.subscriptions ?? [], next.subscriptions ?? []));
+    emptied.push(isEmptySection(submitted.reporting_subscriptions));
   }
   const changed = sectionChanged.some(Boolean);
 
@@ -593,7 +696,7 @@ export async function syncPrincipalLegacy(
       principal_id: caller.principalId,
       principal_kind: caller.kind,
       configuration_version: configurationVersion(document),
-      configuration: principalState(document, now()),
+      configuration: principalState(document, clock, await subscriptionExtras(trainingCtx)),
     },
   };
 }

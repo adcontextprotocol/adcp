@@ -8,6 +8,7 @@ import type { AuthorizationSnapshot } from '../../src/db/user-authorization-snap
 
 const mocks = vi.hoisted(() => ({
   listOrganizationMemberships: vi.fn(),
+  createToken: vi.fn(),
   queryWithTimeout: vi.fn(),
   transactionQuery: vi.fn(),
   clientQuery: vi.fn(),
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
   fetch: vi.fn(),
   info: vi.fn(),
+  warn: vi.fn(),
   request: null as express.Request | null,
   previousSnapshot: undefined as AuthorizationSnapshot | undefined,
 }));
@@ -30,6 +32,7 @@ vi.hoisted(() => {
 
 vi.mock('@workos-inc/node', () => ({
   WorkOS: class WorkOS {
+    widgets = { createToken: mocks.createToken };
     userManagement = {
       listOrganizationMemberships: mocks.listOrganizationMemberships,
     };
@@ -41,7 +44,7 @@ vi.mock('../../src/db/client.js', () => ({
   getPool: () => ({ connect: mocks.connect }),
 }));
 vi.mock('../../src/logger.js', () => ({
-  createLogger: () => ({ info: mocks.info, warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: mocks.info, warn: mocks.warn, error: vi.fn() }),
 }));
 
 vi.mock('../../src/middleware/auth.js', () => ({
@@ -89,7 +92,24 @@ function transactionClient() {
   return { query: mocks.clientQuery, release: mocks.release, on: mocks.on, removeListener: mocks.removeListener };
 }
 
+function providerResponse(_url: string, options: RequestInit) {
+  const body = options.body ? JSON.parse(String(options.body)) : null;
+  return {
+    ok: true, status: 200,
+    json: async () => body?.query?.includes('CreateOrganizationApiKey')
+      ? { data: { createOrganizationApiKey: body.variables.input.permissions.length > 0
+        ? { __typename: 'ApiKeyPermissionsUnsupportedForToken' }
+        : { __typename: 'OrganizationApiKeyCreated', value: 'secret',
+          apiKey: { id: 'key_created', name: body.variables.input.name, permissions: body.variables.input.permissions,
+            createdAt: '2026-01-01T00:00:00.000Z' } } } }
+      : body?.query?.includes('DeleteOrganizationApiKey')
+        ? { data: { deleteOrganizationApiKey: { id: body.variables.apiKeyId } } }
+        : { data: [] },
+  };
+}
+
 beforeEach(() => {
+  mocks.createToken.mockReset().mockResolvedValue({ token: "widget_token_exact_credential" });
   mocks.queryWithTimeout.mockReset();
   mocks.connectionError = undefined;
   mocks.on.mockReset().mockImplementation((_event, listener) => { mocks.connectionError = listener; });
@@ -174,11 +194,7 @@ describe('tenant API key issuance permissions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.fetch.mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: vi.fn().mockResolvedValue({ id: 'key_created', value: 'secret' }),
-    });
+    mocks.fetch.mockImplementation(providerResponse);
   });
 
   it.each([[], ['admin:*']] as const)(
@@ -200,7 +216,7 @@ describe('tenant API key issuance permissions', () => {
     ['owner', 'admin:*'],
     ['admin', 'admin:read'],
   ] as const)(
-    'contains an organization %s creating a key with server-approved permission %s',
+    'honors WorkOS refusal when an organization %s requests privileged permission %s',
     async (role, permission) => {
       setMembership(role);
 
@@ -208,37 +224,40 @@ describe('tenant API key issuance permissions', () => {
         .post('/api/me/api-keys?org=org_target')
         .send({ name: 'Automation key', permissions: [permission] });
 
-      expect(response.status).toBe(503);
-      expect(response.body.error).toBe('API key mutations unavailable');
-      expect(mocks.fetch).not.toHaveBeenCalled();
+      expect(response.status).toBe(403);
+      expect(response.body.error).toContain('permissions are not available');
+      expect(response.body.value).toBeUndefined();
+      expect(mocks.fetch).toHaveBeenCalledOnce();
+      expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).variables.input.permissions).toEqual([permission]);
       expect(mocks.info).not.toHaveBeenCalled();
     },
   );
 
-  it('contains an active owner creating an unprivileged key', async () => {
+  it('allows an active owner to create an unprivileged key', async () => {
     setMembership('owner');
 
     const response = await request(app)
       .post('/api/me/api-keys?org=org_target')
       .send({ name: 'Registry key', permissions: [] });
 
-    expect(response.status).toBe(503);
-    expect(response.body.error).toBe('API key mutations unavailable');
+    expect(response.status).toBe(201);
+    expect(response.body.value).toBe('secret');
+    expect(response.headers['cache-control']).toBe('no-store');
     expect(mocks.listOrganizationMemberships).toHaveBeenCalledWith({
       userId: 'user_caller',
       organizationId: 'org_target',
     });
-    expect(mocks.fetch).not.toHaveBeenCalled();
-    expect(mocks.info).not.toHaveBeenCalled();
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+    expect(mocks.info).toHaveBeenCalledOnce();
   });
 
-  it('does not send even valid duplicate permissions to WorkOS while mutations are disabled', async () => {
+  it('deduplicates supported permissions before sending them to WorkOS', async () => {
     setMembership('owner');
     const response = await request(app).post('/api/me/api-keys?org=org_target')
       .send({ name: 'Duplicate scopes', permissions: ['admin:read', 'admin:read'] });
-    expect(response.status).toBe(503);
-    expect(response.body.error).toBe('API key mutations unavailable');
-    expect(mocks.fetch).not.toHaveBeenCalled();
+    expect(response.status).toBe(403);
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).variables.input.permissions).toEqual(['admin:read']);
+    expect(mocks.fetch).toHaveBeenCalledOnce();
   });
 
   it.each([undefined, '', null, false, 0])('completes both exact authorization checks before rejecting missing key name %j', async (name) => {
@@ -292,11 +311,7 @@ describe('organization-wide API key management permissions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.fetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: vi.fn().mockResolvedValue({ data: [] }),
-    });
+    mocks.fetch.mockImplementation(providerResponse);
   });
 
   async function rawDelete(path: string) {
@@ -368,10 +383,12 @@ describe('organization-wide API key management permissions', () => {
   });
 
   it.each(['key_01AZaz09_-', 'api_key_01H123ABC', '%6bey_encoded', 'key_valid/'])(
-    'accepts an opaque key identifier but keeps revocation contained (case %#)', async (keyPath) => {
+    'revokes an opaque key identifier with the scoped provider API (case %#)', async (keyPath) => {
       exactLinkedMembership('admin');
-      expect(await rawDelete(`/api/me/api-keys/${keyPath}`)).toBe(503);
-      expectExactAuthorizationWithoutDelete();
+      expect(await rawDelete(`/api/me/api-keys/${keyPath}`)).toBe(204);
+      expect(mocks.listOrganizationMemberships).toHaveBeenCalledTimes(3);
+      expect(mocks.fetch).toHaveBeenCalledOnce();
+      expect(mocks.fetch.mock.calls[0][0]).toBe('https://api.workos.com/client/graphql');
     },
   );
 
@@ -420,13 +437,12 @@ describe('organization-wide API key management permissions', () => {
     expect(options.method).toBe('GET');
   });
 
-  it('contains an active admin revoking an organization API key', async () => {
+  it('allows an active admin to revoke an organization API key', async () => {
     setMembership('admin');
     const response = await request(app).delete('/api/me/api-keys/key_owner_automation?org=org_target');
-    expect(response.status).toBe(503);
-    expect(response.body.error).toBe('API key mutations unavailable');
-    expect(mocks.fetch).not.toHaveBeenCalled();
-    expect(mocks.info).not.toHaveBeenCalled();
+    expect(response.status).toBe(204);
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+    expect(mocks.info).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -523,11 +539,7 @@ describe('exact credential API key authorization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listOrganizationMemberships.mockReset().mockResolvedValue({ data: [] });
-    mocks.fetch.mockReset().mockImplementation(async (_url, options: RequestInit) => ({
-      ok: true,
-      status: options.method === 'DELETE' ? 204 : 200,
-      json: async () => ({ data: [] }),
-    }));
+    mocks.fetch.mockReset().mockImplementation(providerResponse);
   });
 
   it.each(operations)('isolates linked credentials in both directions when they %s keys', async (operation) => {
@@ -552,7 +564,7 @@ describe('exact credential API key authorization', () => {
       const allowed = await perform(operation, ownOrg)
         .set('x-canonical-user', 'user_primary')
         .set('x-authenticated-user', credential);
-      expect(allowed.status).toBe(operation === 'list' ? 200 : 503);
+      expect(allowed.status).toBe(operation === 'list' ? 200 : operation === 'create' ? 201 : 204);
       expect(mocks.listOrganizationMemberships).toHaveBeenLastCalledWith({
         userId: credential, organizationId: ownOrg,
       });
@@ -562,8 +574,8 @@ describe('exact credential API key authorization', () => {
       if (operation === 'list') {
         expect(new URL(mocks.fetch.mock.calls[0][0]).pathname).toContain(`/organizations/${ownOrg}/api_keys`);
       } else {
-        expect(allowed.body.error).toBe('API key mutations unavailable');
-        expect(mocks.fetch).not.toHaveBeenCalled();
+        expect(mocks.createToken).toHaveBeenLastCalledWith({ userId: credential, organizationId: ownOrg, scopes: ['widgets:api-keys:manage'] });
+        expect(mocks.fetch.mock.calls[0][0]).toBe('https://api.workos.com/client/graphql');
       }
       mocks.fetch.mockClear();
     }
@@ -768,11 +780,11 @@ describe('exact credential API key authorization', () => {
           return { rows: [snapshotRow(userId)] };
         });
         const response = await perform(operation, 'org_target');
-        expect(response.status, `${directRole}; ${JSON.stringify(previousRow)}`).toBe(operation === 'list' ? 200 : 503);
+        expect(response.status, `${directRole}; ${JSON.stringify(previousRow)}`).toBe(operation === 'list' ? 200 : operation === 'create' ? 201 : 204);
         expect(mocks.queryWithTimeout.mock.calls.every(([sql]) => !sql.includes('organization_credential_grants'))).toBe(true);
       }
     }
-    expect(mocks.fetch).toHaveBeenCalledTimes(operation === 'list' ? 12 : 0);
+    expect(mocks.fetch).toHaveBeenCalledTimes(12);
   });
 
   it.each(['epoch changed', 'organization changed'])('preserves the non-enumerable snapshot and rejects replay after %s', async (change) => {
@@ -945,18 +957,129 @@ describe('exact credential API key authorization', () => {
     expect(mocks.connect).not.toHaveBeenCalled();
   });
 
-  it.each(['create', 'revoke'] as const)('does not dispatch %s or claim an unknown outcome while mutations are disabled', async (operation) => {
+  it.each(['create', 'revoke'] as const)('does not retry %s after an unconfirmed provider outcome', async (operation) => {
     setMembership('owner');
-    mocks.fetch.mockRejectedValue(new Error('This transport must never be reached'));
+    mocks.fetch.mockRejectedValue(new Error('Connection lost after dispatch'));
     const response = await perform(operation, 'org_target');
     expect(response.status).toBe(503);
-    expect(response.body).toEqual({
-      error: 'API key mutations unavailable',
-      message: 'API key creation and revocation are disabled until membership changes can be fenced.',
-    });
-    expect(mocks.fetch).not.toHaveBeenCalled();
-    expect(mocks.listOrganizationMemberships).toHaveBeenCalledTimes(2);
+    expect(response.body.error).toContain('could not be confirmed');
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+    expect(mocks.createToken).toHaveBeenCalledOnce();
+    expect(mocks.listOrganizationMemberships).toHaveBeenCalledTimes(3);
     expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it.each(['create', 'revoke'] as const)('keeps the %s delegation server-side and bound to the exact user and org', async (operation) => {
+    mocks.listOrganizationMemberships.mockImplementation(async ({ userId, organizationId }) => ({ data: [{
+      id: 'membership_linked', createdAt: '2026-01-01', updatedAt: '2026-01-01',
+      userId, organizationId, status: 'active', role: { slug: 'admin' },
+    }] }));
+    const response = await perform(operation, 'org_target')
+      .set('x-canonical-user', 'user_primary').set('x-authenticated-user', 'user_linked');
+    expect(response.status).toBe(operation === 'create' ? 201 : 204);
+    expect(mocks.createToken).toHaveBeenCalledExactlyOnceWith({
+      userId: 'user_linked', organizationId: 'org_target', scopes: ['widgets:api-keys:manage'],
+    });
+    const [url, options] = mocks.fetch.mock.calls[0];
+    expect(url).toBe('https://api.workos.com/client/graphql');
+    expect(options).toMatchObject({ method: 'POST', redirect: 'error',
+      headers: { Authorization: 'Bearer widget_token_exact_credential', 'Content-Type': 'application/json' } });
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+    expect(response.text).not.toContain('widget_token_exact_credential');
+    expect(JSON.stringify(mocks.info.mock.calls)).not.toContain('secret');
+  });
+
+  it.each(['create', 'revoke'] as const)('honors WorkOS authorization errors on HTTP 200 during %s without a fallback', async (operation) => {
+    setMembership('owner');
+    mocks.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({
+      data: null, errors: [{ message: 'Unauthorized' }],
+    }) });
+    const response = await perform(operation, 'org_target');
+    expect(response.status).toBe(403);
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 403, 429, 500])('stops before mutation when widget token issuance fails with %s', async (status) => {
+    setMembership('owner');
+    mocks.createToken.mockRejectedValue(Object.assign(new Error('Private SDK response'), { status }));
+    const response = await perform('create', 'org_target');
+    expect(response.status).toBe(status === 401 || status === 403 ? 403 : 503);
+    expect(response.text).not.toContain('Private SDK response');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(['create', 'revoke'] as const)('rechecks authority after %s token issuance', async (operation) => {
+    setMembership('owner');
+    mocks.createToken.mockImplementation(async () => {
+      setMembership('member');
+      return { token: 'widget_token_stale' };
+    });
+    expect((await perform(operation, 'org_target')).status).toBe(403);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['ApiKeyPermissionsNotHeld', 403], ['ApiKeyPermissionsUnsupportedForToken', 403],
+    ['InvalidApiKeyName', 400], ['InvalidApiKeyPermissions', 400], ['UnexpectedVariant', 503],
+  ])('handles WorkOS create result %s', async (__typename, status) => {
+    setMembership('owner');
+    mocks.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({
+      data: { createOrganizationApiKey: { __typename } },
+    }) });
+    const response = await perform('create', 'org_target');
+    expect(response.status).toBe(status);
+    expect(response.body.value).toBeUndefined();
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each(['membership revoked', 'membership unavailable', 'epoch changed', 'fence lost'] as const)(
+    'withholds a created secret and provides reconciliation guidance after %s during the write', async (change) => {
+    setMembership('owner');
+    mocks.fetch.mockImplementation(async (url, options) => {
+      if (change === 'membership revoked') setMembership('member');
+      else if (change === 'membership unavailable') mocks.listOrganizationMemberships.mockRejectedValue(new Error('WorkOS unavailable'));
+      else if (change === 'epoch changed') mocks.queryWithTimeout.mockImplementation(async (_sql, [userId]) => ({
+        rows: [{ ...snapshotRow(userId), authorization_epoch: '2' }],
+      }));
+      else mocks.connectionError!(new Error('Fence connection lost'));
+      return providerResponse(url, options);
+    });
+    const response = await perform('create', 'org_target');
+    expect(response.status).toBe(change === 'membership revoked' || change === 'epoch changed' ? 403 : 503);
+    expect(response.body.error).toContain('API key was created');
+    expect(response.body.error).toContain('Check the key list before trying again');
+    expect(response.text).not.toContain('secret');
+    expect(mocks.info).not.toHaveBeenCalled();
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith({
+      userId: 'user_caller', authWorkosUserId: 'user_caller', identityId: undefined,
+      organizationId: 'org_target', apiKeyId: 'key_created', status: response.status,
+    }, 'API key created but secret withheld; reconciliation required');
+    expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain('"secret"');
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+
+  it('does not mistake an HTTP 404 from the GraphQL endpoint for a successful revocation', async () => {
+    setMembership('owner');
+    mocks.fetch.mockResolvedValue({ ok: false, status: 404 });
+    expect((await perform('revoke', 'org_target')).status).toBe(503);
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([null, {}, { data: null }, { data: { createOrganizationApiKey: {
+    __typename: 'OrganizationApiKeyCreated', apiKey: { id: 'key_created' },
+  } } }])('rejects unusable WorkOS create response %#', async (envelope) => {
+    setMembership('owner');
+    mocks.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => envelope });
+    expect((await perform('create', 'org_target')).status).toBe(503);
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it.each([true, 7, {}, [], '   '])('rejects unusable key name %j', async (name) => {
+    setMembership('owner');
+    expect((await request(app).post('/api/me/api-keys?org=org_target').send({ name })).status).toBe(400);
+    expect(mocks.createToken).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it.each(operations)('does not redispatch or alter the %s response if lock cleanup fails', async (operation) => {
@@ -966,12 +1089,12 @@ describe('exact credential API key authorization', () => {
       if (sql === 'ROLLBACK') throw new Error('Connection lost during lock cleanup');
       return query(sql, parameters);
     });
-    expect((await perform(operation, 'org_target')).status).toBe(operation === 'list' ? 200 : 503);
-    expect(mocks.fetch).toHaveBeenCalledTimes(operation === 'list' ? 1 : 0);
+    expect((await perform(operation, 'org_target')).status).toBe(operation === 'list' ? 200 : operation === 'create' ? 201 : 204);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(mocks.release).toHaveBeenCalledExactlyOnceWith(true);
   });
 
-  it.each(['create', 'revoke'] as const)('contains %s even when external authority changes after the final local check', async (operation) => {
+  it.each(['create', 'revoke'] as const)('rejects %s when external authority changes during the local check', async (operation) => {
     for (const change of ['revoked', 'downgraded'] as const) {
       vi.clearAllMocks();
       const finalQueryStarted = Promise.withResolvers<void>();
@@ -1006,8 +1129,8 @@ describe('exact credential API key authorization', () => {
         releaseFinalQuery.resolve();
       }
       const response = await pending;
-      expect(response.status, change).toBe(503);
-      expect(response.body.error).toBe('API key mutations unavailable');
+      expect(response.status, change).toBe(403);
+      expect(response.body.error).toBe('Access denied');
       expect(mocks.fetch).not.toHaveBeenCalled();
       expect(mocks.info).not.toHaveBeenCalled();
       expect(mocks.transactionQuery.mock.calls.some(([sql]) => /^\s*(?:INSERT|UPDATE|DELETE)\b/i.test(sql))).toBe(false);
@@ -1200,11 +1323,7 @@ describe('API key selector agreement and immutable audit actor', () => {
     vi.clearAllMocks();
     mocks.listOrganizationMemberships.mockReset();
     setMembership('owner');
-    mocks.fetch.mockReset().mockImplementation(async (_url, options: RequestInit) => ({
-      ok: true,
-      status: options.method === 'DELETE' ? 204 : 200,
-      json: async () => ({ data: [] }),
-    }));
+    mocks.fetch.mockReset().mockImplementation(providerResponse);
   });
 
   it.each(methods)('accepts each explicit selector alone and all agreeing selectors on %s', async (method) => {
@@ -1214,10 +1333,10 @@ describe('API key selector agreement and immutable audit actor', () => {
     ];
     for (const selection of selections) {
       const response = await perform(method, selection);
-      expect(response.status, JSON.stringify(selection)).toBe(method === 'GET' ? 200 : 503);
+      expect(response.status, JSON.stringify(selection)).toBe(method === 'GET' ? 200 : method === 'POST' ? 201 : 204);
       expect(mocks.listOrganizationMemberships).toHaveBeenLastCalledWith({ userId: 'user_caller', organizationId: 'org_target' });
       if (method === 'GET') expect(new URL(mocks.fetch.mock.lastCall![0]).pathname).toContain('/organizations/org_target/api_keys');
-      else expect(mocks.fetch).not.toHaveBeenCalled();
+      else expect(mocks.fetch.mock.lastCall![0]).toBe('https://api.workos.com/client/graphql');
     }
   });
 

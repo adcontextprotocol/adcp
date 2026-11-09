@@ -126,6 +126,16 @@
       color: var(--color-text-muted);
     }
 
+    .agent-coverage-incomplete {
+      padding: 1px var(--space-2);
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+      white-space: nowrap;
+    }
+
     .agent-streak {
       padding: 1px var(--space-2);
       background: var(--color-success-bg);
@@ -2047,6 +2057,9 @@
       const status = cs?.status || 'unknown';
       const lines = [`Status: ${status}`];
       if (lastChecked) lines.push(`Last checked: ${lastChecked}${verdictSourceLabel || ''}`);
+      if (cs?.coverage_incomplete) {
+        lines.push('Coverage incomplete: some storyboards were not exercised and do not count toward badges.');
+      }
       if (cs?.headline) lines.push(cs.headline);
       const storyboardTitle = buildStoryboardSummaryTitle(cs);
       if (storyboardTitle) lines.push(storyboardTitle);
@@ -2382,6 +2395,7 @@
                 <span class="agent-status-dot agent-status-dot--${escapeHtml(statusClass)}"></span>
                 <span class="agent-hostname">${escapeHtml(hostname)}</span>
                 <span class="agent-status-label">${escapeHtml(statusLabel)}</span>
+                ${cs.coverage_incomplete ? '<span class="agent-coverage-incomplete" title="Some storyboards were not exercised. They do not count toward verification badges.">coverage incomplete</span>' : ''}
                 ${cs.streak_days > 0 ? '<span class="agent-streak">' + parseInt(cs.streak_days, 10) + 'd streak</span>' : ''}
               </div>
               <div style="display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0;">
@@ -2539,6 +2553,12 @@
         const profiles = comparison.profiles && typeof comparison.profiles === 'object'
           ? comparison.profiles
           : {};
+        const legacySelectionDeadline = typeof comparison.legacy_selection_allowed_until === 'string'
+          ? new Date(comparison.legacy_selection_allowed_until)
+          : null;
+        const legacySelectionDeadlineLabel = legacySelectionDeadline && !Number.isNaN(legacySelectionDeadline.getTime())
+          ? legacySelectionDeadline.toLocaleString()
+          : '';
         const cards = profileNames.map(name => {
           const profile = profiles[name] || {};
           // Freshness applies to the complete comparison, not an individual
@@ -2567,11 +2587,12 @@
           };
           const graceDeadline = typeof profile.grace_deadline === 'string' ? profile.grace_deadline : '';
           const parsedDeadline = graceDeadline ? new Date(graceDeadline) : null;
+          const selectionPreview = selected !== name && name !== 'sandbox';
           const deadlineLabel = parsedDeadline && !Number.isNaN(parsedDeadline.getTime())
-            ? ` Grace deadline: ${parsedDeadline.toLocaleString()}.`
+            ? ` ${selectionPreview ? 'Estimated grace deadline if selected now' : 'Grace deadline'}: ${parsedDeadline.toLocaleString()}.`
             : '';
           const publicEffectCopy = publicEffect
-            ? `${effectLabels[publicEffect]}${deadlineLabel}`
+            ? `${selectionPreview ? `If you select ${profileLabels[name]} now: ` : ''}${effectLabels[publicEffect]}${deadlineLabel}`
             : '';
           const canSelect = comparison.scope === 'badge'
             && comparison.selection_enabled === true
@@ -2614,6 +2635,7 @@
               : `Agent-wide grading preview · ${escapeHtml(version)}`}</strong>
             <span>${escapeHtml(freshness)}</span>
           </div>
+          ${legacySelectionDeadlineLabel ? `<div class="grading-profile-note"><strong>Legacy grading selection deadline:</strong> ${escapeHtml(legacySelectionDeadlineLabel)}</div>` : ''}
           <div class="grading-profile-grid">${cards}</div>
           <details class="grading-profile-provenance">
             <summary>Evidence and provenance</summary>
@@ -4163,11 +4185,25 @@
     });
 
     function buildTrackCoverageGapNote(trackData) {
-      if (!trackData.has_coverage_gap_skip || trackData.status !== 'partial') return '';
-      return '<div class="track-coverage-gap-note">'
-        + 'Badge eligibility is storyboard-level. One or more storyboards in this track '
-        + 'have a coverage-gap skip and do not count as passing, even when every scenario that ran passed.'
+      if (!trackData.has_coverage_gap_skip || trackData.status === 'fail') return '';
+      const lead = trackData.status === 'partial'
+        ? 'Badge eligibility is storyboard-level. One or more storyboards in this track '
+          + 'have a coverage-gap skip and do not count as passing, even when every scenario that ran passed.'
+        : 'Coverage incomplete. Badge eligibility is storyboard-level, and storyboards in this track '
+          + 'that were not exercised do not count as passing.';
+      const skipped = formatSkippedByReason(trackData.skipped_by_reason);
+      return '<div class="track-coverage-gap-note">' + lead
+        + (skipped ? ' Skipped steps by reason: ' + skipped + '.' : '')
         + '</div>';
+    }
+
+    // Keys are runner skip-reason codes; anything else is dropped rather than escaped.
+    function formatSkippedByReason(counts) {
+      if (!counts || typeof counts !== 'object') return '';
+      return Object.entries(counts)
+        .filter(([reason, count]) => /^[a-z][a-z0-9_]{0,63}$/.test(reason) && Number.isInteger(count) && count > 0)
+        .map(([reason, count]) => reason + ' &times;' + count)
+        .join(', ');
     }
 
     // Track pill click — fetch history and show scenario details for that track

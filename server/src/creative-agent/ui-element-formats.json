@@ -135,7 +135,7 @@
         "required": false,
         "asset_type": "url",
         "requirements": {
-          "url_type": "tracker_pixel",
+          "role": "impression_tracker",
           "description": "3rd party impression tracking pixel URL"
         }
       }
@@ -315,7 +315,7 @@
         "required": false,
         "asset_type": "url",
         "requirements": {
-          "url_type": "tracker_pixel",
+          "role": "impression_tracker",
           "description": "3rd party impression tracking pixel URL"
         }
       }
@@ -718,7 +718,7 @@
         "required": false,
         "asset_type": "url",
         "requirements": {
-          "url_type": "tracker_pixel",
+          "role": "impression_tracker",
           "description": "3rd party impression tracking pixel URL"
         }
       }
@@ -781,7 +781,7 @@
         "required": false,
         "asset_type": "url",
         "requirements": {
-          "url_type": "tracker_pixel",
+          "role": "impression_tracker",
           "description": "3rd party impression tracking pixel URL"
         }
       }
@@ -869,7 +869,7 @@
         "required": true,
         "asset_type": "url",
         "requirements": {
-          "url_type": "clickthrough",
+          "role": "clickthrough",
           "description": "Product page URL"
         }
       },
@@ -897,7 +897,7 @@
         "required": false,
         "asset_type": "url",
         "requirements": {
-          "url_type": "tracker_pixel",
+          "role": "impression_tracker",
           "description": "Impression tracking pixel URL"
         }
       }

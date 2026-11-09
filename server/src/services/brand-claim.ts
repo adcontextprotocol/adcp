@@ -10,8 +10,9 @@
  * owns WorkOS-vs-our-DB orchestration.
  */
 
+import { promises as dns } from 'node:dns';
 import type { WorkOS } from '@workos-inc/node';
-import { BrandDatabase } from '../db/brand-db.js';
+import { BrandDatabase, workosDomainVerificationStrategy } from '../db/brand-db.js';
 import type { HostedBrand } from '../types.js';
 import { canonicalizeBrandDomain, assertClaimableBrandDomain } from './identifier-normalization.js';
 import { createLogger } from '../logger.js';
@@ -38,6 +39,7 @@ export type IssueChallengeResult =
     }
   | { ok: false; code: 'invalid_domain'; message: string }
   | { ok: false; code: 'collision'; message: string }
+  | { ok: false; code: 'manual_domain_upgrade'; message: string }
   | { ok: false; code: 'workos_error'; message: string }
   // Kept for API compatibility with older callers. Current WorkOS Domain
   // Verification may return no verification_prefix, which means the TXT
@@ -53,7 +55,18 @@ export type VerifyChallengeResult =
       brand: { brand_domain: string; domain_verified: boolean } | null;
     }
   | { ok: false; code: 'no_challenge'; message: string }
-  | { ok: false; code: 'still_pending'; message: string; state: string; retry_after_seconds?: number; dns_record_name?: string }
+  | {
+      ok: false;
+      code: 'still_pending';
+      message: string;
+      state: string;
+      retry_after_seconds?: number;
+      dns_record_name?: string;
+      /** The TXT value WorkOS expects now; it changes after every failed check. */
+      dns_record_value?: string;
+    }
+  | { ok: false; code: 'manual_domain'; message: string }
+  | { ok: false; code: 'verified_elsewhere'; message: string }
   | { ok: false; code: 'workos_error'; message: string };
 
 /**
@@ -70,6 +83,24 @@ function isVerifiedState(state: unknown): boolean {
 
 function dnsRecordName(domain: string, verificationPrefix?: string | null): string {
   return verificationPrefix ? `${verificationPrefix}.${domain}` : domain;
+}
+
+/** The TXT value WorkOS checks for a pending domain's current token. */
+function dnsRecordValue(verificationToken: string): string {
+  return `verification_token=${verificationToken}`;
+}
+
+/** TXT values published at `name`; none when the name does not resolve. */
+async function publishedTxtValues(
+  resolveTxt: (name: string) => Promise<string[][]>,
+  name: string,
+): Promise<string[]> {
+  try {
+    return (await resolveTxt(name)).map(chunks => chunks.join(''));
+  } catch (err) {
+    logger.debug({ err, name }, 'brand-claim: TXT lookup found nothing');
+    return [];
+  }
 }
 
 // In-process verify cooldown to stop autonomous LLM loops from polling. DNS
@@ -101,13 +132,22 @@ function trimVerifyAttempts(now: number) {
   }
 }
 
+/** Methods that prove control of a domain (see BrandDatabase.syncBrandDomainFromWorkos). */
+const PROOF_METHODS = new Set(['dns', 'brand_json', 'member_email']);
+
 export async function issueDomainChallenge(input: {
   workos: WorkOS;
   brandDb: BrandDatabase;
   orgId: string;
   rawDomain: string;
+  /**
+   * Replace a domain an administrator marked verified in WorkOS (strategy
+   * `manual`) with a DNS challenge. The domain stops being a verified domain
+   * of the organization until the DNS record verifies, so callers must ask.
+   */
+  replaceManualDomain?: boolean;
 }): Promise<IssueChallengeResult> {
-  const { workos, brandDb, orgId, rawDomain } = input;
+  const { workos, brandDb, orgId, rawDomain, replaceManualDomain = false } = input;
   if (!rawDomain) {
     return { ok: false, code: 'invalid_domain', message: 'domain is required' };
   }
@@ -128,8 +168,13 @@ export async function issueDomainChallenge(input: {
   // prior owner. If the row is owned by the caller's org or there's no
   // manifest, the adopt decision doesn't apply.
   let priorManifestExists = false;
+  let registryHoldsProof = false;
   try {
     const existingBrand = await brandDb.getHostedBrandByDomain(domain);
+    registryHoldsProof = !!existingBrand
+      && existingBrand.workos_organization_id === orgId
+      && existingBrand.domain_verified
+      && PROOF_METHODS.has(existingBrand.domain_verification_method ?? '');
     if (existingBrand && existingBrand.manifest_orphaned === true) {
       const manifest = existingBrand.brand_json as Record<string, unknown> | null | undefined;
       priorManifestExists = !!manifest && Object.keys(manifest).length > 0;
@@ -151,7 +196,30 @@ export async function issueDomainChallenge(input: {
     if (existingDomain) {
       const verified = isVerifiedState(existingDomain.state);
       const tokenMissing = !existingDomain.verificationToken;
-      if (!verified && tokenMissing) {
+      // An administrator's assertion is not proof of control. Unless the
+      // registry already holds proof for this org, offer to replace it with
+      // a DNS challenge.
+      const unprovenManual = verified
+        && workosDomainVerificationStrategy(existingDomain.verificationStrategy) === 'manual'
+        && !registryHoldsProof;
+      if (unprovenManual && !replaceManualDomain) {
+        return {
+          ok: false,
+          code: 'manual_domain_upgrade',
+          message: `${domain} was added to this organization by an AgenticAdvertising.org administrator, which does not prove control of the domain. To verify it by DNS, issue the challenge again with replace_manual_domain set to true. Until the DNS record is verified, ${domain} stops being a verified domain of this organization: people with email addresses on it are not added automatically, and agents cannot be newly registered on it.`,
+        };
+      }
+      if (unprovenManual) {
+        logger.info({ orgId, domain, existingDomainId: existingDomain.id },
+          'brand-claim: replacing administrator-asserted domain with a DNS challenge');
+        try {
+          await workos.organizationDomains.deleteOrganizationDomain(existingDomain.id);
+        } catch (err) {
+          logger.error({ err, orgId, domain, existingDomainId: existingDomain.id }, 'brand-claim: failed to delete administrator-asserted org-domain');
+          return { ok: false, code: 'workos_error', message: 'Failed to replace the administrator-added domain with a DNS challenge. Try again or contact support.' };
+        }
+        // Fall through to the create branch below.
+      } else if (!verified && tokenMissing) {
         logger.warn(
           { orgId, domain, existingDomainId: existingDomain.id, state: String(existingDomain.state) },
           'brand-claim: existing org-domain has null verificationToken; deleting to recreate',
@@ -238,8 +306,10 @@ export async function verifyDomainChallenge(input: {
   orgId: string;
   rawDomain: string;
   adoptPriorManifest?: boolean;
+  /** Injected for tests; defaults to the system resolver. */
+  resolveTxt?: (name: string) => Promise<string[][]>;
 }): Promise<VerifyChallengeResult> {
-  const { workos, brandDb, orgId, rawDomain, adoptPriorManifest = false } = input;
+  const { workos, brandDb, orgId, rawDomain, adoptPriorManifest = false, resolveTxt = dns.resolveTxt } = input;
   if (!rawDomain) {
     return { ok: false, code: 'no_challenge', message: 'domain is required' };
   }
@@ -286,18 +356,34 @@ export async function verifyDomainChallenge(input: {
     verified = existingDomain;
     alreadyVerified = true;
   } else {
+    const recordName = dnsRecordName(domain, existingDomain.verificationPrefix);
+    const recordValue = existingDomain.verificationToken
+      ? dnsRecordValue(existingDomain.verificationToken)
+      : undefined;
+    // WorkOS issues a new token after every failed check, so asking it to
+    // verify a stale record only moves the target again. Check first.
+    if (recordValue && !(await publishedTxtValues(resolveTxt, recordName)).includes(recordValue)) {
+      return {
+        ok: false,
+        code: 'still_pending',
+        message: `The DNS TXT record at ${recordName} must be exactly ${recordValue}. WorkOS issues a new value after every failed check, so replace any older value, then retry.`,
+        state: String(existingDomain.state),
+        dns_record_name: recordName,
+        dns_record_value: recordValue,
+      };
+    }
     try {
       verified = await workos.organizationDomains.verifyOrganizationDomain(existingDomain.id);
     } catch (err: any) {
       const status = err?.status ?? err?.response?.status;
       if (status === 422 || status === 400) {
-        const recordName = dnsRecordName(domain, existingDomain.verificationPrefix);
         return {
           ok: false,
           code: 'still_pending',
           message: `WorkOS could not find a matching DNS TXT record. Make sure ${recordName} is published with the verification token, then retry.`,
           state: String(existingDomain.state),
           dns_record_name: recordName,
+          ...(recordValue ? { dns_record_value: recordValue } : {}),
         };
       }
       logger.error({ err, orgId, domain }, 'workos.organizationDomains.verifyOrganizationDomain failed');
@@ -306,20 +392,53 @@ export async function verifyDomainChallenge(input: {
   }
 
   if (!isVerifiedState(verified.state)) {
+    // A check that did not confirm leaves WorkOS holding a new token; hand
+    // the caller the value to publish now.
+    let current = verified;
+    try {
+      current = await workos.organizationDomains.getOrganizationDomain(existingDomain.id);
+    } catch (err) {
+      logger.warn({ err, orgId, domain }, 'brand-claim: could not re-read the domain after an unconfirmed check');
+    }
+    const recordName = dnsRecordName(domain, current.verificationPrefix);
     return {
       ok: false,
       code: 'still_pending',
-      message: 'WorkOS has not confirmed the DNS record yet. DNS propagation can take 5-15 minutes (occasionally longer with slow registrars).',
-      state: String(verified.state),
+      message: current.verificationToken
+        ? `WorkOS has not confirmed the DNS record yet, and it now expects ${dnsRecordValue(current.verificationToken)} at ${recordName}. Update the record if it holds an older value; DNS changes can take a few minutes to propagate.`
+        : 'WorkOS has not confirmed the DNS record yet. DNS propagation can take 5-15 minutes (occasionally longer with slow registrars).',
+      state: String(current.state),
+      dns_record_name: recordName,
+      ...(current.verificationToken ? { dns_record_value: dnsRecordValue(current.verificationToken) } : {}),
+    };
+  }
+
+  const method = await brandDb.resolveWorkosDomainVerification(
+    domain,
+    orgId,
+    workosDomainVerificationStrategy(verified.verificationStrategy),
+  );
+  if (method === 'manual') {
+    return {
+      ok: false,
+      code: 'manual_domain',
+      message: `${domain} was marked verified by an AgenticAdvertising.org administrator, which does not prove control of the domain. Verify it by DNS (issue the challenge again with replace_manual_domain set to true), point ${domain}/.well-known/brand.json at the hosted brand record, or sign in with a verified email address on ${domain}.`,
     };
   }
 
   let updated: HostedBrand | null = null;
   try {
-    updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, { adoptPriorManifest });
+    updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, method, { adoptPriorManifest });
   } catch (err) {
     logger.error({ err, orgId, domain }, 'brand-claim: applyVerifiedBrandClaim failed after WorkOS verify');
     return { ok: false, code: 'workos_error', message: 'Domain verified with WorkOS but the brand registry write failed. Retry the verify call.' };
+  }
+  if (!updated) {
+    return {
+      ok: false,
+      code: 'verified_elsewhere',
+      message: `Another organization has verified ${domain}. Only DNS verification can move a verified brand to a new organization.`,
+    };
   }
   // Verify succeeded — clear cooldown so a follow-up call returns the
   // already-verified path without an artificial wait.
@@ -330,7 +449,7 @@ export async function verifyDomainChallenge(input: {
     domain,
     newly_verified: !alreadyVerified,
     adopted_prior_manifest: adoptPriorManifest,
-    brand: updated ? { brand_domain: updated.brand_domain, domain_verified: updated.domain_verified } : null,
+    brand: { brand_domain: updated.brand_domain, domain_verified: updated.domain_verified },
   };
 }
 

@@ -8,6 +8,9 @@ const addFormats = require("ajv-formats");
 const YAML = require("yaml");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
+const { ensureBuiltSchemas, readBuiltSchema } = require("../scripts/built-schemas.cjs");
+
+ensureBuiltSchemas();
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -29,24 +32,15 @@ function currentCheckpoint() {
   };
 }
 
-async function loadSchema(uri) {
-  if (!uri.startsWith("/schemas/"))
-    throw new Error(`Unexpected schema URI: ${uri}`);
-  const filename = path.resolve(SCHEMA_ROOT, uri.slice("/schemas/".length));
-  if (!filename.startsWith(`${SCHEMA_ROOT}${path.sep}`))
-    throw new Error(`Schema path escape: ${uri}`);
-  return JSON.parse(fs.readFileSync(filename, "utf8"));
-}
-
 async function compile(uri) {
   const ajv = new Ajv({
     allErrors: true,
     strict: false,
     discriminator: true,
-    loadSchema,
+    loadSchema: async (ref) => readBuiltSchema(ref),
   });
   addFormats(ajv);
-  return ajv.compileAsync(await loadSchema(uri));
+  return ajv.compileAsync(readBuiltSchema(uri));
 }
 
 function errors(validate) {
@@ -1210,9 +1204,12 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
         validation.path === path &&
         (value === undefined || validation.value === value)
     );
-  const hasFilterCheck = (id, check, path) =>
+  const hasFilterCheck = (id, check, path, value) =>
     filterStep(id).validations.some(
-      (validation) => validation.check === check && validation.path === path
+      (validation) =>
+        validation.check === check &&
+        validation.path === path &&
+        (value === undefined || validation.value === value)
     );
 
   assert.equal(storyboard.introduced_in, "3.2");
@@ -1246,28 +1243,35 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
   );
   assert.equal(step("accept_distinct_coverage_and_targeting").expect_error, undefined);
 
-  assert.equal(filterStoryboard.fixtures.products.length, 3);
+  assert.equal(filterStoryboard.fixtures.products.length, 2);
   assert.deepEqual(
     filterStoryboard.fixtures.products
       .slice(1)
       .map((product) => product.product_id),
-    ["filter_behavior_negative_channel", "filter_behavior_negative_delivery"]
+    ["filter_behavior_negative_channel"]
   );
+  assert.ok(filterStoryboard.fixtures.products.every(product => product.delivery_type === "non_guaranteed"),
+    "delivery filtering must not require a guaranteed fixture on an auction-only seller");
+  for (const mode of ["brief", "wholesale"]) {
+    const id = `get_filtered_${mode}_guaranteed_products`;
+    assert.equal(filterStep(id).sample_request.filters.delivery_type, "guaranteed");
+    assert.equal(hasFilterCheck(id, "all_fields_in_context_array", "products[*].delivery_type"), true,
+      "the delivery negative probe checks every returned product while allowing valid empty results");
+  }
 
-  assert.equal(
-    hasFilterCheck("get_filtered_brief_products", "field_absent", "products[1]"),
-    true,
-    "brief mode must grade exclusion of the negative-control product"
-  );
-  assert.equal(
-    hasFilterCheck(
-      "get_filtered_wholesale_products",
-      "field_absent",
-      "products[1]"
-    ),
-    true,
-    "wholesale mode must grade exclusion of the negative-control product"
-  );
+  for (const mode of ["brief", "wholesale"]) {
+    const id = `get_filtered_${mode}_products`;
+    assert.equal(
+      hasFilterCheck(id, "field_excludes", "products[*].product_id", "filter_behavior_negative_channel"),
+      true,
+      `${mode} mode must grade exclusion of the specific negative-control product`
+    );
+    assert.equal(
+      hasFilterCheck(id, "field_absent", "products[1]"),
+      false,
+      `${mode} mode must permit additional matching products`
+    );
+  }
   assert.equal(
     hasFilterCheck("filter_refined_product_out", "field_absent", "products[0]"),
     true,

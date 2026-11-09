@@ -88,6 +88,9 @@
     "audience_evidence_requirements": {
       "$ref": "/schemas/media-buy/package-request.json#/properties/audience_evidence_requirements"
     },
+    "target_audiences": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/target_audiences"
+    },
     "audience_evidence_pins": {
       "$ref": "/schemas/media-buy/package-request.json#/properties/audience_evidence_pins"
     },
@@ -121,6 +124,9 @@
     "budget"
   ],
   "dependencies": {
+    "target_audiences": [
+      "audience_evidence_requirements"
+    ],
     "params": [
       "format_kind"
     ]

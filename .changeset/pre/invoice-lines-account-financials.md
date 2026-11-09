@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add experimental invoice lines to `get_account_financials` (#8184). On `invoices[]` items, new optional `lines[]` (new `core/invoice-line.json`: required `media_buy_id`; optional `package_id`, `reporting_revision_ids[]`, `reporting_adjustment_ids[]`, `billed_quantity` reusing the reporting control-total value and unit shape, and `amount`), `invoice_kind` (`invoice` or `credit_note`, new `enums/invoice-kind.json`), and `adjusts_invoice_id`. Amounts stay non-negative, so a credit note is `credit_note` with a non-negative `amount` and the kind carries the sign. Lines are reference only and never settle: they do not create, approve, or settle invoices. Sellers that do not itemise keep returning invoices without `lines`. Sellers MUST NOT send `credit_note` records to callers pinned below AdCP 3.3, so a legacy buyer summing `invoices[].amount` never counts a credit as a charge. The surface is `account.invoice_lines` in the experimental registry, so a seller returning any of these fields MUST list it in `experimental_features`.

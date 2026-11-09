@@ -1,11 +1,12 @@
 import { PreparedFixturesDeniedError } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from "../compliance/storyboard-cache.js";
 import { withHostedReportingBudget, runCatalogReportingStoryboardStep as runStoryboardStep } from '../compliance/catalog-reporting-runner.js';
 import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
 import { AgentService } from "../agent-service.js";
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
 import { declaredSpecialismsNotApplicableForTarget } from '../compliance/forward-introduced-specialisms.js';
-import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
+import { isAuthoritativeComplianceRun, isCoverageIncomplete } from '../compliance/run-publication.js';
 import { withStoryboardSkipDetails } from '../compliance/storyboard-skip-details.js';
 import {
   HEARTBEAT_TIMEOUT_STREAK_WINDOW,
@@ -40,7 +41,7 @@ import {
   UnsupportedBuyingModeError,
   AccountRequiredError,
 } from "@adcp/sdk";
-import { getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
+import { getFirstStepPreview, testCapabilityDiscovery, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -181,6 +182,8 @@ import {
 
 import type { BrandManager } from "../brand-manager.js";
 import { resolveBrandFromJson, type BrandDatabase } from "../db/brand-db.js";
+import { selectBrandEntry } from "../services/brand-entry-selection.js";
+import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
 import type { PropertyDatabase } from "../db/property-db.js";
 import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
@@ -947,6 +950,17 @@ function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
 }
 
+function getSingleQueryParam(value: unknown, name: string): { value?: string; error?: string } {
+  if (value == null) return {};
+  if (Array.isArray(value)) {
+    return { error: `${name} must be provided only once` };
+  }
+  if (typeof value !== "string") {
+    return { error: `${name} must be a string` };
+  }
+  return { value };
+}
+
 // ── Config ──────────────────────────────────────────────────────
 
 export interface RegistryApiConfig {
@@ -1219,11 +1233,15 @@ registry.registerPath({
   path: "/api/brands/registry",
   operationId: "listBrands",
   summary: "List brands",
-  description: "List all brands in the registry with optional search, pagination, and source filter.",
+  description: "List all brands in the registry with optional search, pagination, source and house filters.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
       search: z.string().optional(),
+      house_domain: z.string().optional().openapi({
+        example: 'pg.com',
+        description: 'List the brands linked to this house by any evidence, each with a `house_link` saying how the link is known: `confirmed` (both sides, or the brand redirects to the house), `house_declared` (the house lists the brand in its own manifest and has shown it controls its domain), `brand_declared` (the brand names the house in its own brand.json) or `inferred` (an enrichment or community record). Only `confirmed` extends trust. `stats` honours the filter, and the response adds the house\'s own record as `house`.',
+      }),
       limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
       offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
       source: z.enum(['hosted', 'brand_json', 'enriched', 'community', 'stub']).optional().openapi({
@@ -1249,12 +1267,21 @@ registry.registerPath({
               sub_brands: z.number().int(),
               with_manifest: z.number().int(),
             }),
+            house: z.object({
+              domain: z.string().openapi({ example: 'pg.com' }),
+              brand_name: z.string().openapi({ example: 'Procter & Gamble' }),
+              verified: z.boolean().openapi({
+                description: 'The house has shown it controls its domain. Only a verified house\'s manifest produces `house_declared` links.',
+              }),
+            }).nullable().optional().openapi({
+              description: 'Present when `house_domain` is set: the house\'s own registry record, or null when the registry has no public record for it.',
+            }),
           }),
         },
       },
     },
     400: {
-      description: "Invalid source filter value",
+      description: "Invalid source filter, a house_domain that is not a domain, or a parameter given more than once",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -1409,7 +1436,10 @@ function storedBrandResolutionResponse(
   return withBrandResolutionProvenance({
     canonical_id: brand.canonical_domain || brand.domain,
     canonical_domain: brand.canonical_domain || brand.domain,
-    brand_name: brand.brand_name || brand.domain,
+    // A hosted row may carry only a manifest; take its name before the domain.
+    brand_name: brand.brand_name
+      || (brand.brand_manifest ? resolveBrandFromJson(brand.domain, brand.brand_manifest, false).name : undefined)
+      || brand.domain,
     ...(brand.brand_names?.length ? { names: brand.brand_names } : {}),
     ...(brand.keller_type ? { keller_type: brand.keller_type } : {}),
     ...(brand.parent_brand ? { parent_brand: brand.parent_brand } : {}),
@@ -1419,6 +1449,9 @@ function storedBrandResolutionResponse(
       ? { enrichment_provider: brand.enrichment_provider }
       : {}),
     brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
+    // Keep this explicit even when undefined: a stored winner with no entry
+    // must clear a lower-provenance live entry when the candidates are merged.
+    brand: selectBrandEntry(brand.brand_manifest, { domain: brand.domain, brandId: brand.brand_id }),
     ...(liveValidation ? { live_brand_json: liveValidation } : {}),
   });
 }
@@ -5440,23 +5473,43 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/brands/registry", async (req, res) => {
     try {
-      const search = req.query.search as string | undefined;
+      const searchParam = getSingleQueryParam(req.query.search, "search");
+      const sourceParam = getSingleQueryParam(req.query.source, "source");
+      const houseDomainParam = getSingleQueryParam(req.query.house_domain, "house_domain");
+      const paramError = searchParam.error ?? sourceParam.error ?? houseDomainParam.error;
+      if (paramError) {
+        return res.status(400).json({ error: paramError });
+      }
+
+      const search = searchParam.value;
       const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 5000) : undefined;
       const offset = parseInt(req.query.offset as string) || 0;
-      const sourceParam = req.query.source as string | undefined;
 
-      if (sourceParam && !(BRAND_SOURCE_VALUES as readonly string[]).includes(sourceParam)) {
+      if (sourceParam.value && !(BRAND_SOURCE_VALUES as readonly string[]).includes(sourceParam.value)) {
         return res.status(400).json({ error: `Invalid source filter. Valid values: ${BRAND_SOURCE_VALUES.join(', ')}` });
       }
 
-      const source = sourceParam as BrandSourceParam | undefined;
+      const source = sourceParam.value as BrandSourceParam | undefined;
 
+      const house_domain = houseDomainParam.value !== undefined
+        ? canonicalizeBrandDomain(houseDomainParam.value)
+        : undefined;
+      if (house_domain !== undefined && !isValidDomain(house_domain)) {
+        return res.status(400).json({ error: "house_domain must be a bare domain such as pg.com" });
+      }
+
+      const house = house_domain !== undefined ? await brandDb.getRegistryHouse(house_domain) : undefined;
       const [brands, stats] = await Promise.all([
-        brandDb.getAllBrandsForRegistry({ search, limit, offset, source }),
-        brandDb.getBrandRegistryStats(search),
+        brandDb.getAllBrandsForRegistry({ search, limit, offset, source, house }),
+        brandDb.getBrandRegistryStats(search, house),
       ]);
 
-      return res.json({ brands, stats });
+      if (!house) return res.json({ brands, stats });
+      return res.json({
+        brands,
+        stats,
+        house: house.record ? { domain: house.domain, ...house.record } : null,
+      });
     } catch (error) {
       logger.error({ error }, "Failed to list brands");
       return res.status(500).json({ error: "Failed to list brands" });
@@ -7128,6 +7181,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
                 lifecycle_stage: cs.lifecycle_stage,
                 tracks: cs.tracks_summary_json || {},
                 track_details: cs.track_details_json || [],
+                coverage_incomplete: isCoverageIncomplete(cs.track_details_json),
                 provenance: cs.provenance_json ?? null,
                 streak_days: cs.streak_days,
                 last_checked_at: cs.last_checked_at?.toISOString() || null,
@@ -7654,6 +7708,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         refresh_availability: HUMAN_REFRESH_AVAILABILITY,
         tracks: status.tracks_summary_json || {},
         track_details: status.track_details_json || [],
+        coverage_incomplete: isCoverageIncomplete(status.track_details_json),
         provenance: status.provenance_json ?? null,
         streak_days: status.streak_days,
         last_checked_at: status.last_checked_at?.toISOString() || null,
@@ -7923,6 +7978,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           tracks_skipped: run.tracks_skipped,
           tracks_partial: run.tracks_partial,
           tracks_json: run.tracks_json,
+          coverage_incomplete: isCoverageIncomplete(run.tracks_json),
           total_duration_ms: run.total_duration_ms,
           triggered_by: run.triggered_by,
           tested_at: run.tested_at,
@@ -9937,7 +9993,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : hostedComplianceOptions(runTarget);
       const storyboard = runTarget === complianceTarget
         ? getStoryboard(req.params.id)
-        : getComplianceStoryboardById(req.params.id, storyboardOptions);
+        : getCachedComplianceStoryboardById(req.params.id, storyboardOptions);
       if (!storyboard) {
         return res.status(404).json({ error: "Storyboard not found" });
       }
@@ -10175,7 +10231,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           'canonical',
         );
         const runOptions = hostedComplianceOptions(runTarget);
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, runOptions);
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, runOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -10251,7 +10307,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     async (req, res) => {
       try {
         const runTarget = targetFromRequestValue(req.query.compliance_target);
-        const storyboard = getComplianceStoryboardById(
+        const storyboard = getCachedComplianceStoryboardById(
           req.params.storyboardId,
           runTarget === complianceTarget ? complianceOptions : hostedComplianceOptions(runTarget),
         );
@@ -10335,7 +10391,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
         const runTarget = runTargetSelection.target;
         const storyboardOptions = hostedComplianceOptions(runTarget);
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, storyboardOptions);
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, storyboardOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -10500,7 +10556,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           ...(sdkAuth && { auth: sdkAuth }),
         };
         const runTarget = await selectComplianceTargetForAgent(agentUrl, userComplyOptions, complianceTarget, 'canonical');
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -12775,17 +12831,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     const MAX_BACKLOG_PAGES_PER_TICK = 10;
     const BACKLOG_YIELD_MS = 100;
     let activeFeedStreams = 0;
-
-    function getSingleQueryParam(value: unknown, name: string): { value?: string; error?: string } {
-      if (value == null) return {};
-      if (Array.isArray(value)) {
-        return { error: `${name} must be provided only once` };
-      }
-      if (typeof value !== "string") {
-        return { error: `${name} must be a string` };
-      }
-      return { value };
-    }
 
     function parseIntegerQueryParam(
       value: unknown,

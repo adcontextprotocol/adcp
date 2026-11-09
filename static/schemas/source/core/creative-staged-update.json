@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-staged-update.json",
+  "title": "Creative Staged Update",
+  "description": "A change to a live creative that the seller accepted in staged mode and has not yet promoted. The creative's approved prior version keeps serving under the same creative_id until the seller promotes this update. A creative has at most one staged update; a later staged sync with different content supersedes it, a sync of the same staged content leaves it and its review unchanged, and a sync whose content equals the serving version withdraws it. Once promoted, the staged content and revision_id become the creative's current state and this object is removed.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["processing", "pending_review", "rejected"],
+      "description": "Review state of the staged update. rejected appears only when the seller's on_rejection is keeps_prior; the prior version keeps serving until the buyer supersedes or withdraws the update."
+    },
+    "revision_id": {
+      "$ref": "/schemas/core/creative-revision-id.json",
+      "description": "Buyer-authored revision of the staged content, when the sync supplied one. The creative's top-level revision_id stays the serving revision until promotion."
+    },
+    "change_kinds": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/creative-change-kind.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Kinds of change the staged update makes relative to the serving version."
+    },
+    "staged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller accepted the staged update."
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Human-readable reason. Present only when status is rejected."
+    }
+  },
+  "required": ["status", "change_kinds", "staged_at"],
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "rejected" } }, "required": ["status"] },
+      "then": { "required": ["rejection_reason"] },
+      "else": { "not": { "required": ["rejection_reason"] } }
+    }
+  ],
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

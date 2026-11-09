@@ -6,7 +6,7 @@
   "type": "string",
   "enum": ["fixed", "per_media_buy"],
   "enumDescriptions": {
-    "fixed": "The advertiser account is bound to one immutable ISO 4217 currency supplied during provisioning; currency participates in the natural account key.",
+    "fixed": "The advertiser account is bound to one ISO 4217 currency, an account attribute supplied when the account opens.",
     "per_media_buy": "The advertiser account is not currency-bound; omit account currency and select currency in each proposal or media buy."
   }
 }

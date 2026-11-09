@@ -2289,7 +2289,7 @@
       }
     }
 
-    async function requestDomainChallenge() {
+    async function requestDomainChallenge(replaceManualDomain) {
       var domain = currentProfile?.primary_brand_domain;
       if (!domain) {
         setDomainClaimError('Link a brand first.');
@@ -2304,10 +2304,21 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ domain: domain }),
+          body: JSON.stringify({ domain: domain, replace_manual_domain: replaceManualDomain === true }),
         });
         var data = {};
         try { data = await res.json(); } catch {}
+        if (res.status === 409 && data.code === 'manual_domain_upgrade' && replaceManualDomain !== true) {
+          // Replacing an administrator-added domain has a cost the server
+          // explains; the admin decides.
+          if (confirm(data.message + '\n\nReplace it with a DNS challenge now?')) {
+            btn.disabled = false;
+            btn.textContent = 'Request DNS challenge';
+            return requestDomainChallenge(true);
+          }
+          setDomainClaimError(data.message);
+          return;
+        }
         if (!res.ok) {
           throw new Error(data.message || 'Failed to issue challenge.');
         }
@@ -2372,6 +2383,7 @@
               ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
               : '';
             statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
+            if (data.dns_record_value) document.getElementById('domain-claim-record-value').textContent = data.dns_record_value;
             return;
           }
           throw new Error(data.message || data.error || 'Failed to verify domain.');
@@ -2538,6 +2550,7 @@
               ? ' Wait ' + data.retry_after_seconds + 's before retrying.'
               : '';
             statusEl.textContent = (data.message || 'DNS not yet propagated.') + hint;
+            if (data.dns_record_value) document.getElementById('cross-org-claim-record-value').textContent = data.dns_record_value;
             return;
           }
           throw new Error(data.message || data.error || 'Failed to verify domain.');

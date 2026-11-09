@@ -1,0 +1,855 @@
+---
+title: Proposal negotiation
+description: "Implement AdCP 3.2 proposal negotiation from capability discovery through revision, finalization, acceptance, amendment, and cancellation."
+"og:title": "AdCP — Proposal negotiation implementation guide"
+---
+
+AdCP 3.2 proposal negotiation is an immutable-snapshot workflow. Buyers express mechanically verifiable requirements as typed fields and reserve `ask` for commercial nuance. Sellers validate the complete request before mutation, then return one independently classified result for each source proposal.
+
+This guide uses one scenario throughout: Sam, a buyer agent acting for Pinnacle Agency, is negotiating an Acme Outdoor campaign with the StreamHaus sales agent.
+
+## Lifecycle
+
+```mermaid
+flowchart LR
+  D0[Initial draft] -->|refine_proposals: revise| D1[Successor draft]
+  D1 -->|refine_proposals: finalize| H[Committed inventory hold]
+  H -->|accept_proposal before expires_at| A[Accepted proposal and MediaBuy]
+  A -->|revise: amendment| AD[Amendment draft]
+  A -->|revise: cancellation| CD[Cancellation draft]
+  AD -->|finalize then accept| A2[Updated MediaBuy]
+  CD -->|finalize then accept| C[Canceled MediaBuy]
+```
+
+Every transition creates a new `proposal_id`; the source snapshot remains unchanged. Every successor returned by [`refine_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/refine_proposals) carries `parent_proposal_id` equal to the source ID. A buyer can therefore reconstruct negotiation and amendment history by walking the parent chain.
+
+`draft` terms are indicative and do not reserve inventory. `finalize` copies an unchanged draft into a `committed` snapshot and creates a hold until `expires_at`. [`accept_proposal`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/accept_proposal) consumes that hold and creates, updates, or cancels the MediaBuy according to `proposal_kind`.
+
+In traditional media terms, this lifecycle is the two-phase avails check. A draft is a **soft avail**: the seller answers from models or cached inventory state, forecasts carry `valid_until` freshness bounds, and nothing is reserved — another buyer can take the inventory before this one commits. `finalize` is where the **firm avail** runs: the seller hits its inventory system, re-prices if needed, and either takes the hold or fails the finalize. Draft numbers are therefore non-binding, and a finalize returning different pricing or forecast values than its source draft showed is correct behavior, not an error. Buyers that need certainty across a slow approval chain hold inventory by finalizing early — not by polling discovery for fresher snapshots. Whether that hold will outlast the approval chain is the seller's policy; a seller that declares the experimental [`hold_policy`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/refine_proposals#hold-policy-experimental) on products and drafts states the minimum hold a successful finalize will get, and whether finalize holds at all, before the buyer commits to finalizing.
+
+## Discover what the seller supports
+
+Read `get_adcp_capabilities.media_buy.lifecycle_tools` before selecting the compact lifecycle. A negotiating seller includes `refine_proposals`; it may also publish `media_buy.proposal_refinement`:
+
+For product design and adopter communication, these capability sets are useful shorthand:
+
+| Capability set | Typical advertised tools | What a client can safely claim |
+|---|---|---|
+| Proposal exploration | `request_proposals`, optionally `refine_proposals` and `decline_proposals` | Request, compare, and negotiate seller-authored proposals; no executable purchase is implied. |
+| Executable proposal lifecycle | `request_proposals`, `refine_proposals`, and `accept_proposal` | Negotiate, create a seller-backed hold through finalization, and consume accepted terms into a MediaBuy. |
+| Direct purchase | `list_products` and `buy_products` | Read a wholesale offer feed and buy an eligible published offer without proposal negotiation. |
+| Campaign operations | `control_media_buy` | Operate an existing MediaBuy within its accepted rights and current state. |
+
+These labels are non-normative adopter shorthand, not new conformance profiles. The advertised `lifecycle_tools` array remains authoritative, and buyers must inspect the individual tools rather than infer support from a label. In particular, a proposal-exploration implementation must not claim executable acceptance unless the seller also exposes the hold and acceptance path.
+
+| Dimension | Request field | Mechanical promise |
+|---|---|---|
+| `total_budget` | `constraints.total_budget` | Validate a present total, matching currency, and inclusive bounds. |
+| `cpm` | `constraints.cpm` | Validate every purchase as fixed CPM/vCPM in the requested currency at or below the ceiling; auction and non-CPM pricing are unsatisfied. |
+| `impressions` | `constraints.impressions` | Validate that every purchase has a concrete impression volume and their sum meets the inclusive floor. |
+| `flight` | `constraints.flight` | Validate concrete timestamps against `start_no_later_than` and `end_no_earlier_than`; an `asap` start cannot satisfy a start bound. |
+| `product_changes` | `product_changes` | Validate keyed `include` and `omit` actions against returned purchases. |
+| `alternatives` | `alternatives.count` | Return distinct commercial terms up to the advertised `max_alternatives`. |
+| `criteria` | `criteria` | Parse and replace structured discovery criteria. |
+
+An explicit `supported_dimensions: []` means ask-only refinement. An omitted `proposal_refinement` block means typed support is unknown, so the buyer must tolerate per-result `partial` or `unable` outcomes.
+
+When an explicit list omits a dimension, the buyer SHOULD remove or translate that field before sending. If it sends the field anyway, the seller MUST reject the entire task with `UNSUPPORTED_FEATURE` before creating any successor. Free-text interpretation is competence, not a capability dimension; `ask` remains available even when the list is empty.
+
+When the seller interprets hard targeting found only in `ask` and that interpretation materially affects eligibility, pricing, or forecasting, inspect the result's `targeting_resolution.brief_targeting`. Structured `criteria.targeting_overlay` is not echoed when accepted exactly; any product-specific departure remains a sparse `Product.targeting_resolution.modifications` proposal that the buyer must review.
+
+## Two failure planes
+
+Do not flatten task errors and negotiation outcomes into one exception type.
+
+| Plane | Examples | Mutation rule | Buyer action |
+|---|---|---|---|
+| Task-level error | Malformed payload, more than 25 refinements, duplicate source IDs, count above 10 or `max_alternatives`, explicitly unsupported dimension, unauthorized source | No sibling may mutate | Correct the whole request and retry with a new key. |
+| Per-proposal outcome | `revised`, `partial`, `unable`, `finalized` | One ordered result per source; revision outcomes are independent | Verify the typed result, then select, revise, finalize, or decline. |
+| Atomic finalize outcome | `finalized`, `hold_unavailable`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
+| Atomic extend outcome (experimental) | `finalized` (the committed successor), `hold_unavailable`, `batch_aborted` | Every hold is extended or none are; a failed extension leaves the source and its hold unchanged | Accept the successor, or accept the unchanged source before its `expires_at`. |
+
+`constraint_unsatisfiable` means the seller accepted the dimension but did not satisfy it. `unsupported_dimension` is used per proposal only when capabilities were unknown; an explicitly omitted dimension is a task-level `UNSUPPORTED_FEATURE`. `commercially_declined` applies only to `ask`, never to a typed constraint.
+
+For example, if StreamHaus explicitly omits `criteria`, the task fails before any proposal is created:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/core/protocol-envelope.json",
+  "status": "failed",
+  "adcp_error": {
+    "code": "UNSUPPORTED_FEATURE",
+    "message": "This seller does not support criteria refinement.",
+    "field": "refinements[0].criteria",
+    "recovery": "correctable",
+    "details": {
+      "unsupported_dimension": "criteria",
+      "supported_dimensions": ["total_budget", "cpm", "alternatives"]
+    }
+  }
+}
+```
+
+## Buyer implementation
+
+### 1. Build typed-first requests
+
+Sam requests a USD 50,000 ceiling, a CPM ceiling, US/Canada criteria, a product change, and three distinct alternatives. The prose asks for subjective reach optimization only:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/refine-proposals-request.json",
+  "idempotency_key": "typed-negotiation-sam-0001",
+  "refinements": [
+    {
+      "proposal_id": "proposal_streamhaus_001",
+      "action": "revise",
+      "constraints": {
+        "total_budget": { "max": 50000, "currency": "USD" },
+        "cpm": { "max": 18, "currency": "USD" },
+        "flight": { "end_no_earlier_than": "2026-10-31T23:59:59Z" }
+      },
+      "product_changes": {
+        "premium_video_q4": "include",
+        "display_standard_q4": "omit"
+      },
+      "criteria": {
+        "targeting_overlay": { "geo_countries": ["US", "CA"] }
+      },
+      "alternatives": { "count": 3 },
+      "ask": "Use materially different mixes and prioritize reach."
+    }
+  ]
+}
+```
+
+Typed fields are hard proposal requirements. Do not copy legacy `get_products.filters.budget_range` into `constraints.total_budget`: the legacy field is a hard product-discovery filter, while the compact field validates the negotiated proposal's `commercial_terms.total_budget` and forces `partial` or `unable` when missed. Legacy `more_like_this` has no typed compact equivalent and maps only lossily to `ask`.
+
+### Legacy budget compatibility (normative)
+
+Budget compatibility has two distinct rules:
+
+- **Discovery range:** Initial [`request_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/request_proposals) has no `criteria.constraints.total_budget` field. Its budget field is `request_proposals.criteria.offer_filters.budget_range`. A compatibility adapter MAY project that field to `get_products.filters.budget_range` because both are hard product-discovery filters. The adapter MUST copy every supplied numeric bound and the three-letter currency unchanged, MUST preserve inclusive `min` and `max` boundaries, MUST enforce `min <= max`, and MUST NOT perform currency conversion. If the legacy seller cannot apply the exact currency and bounds, the adapter MUST return the pre-dispatch rejection below rather than approximate the filter.
+- **Proposal-term constraint:** An adapter MUST NOT project `refine_proposals.refinements[].constraints.total_budget` to `get_products.filters.budget_range`. The compact constraint is evaluated after proposal generation against each successor's `commercial_terms.total_budget`; the legacy field filters product candidates and does not guarantee any returned proposal's aggregate total. Identical `{min,max,currency}` syntax does not make those evaluation targets equivalent. Dropping the constraint, converting currency, changing a boundary, placing it in `ask`, or returning an out-of-range proposal with a warning would all weaken the buyer's hard requirement.
+
+These rules are lifecycle-specific. The discovery projection is valid for an initial `request_proposals` compatibility call. On a revision, a present `criteria.offer_filters` replaces that entire criterion from the source proposal; it is not a subfield delta. The adapter MUST project the complete replacement object to legacy absolute `filters`, or reject before dispatch if any field cannot be represented exactly. When `criteria.offer_filters` is omitted, the adapter MUST also omit legacy `filters`, preserving each referenced proposal's bound discovery constraints. This discovery mapping is not a substitute for `constraints.total_budget` on `action: "revise"`.
+
+Compact `action: "finalize"` accepts no constraints and copies the draft's complete `commercial_terms` unchanged into a committed snapshot. Legacy `finalize` asks for firm pricing and therefore does not, by itself, prove unchanged terms. An adapter MAY project finalize only when it can guarantee that the legacy operation preserves the complete commercial terms, not merely the total budget. Otherwise it MUST reject before dispatch rather than compare or repair terms after mutation.
+
+Every unsupported compact-to-legacy case above returns the same typed local compatibility result:
+
+```typescript
+type PreMutationUnsupported = {
+  code: 'PRE_MUTATION_UNSUPPORTED';
+  unsupported_fields: Array<{
+    path: string; // RFC 6901 JSON Pointer rooted at the compact request
+    reason: 'NO_LOSSLESS_LEGACY_MAPPING';
+    lost_guarantee:
+      | 'exact_discovery_offer_filter_state'
+      | 'proposal_total_budget_constraint'
+      | 'immutable_finalize_terms';
+  }>;
+  recovery: 'USE_COMPACT_LIFECYCLE' | 'REFORMULATE_REQUEST';
+  dispatched: false;
+};
+```
+
+For example, the first refinement's hard budget constraint uses `/refinements/0/constraints/total_budget`; an unsafe finalize uses `/refinements/0/action`. `unsupported_fields` MUST contain every incompatibility detected during preflight, and any entry rejects the whole operation before a network request or mutation. `PRE_MUTATION_UNSUPPORTED` is not an AdCP wire error code. SDKs MAY express the type idiomatically in each language, but MUST preserve these discriminator values, JSON Pointer paths, lost-guarantee identifiers, recovery choices, and `dispatched: false`. An explicit caller opt-in to lossy projection does not make the mapping conformant.
+
+A fully satisfied revision returns new immutable drafts and no failure prose:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/refine-proposals-response.json",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_streamhaus_001",
+      "outcome": "revised",
+      "proposals": [
+        {
+          "proposal_id": "proposal_streamhaus_002a",
+          "parent_proposal_id": "proposal_streamhaus_001",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Acme Outdoor — premium video",
+          "commercial_terms": {
+            "brand": { "domain": "acmeoutdoor.example" },
+            "purchases": [
+              {
+                "product_id": "premium_video_q4",
+                "pricing_option_id": "cpm_guaranteed",
+                "pricing": {
+                  "pricing_option_id": "cpm_guaranteed",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 18
+                },
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z"
+              }
+            ],
+            "start_time": "2026-10-01T00:00:00Z",
+            "end_time": "2026-11-01T00:00:00Z",
+            "total_budget": { "amount": 50000, "currency": "USD" }
+          },
+          "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+        }
+      ]
+    }
+  ],
+  "products": []
+}
+```
+
+### 2. Branch on the discriminated result
+
+Handle `outcome` before reading proposal fields:
+
+| Outcome | Read | Required verification |
+|---|---|---|
+| `revised` | `proposals[]` | Every requested typed constraint and product action is satisfied. The array has one item unless alternatives were requested, in which case it has the exact requested count. |
+| `partial` | `proposals[]`, `reason_code`, `unsatisfied_constraints`, `unsatisfied_product_changes` | Every returned draft satisfies every constraint and product action *not* listed as unsatisfied. |
+| `unable` | `reason_code`, machine-readable unsatisfied fields | No proposal was produced; never access `proposal` or `proposals`. |
+| `finalized` | singular `proposal` | Status is `committed`, parent is the source draft, and `expires_at` leaves enough time to accept. |
+
+A valid counteroffer with only two of the three requested alternatives is `partial`:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/refine-proposals-response.json",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_streamhaus_001",
+      "outcome": "partial",
+      "reason_code": "alternatives_unavailable",
+      "reason": "Two commercially distinct mixes are available at these terms.",
+      "proposals": [
+        {
+          "proposal_id": "proposal_streamhaus_002a",
+          "parent_proposal_id": "proposal_streamhaus_001",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Acme Outdoor — premium video",
+          "commercial_terms": {
+            "brand": { "domain": "acmeoutdoor.example" },
+            "purchases": [
+              {
+                "product_id": "premium_video_q4",
+                "pricing_option_id": "cpm_guaranteed",
+                "pricing": {
+                  "pricing_option_id": "cpm_guaranteed",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 18
+                },
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z"
+              }
+            ],
+            "start_time": "2026-10-01T00:00:00Z",
+            "end_time": "2026-11-01T00:00:00Z",
+            "total_budget": { "amount": 50000, "currency": "USD" }
+          },
+          "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+        },
+        {
+          "proposal_id": "proposal_streamhaus_002b",
+          "parent_proposal_id": "proposal_streamhaus_001",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Acme Outdoor — video and native",
+          "commercial_terms": {
+            "brand": { "domain": "acmeoutdoor.example" },
+            "purchases": [
+              {
+                "product_id": "premium_video_q4",
+                "pricing_option_id": "cpm_guaranteed",
+                "pricing": {
+                  "pricing_option_id": "cpm_guaranteed",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 17.5
+                },
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z"
+              },
+              {
+                "product_id": "native_feed_q4",
+                "pricing_option_id": "cpm_native",
+                "pricing": {
+                  "pricing_option_id": "cpm_native",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 16
+                },
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z"
+              }
+            ],
+            "start_time": "2026-10-01T00:00:00Z",
+            "end_time": "2026-11-01T00:00:00Z",
+            "total_budget": { "amount": 50000, "currency": "USD" }
+          },
+          "terms_digest": "sha256:ed58dHH_xw98Gxkt8-dCQi9HZKdkIjuJ4NVLoP3txjs"
+        }
+      ]
+    }
+  ],
+  "products": []
+}
+```
+
+An honest refusal that produces no draft uses the same response envelope but no proposal field:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/refine-proposals-response.json",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_streamhaus_001",
+      "outcome": "unable",
+      "reason_code": "constraint_unsatisfiable",
+      "reason": "No eligible inventory can meet the requested fixed CPM ceiling.",
+      "unsatisfied_constraints": ["cpm"]
+    }
+  ],
+  "products": []
+}
+```
+
+### 3. Verify terms independently
+
+For every returned proposal:
+
+1. Recompute `sha256:base64url(SHA-256(JCS(commercial_terms)))` using RFC 8785 JSON Canonicalization Scheme bytes.
+2. Compare the recomputed digest byte-for-byte with `terms_digest`.
+3. Verify `parent_proposal_id` equals `source_proposal_id`.
+4. Re-evaluate budgets, fixed rates, impression totals, flight bounds, product membership, and structured criteria from `commercial_terms`.
+5. Verify any `targeting_resolution.brief_targeting` against the hard targeting in `ask`, and review every sparse product `targeting_resolution.modifications` departure before selecting that configured product.
+6. On `partial`, enforce the partial invariant: every requirement absent from the unsatisfied sets still passes.
+7. Treat `reason`, `description`, `suggestions`, and `ask` as non-contractual prose.
+
+Digest uniqueness alone is not enough for alternatives. Verify that `commercial_terms` are distinct after canonicalization; a seller cannot create fake diversity by changing only IDs, names, descriptions, or digest strings.
+
+### 4. Retry safely
+
+An exact retry uses the same tool name, payload, and `idempotency_key`; the seller returns the original response with `replayed: true`. Any payload change requires a new key. Never use a new key merely to extend a committed hold: finalizing the same draft while its hold is active is `INVALID_STATE`, not a second reservation.
+
+A seller may return `status: "submitted"` with a `task_id` when a complex multi-publisher revision or inventory hold needs upstream pricing or manual re-underwriting. Poll [`get_task_status`](https://adcontextprotocol.org/schemas/3.3.0-beta.3/protocol/get-task-status-request.json) or consume the requested completion notification; do not treat submission as a proposal outcome or retry it under a new key while the task is pending.
+
+### 5. Finalize, then accept before expiry
+
+Finalization changes no terms:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/refine-proposals-request.json",
+  "idempotency_key": "typed-negotiation-sam-finalize-0001",
+  "refinements": [
+    {
+      "proposal_id": "proposal_streamhaus_002a",
+      "action": "finalize"
+    }
+  ]
+}
+```
+
+A finalize batch contains only finalize entries. The seller preflights every source and creates every hold or none. `hold_unavailable` identifies the source that could not be reserved; otherwise eligible siblings use `batch_aborted`.
+
+The successful result is singular and committed; its commercial terms and digest are unchanged:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/refine-proposals-response.json",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_streamhaus_002a",
+      "outcome": "finalized",
+      "proposal": {
+        "proposal_id": "proposal_streamhaus_committed_003",
+        "parent_proposal_id": "proposal_streamhaus_002a",
+        "proposal_kind": "new_media_buy",
+        "proposal_status": "committed",
+        "expires_at": "2026-09-15T10:15:00Z",
+        "name": "Acme Outdoor — premium video",
+        "commercial_terms": {
+          "brand": { "domain": "acmeoutdoor.example" },
+          "purchases": [
+            {
+              "product_id": "premium_video_q4",
+              "pricing_option_id": "cpm_guaranteed",
+              "pricing": {
+                "pricing_option_id": "cpm_guaranteed",
+                "pricing_model": "cpm",
+                "currency": "USD",
+                "fixed_price": 18
+              },
+              "start_time": "2026-10-01T00:00:00Z",
+              "end_time": "2026-11-01T00:00:00Z"
+            }
+          ],
+          "start_time": "2026-10-01T00:00:00Z",
+          "end_time": "2026-11-01T00:00:00Z",
+          "total_budget": { "amount": 50000, "currency": "USD" }
+        },
+        "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+      }
+    }
+  ],
+  "products": []
+}
+```
+
+Accept the returned committed proposal and its exact digest before `expires_at`:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/accept-proposal-request.json",
+  "idempotency_key": "typed-negotiation-sam-accept-0001",
+  "account": { "account_id": "account_pinnacle_acme" },
+  "proposal_id": "proposal_streamhaus_committed_003",
+  "proposal_terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+}
+```
+
+The seller atomically verifies the proposal ID, digest, hold expiry, authorization, and any base MediaBuy revision. Expired holds return `PROPOSAL_EXPIRED`; the buyer requests and finalizes fresh terms rather than retrying acceptance against a lapsed hold.
+
+### 6. Amend, cancel, or decline
+
+Fork an accepted snapshot with `change_kind: "amendment"`:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/refine-proposals-request.json",
+  "idempotency_key": "typed-negotiation-sam-amend-0001",
+  "refinements": [
+    {
+      "proposal_id": "proposal_streamhaus_accepted_004",
+      "action": "revise",
+      "change_kind": "amendment",
+      "ask": "Extend the flight by two weeks and preserve the total budget."
+    }
+  ]
+}
+```
+
+When cancellation requires agreement, fork the accepted snapshot with `change_kind: "cancellation"`:
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/refine-proposals-request.json",
+  "idempotency_key": "typed-negotiation-sam-cancel-0001",
+  "refinements": [
+    {
+      "proposal_id": "proposal_streamhaus_accepted_004",
+      "action": "revise",
+      "change_kind": "cancellation",
+      "ask": "Campaign objectives were met early; request an agreed wind-down."
+    }
+  ]
+}
+```
+
+Both successors must be finalized and accepted. Direct [`control_media_buy`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/control_media_buy) cancellation is reserved for rights already granted by the accepted terms. When Sam stops pursuing a draft instead, [`decline_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/decline_proposals) records terminal feedback; it does not mutate the proposal into another state.
+
+## Seller offers
+
+Experimental in AdCP 3.3 (`media_buy.seller_offers` in `experimental_features`). Until now only the buyer could start a change to a signed buy. A seller can also send an **offer** against an accepted media buy: a firm, committed proposal the buyer can accept, decline, revise, or ignore. A creator cannot publish on the agreed date, an episode is cancelled, linear inventory was preempted, or the buy is forecast to under-deliver. **Silence is never acceptance, and no consent is inferred.**
+
+A signed buy changes only by agreement: a seller that wants a different outcome sends an offer, and the buyer decides. Pre-agreed leeway the seller could use without an offer is [planned for 4.0](#planned-for-40-seller-held-change-terms); until then it has no unilateral leeway beyond what the accepted `cancellation_terms` and `makegood_policy` already allow.
+
+**Dependency (#8103).** Seller offers use the read task and notification family that `media_buy.open_opportunities` defines in #8103 (#8096, merged): `list_proposals` is the one read path, and `proposal.offered` is the buy-scoped sibling of `proposal.created`. A seller that declares `media_buy.seller_offers` MUST also declare `media_buy.open_opportunities` in `experimental_features` and advertise `list_proposals` (`open_opportunities.list_proposals: true`). The seller-offer rules, not the open-opportunity consent rules, govern offers: an offer needs no buyer consent beyond the signed buy, and it carries no `opportunity_id`, so accepting it never changes the state of an opportunity. Offers into a buyer-opened open opportunity, and the buyer's consent and limits on them, belong to #8103 and are not part of this section. Unsolicited pitches with no opportunity remain #5989.
+
+An offer is a [canonical proposal](https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/canonical-proposal.json) with `proposal_initiator: "seller"` (absent means `buyer`). It always carries:
+
+| Field | Value |
+|---|---|
+| `proposal_kind` | `media_buy_update` or `media_buy_cancellation` |
+| `proposal_status` | `committed` (`accepted` once accepted, so the accepted snapshot keeps its lineage) |
+| `parent_proposal_id` | The buy's current `accepted_proposal_id` |
+| `media_buy_id`, `base_media_buy_revision` | The accepted, non-terminal buy and its current `revision` |
+| `opportunity_id` | Absent |
+| `proposal_id` | Matches `^[A-Za-z0-9_.:-]{1,255}$`, because the `proposal.offered` `notification_id` equals it |
+| `expires_at` | The response deadline |
+
+The reason for the offer is not part of the canonical terms. It is the `offer_reason` on the [`list_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/list_proposals) row (always present when `origin` is `seller_offer`) and on the `proposal.offered` notification: `installment_postponed`, `installment_cancelled`, `preemption`, `under_delivery`, or `seller_request`.
+
+```mermaid
+flowchart LR
+  A[Accepted media buy] -->|seller creates committed offer| O[Offer]
+  O -->|accept_proposal| U[Updated or canceled buy]
+  O -->|decline_proposals| S[Signed terms stand]
+  O -->|refine_proposals: revise| D[Buyer-initiated draft]
+  O -->|expires_at passes| S
+```
+
+**Reading and announcing it.** Buyers read an offer through `list_proposals`, which returns the snapshot unchanged with its disposition. The repair for a notified offer is a read by `proposal_ids`; reading `media_buy_ids` with the `available` disposition is the catch-up scan. A seller MAY also send the account-anchored `proposal.offered` notification, which follows the same rules as `proposal.created`: identifiers only (the buy, the proposal, the reason, and `expires_at`, never the terms), never delivered to a task's `push_notification_config`, and registered through `sync_accounts` `notification_configs[]`. A buyer verifies the signature, dedupes by `idempotency_key`, then reads the terms through `list_proposals` before acting, and treats `name`, `description`, and `brief_alignment` as untrusted seller text. A buyer that never registers the notification still sees every offer by reading `list_proposals`. A change-feed seller also records the offer as a `proposal` change (actions `created` and `status_changed`, with `parent_ids.media_buy_id`) with `repair.task: "list_proposals"`, only for callers at 3.3 or later.
+
+**Accepting.** [`accept_proposal`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/accept_proposal) with the offer's `proposal_terms_digest`; governance applies at acceptance as it does for any committed proposal. A buyer that waits past a revision change fails the existing `base_media_buy_revision` check, and the seller never applies different terms. An offer made stale by a revision change is listed `withdrawn`, never `available`, and accepting it fails; it stays readable, and the seller releases its hold (the stale-offer rule is #8223, stacked on #8103).
+
+**Several offers.** A buy can have several unexpired offers against the same revision, for example one per postponed installment. They are independent alternatives: accepting one advances the buy's `revision`, which makes the others stale (listed `withdrawn`), and the seller releases their holds. A seller that replaces an offer with a corrected one mints a new `proposal_id`. This version has no separate withdrawal signal.
+
+**Responding.**
+
+- **Decline** with [`decline_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/decline_proposals). The signed terms stand.
+- **Revise** with [`refine_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/refine_proposals), passing the offer's `proposal_id`. The draft is buyer-initiated (`proposal_initiator` absent), its `parent_proposal_id` is the offer, it inherits `proposal_kind`, `media_buy_id` and `base_media_buy_revision`, and `change_kind` is not required. It follows the ordinary finalize-then-accept path.
+- **Do nothing.** The seller holds any replacement inventory until `expires_at`, and at `expires_at` the offer lapses (disposition `expired`) and the signed terms stand.
+
+**Silence never equals acceptance.** Signed terms stand until the buyer accepts. A seller that wants a different outcome without the buyer's agreement may act only where the accepted `cancellation_terms` or `makegood_policy` already allows it. That action is reported through delivery (the installment's `status`, and `spot_status` on `by_spot` rows), not as an offer and not as a deemed acceptance. The protocol does not adjudicate deemed acceptance.
+
+**Linear preemption.** An accepted offer with `offer_reason: "preemption"` leads to a replacement airing, which delivery reports as a `by_spot` row with `replaces_spot_id` (see [spot lifecycle](/dist/docs/3.3.0-beta.3/media-buy/media-buys/optimization-reporting#spot-lifecycle-makegoods-and-break-position)). The offer and acceptance loop is this section; the report-time half is already specified there.
+
+**Version gate.** The 3.2 `canonical-proposal.json` schema is closed. A seller MUST NOT send offers or `proposal.offered` notifications to callers pinned below AdCP 3.3, nor list them for such callers. A caller with no declared pin is treated as pinned below 3.3. Such a caller never sees an offer; the seller may act only where the accepted terms already allow it, as above.
+
+**What an offer is not.** An [indicator](/dist/docs/3.3.0-beta.3/media-buy/media-buys/indicators) stays advisory. A seller that wants the buyer's agreement sends an offer. A new buy that replaces an old one is lineage, not an offer: offers amend the same buy. Control-rejection alternatives (#7631) are planned for 3.4 on this same shape.
+
+## Planned for 4.0: seller-held change terms
+
+Not in 3.3. The group considered letting a seller state, in the committed terms, bounded changes it may make to a purchase without an offer (a budget release, a schedule shift, ordered line alternates), which the buyer would bind through `accept_proposal`. That design needs new members on `commercial_terms.change_terms[]`, and `commercial_terms` stays closed for the whole 3.x major, so it ships in 4.0 and is recorded in the [4.0 compatibility registry](/dist/docs/3.3.0-beta.3/reference/migration/v4-compatibility#seller_held_change_terms_required_in_4_0) ([#8087](https://github.com/adcontextprotocol/adcp/issues/8087)). The shape it is expected to take:
+
+- **One vocabulary.** `change_terms[]` entries gain `holder` (`buyer` or `seller`, default `buyer`) and `purchase_index`, rather than a second array. A seller-held term is limited to `decrease_budget`, `update_impression_goal`, `update_flight_dates` and `update_targeting`, plus an `alternates` constraint kind for television line alternates.
+- **Absolute bounds.** Every seller-held term carries at least one bound on the result (`min_result_amount`, `earliest_result` / `latest_result`, a minimum impression goal, or an ordered alternates chain), never a change measured from a base, so successive applications cannot compound.
+- **Rules.** A seller MUST NOT lengthen a purchase whose `pricing_model` is `time`, or shorten one whose `pricing_model` is `flat_rate`. Decreasing a purchase `budget` decreases `total_budget`, when present, by the same amount. No application changes a price or goes below delivered-to-date plus in-flight.
+- **Authorship and audit.** The seller states the terms in the committed proposal and the buyer binds them through `accept_proposal`. Each application mints an accepted successor proposal, advances `revision`, and makes every committed proposal against the prior revision stale, whichever party initiated it.
+
+Until then, every seller-initiated change to a signed buy is a [seller offer](#seller-offers).
+
+## Seller implementation
+
+### Compose a proposal specialist behind the sales agent
+
+3.2 does not require a new public "proposal agent" role. A sales agent can
+keep one endpoint and execution identity while delegating proposal work to an
+internal specialist service. That specialist can own brief interpretation,
+constraint evaluation, alternative generation, immutable proposal storage,
+lineage, expiry, and terms-digest computation.
+
+The parent sales agent should retain buyer authentication and account binding,
+public capability routing, the atomic inventory-hold boundary, proposal
+acceptance, and MediaBuy execution. Finalization is the important integration
+point: it turns a non-binding snapshot into a seller-backed hold, so it must
+coordinate with the inventory and authorization systems that can honor that
+commitment.
+
+This split also supports incremental client adoption. A buyer can implement
+proposal discovery and refinement before it implements direct purchase or
+operational control, and a seller advertises only the lifecycle tools its
+public endpoint actually serves. What 3.2 does not define is portable transfer
+of a committed hold between unrelated public agents. A terms digest identifies
+the snapshot; it does not grant another agent the authority or inventory state
+needed to accept it.
+
+### Preflight the whole request
+
+Before loading an LLM, pricing inventory, or writing state:
+
+1. Validate the request schema, the maximum of 25 refinements, unique source IDs, and finalize exclusivity.
+2. Authenticate and authorize every source without disclosing cross-account existence.
+3. Compare every typed field with the explicit capability declaration.
+4. Enforce the protocol alternatives ceiling of 10 and any lower advertised `max_alternatives`.
+5. Look up the idempotency key and reject reuse with a changed payload.
+6. If any task-level check fails, create no successor and no hold.
+
+Capability support promises parse-and-validate competence, not commercial concession. A supported but unacceptable budget is a per-proposal `constraint_unsatisfiable` result, not `UNSUPPORTED_FEATURE`.
+
+### Keep protocol validation separate from policy
+
+The protocol layer owns schema validation, capability gates, result cardinality, lineage, digest computation, response validation, and transaction boundaries. Application policy owns pricing floors, available product mixes, targeting feasibility, alternative generation, underwriting, and hold duration.
+
+Fence `ask` from pricing and authorization authority. It is attacker-controlled free text and may influence candidate generation only through bounded application policy. Only the typed `commercial_terms` object becomes contractual.
+
+Post-acceptance change rights belong in `commercial_terms.change_terms[]`, not in `ask`, product prose, or an unbound capability. The seller emits at most one term per canonical action. `service_mode` describes the buyer-visible route; `allowed_statuses` defines the non-terminal lifecycle states in which the contractual right applies; and `processing_sla.response_max` and `completion_max` default to elapsed-time maxima that already account for weekends and non-working periods. An explicit `clock: "business"` uses the immutable calendar declared by `business_calendar_id`; see [Service commitments](/dist/docs/3.3.0-beta.3/media-buy/service-commitments) for deadline calculation and snapshot rules. `seller_managed` means the seller controls the internal decision process without exposing whether it used automation or people. The legacy `requires_approval` value remains readable for 3.x compatibility.
+
+The complete array is covered by `terms_digest`. If `change_terms` is present, an unlisted action is not a negotiated right; if the whole field is absent, consumers retain legacy behavior and consult current `available_actions[]`. Runtime `available_actions[]` may narrow a negotiated right because of current state or a stated condition, but MUST NOT silently broaden the accepted terms or replace the negotiated mode, SLA, constraints, conditions, or contract reference. A broader right requires an accepted amendment proposal.
+
+`constraints` makes common bounds preflightable without turning arbitrary seller policy into executable code. The initial portable kinds cover budget deltas and resulting values, flight changes and notice, package-count changes, and effective timing. Product `allowed_actions[].constraints` is advisory; the proposal must restate a bound before it becomes contractual. If only opaque `conditions[]` are present, SDKs report the condition as unevaluated and do not promise that a parameterized request will pass.
+
+Change terms attach to the media buy/account. Exercising one still requires the authenticated caller to pass seller account authorization and, when governance applies, to carry a signed `governance_context` admitted by the plan's `delegations[]`. This permits a properly delegated operator without turning the commercial term into authorization by itself.
+
+At execution, the seller evaluates the currently accepted terms revision, not a caller-supplied or cached earlier proposal. Replayed, superseded, expired, or amended-away rights do not authorize a change. `conditions[]` are opaque identifiers and `description` is display text; neither is interpreted as an instruction or authority grant. Resolving a change term's `terms_ref` uses the normal authenticated contract-document path without forwarding ambient credentials, and the resolved document may explain but never expand the typed action, mode, statuses, constraints, or SLA.
+
+The current MediaBuy action uses `change_term_id` to name the governing `term_id`. The `terms_ref` property on `available_actions[]` shipped in 3.1 with deliberately opaque semantics; it remains readable through 3.x and is removed in 4.0. A 3.2 compatibility projection may echo the change-term ID there for an older consumer, but a buyer must not reinterpret an arbitrary 3.1 value as a proposal-term identity. When both link fields are present as aliases, they must agree.
+
+### Stage immutable successors
+
+For revision batches:
+
+1. Load each immutable source snapshot.
+2. Build candidate `commercial_terms` without mutating the source.
+3. Evaluate every typed constraint and product action against every candidate.
+4. Classify the ordered result as `revised`, `partial`, or `unable`.
+5. Generate new proposal IDs, set `parent_proposal_id`, compute JCS digests, and validate the full response.
+6. Commit staged successors only after response validation succeeds.
+
+For `partial`, include every failed constraint key and failed product action. Every unlisted requirement must pass for every returned draft. `constraint_unsatisfiable` takes precedence when it coexists with an alternatives shortfall or uninterpreted prose.
+
+For finalize batches, acquire holds inside one transaction or equivalent staged operation. If any hold fails, roll back every sibling. A seller may decline a hold, apply its normal credit and relationship checks, and cap concurrent unexpired holds per buyer to resist inventory squatting. Choose `expires_at` long enough for acceptance but short enough to prevent free inventory options, and never shorter than a declared `hold_policy.min_duration` from when the hold is placed. Return `submitted` when those checks require asynchronous upstream pricing or manual re-underwriting, preserving the original idempotency scope through terminal completion.
+
+### Log for audit without leaking terms
+
+Record the authenticated buyer, source IDs, successor IDs, idempotency fingerprint, capability decision, outcome, unsatisfied keys, hold transaction, and digest. Do not place raw `ask`, full commercial terms, credentials, or cross-buyer pricing in broadly accessible logs. Rate-limit repeated unheld constraint probes: deterministic failures can otherwise become a price oracle.
+
+## Open opportunities and later proposals
+
+<Warning>
+Experimental (feature id `media_buy.open_opportunities`). Sellers that implement any part list the feature id in `experimental_features` and advertise the parts they support under `media_buy.open_opportunities` on [`get_adcp_capabilities`](/dist/docs/3.3.0-beta.3/protocol/get_adcp_capabilities). Buyers must not use a part the seller does not advertise. See [Experimental status](/dist/docs/3.3.0-beta.3/reference/experimental-status).
+</Warning>
+
+An opportunity can stay open after the first response, so a seller can bring the buyer proposals it could not include in that response: an answer from a slow sales desk, a revision of its own offer, or inventory that became available later. The buyer decides whether it wants them, for how long, and how many.
+
+### Consent
+
+The buyer gives consent with `opportunity.later_proposals` on [`request_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/request_proposals):
+
+```json
+{
+  "$schema": "/schemas/3.3.0-beta.3/media-buy/request-proposals-request.json",
+  "idempotency_key": "open-opportunity-nova-za-0001",
+  "account": { "account_id": "acc_nova_za" },
+  "brand": { "domain": "novabrands.example" },
+  "brief": "Reach young adults in South Africa around major sporting events, online video and display.",
+  "opportunity": {
+    "opportunity_id": "opp_nova_za_q4",
+    "intent": "live_rfp",
+    "status": "open",
+    "planning_horizon": { "start": "2026-10-01", "end": "2026-12-31" },
+    "later_proposals": {
+      "accepted": true,
+      "max_count": 5,
+      "min_interval": { "interval": 2, "unit": "days" }
+    }
+  }
+}
+```
+
+- When the opportunity is created, an absent `later_proposals` means no consent. On later calls, absence means no change.
+- An absent `response_deadline` never implies consent. `response_deadline` still governs only the creating task's response.
+- Consent requires an account the seller resolves. The seller echoes what it recorded as `later_proposals` on the `request_proposals` response, including the computed `window_ends_at`. `accepted: false` there means no later proposals will arrive, whatever the request asked for.
+- Without buyer limits, the protocol defaults apply: at most 5 later proposals per consent and at least 1 day between them. A seller may be stricter, never looser. The echo always states the limits in force.
+- The window ends at the earliest of `later_proposals.until`, the end of `planning_horizon.end` in UTC, the seller's advertised `max_open_duration` measured from the call that last set consent, and closure of the opportunity.
+- The buyer withdraws consent by sending `later_proposals.accepted: false` on any call that carries `opportunity`. [`decline_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/decline_proposals) accepts an empty `declines` array with an `opportunity` update for this purpose, and for closing an opportunity without declining a proposal.
+
+### Seller rules
+
+A seller that creates a proposal after the creating task completed:
+
+- MUST have the buyer's consent and an open window, and MUST honor `max_count` and `min_interval`.
+- MUST issue it as a `draft` with `proposal_kind: "new_media_buy"`, an `opportunity_id`, and an `expires_at`. It MUST NOT create a committed proposal or an inventory hold the buyer did not ask for. The buyer gets a hold the usual way, through `refine_proposals` with `finalize`.
+- SHOULD make it materially different from the opportunity's available proposals: different products, flight, or commercial terms. It SHOULD NOT reissue an equivalent proposal to refresh its position. A proposal that revises one of the seller's own earlier proposals uses `later_reason: "revised_terms"` and SHOULD carry `parent_proposal_id`.
+- MUST target the opportunity's latest brief and criteria.
+- MUST announce it with the account-anchored [`proposal.created`](/dist/docs/3.3.0-beta.3/building/by-layer/L3/webhooks) notification to subscribers on the account's `notification_configs[]`. It MUST NOT deliver it through the creating task's `push_notification_config`, which ends with that task.
+- When it implements the [account change feed](/dist/docs/3.3.0-beta.3/accounts/tasks/list_account_changes), records `resource.type: "proposal"` with `action: "created"` (and `status_changed` on later disposition changes), `parent_ids.opportunity_id`, and `repair.task: "list_proposals"`, but only for callers negotiated at 3.3 or later.
+- MUST NOT infer or ask for the buyer's remaining budget to shape a later proposal.
+
+Later proposals after a purchase that change the live buy (`media_buy_update`) are out of scope for this version. A seller's offer to amend or cancel an accepted buy is a different surface: a seller offer, defined under `media_buy.seller_offers`, announced with `proposal.offered` (the buy-scoped sibling of `proposal.created`) and read through [`list_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/list_proposals#seller-offers) with `origin: "seller_offer"`. It needs no `later_proposals` consent and does not count against `max_count` or `min_interval`.
+
+### Updating and closing an opportunity
+
+For a seller that advertises `media_buy.open_opportunities`, sending `request_proposals` with an `opportunity_id` it already holds for the account updates that opportunity: the new brief and criteria replace the stored ones, a supplied `later_proposals` replaces the stored consent, and proposals from earlier requests keep their own lifecycle. A closed opportunity is never reopened: such a seller rejects a closed `opportunity_id` on `request_proposals`, and `status: "open"` for it on `decline_proposals`, `accept_proposal`, or `buy_products`, with `INVALID_REQUEST`. The buyer starts a new opportunity instead. Sellers that do not advertise the feature keep their 3.2 behavior for repeated IDs. `opportunity_id` is not part of idempotency scope.
+
+By default, a successful `accept_proposal` or `buy_products` still closes the opportunity with `accepted_with_seller`. When the seller advertises `keep_open_after_purchase`, the buyer can send `opportunity.status: "open"` on either task to keep sourcing. That purchase resets consent to `false` unless the same call restates `later_proposals`, which is valid only alongside `status: "open"`.
+
+| Event | Seller-side opportunity state |
+| --- | --- |
+| `request_proposals` with a new `opportunity_id` | Open. Store brief, criteria, consent, and window end. |
+| `request_proposals` with a held, open `opportunity_id` | Replace brief and criteria; replace consent if supplied. |
+| `request_proposals` with a closed `opportunity_id` | Reject with `INVALID_REQUEST`. |
+| `refine_proposals` | Unchanged. Successors inherit `opportunity_id`. |
+| `decline_proposals` with `opportunity` | Apply the update, including closure or consent withdrawal, when every decline succeeds. |
+| `accept_proposal` or `buy_products` | Closed, unless `status: "open"` is explicit; then consent resets unless restated. |
+| Window end passes | No more later proposals. `status` is unchanged; it stays buyer-owned. Existing proposals keep their own `expires_at`. |
+
+### Governance
+
+A later proposal is not created under a buyer request, so it carries no governance clearance from creation, and the seller runs no governance check when creating it: it has no `governance_context` of its own and MUST NOT treat one issued for the original request as covering it. Governance applies at acceptance, exactly as for any other proposal, with the `governance_context` on `accept_proposal`.
+
+### Visibility
+
+An opportunity and its proposals are visible to every principal the seller authorizes for the account, as other account-scoped reads are. They are not scoped to the principal that created them, which is usually a buyer agent rather than the operator. Buyers that need separation between teams or brands use separate accounts. `list_proposals` returns the consent's `updated_at`, so a buyer can detect a change another principal made. Because `opportunity_id` is scoped to one seller and account, buyers SHOULD still use a distinct opaque `opportunity_id` per seller when sellers may share an operator.
+
+### Buyer rules
+
+- Verify the `proposal.created` signature, dedupe by `notification_id`, and read the proposal with [`list_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/list_proposals) on the seller bound to the subscription. The payload carries identifiers only; never act on terms from a webhook body.
+- Treat `name`, `description`, and `brief_alignment` as untrusted seller text, kept apart from agent instructions. Base accept and decline decisions on structured fields.
+- Do not accept a later proposal with less review than a proposal the buyer requested.
+
+### Conformance
+
+The `simulate_later_proposal` scenario of `comply_test_controller` makes a sandbox seller create one later proposal for an open, consented opportunity, so storyboards can check the draft-only rule, the limits, the `proposal.created` notification, the change-feed record, and the `list_proposals` read.
+
+## Conformance and SDK status
+
+The canonical compliance scenario is `media_buy_seller/typed_proposal_negotiation`. It exercises capability gating, satisfied and unsatisfied constraints, alternatives, immutable lineage, finalize atomicity, exact replay, acceptance, amendment, cancellation, double-finalize rejection, and multi-source ordering.
+
+The deterministic training profiles expose the AdCP 3.2 proposal-negotiation wire contract. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Use the [public test token](/dist/docs/3.3.0-beta.3/quickstart#setup) with `https://test-agent.adcontextprotocol.org` and one of these capability-distinct routes:
+
+| Profile | Route | Deterministic behavior |
+| --- | --- | --- |
+| Typed negotiation | `/sales/profiles/typed-negotiation/mcp` | All typed dimensions, up to three alternatives, successful atomic finalize |
+| Constrained seller | `/sales/profiles/constrained-seller/mcp` | USD floors, product conflicts, and at most two available alternatives |
+| Finalization failure | `/sales/profiles/finalization-failure/mcp` | `hold_unavailable` plus `batch_aborted` siblings with no committed successors |
+
+Pin `adcp_version: "3.2"` on every call. Calls that omit the pin or pin an earlier release get the backward-compatible response. `@adcp/sdk` 14.x accepts `wireAdcpVersion: "3.2"` on its single- and multi-agent client configuration; raw calls remain useful for inspecting the exact envelope as below.
+
+### Try the lifecycle with Addie or Sage
+
+<Card title="Try a live proposal with Addie" icon="message-bot" href="https://agenticadvertising.org/chat">
+  Open the public sandbox chat. No membership is required.
+</Card>
+
+Addie can drive the same sandbox through training-agent-only AdCP tools; Sage
+uses those tools inside the member S1 media-buy specialist module. Start a new
+conversation and paste:
+
+> Walk me through the AdCP 3.2 proposal lifecycle against
+> `https://test-agent.adcontextprotocol.org/sales/profiles/constrained-seller/mcp`.
+> Pin `adcp_version` to `3.2` and send `adcp_major_version: 3`. First
+> inspect capabilities, then request a draft for `acmeoutdoor.example`, ask for
+> three alternatives under a USD 50,000 ceiling, and help me interpret the
+> structured counteroffer. Stop before finalizing the hold, and stop again
+> before accepting it into a sandbox MediaBuy.
+
+The two pauses make the commercial boundaries visible: revision creates a new
+non-binding snapshot, finalization reserves inventory until `expires_at`, and
+acceptance creates or changes the MediaBuy. Ask Addie to continue after
+inspecting each response. To exercise the teaching and assessment flow, start
+S1 with Sage and ask to use the same constrained-seller profile for the
+proposal-negotiation lab.
+
+### Run the constrained profile
+
+This live example proves the three-to-two counteroffer and the changed-request retry rule against the public seller. It first requests three alternatives and receives a deterministic `partial` result containing two. It then changes the count to two, uses a new idempotency key, and receives `revised`.
+
+```javascript test=true integration requires-env=ADCP_AUTH_TOKEN
+const endpoint = 'https://test-agent.adcontextprotocol.org/sales/profiles/constrained-seller/mcp';
+const token = process.env.ADCP_AUTH_TOKEN;
+if (!token) throw new Error('Set ADCP_AUTH_TOKEN to the public test token');
+
+function parseRpc(raw) {
+  const dataLine = raw.split(/\r?\n/).find((line) => line.startsWith('data:'));
+  return JSON.parse(dataLine ? dataLine.replace(/^data:\s*/, '') : raw);
+}
+
+async function callTool(id, name, args) {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json, text/event-stream',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  });
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${raw.slice(0, 200)}`);
+  }
+  const payload = parseRpc(raw);
+  const result = payload.result?.structuredContent;
+  if (payload.error || !result || result.adcp_error) {
+    throw new Error(JSON.stringify(payload.error ?? result?.adcp_error ?? 'missing structuredContent'));
+  }
+  return result;
+}
+
+const version = {
+  adcp_version: '3.2',
+  adcp_major_version: 3,
+};
+const nonce = crypto.randomUUID();
+
+const capabilities = await callTool(1, 'get_adcp_capabilities', version);
+if (
+  capabilities.adcp_version !== '3.2'
+  || capabilities.media_buy?.supports_proposals !== true
+  || !capabilities.media_buy?.lifecycle_tools?.includes('refine_proposals')
+) {
+  throw new Error('The seller did not negotiate the proposal profile');
+}
+
+const requested = await callTool(2, 'request_proposals', {
+  ...version,
+  idempotency_key: `docs-request-${nonce}`,
+  brand: { domain: 'acmeoutdoor.example' },
+  brief: 'social engagement display',
+});
+const proposalId = requested.proposals?.[0]?.proposal_id;
+if (!proposalId) throw new Error('The seller returned no source proposal');
+
+const refinement = {
+  proposal_id: proposalId,
+  action: 'revise',
+  constraints: { total_budget: { currency: 'USD', max: 50000 } },
+};
+const partial = await callTool(3, 'refine_proposals', {
+  ...version,
+  idempotency_key: `docs-refine-three-${nonce}`,
+  refinements: [{ ...refinement, alternatives: { count: 3 } }],
+});
+const retried = await callTool(4, 'refine_proposals', {
+  ...version,
+  idempotency_key: `docs-refine-two-${nonce}`,
+  refinements: [{ ...refinement, alternatives: { count: 2 } }],
+});
+
+const first = partial.results?.[0];
+const second = retried.results?.[0];
+if (
+  first?.outcome !== 'partial'
+  || first.reason_code !== 'alternatives_unavailable'
+  || first.proposals?.length !== 2
+  || second?.outcome !== 'revised'
+  || second.proposals?.length !== 2
+) {
+  throw new Error('The public profile did not return the documented outcomes');
+}
+
+console.log({
+  first: { outcome: first.outcome, alternatives: first.proposals.length },
+  retry: { outcome: second.outcome, alternatives: second.proposals.length },
+});
+```
+
+The constrained route is the canonical three-to-two exercise: request a USD 50,000 cap, include and omit products, apply US/Canada criteria, and request three alternatives. Retry the returned `partial` / `alternatives_unavailable` result with two alternatives before selecting and finalizing one. Exact retries reuse the same idempotency key; a changed alternatives count is a new logical request and needs a new key.
+
+For reason-code labs, the semantic ask markers `[commercially-declined]` and `[unsupported-dimension]` select those bounded fixture outcomes. An ordinary untyped ask reaches `uninterpreted`; impossible typed terms reach `constraint_unsatisfiable`; an unknown source reaches `source_unavailable`. The training seller caps each principal at three concurrent unexpired holds.
+
+Keep the following boundaries in your adapter:
+
+- capability preflight is separate from mutation;
+- exact replay is separate from changed-request retry;
+- task errors are separate from per-proposal outcomes;
+- commercial policy is separate from protocol verification;
+- finalization is separate from acceptance;
+- immutable terms are separate from explanatory prose.
+
+## Implementation checklist
+
+- [ ] Discover `lifecycle_tools`, `supported_dimensions`, and `max_alternatives`.
+- [ ] Enforce 25 refinements, 10 alternatives, seller limits, unique sources, and finalize-only batches before mutation.
+- [ ] Preserve task errors separately from `revised` / `partial` / `unable` / `finalized`.
+- [ ] Verify typed constraints, product actions, partial unsatisfied subsets, parent lineage, and JCS digests.
+- [ ] Reuse a key only for the exact same request; use a new key for changed payloads.
+- [ ] Stage successors and validate responses before commit.
+- [ ] Create finalize holds atomically and enforce expiry during acceptance.
+- [ ] Fork accepted snapshots for amendments and negotiated cancellation.
+- [ ] Fence `ask`, authorize every source, rate-limit probing, and avoid sensitive logs.
+- [ ] Run the typed proposal negotiation storyboard against the implementation.
+
+## Related reference
+
+- [`request_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/request_proposals)
+- [`refine_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/refine_proposals)
+- [`accept_proposal`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/accept_proposal)
+- [`decline_proposals`](/dist/docs/3.3.0-beta.3/media-buy/task-reference/decline_proposals)
+- [Capability discovery](/dist/docs/3.3.0-beta.3/protocol/get_adcp_capabilities#proposal_refinement)
+- [Legacy refinement compatibility](/dist/docs/3.3.0-beta.3/media-buy/product-discovery/refinement)

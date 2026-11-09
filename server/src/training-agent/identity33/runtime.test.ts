@@ -73,7 +73,8 @@ describe('lab route paths', () => {
   it('the router mounts exactly the lab paths the CSRF exemption lists', async () => {
     const { TRAINING_AGENT_LAB_MCP_PATHS } = await import('../lab-route-paths.js');
     const { IDENTITY33_ROUTE, PROPOSAL_NEGOTIATION_PROFILE_ROUTES } = await import('../tenants/router.js');
-    expect([...PROPOSAL_NEGOTIATION_PROFILE_ROUTES.map(route => route.path), IDENTITY33_ROUTE].sort())
+    const { CREATIVE33_ROUTE } = await import('../creative33/router.js');
+    expect([...PROPOSAL_NEGOTIATION_PROFILE_ROUTES.map(route => route.path), IDENTITY33_ROUTE, CREATIVE33_ROUTE].sort())
       .toEqual([...TRAINING_AGENT_LAB_MCP_PATHS].sort());
   });
 });

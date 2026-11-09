@@ -9,6 +9,7 @@
  * mounted at the parent training-agent router level, not here.
  */
 
+import { liveUpdatesCapability } from '../live-creative-updates.js';
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -18,6 +19,7 @@ import { createLogger } from '../../logger.js';
 import { runWithAccountIdAliasScope, runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, pickStateStore, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { createIdentity33Runtime, type Identity33Runtime } from '../identity33/runtime.js';
+import { requestPinsPreview, TRAINING_AGENT_SERVES_HOSTED_PREVIEW } from '../candidate-version.js';
 import { IDENTITY33_ROUTE, PROPOSAL_NEGOTIATION_PROFILE_PATHS } from '../lab-route-paths.js';
 import { getReplayStore } from '../request-signing.js';
 import { advertiseIdentity33Capabilities, requireIdentity33, signedRequestUrl } from '../identity33/route.js';
@@ -53,7 +55,7 @@ import {
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
-import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsAccountSurfaces33, TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_STABLE_REGISTRY_VERSIONS, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getIdentityBaseUrl } from '../config.js';
 import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
 import { omitFieldsAddedAfterRelease, servedReleaseEnum } from '../served-release-fields.js';
@@ -64,7 +66,19 @@ import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.j
 import { PUBLISHERS } from '../publishers.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
-import { PRINCIPAL_CAPABILITY, SELLER_WEBHOOK_SIGNING_ALGORITHMS } from '../principal.js';
+import { PRINCIPAL_CAPABILITY, PRINCIPAL_SECTIONS_33, SELLER_WEBHOOK_SIGNING_ALGORITHMS } from '../principal.js';
+import {
+  REPORTING_SUBSCRIPTIONS_FEATURE,
+  SUBSCRIPTIONS_CAPABILITY,
+  subscriptionOfferings,
+} from '../reporting-subscriptions.js';
+import { ACCOUNT_REQUESTS_CAPABILITY, ACCOUNT_REQUESTS_FEATURE } from '../account-requests.js';
+import { applyHoldCapabilities } from '../holds/capabilities.js';
+import { FORCE_HOLD_UNAVAILABLE, supportsHolds33 } from '../holds/service.js';
+import { grantFor, grantPermits, loadSandbox } from '../account-sandbox.js';
+import { projectCollectionCapabilities } from '../collections/capabilities.js';
+import { supportsCollections33 } from '../collections/card-catalog.js';
+import { SEED_COLLECTION_SCENARIO } from '../collections/seed-collection.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -267,9 +281,19 @@ function salesComplyScenarios(
   const current = supportsSalesFixedRate(servedVersion)
     ? withReporting
     : withReporting.filter(scenario => scenario !== 'force_media_buy_confirmation');
-  return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withChangeFeed = supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...current, 'expire_account_change_cursor']
     : current;
+  // Experimental 3.3: grants, account timezone, and the sandbox clock. A
+  // seller that lists the probe MUST also list reset_state, which unpins the
+  // clock and undoes the probe's changes before each storyboard.
+  const withAccounts33 = supportsAccountSurfaces33(servedVersion)
+    ? [...withChangeFeed, 'reporting_subscription_probe', 'reset_state']
+    : withChangeFeed;
+  // Experimental 3.3 collection cards: change cards to drive card webhooks.
+  return supportsCollections33(servedVersion)
+    ? [...withAccounts33, SEED_COLLECTION_SCENARIO]
+    : withAccounts33;
 }
 
 function salesCapabilityScenarios(
@@ -356,7 +380,11 @@ function tenantMcpHandler(
   tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
   proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
+  previewHolder?: RegistryHolder,
 ) {
+  // Releases this route serves: with a preview registry, every advertised
+  // release; otherwise the stable registry's.
+  const routeVersions = previewHolder ? TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS : TRAINING_AGENT_STABLE_REGISTRY_VERSIONS;
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
@@ -367,6 +395,7 @@ function tenantMcpHandler(
       tenantId,
       storyboardCompat,
       proposalNegotiationProfile,
+      routeVersions,
     );
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
@@ -475,7 +504,11 @@ function tenantMcpHandler(
     }
 
     const host = resolveTenantHost(req);
-    const registry = await holder.get().catch((err: unknown) => {
+    // Only a request pinned exactly to the hosted preview reaches its
+    // registry; every other request is served as if the preview did not
+    // exist (versioning.mdx, "Pre-release pins").
+    const servingHolder = previewHolder && requestPinsPreview(req.body) ? previewHolder : holder;
+    const registry = await servingHolder.get().catch((err: unknown) => {
       // Surfacing the rejection here is what makes #3854 / #3869-class
       // init bugs visible. Without it the rejection escapes to Express's
       // default error handler — the smoke sees an HTML 500 with no JSON
@@ -577,8 +610,7 @@ function tenantMcpHandler(
       }
 
       if (
-        storyboardCompat?.version !== '3.0'
-        && OPERATOR_UNIT_BRIDGE_TENANTS.has(resolved.tenantId)
+        OPERATOR_UNIT_BRIDGE_TENANTS.has(resolved.tenantId)
         && req.body?.method === 'tools/call'
         && req.body?.params?.name === 'comply_test_controller'
         && req.body.params.arguments
@@ -598,6 +630,18 @@ function tenantMcpHandler(
         delete ext.__training_operator_unit;
         if (account && typeof account === 'object' && !Array.isArray(account)) {
           const bridgedAccount = { ...account as Record<string, unknown> };
+          if (bridgedAccount.operator_unit !== undefined && (
+            !isValidOperatorUnit(bridgedAccount.operator_unit)
+            || storyboardCompat?.version === '3.0'
+            || explicitlyRequestsPreOperatorUnitVersion(controllerArgs)
+          )) {
+            res.json({
+              jsonrpc: '2.0',
+              id: req.body.id ?? null,
+              error: { code: -32602, message: 'account.operator_unit must be valid and requires AdCP 3.2 or later.' },
+            });
+            return;
+          }
           if (
             isValidOperatorUnit(bridgedAccount.operator_unit)
             && !explicitlyRequestsPreOperatorUnitVersion(controllerArgs)
@@ -611,7 +655,10 @@ function tenantMcpHandler(
         else delete controllerArgs.ext;
       }
 
-      if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
+      if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat, routeVersions)) {
+        return;
+      }
+      if (await tryRefuseByAccountGrant(req, res, principal, storyboardCompat, routeVersions)) {
         return;
       }
       const transport = new StreamableHTTPServerTransport({
@@ -664,12 +711,80 @@ function withStableAccountIdScope<T>(
     : runWithAccountIdAliasScope(principal, fn);
 }
 
+/** Tools that answer for a revoked or reduced grant themselves, or that are
+ * not account-scoped tasks. */
+const GRANT_SELF_ENFORCING_TOOLS: ReadonlySet<string> = new Set([
+  'comply_test_controller',
+  'get_adcp_capabilities',
+  'list_accounts',
+  'request_account',
+  'sync_accounts',
+]);
+
+/**
+ * Enforce the caller's sandbox grant (account-sandbox.ts) on account-scoped
+ * tasks. A revoked account is unknown, exactly as an account the caller never
+ * held; a reduced grant refuses the tasks it drops with SCOPE_INSUFFICIENT.
+ * Grants change only through the reporting_subscription_probe controller
+ * scenario, so a caller that never used it is never refused here.
+ */
+async function tryRefuseByAccountGrant(
+  req: Request,
+  res: Response,
+  principal: string | undefined,
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  routeVersions: readonly string[],
+): Promise<boolean> {
+  if (storyboardCompat?.version === '3.0') return false;
+  if (req.body?.method !== 'tools/call') return false;
+  const name = req.body?.params?.name;
+  if (typeof name !== 'string' || GRANT_SELF_ENFORCING_TOOLS.has(name)) return false;
+  const args = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  const account = args.account as { account_id?: unknown } | undefined;
+  const accountId = typeof account?.account_id === 'string' ? account.account_id : undefined;
+  if (!accountId) return false;
+  // Grants change only through the 3.3 controller scenario. A process that
+  // never serves the 3.3 wire skips the per-call sandbox read.
+  const version = resolveServedAdcpVersion(args, routeVersions);
+  if (!TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33 && !(version.ok && supportsAccountSurfaces33(version.servedVersion))) {
+    return false;
+  }
+  const sandbox = await runWithSessionContext(() => loadSandbox(principal));
+  const grant = grantFor(sandbox.doc, accountId);
+  if (!grant) return false;
+  let error: Parameters<typeof adcpError>[1] & { code: string };
+  if (grant.unauthorized_at) {
+    // get_reporting_status answers an unknown account with its own
+    // unavailable shape; it checks the grant itself.
+    if (name === 'get_reporting_status') return false;
+    error = { code: 'ACCOUNT_NOT_FOUND', message: 'Account not found.', field: 'account', recovery: 'correctable' };
+  } else if (!grantPermits(grant, name)) {
+    error = {
+      code: 'SCOPE_INSUFFICIENT',
+      message: `Your grant on this account does not include ${name}.`,
+      field: 'account',
+      recovery: 'correctable',
+      details: { task: name },
+    };
+  } else {
+    return false;
+  }
+  const { code, ...rest } = error;
+  res.json({
+    jsonrpc: '2.0',
+    id: req.body.id ?? null,
+    result: adcpError(code, rest, args.context),
+  });
+  return true;
+}
+
 async function tryHandleLocalComplyScenario(
   req: Request,
   res: Response,
   tenantId: string,
   principal: string | undefined,
-  storyboardCompat?: TrainingContext['storyboardCompat'],
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  routeVersions: readonly string[],
 ): Promise<boolean> {
   if (req.body?.method !== 'tools/call') return false;
   if (req.body?.params?.name !== 'comply_test_controller') return false;
@@ -700,6 +815,9 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'reliable_reporting_reconciled_billing_probe'
     && rawArgs.scenario !== 'query_account_governance_binding'
     && rawArgs.scenario !== 'force_media_buy_confirmation'
+    && rawArgs.scenario !== 'reporting_subscription_probe'
+    && rawArgs.scenario !== FORCE_HOLD_UNAVAILABLE
+    && rawArgs.scenario !== SEED_COLLECTION_SCENARIO
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
@@ -720,6 +838,9 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'reliable_reporting_reconciled_billing_probe'
       || rawArgs.scenario === 'query_account_governance_binding'
       || rawArgs.scenario === 'force_media_buy_confirmation'
+      || rawArgs.scenario === 'reporting_subscription_probe'
+      || rawArgs.scenario === FORCE_HOLD_UNAVAILABLE
+      || rawArgs.scenario === SEED_COLLECTION_SCENARIO
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -743,7 +864,7 @@ async function tryHandleLocalComplyScenario(
   }
 
   const { context, ...handlerArgs } = rawArgs;
-  const versionResolution = resolveServedAdcpVersion(handlerArgs);
+  const versionResolution = resolveServedAdcpVersion(handlerArgs, routeVersions);
   if (!versionResolution.ok) {
     res.json({
       jsonrpc: '2.0',
@@ -761,8 +882,10 @@ async function tryHandleLocalComplyScenario(
   }
 
   const result = await withStableAccountIdScope(principal, storyboardCompat, () => runWithSessionContext(async () => {
+    // force_hold_unavailable addresses the same compact proposal partition.
     const isCompactLifecycleScenario = rawArgs.scenario === 'compact_product_lifecycle_probe'
-      || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
+      || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe'
+      || rawArgs.scenario === FORCE_HOLD_UNAVAILABLE;
     const auth = (req as unknown as {
       auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
     }).auth;
@@ -776,7 +899,12 @@ async function tryHandleLocalComplyScenario(
     const body = rawArgs.scenario === 'list_scenarios'
       ? {
           success: true,
-          scenarios: salesComplyScenarios(storyboardCompat, versionResolution.servedVersion),
+          scenarios: [
+            ...salesComplyScenarios(storyboardCompat, versionResolution.servedVersion),
+            ...(storyboardCompat?.version !== '3.0' && supportsHolds33(versionResolution.servedVersion)
+              ? [FORCE_HOLD_UNAVAILABLE]
+              : []),
+          ],
         }
       : await handleComplyTestController(handlerArgs, {
           ...localContext,
@@ -809,8 +937,9 @@ function wrapTenantCapabilitiesProjection(
   req: Request,
   res: Response,
   tenantId: string,
-  storyboardCompat?: TrainingContext['storyboardCompat'],
-  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  proposalNegotiationProfile: TrainingContext['proposalNegotiationProfile'] | undefined,
+  routeVersions: readonly string[],
 ): void {
   if (req.body?.method !== 'tools/call') return;
   if (req.body?.params?.name !== 'get_adcp_capabilities') return;
@@ -819,7 +948,7 @@ function wrapTenantCapabilitiesProjection(
   const hasVersionSelector = capabilityArgs.adcp_version !== undefined
     || capabilityArgs.adcp_major_version !== undefined;
   const requestedVersion = hasVersionSelector
-    ? resolveServedAdcpVersion(capabilityArgs)
+    ? resolveServedAdcpVersion(capabilityArgs, routeVersions)
     : proposalNegotiationProfile
       ? { ok: true as const, servedVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION }
       : undefined;
@@ -844,6 +973,7 @@ function wrapTenantCapabilitiesProjection(
       storyboardCompat,
       proposalNegotiationProfile,
       requestedVersion?.ok ? requestedVersion.servedVersion : undefined,
+      routeVersions,
     );
     if (patched !== body && !res.headersSent) {
       res.setHeader('content-length', String(patched.length));
@@ -936,6 +1066,19 @@ function projectTenantToolDiscovery(
         };
 
       }
+      // Experimental 3.3 include_collections (#8181): only a listing served
+      // at 3.3 or later advertises the flag. The SDK stamps the listing's
+      // release on the result; under the `all` tool profile it does not shape
+      // input schemas to it.
+      const listingMeta = (parsed.result as { _meta?: { adcp_version?: unknown } } | undefined)?._meta;
+      for (const tool of tools) {
+        const listedAt = listingMeta?.adcp_version ?? (tool as { _meta?: { adcp_version?: unknown } })._meta?.adcp_version;
+        const properties = tool.inputSchema?.properties;
+        if (!properties || !('include_collections' in properties)) continue;
+        if (supportsCollections33(typeof listedAt === 'string' ? listedAt : undefined)) continue;
+        const { include_collections: _flag, ...rest } = properties;
+        tool.inputSchema = { ...tool.inputSchema, properties: rest };
+      }
     }
     if (storyboardCompat?.version === '3.0') {
       parsed.result!.tools = tools.filter(tool => tool.name !== 'validate_input');
@@ -985,6 +1128,7 @@ function projectTenantCapabilities(
   storyboardCompat?: TrainingContext['storyboardCompat'],
   proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
   servedVersionOverride?: string,
+  routeVersions: readonly string[] = TRAINING_AGENT_STABLE_REGISTRY_VERSIONS,
 ): Buffer {
   try {
     const parsed = JSON.parse(body.toString('utf8')) as {
@@ -1035,9 +1179,11 @@ function projectTenantCapabilities(
       : {};
     structured.adcp = {
       ...adcp,
-      supported_versions: Array.isArray(adcp.supported_versions)
-        ? adcp.supported_versions
-        : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
+      // A route with the preview registry advertises the preview with its
+      // stable releases; the stable registry itself never lists it.
+      supported_versions: routeVersions !== TRAINING_AGENT_STABLE_REGISTRY_VERSIONS || !Array.isArray(adcp.supported_versions)
+        ? [...routeVersions]
+        : adcp.supported_versions,
     };
     const tenantProtocols = TENANT_PROTOCOLS[tenantId];
     // Frozen 3.0 capability projection predates the route-specific protocol
@@ -1068,6 +1214,9 @@ function projectTenantCapabilities(
         },
       };
       structured.adcp.principal = structuredClone(PRINCIPAL_CAPABILITY);
+      if (supportsAccountSurfaces33(servedVersion)) {
+        (structured.adcp.principal as { supported_sections: string[] }).supported_sections = [...PRINCIPAL_SECTIONS_33];
+      }
       const principalFeatures = Array.isArray(structured.experimental_features)
         ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
         : [];
@@ -1088,6 +1237,16 @@ function projectTenantCapabilities(
         // /mcp and /mcp-strict* routes do not declare the capability.
         stable_account_id: true,
       };
+      if (tenantId === 'sales' && supportsAccountSurfaces33(servedVersion)) {
+        // Experimental account requests (request_account, account_requests[]
+        // on list_accounts, and the caller-anchored account_request.changed).
+        structured.account.requests = structuredClone(ACCOUNT_REQUESTS_CAPABILITY);
+        const features = Array.isArray(structured.experimental_features)
+          ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
+          : [];
+        if (!features.includes(ACCOUNT_REQUESTS_FEATURE)) features.push(ACCOUNT_REQUESTS_FEATURE);
+        structured.experimental_features = features;
+      }
       const governanceTasks: Record<string, Array<{
         task: string;
         modes: Array<'signed_context' | 'online_execution_check'>;
@@ -1262,6 +1421,18 @@ function projectTenantCapabilities(
         for (const field of ['reliable_reporting_version', 'revision_content_task', 'managed_delivery', 'reconciled_billing', 'receipt_task', 'resource_retention_days', 'authorization_revocation_seconds']) delete legacyReporting[field];
         if (Array.isArray(legacyReporting.offerings)) legacyReporting.offerings = legacyReporting.offerings.filter(offering => !('method' in (offering as Record<string, unknown>)));
       }
+      const reportingDelivery = structured.media_buy.reporting_delivery as Record<string, unknown> | undefined;
+      if (reportingDelivery && supportsAccountSurfaces33(servedVersion)) {
+        // Experimental 3.3 principal-level reporting subscriptions: register
+        // through sync_principal (or account-level sync_accounts), and every
+        // offering publishes its breakdown in the standard vocabulary.
+        reportingDelivery.configuration_tasks = ['sync_principal', 'sync_accounts'];
+        reportingDelivery.subscriptions = structuredClone(SUBSCRIPTIONS_CAPABILITY);
+        reportingDelivery.offerings = subscriptionOfferings();
+        if (!experimentalFeatures.includes(REPORTING_SUBSCRIPTIONS_FEATURE)) {
+          experimentalFeatures.push(REPORTING_SUBSCRIPTIONS_FEATURE);
+        }
+      }
       if (!supportsGetProductsRejected(servedVersion)) {
         delete structured.media_buy.lifecycle_tools;
         delete structured.media_buy.proposal_refinement;
@@ -1273,6 +1444,9 @@ function projectTenantCapabilities(
       structured.creative = {
         ...creative,
         bills_through_adcp: false,
+        // The seller publishes creative policies and enforces provenance
+        // during sync_creatives. Older release shapes omit this 3.3 flag below.
+        supports_provenance: true,
         supported_formats: supportedFormats,
         preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',
@@ -1302,6 +1476,16 @@ function projectTenantCapabilities(
         if (!experimentalFeatures.includes('account.change_feed')) {
           experimentalFeatures.push('account.change_feed');
         }
+        // Live creative updates (experimental, #8404) need the library and
+        // the media buys that make a creative live, so only /sales declares.
+        structured.creative.live_updates = liveUpdatesCapability();
+        // Assignment-scoped trackers and landing pages (3.3): sync_creatives
+        // assign/replace, create/update media buy rows, and readback.
+        structured.creative.supports_assignment_trackers = true;
+        structured.creative.supports_assignment_landing_page = true;
+        if (!experimentalFeatures.includes('creative.live_updates')) {
+          experimentalFeatures.push('creative.live_updates');
+        }
       }
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
         ? structured.compliance_testing
@@ -1322,6 +1506,8 @@ function projectTenantCapabilities(
         ...complianceTesting,
         scenarios: [...scenarios],
       };
+      // Experimental 3.3 holds: hold_policy, extend_hold, ranking, installment holds.
+      applyHoldCapabilities(structured, servedVersion, proposalNegotiationProfile, storyboardCompat);
     }
     // Every tenant: a release whose capabilities schema closes the scenario
     // enum (3.0) never sees scenarios added after it, whichever projection
@@ -1343,6 +1529,8 @@ function projectTenantCapabilities(
       }
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
+    // Experimental 3.3 collection cards, catalog and brand links (#8181).
+    if (storyboardCompat?.version !== '3.0') projectCollectionCapabilities(structured, tenantId, servedVersion);
     // Every tenant, last: withhold fields added after the served release
     // (3.3 account.stable_account_id, governance.supports_budget_periods,
     // the property-breakdown feature flags, ...), whichever projection above
@@ -1543,6 +1731,18 @@ export function mountTenantRoutes(
       });
     }
   }
+  // The hosted 3.3 preview (#8181) has its own registry, so stable requests
+  // keep exactly the stable configuration: the SDK shapes every response
+  // down from its configured ceiling. Built on the first preview-pinned
+  // request; production prewarms it once the stable registry is up.
+  const previewHolder = TRAINING_AGENT_SERVES_HOSTED_PREVIEW && middleware.storyboardCompat?.version !== '3.0'
+    ? createRegistryHolder({ storyboardCompat: middleware.storyboardCompat, preview: true, tenantIds })
+    : undefined;
+  if (previewHolder && process.env.NODE_ENV === 'production') {
+    holder.get().then(() => previewHolder.get()).catch(err => {
+      logger.error({ err }, 'Preview tenant registry prewarm failed; the first preview request will retry');
+    });
+  }
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);
@@ -1562,7 +1762,7 @@ export function mountTenantRoutes(
     parent.post(
       `/${tenantId}/mcp`,
       ...(tenantId === 'governance' ? governanceMw : tenantId === 'sales' ? salesMw : mw),
-      tenantMcpHandler(holder, tenantId, middleware.storyboardCompat),
+      tenantMcpHandler(holder, tenantId, middleware.storyboardCompat, undefined, previewHolder),
     );
     parent.get(`/${tenantId}/mcp`, (_req, res) => {
       setCORSHeaders(res);
@@ -1585,7 +1785,7 @@ export function mountTenantRoutes(
       setCORSHeaders(res);
       res.status(204).end();
     });
-    parent.post('/', ...governanceMw, tenantMcpHandler(holder, 'governance', middleware.storyboardCompat));
+    parent.post('/', ...governanceMw, tenantMcpHandler(holder, 'governance', middleware.storyboardCompat, undefined, previewHolder));
   }
 
   if (

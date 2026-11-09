@@ -188,7 +188,7 @@ npx @adcp/sdk@latest \
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
 | `proposal_id` | string | No* | ID of the exact committed proposal snapshot produced by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) with `action: "finalize"`, or by the legacy [`get_products`](/docs/media-buy/task-reference/get_products) finalize action. Drafts fail with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed); declined or already executed proposals fail with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). Exact retries reuse the original idempotency key and replay success. |
-| `opportunity` | OpportunityContext | No | Proposal-mode planning-cycle closure shared with [`request_proposals`](/docs/media-buy/task-reference/request_proposals) and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals); requires `proposal_id`. Omitting status is the create-specific signal to infer closed with `accepted_with_seller`; if status is sent, it must explicitly carry that closure. |
+| `opportunity` | OpportunityContext | No | Planning-cycle context shared with [`request_proposals`](/docs/media-buy/task-reference/request_proposals) and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals). With explicit packages (3.3+), carries `opportunity_id` for correlation only; omit lifecycle and consent fields. With `proposal_id`, omission of status infers closed with `accepted_with_seller`; explicit status must carry that closure. See [Opportunity correlation and closure](#opportunity-correlation-and-closure). |
 | `total_budget` | TotalBudget | No* | Hard aggregate lifetime budget. Its currency is the single media-buy denomination for package constraints and canonical bidding. Required for proposals and seller-optimized explicit packages. Optional in fixed explicit-package mode; when supplied there, it must equal the sum of package budgets. |
 | `daily_budget_cap` | number | No | Hard aggregate ceiling per calendar day in the media-buy currency. It limits total buy spend without allocating or reserving amounts for packages. Requires `media_buy` in `budget_capping.supported_scopes`. |
 | `frequency_cap` | MediaBuyFrequencyCap | No | Aggregate max-impression cap using one counter across packages. Requires seller `aggregate_frequency_capping` and compatible `media_buy_support` on every product; sellers reject an unsupported cap or product mix with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before any mutation. Omit when executing a proposal because accepted terms are authoritative. |
@@ -217,6 +217,35 @@ When executing a proposal through this 3.x compatibility facade, `proposal_statu
 
 An unexpired `committed` proposal carries an inventory hold and cannot be rejected merely because the seller sold that reserved inventory elsewhere. After `expires_at`, the hold lapses and the seller returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired).
 
+### Opportunity correlation and closure
+
+Starting in AdCP 3.3, either explicit-package mode may include an `opportunity`
+object such as `{"opportunity_id": "opp_spring_launch"}` without `proposal_id`.
+This correlates the buy with a planning cycle, including a campaign bought
+without an RFP. Buyers MUST omit `status`, `close_reason`, `close_detail`, and
+`later_proposals` in this mode. A successful explicit-package buy MUST NOT
+open, close, or reopen the opportunity or change its later-proposal consent.
+
+The `opportunity_id` is opaque and buyer-assigned. The seller MAY correlate the
+buy with briefs, proposals, and other buys carrying the same ID for the same
+buyer account at that seller. It MUST resolve and authorize the account
+independently and MUST NOT use the ID for authorization or cross-account
+linking. Omission creates no opportunity association through this field.
+
+Committed proposal execution keeps its existing closure contract: success
+infers `status: "closed"` with `close_reason: "accepted_with_seller"` when
+status is omitted. An explicit status MUST be `closed` with that reason, and
+`later_proposals` is forbidden. If the proposal carries an `opportunity_id`,
+a supplied ID MUST match it.
+
+Buyers MUST send correlation context on explicit packages only to sellers
+advertising a negotiated AdCP release of 3.3 or later. Earlier schema validators
+reject it. [`buy_products`](/docs/media-buy/task-reference/buy_products) retains
+its existing purchase-closure semantics; an ID alone on that task infers
+accepted closure. Keeping the cycle open there requires the advertised
+[`keep_open_after_purchase`](/docs/media-buy/product-discovery/proposal-negotiation#updating-and-closing-an-opportunity)
+capability and explicit `status: "open"`.
+
 ### TotalBudget Object
 
 | Parameter | Type | Required | Description |
@@ -244,7 +273,7 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 | `bid_price` | number | No | **Deprecated in 3.2.** Use `bidding.bid_amount` or `bidding.max_bid`. A package cannot supply both representations. |
 | `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Objective functions for this package: what to optimize and in what priority. Currency controls belong in `bidding`; legacy `target.cost_per` and `target.per_ad_spend` remain accepted only for migration. |
 | `targeting_overlay` | TargetingInput | No | Request-only per-dimension targeting applied to the configured targeting represented by `product_id` (see [Targeting](/docs/media-buy/advanced-topics/targeting#request-mutation-semantics)). A nested `frequency_cap` owns an independent package counter; it does not share state with other packages or with a root `frequency_cap`. Omission inherits the configured/product default for a dimension, a non-null value replaces it, and `null` explicitly suppresses it. A clear cannot remove inherent product scope; the seller rejects a clear it cannot execute. The resulting package echoes the complete effective overlay with cleared dimensions omitted and no `null` values. Non-null additions must compile exactly or be rejected and require product `overlay_support` unless already accepted during discovery. The narrow exception is a placement set equal to the product's complete, explicitly enumerated `mode: "included"` set, or a `collection_selection` exactly restating the product's complete `collections` bundle (gated by `collection_targeting_allowed`, which has no `overlay_support` key); either needs no selectable support, while a partial set does. Opaque property and collection list refs have no equivalent fixed-restatement exception. For `demographics`, inspect the selected product's `demographic_targeting` declaration first. Creative assignment placement refs only route creatives. A supported selection with no current inventory returns [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable), never silent substitution or repricing. |
-| `audience_evidence_requirements` | AudienceEvidenceRequirements | No | Package-level suitability policy. Sellers reject an unsatisfied required policy rather than dropping it, and return every snapshot used to satisfy it in the confirmed package's `audience_evidence_selections` with `decision_use: "package_construction"`. This is not a targeting instruction. |
+| `audience_evidence_requirements` | AudienceEvidenceRequirements | No | Package-level suitability policy. Sellers reject an unsatisfied required policy rather than dropping it, and return every snapshot used to satisfy it in the confirmed package's `audience_evidence_selections` with `decision_use: "package_construction"`. This is not a targeting instruction. The experimental sibling `target_audiences` ([`get_products`](/docs/media-buy/task-reference/get_products#target-audiences-experimental)) can restate target audiences at the package level and requires `audience_evidence_requirements`. |
 | `audience_evidence_pins` | AudienceEvidencePin[] | No | Exact discovery snapshots the buyer requires, each pinned by `evidence_id`, `snapshot_id`, `version`, and `content_digest`. Sellers reject missing, substituted, or mutated snapshots. Every accepted pin is returned in the confirmed package's `audience_evidence_selections` and retained on package readback. |
 | `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |

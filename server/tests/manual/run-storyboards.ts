@@ -18,7 +18,8 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import type { Socket } from 'node:net';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import YAML from 'yaml';
 import {
   listAllComplianceStoryboards,
@@ -43,6 +44,7 @@ import {
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
 import { formatFailureDetailSnippet, formatFailedValidationSummary, formatStepFailureDetail, storyboardStepStatus, type StoryboardStepForSummary } from './storyboard-report-format.js';
+import { registerStoryboardCandidateSchemaRoot } from './storyboard-candidate-schema-root.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -124,6 +126,7 @@ if (candidateVersionMode) {
       'ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=1 requires the compliance bundle version to match package.json',
     );
   }
+  registerStoryboardCandidateSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot);
   // Set the trusted, process-local wire contract before importing runtime
   // modules. Source 3.3 cannot be graded by aliasing it to released 3.2.
   process.env.ADCP_TRAINING_CANDIDATE_VERSION = releasedComplianceVersion.replace(
@@ -314,7 +317,21 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
  * coverage. Every entry names a concrete removal condition; link an issue
  * when an active tracker exists.
  */
+const EXTEND_HOLD_RUNNER_GAP = 'The @adcp/sdk runner validates refine_proposals requests client-side and accepts only revise and finalize, so it never sends action extend_hold (experimental 3.3 media_buy.hold_extension). The training agent serves extend_hold and its behavior is graded in server/tests/unit/training-agent-hold-vectors.test.ts. Remove when adcontextprotocol/adcp-client#3601 is resolved.';
+
 const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
+  [
+    'media_buy_seller/hold_extension/extend_extendable_hold',
+    EXTEND_HOLD_RUNNER_GAP,
+  ],
+  [
+    'media_buy_seller/hold_extension/extend_capped_hold',
+    EXTEND_HOLD_RUNNER_GAP,
+  ],
+  [
+    'media_buy_seller/hold_extension/extend_fixed_hold',
+    EXTEND_HOLD_RUNNER_GAP,
+  ],
   [
     'sales_broadcast_tv/expect_window_update_webhook',
     'The training seller emits no delivery window_update webhooks: on AdCP 3.2 its synchronous create_media_buy completion is silent and it does not push delivery reports on simulated delivery. Every other step of the broadcast transaction is graded. Remove when the training agent emits C3 and C7 window_update webhooks to the registered push_notification_config.',
@@ -322,6 +339,10 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
     'governance_delivery_monitor/check_governance_drift',
     'The runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
+  ],
+  [
+    'media_buy_seller/canonical_formats/create_media_buy_with_equivalent_direct_legacy_emission',
+    'Since @adcp/sdk 17.0.0-beta.2 (adcp-client#3454) the runner grades the direct route of this dual-emission request on its own and calls its omitted max_file_size_kb under-specified, before the seller answers. The spec requires a selector to declare only fixed size and duration. Remove when adcontextprotocol/adcp-client#3470 is resolved.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
@@ -1305,10 +1326,38 @@ async function main() {
   process.exit(exitCode);
 }
 
+// The SDK's ESM build reaches its CommonJS schema loader through
+// createRequire for some response shaping (envelope-status-compat.mjs decides
+// whether decline_proposals / list_products omit the envelope `status` by
+// reading the served version's response schema). That CommonJS instance keeps
+// its own external-root scope, so a root entered only through the ESM import
+// above is invisible to it. While the published SDK packages the candidate
+// bundle that is harmless; once a Version Packages bundle leads the SDK by a
+// candidate, the CommonJS lookup misses, the SDK assumes an envelope schema,
+// and it stamps `status: "completed"` onto responses whose candidate schema
+// forbids it. Enter the same root in that instance too. The path is resolved
+// from the package's own CommonJS entry, so it is the module the SDK loads.
+type SchemaRootScope = <T>(version: string, root: string, fn: () => Promise<T>) => Promise<T>;
+const sdkCommonJsSchemaRootScope = ((): SchemaRootScope | undefined => {
+  const requireFromHere = createRequire(import.meta.url);
+  const loaderPath = join(dirname(requireFromHere.resolve('@adcp/sdk')), 'validation', 'schema-loader.js');
+  if (!existsSync(loaderPath)) return undefined;
+  const loader = requireFromHere(loaderPath) as { withExternalSchemaRoot?: unknown };
+  return typeof loader.withExternalSchemaRoot === 'function'
+    ? loader.withExternalSchemaRoot as SchemaRootScope
+    : undefined;
+})();
+function withCandidateSchemaRoot<T>(version: string, root: string, fn: () => Promise<T>): Promise<T> {
+  const scoped = sdkCommonJsSchemaRootScope
+    ? () => sdkCommonJsSchemaRootScope(version, root, fn)
+    : fn;
+  return withExternalSchemaRoot(version, root, scoped);
+}
+
 // Tenant registries initialize eagerly when mounted. Keep the candidate root
 // registered for their construction as well as discovery and storyboard calls.
 const run = complianceOptions.schemaRoot && releasedComplianceVersion
-  ? () => withExternalSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot!, main)
+  ? () => withCandidateSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot!, main)
   : main;
 run().catch(err => {
   // eslint-disable-next-line no-console

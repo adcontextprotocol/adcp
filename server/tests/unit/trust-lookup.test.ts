@@ -150,7 +150,8 @@ describe('public trust lookup', () => {
     expect(result.grants[0]).toMatchObject({ countries: ['US'], agents: ['https://buyer.pinnacle-agency.com'], brands: ['nova_motors'] });
     expect(result.total_grants).toBe(5);
     expect(result.matching_grants).toBe(4);
-    expect(result.exclusive_scopes).toEqual(['adcp:media_buying', 'adcp:governance']);
+    expect(result.exclusive_grants).toBe(true);
+    expect(result).not.toHaveProperty('exclusive_scopes');
   });
 
   it('shows an agent URL that cannot be canonicalized as published instead of failing the lookup', async () => {

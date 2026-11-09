@@ -4,7 +4,7 @@ import { createTrainingAgentServer, clearTaskStore, invalidateCache } from '../.
 import { clearSessions } from '../../src/training-agent/state.js';
 import { clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
-const CANDIDATE_VERSION = '3.3-beta.0';
+const CANDIDATE_VERSION = '3.3-beta.1';
 
 const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.example', sandbox: true };
 const age = { min: 18, max: 55, include_unknown: false };

@@ -1,4 +1,4 @@
-import { getSchemaDocumentByRef } from '@adcp/sdk/schemas';
+import { getSchemaDocumentByRef, getToolInputSchema } from '@adcp/sdk/schemas';
 import { sourceSchemaDocument } from './source-schema.js';
 
 /**
@@ -270,4 +270,49 @@ export function servedReleaseEnum(schemaRef: string, servedVersion: string): Rea
     : null;
   servedEnums.set(key, allowed);
   return allowed;
+}
+
+/** Stable release lines a tool may first appear in, oldest first. */
+const STABLE_RELEASE_LINES = ['3.0', '3.1', '3.2'] as const;
+type StableReleaseLine = typeof STABLE_RELEASE_LINES[number];
+
+const firstLineByTool = new Map<string, StableReleaseLine | null>();
+
+/**
+ * The oldest stable release line whose schema bundle defines `toolName`, or
+ * null when none does (training-only tools such as comply_test_controller, or
+ * a tool only a newer candidate release defines).
+ */
+function firstStableReleaseDefiningTool(toolName: string): StableReleaseLine | null {
+  const cached = firstLineByTool.get(toolName);
+  if (cached !== undefined) return cached;
+  let first: StableReleaseLine | null = null;
+  for (const line of STABLE_RELEASE_LINES) {
+    let defined = false;
+    try {
+      defined = getToolInputSchema(toolName, { adcpVersion: line }) !== undefined;
+    } catch {
+      defined = false;
+    }
+    if (defined) {
+      first = line;
+      break;
+    }
+  }
+  firstLineByTool.set(toolName, first);
+  return first;
+}
+
+/**
+ * Whether `toolName` first appears in a stable release line newer than the
+ * one `servedVersion` is on. That release has no schema for the tool's request
+ * or response, so the agent answers VERSION_UNSUPPORTED instead of a payload
+ * the caller's release cannot validate. Tools no stable bundle defines are
+ * left to their own gates.
+ */
+export function toolAddedAfterRelease(toolName: string, servedVersion: string): boolean {
+  const first = firstStableReleaseDefiningTool(toolName);
+  const served = releaseLine(servedVersion);
+  if (!first || !served) return false;
+  return addedAfter(first, served);
 }

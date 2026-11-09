@@ -156,7 +156,7 @@ A server MUST honor `adcp_version` when present, falling back to `adcp_major_ver
 | `adcp_version` present, same major, no server release ≤ client's pin (sub-min: every supported release is strictly greater) | `VERSION_UNSUPPORTED`. The seller is not obligated to maintain validators for releases below its supported window. |
 | `adcp_version` present, different major | `VERSION_UNSUPPORTED`. |
 | both fields present, majors disagree | `VERSION_UNSUPPORTED` (treat as malformed). |
-| `adcp_version` absent, `adcp_major_version` present | Serve highest supported release in that major. Echo response. |
+| `adcp_version` absent, `adcp_major_version` present | Serve the oldest supported release in that major (DR-0034). Echo response. |
 | both absent | Serve in server's default release. Echo on response. |
 
 In all non-error cases, the response's `adcp_version` is authoritative — it tells the client exactly what contract was served. Clients SHOULD validate the response against that release's schema, not against their pin. The seller's `adcp_version` on the response is the **release served**, never the seller's own latest release: if a 3.1 seller serves a 3.0 buyer at 3.0, the response echoes `"3.0"`.

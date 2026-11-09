@@ -28,7 +28,7 @@ describe('CrawlerService brand.json ingestion', () => {
         }),
         resolveBrand: vi.fn().mockResolvedValue(null),
       },
-      brandDb: { upsertDiscoveredBrand },
+      brandDb: { upsertDiscoveredBrand, getHostedBrandByDomain: vi.fn().mockResolvedValue(null) },
       upsertBrandProperties,
     });
 
@@ -53,6 +53,72 @@ describe('CrawlerService brand.json ingestion', () => {
       variant: 'brand_canonical',
       manifestPersisted: true,
     });
+  }, 30_000);
+
+  it('stores a verified owner\'s own document on the hosted record', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const canonical = { id: 'owned', names: [{ en: 'Owned Brand' }], url: 'https://owned.example' };
+    const upsertDiscoveredBrand = vi.fn();
+    const updateHostedBrand = vi.fn().mockResolvedValue(undefined);
+    Object.assign(ctx, {
+      brandManager: {
+        validateDomain: vi.fn().mockResolvedValue({
+          valid: true, errors: [], warnings: [], domain: 'owned.example',
+          url: 'https://owned.example/.well-known/brand.json', variant: 'brand_canonical', raw_data: canonical,
+        }),
+        resolveBrand: vi.fn().mockResolvedValue(null),
+      },
+      brandDb: {
+        upsertDiscoveredBrand,
+        updateHostedBrand,
+        getHostedBrandByDomain: vi.fn().mockResolvedValue({
+          id: 'brand_owned', workos_organization_id: 'org_owner', domain_verified: true,
+        }),
+      },
+      upsertBrandProperties: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await ctx.scanBrandForDomain('owned.example');
+
+    expect(updateHostedBrand).toHaveBeenCalledWith('brand_owned', {
+      brand_json: canonical,
+      brand_name: 'Owned Brand',
+      origin_validated: true,
+    });
+    expect(upsertDiscoveredBrand).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('leaves an unverified claim to the discovered-brand write', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const canonical = { id: 'claimed', names: [{ en: 'Claimed Brand' }] };
+    const upsertDiscoveredBrand = vi.fn().mockResolvedValue(undefined);
+    const updateHostedBrand = vi.fn();
+    Object.assign(ctx, {
+      brandManager: {
+        validateDomain: vi.fn().mockResolvedValue({
+          valid: true, errors: [], warnings: [], domain: 'claimed.example',
+          url: 'https://claimed.example/.well-known/brand.json', variant: 'brand_canonical', raw_data: canonical,
+        }),
+        resolveBrand: vi.fn().mockResolvedValue(null),
+      },
+      brandDb: {
+        upsertDiscoveredBrand,
+        updateHostedBrand,
+        getHostedBrandByDomain: vi.fn().mockResolvedValue({
+          id: 'brand_claimed', workos_organization_id: 'org_claimant', domain_verified: false,
+        }),
+      },
+      upsertBrandProperties: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await ctx.scanBrandForDomain('claimed.example');
+
+    expect(updateHostedBrand).not.toHaveBeenCalled();
+    expect(upsertDiscoveredBrand).toHaveBeenCalledWith(expect.objectContaining({
+      domain: 'claimed.example', source_type: 'brand_json',
+    }));
   }, 30_000);
 
   it('reports the live attempt as invalid instead of inferring success from stored state', async () => {
@@ -124,7 +190,7 @@ describe('CrawlerService brand.json ingestion', () => {
           source: 'brand_json',
         }),
       },
-      brandDb: { upsertDiscoveredBrand, updateRelationshipTrust },
+      brandDb: { upsertDiscoveredBrand, updateRelationshipTrust, getHostedBrandByDomain: vi.fn().mockResolvedValue(null) },
       upsertBrandProperties: vi.fn().mockResolvedValue(undefined),
     });
 
@@ -177,7 +243,10 @@ describe('CrawlerService brand.json ingestion', () => {
         resolveHouseBrandReference,
         resolveBrand: vi.fn().mockResolvedValue(null),
       },
-      brandDb: { upsertDiscoveredBrand: vi.fn().mockResolvedValue(undefined) },
+      brandDb: {
+        upsertDiscoveredBrand: vi.fn().mockResolvedValue(undefined),
+        getHostedBrandByDomain: vi.fn().mockResolvedValue(null),
+      },
       upsertBrandProperties: vi.fn().mockResolvedValue(undefined),
     });
 
@@ -259,7 +328,7 @@ describe('CrawlerService brand.json ingestion', () => {
       manifestPersisted: false,
     });
     expect(updateHostedBrand).toHaveBeenCalledWith('brand_hosted', {
-      domain_verified: true,
+      verified_by_brand_json_pointer: true,
       origin_validated: true,
     });
   });

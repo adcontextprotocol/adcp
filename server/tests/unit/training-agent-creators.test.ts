@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // candidate wire contract.
 vi.hoisted(() => {
   process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.0';
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
 });
 import type { CanonicalProposal } from '@adcp/sdk';
 import { CREATOR_PUBLISHER } from '../../src/training-agent/creators.js';
@@ -191,7 +191,7 @@ describe('CreatorLoop compact lifecycle', () => {
   // material deadlines at all — the slot only existed on get_products.
   it('surfaces slot dates and material deadlines on the canonical product, not only on get_products', async () => {
     const result = await executeTrainingAgentTool('list_products', {
-      adcp_version: '3.3-beta.0',
+      adcp_version: '3.3-beta.1',
       account: { brand: { domain: 'buyer.example' }, operator: 'buyer.example' },
       criteria: { product_ids: creatorProducts().map(product => product.product_id as string) },
     }, context);
@@ -221,7 +221,7 @@ describe('CreatorLoop compact lifecycle', () => {
   it('keeps the legacy and canonical slot sets identical apart from the dropped shorthand', async () => {
     const legacy = creatorProducts();
     const result = await executeTrainingAgentTool('list_products', {
-      adcp_version: '3.3-beta.0',
+      adcp_version: '3.3-beta.1',
       account: { brand: { domain: 'buyer.example' }, operator: 'buyer.example' },
       criteria: { product_ids: legacy.map(product => product.product_id as string) },
     }, context);

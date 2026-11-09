@@ -13,6 +13,18 @@
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Vendor whose measurement of the billing metric is authoritative for invoicing (e.g., { domain: 'campaignmanager.google.com' } for buyer's DCM, { domain: 'admanager.google.com' } for seller's GAM)."
         },
+        "counting_mechanisms": {
+          "type": "array",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "What the billing metric named by `vendor` is counted from: `vendor` says who counts, this says how. Not `measurement_source`, which names the provider. Lists only mechanisms whose events enter the billed count; cross-check mechanisms MUST NOT be listed, and the merge rule for several mechanisms is described in the seller's methodology. Billing count only (per-row provenance is `vendor_metric_values[].measurement_provenance`). A set: order carries no meaning and values MUST NOT repeat. A claim enforced through the contract (`vendor`, `max_variance_percent`, `makegood_policy`), not a conformance probe. Absence means undeclared, never a default source, and a seller that omits `billing_measurement` declares nothing. On a product it is the seller's default; on a package request, the buyer's proposed term (the seller MAY accept, adjust, or reject with `TERMS_REJECTED`); on a confirmed package, the agreed term. A seller (or its ad server) that is itself the named `vendor` SHOULD declare it; buyer-attested and third-party vendors MAY omit it.",
+          "items": {
+            "$ref": "/schemas/enums/collection-mechanism.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "examples": [["server_logs"], ["server_logs", "sdk"]]
+        },
         "max_variance_percent": {
           "type": "number",
           "minimum": 0,

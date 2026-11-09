@@ -26,13 +26,9 @@ Credentials come from StreamHaus, out of band from AdCP: an OAuth client for the
 
 Which credential shape StreamHaus offers is its authorization design. The protocol requires only that the credential map to a *stable* principal: rotating a key or renewing a token preserves the configuration only when StreamHaus maps the new credential to the same principal, and a raw key ID, token, or session is never the owner. For a signed caller, the stable subject is the canonical `brand.json` `agents[].url`, so two agent URLs under Pinnacle are two principals.
 
-A person using an interactive client follows the same lifecycle with a different credential:
+Sam reaching StreamHaus through Claude or ChatGPT does so through Pinnacle's buyer agent, so the agent is still the principal. A principal is always a bound buyer agent; the operators it acts for are facts on its accounts. If a client can present only one shared service credential for all its users, StreamHaus must refuse to persist configuration under it.
 
-- Sam, working in Claude or ChatGPT against StreamHaus, authenticates as Sam: their own login at the seller, resolved as `principal_kind: operator`.
-- The client application is the instrument, never the owner. ChatGPT and Claude are not the buyer agent, and nothing registers them.
-- If a client can present only one shared service credential for all its users, StreamHaus must refuse to persist configuration under it until the client completes delegated authorization or account linking.
-
-**Principals do not merge.** A destination registered by Sam as an `operator` principal is invisible to Pinnacle's agent, and Sam's own suspension controls affect only Sam's configuration. Decide which principal owns each destination before registering it. Linking two principals needs an explicit seller-side administrative operation.
+**Principals do not merge.** Each agent origin is its own principal, with its own destinations and suspension controls. Linking two principals needs an explicit seller-side administrative operation.
 
 Never send identity in a request body. `sync_principal` and `get_principal` reject `buyer_agent_url`, `agent_url`, `principal_id`, and `connection_id`, and a seller never derives identity from them.
 
@@ -110,7 +106,7 @@ Before changing anything, the agent calls [`get_principal`](/docs/protocol/get_p
 }
 ```
 
-`recognized` means the credential maps to a durable principal that already exists and has no standing configuration. `principal_kind` is what StreamHaus resolved, not what the caller claimed; to catch a credential mix-up early, send `expected_principal_kind: "buyer_agent"` on a write, and a mismatch fails with `CONFLICT` before anything changes. A seller that does not pre-create records returns `unconfigured` instead, and the first sync creates the record. A `failed` result carries only errors, never identifiers.
+`recognized` means the credential maps to a durable principal that already exists and has no standing configuration. `principal_kind` is deprecated in 3.3 and always `buyer_agent` for a bound agent, so don't branch on it. A seller that does not pre-create records returns `unconfigured` instead, and the first sync creates the record. A `failed` result carries only errors, never identifiers.
 
 ## 4. Sync declarations, webhooks, and a reusable destination
 
@@ -126,7 +122,6 @@ The agent sends one request. Each section is the complete desired state for that
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-request.json",
   "idempotency_key": "5b6a3d1e-0c8f-4e49-9a2f-71c2f0d4b8a3",
-  "expected_principal_kind": "buyer_agent",
   "configuration": {
     "declarations": {
       "async_adcp_versions": ["3.2"],
@@ -428,7 +423,7 @@ The full error table is in the [`sync_principal` reference](/docs/protocol/sync_
 
 - **`AUTH_REQUIRED`.** The call carried no stable principal. Authenticate with a credential the seller maps to one.
 - **`UNSUPPORTED_FEATURE`.** A section, destination, or event type is outside what the seller advertised. Re-read capabilities and choose from the offering.
-- **`CONFLICT`.** `expected_configuration_version` or `expected_principal_kind` did not match. Nothing changed; read with `get_principal`, reconcile, and resubmit under a new key.
+- **`CONFLICT`.** `expected_configuration_version` did not match. Nothing changed; read with `get_principal`, reconcile, and resubmit under a new key.
 - **A destination stays `action_required`.** The typed action is incomplete or unverified. Complete it in the provider and poll; resubmit only if `setup.expires_at` has passed.
 - **A destination is `rejected`.** Those coordinates cannot be used. Register a different destination rather than retrying.
 - **The feed binding is refused.** The destination is not `ready`, or the account relationship does not authorize the feed. Fix whichever side failed; one does not substitute for the other.

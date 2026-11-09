@@ -122,7 +122,7 @@ At `https://nova-brands.example/.well-known/trust.json`:
 
 Here Nova Brands runs its own in-house buyer. It lets one Pinnacle agent buy media for Nova Motors in the US and UK until mid-2027, and lets Lumen Studio generate creative for any Nova brand. Set each limit on purpose: a field you leave out is a limit you didn't set.
 
-**Make the list exclusive when it's complete.** With `exclusive_grants: true`, your grants are the whole list for every activity they name: a seller that checks turns away anyone not on it for those activities, whatever they claim. Here that's media buying and creative generation. Activities your grants don't name, such as measurement in this example, stay at each seller's discretion.
+**Make the list exclusive when it's complete.** With `exclusive_grants: true`, your grants are the whole list: a seller that checks turns away any agency or platform not on it, for every activity, whatever they claim. In this example, no one could measure for Nova Brands, because no grant covers measurement. Your own agents still act for you. Without exclusivity, a claim your grants don't cover is up to each seller, and a grant that almost matches doesn't change that.
 
 **Move everything over before you publish.** Once your trust.json exists, sellers stop reading the older `authorized_operators` list in your brand.json. Copy every entry into `grants` first.
 
@@ -156,7 +156,7 @@ Seller account approval, billing and credit checks still apply on top of your li
 |---|---|
 | Your parent company's list, and no file on the brand's own domain | The parent's list applies. The brand is covered. |
 | No trust.json has ever been published | Through AdCP 3.x, the seller may use the older brand.json list or its own verified onboarding. Absence never authorizes a stranger on its own. |
-| A list with no matching grant, in an exclusive activity | The request is turned away. |
+| An exclusive list with no matching grant | The request is turned away, whatever the activity. |
 | A list with no matching grant, not exclusive | The seller may rely on its own verified onboarding records, not on your older brand.json list. |
 | A timeout, server error or invalid file | Authorization is unavailable and spend fails closed. An outage doesn't make you unprotected. |
 | A file that existed and was deleted | No fallback to older rules. Deleting the file doesn't undo it, so keep it published. |

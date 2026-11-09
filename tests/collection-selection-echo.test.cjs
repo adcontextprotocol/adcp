@@ -113,8 +113,8 @@ test('canonical products expose collection composition for compact-lifecycle sel
   };
   assert.equal(validate(product), true, JSON.stringify(validate.errors, null, 2));
 
-  assert.equal(validate({ ...product, collections: [] }), false,
-    'an empty collections array is not a composition');
+  assert.equal(validate({ ...product, collections: [] }), true,
+    'an empty collections array is an undisclosed roster, not a composition');
   assert.equal(validate({
     ...product,
     collections: [{ publisher_domain: 'channel-owner.example' }],

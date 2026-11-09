@@ -2,7 +2,7 @@ id: media_buy_seller/account_timezone_seller_assigned
 version: "1.0.0"
 title: "Seller-assigned account timezone discovery"
 category: media_buy_seller
-summary: "Verifies that buyers omit timezone input and discover the seller-assigned immutable value from account readback."
+summary: "Verifies that buyers omit timezone input and discover the seller-assigned account value from account readback."
 track: media_buy
 introduced_in: "3.2"
 
@@ -92,7 +92,7 @@ phases:
             description: "Provisioning succeeds instead of returning a per-account failure"
           - check: field_present
             path: "accounts[0].timezone"
-            description: "Seller returns the assigned immutable timezone"
+            description: "Seller returns the assigned account timezone"
           - check: field_value
             path: "accounts[0].brand.domain"
             value: "acmeoutdoor.example"

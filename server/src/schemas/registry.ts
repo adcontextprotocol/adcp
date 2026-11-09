@@ -632,6 +632,9 @@ export const ResolvedBrandSchema = z
     }),
     brand_agent_url: z.string().optional(),
     brand_manifest: z.record(z.string(), z.unknown()).optional(),
+    brand: z.record(z.string(), z.unknown()).optional().openapi({
+      description: "Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.",
+    }),
     source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).openapi({
       description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence.",
     }),
@@ -755,6 +758,13 @@ export const BrandRegistryItemSchema = z
         description:
           "Unilateral parent claim from the brand's own document. Not trust-extending. Present for `leaf_only` and `unverifiable`.",
       }),
+    house_link: z
+      .enum(["confirmed", "house_declared", "brand_declared", "inferred"])
+      .optional()
+      .openapi({
+        description:
+          "Present when the list is filtered by `house_domain`: how this brand is known to belong to that house. `confirmed` means both sides publish the link or the brand redirects to the house, and is the only value that extends trust. `house_declared` means the house's own manifest lists the brand and the house has shown it controls its domain. `brand_declared` means the brand's own brand.json names the house. `inferred` means an enrichment or community record links them.",
+      }),
   })
   .openapi("BrandRegistryItem");
 
@@ -802,7 +812,9 @@ export const AgentComplianceSchema = z
       passed_count: z.number().int(),
       duration_ms: z.number(),
       has_coverage_gap_skip: z.boolean().optional(),
-    })).optional().openapi({ description: "Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller." }),
+      skipped_by_reason: z.record(z.string(), z.number().int()).optional().openapi({ description: "Skipped steps in this track, counted by skip reason (e.g. fixture_unavailable, missing_test_controller, capability_unsupported). Absent when nothing was skipped." }),
+    })).optional().openapi({ description: "Latest-run per-track summary. A track with has_coverage_gap_skip=true has steps that were not exercised for a setup reason, such as a runner fixture gap (fixture_unavailable) or a missing comply_test_controller. The track may still pass." }),
+    coverage_incomplete: z.boolean().optional().openapi({ description: "True when any track in the latest run has a coverage-gap skip. Reported beside status, not folded into it: a passing run can have incomplete coverage, and storyboards that were not exercised do not count toward verification badges." }),
     streak_days: z.number().int(),
     last_checked_at: z.string().nullable(),
     headline: z.string().nullable(),
@@ -894,6 +906,9 @@ const BadgeGradingEvidenceSchema = z.object({
   relevant_bundle_ids: z.array(z.string()),
   failing_bundle_count: z.number().int().nonnegative(),
   incomplete_bundle_count: z.number().int().nonnegative(),
+  not_applicable_universal_bundle_ids: z.array(z.string()).optional().openapi({
+    description: "Universal bundles left partial only because the agent advertises none of the tools for a surface it does not declare. They do not count as incomplete.",
+  }),
   relevant_failure_count: z.number().int().nonnegative(),
   missing_universal_bundle: z.boolean(),
   missing_protocol_bundle: z.boolean(),
@@ -1002,7 +1017,9 @@ export const AgentComplianceDetailSchema = z
       passed_count: z.number().int(),
       duration_ms: z.number(),
       has_coverage_gap_skip: z.boolean().optional(),
-    })).optional().openapi({ description: "Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller." }),
+      skipped_by_reason: z.record(z.string(), z.number().int()).optional().openapi({ description: "Skipped steps in this track, counted by skip reason (e.g. fixture_unavailable, missing_test_controller, capability_unsupported). Absent when nothing was skipped." }),
+    })).optional().openapi({ description: "Latest-run per-track summary. A track with has_coverage_gap_skip=true has steps that were not exercised for a setup reason, such as a runner fixture gap (fixture_unavailable) or a missing comply_test_controller. The track may still pass." }),
+    coverage_incomplete: z.boolean().optional().openapi({ description: "True when any track in the latest run has a coverage-gap skip. Reported beside status, not folded into it: a passing run can have incomplete coverage, and storyboards that were not exercised do not count toward verification badges." }),
     streak_days: z.number().int().optional(),
     last_checked_at: z.string().nullable().optional(),
     last_passed_at: z.string().nullable().optional(),
@@ -1578,6 +1595,7 @@ export const ComplianceRunSchema = z
     tracks_skipped: z.number().int(),
     tracks_partial: z.number().int(),
     tracks_json: z.any(),
+    coverage_incomplete: z.boolean().optional().openapi({ description: "True when any track in this run has a coverage-gap skip (tracks_json[].has_coverage_gap_skip)." }),
     total_duration_ms: z.number().nullable(),
     triggered_by: z.string(),
     tested_at: z.string(),

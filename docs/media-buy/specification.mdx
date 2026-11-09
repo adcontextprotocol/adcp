@@ -111,8 +111,9 @@ boolean and array subset. Unrequested fields and numeric seller limits do not
 participate. Forecasts without concrete values describe the product's
 discovery/default scope; buyers rediscover with concrete `targeting_overlay`
 values for value-specific forecasts. Fixed prices and floors remain binding
-uniformly for supported selections, while price guidance remains non-binding.
-Sellers with value-dependent rates return a concretely targeted configured
+uniformly for supported selections, except for adjustments the selected fixed-price
+option declares in `price_adjustments`; price guidance remains non-binding.
+Sellers with other value-dependent rates return a concretely targeted configured
 product, split rate tiers into products, or withhold binding prices until
 concrete rediscovery; they never reuse a selected `pricing_option_id` at new
 terms.
@@ -368,16 +369,156 @@ Rules:
 - **Proposal execution.** Packages a seller derives from
   `create_media_buy.proposal_id` are not buyer-supplied, so the rejection rule
   above does not apply to them in 3.2. How a proposal carries these bindings is
-  tracked with per-account readiness for 3.3.
+  not yet specified; it is tracked in
+  [adcp#7763](https://github.com/adcontextprotocol/adcp/issues/7763).
 
-This surface does not report the caller's account state. When an account has
-several eligible event sources or catalogs, the buyer chooses one by binding it
-on the request. When it has several eligible connections, such as several
-connected pages, the seller applies its documented default. Per-account
-readiness — which resources the account already has, which one to pick, the
-binding for lead forms and messaging destinations, and proposal bindings — is
-tracked for AdCP 3.3 in
-[adcp#7763](https://github.com/adcontextprotocol/adcp/issues/7763).
+When the product declares `execution_requirements`, this surface does not
+report the caller's account state; [per-account execution readiness](#per-account-execution-readiness-experimental)
+does.
+
+### Per-account execution readiness (experimental)
+
+`execution_requirements` says what a product needs. Execution readiness says
+whether the caller's account has it and, when it has several, which to use. A
+seller using this experimental surface lists `media_buy.execution_readiness` in
+`experimental_features` on `get_adcp_capabilities`, and also lists
+`media_buy.execution_requirements`.
+
+A buyer sets `include_execution_readiness: true` on `get_products` together with
+an `account`. A seller that supports it returns a response-level
+`execution_readiness` map keyed by `product_id`:
+
+```json
+{
+  "cache_scope": "public",
+  "wholesale_feed_version": "wf_2026_10_06",
+  "execution_readiness": {
+    "version": "er_7f3a",
+    "evaluated_at": "2026-10-06T12:00:00Z",
+    "products": {
+      "social_app_installs": {
+        "readiness_status": "setup_required",
+        "requirements": [
+          {
+            "requirement": { "kind": "event_source", "event_types": ["app_install"] },
+            "readiness_status": "selection_required",
+            "binding_field": "packages[].optimization_goals[].event_sources[].event_source_id",
+            "candidates": [
+              { "resource_id": "es_app_main", "name": "Main app SDK" },
+              { "resource_id": "es_app_beta", "name": "Beta app SDK" }
+            ]
+          },
+          {
+            "requirement": { "kind": "catalog", "catalog_types": ["app"] },
+            "readiness_status": "ready",
+            "binding_field": "packages[].catalogs[]",
+            "resolved": { "resource_id": "cat_app_1", "name": "Acme app" }
+          },
+          {
+            "requirement": {
+              "kind": "downstream_connection",
+              "connection": { "connection_type": "publisher_identity", "scope": "identity", "required_for": ["create_media_buy"] }
+            },
+            "readiness_status": "setup_required",
+            "connection_state": {
+              "connection_type": "publisher_identity",
+              "provider": "social.example",
+              "scope": "identity",
+              "status": "missing",
+              "authorization_url": "https://social.example/connect/identity"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+The excerpt shows only the fields relevant here.
+
+Statuses, per requirement and rolled up per product:
+
+| Status | Meaning | Buyer action |
+|---|---|---|
+| `ready` | The account has exactly one suitable resource (for a connection, the one the seller would use is connected) | None beyond binding (below) |
+| `setup_required` | The account has none, or the connection is `missing`, `pending`, `expired`, or `revoked` | Create or restore it, for example with `sync_event_sources`, `sync_catalogs`, or `connection_state.authorization_url` |
+| `selection_required` | The account has several suitable resources | Choose one from `candidates[]` and bind it |
+| `input_required` | The seller cannot discover a suitable resource from the account | Supply one on the request, such as an inline catalog |
+| `unknown` | The seller could not read the account's resources | Depends on `unknown_reason`: `permission_denied` needs a human to fix the seller's grant on the account, `platform_unavailable` is worth retrying, `not_evaluated` means refetch fewer products. Meanwhile `create_media_buy` decides |
+
+Rules:
+
+- **One entry per declared requirement.** `requirement` echoes the product's
+  declared entry and MUST deep-equal an entry in its current
+  `execution_requirements[]`; a buyer whose cached product has no match holds a
+  stale feed and SHOULD refetch it. Only products that declare
+  `execution_requirements` get an entry. A missing entry means not evaluated,
+  not ready.
+- **Rollup.** A product's `readiness_status` is the first of `setup_required`,
+  `input_required`, `selection_required`, `unknown` that any requirement
+  reports, else `ready`: the most blocking state the seller could establish.
+  Buyers needing more MUST read `requirements[]`.
+- **Could not check is not lacking.** `unknown` carries `unknown_reason`
+  (`permission_denied`, `platform_unavailable`, or `not_evaluated`) and no
+  resources. A seller MUST NOT report `setup_required` for a resource it could
+  not read, and a buyer MUST NOT filter out or treat as not runnable a product
+  that is `unknown`. A seller MAY report products beyond its evaluation budget
+  as `unknown` with `not_evaluated`.
+- **`ready` does not waive binding.** For `event_source` and `catalog`, the
+  buyer still passes `resolved.resource_id` in `binding_field`; an unbound
+  requirement is `not_bound` per
+  [`execution-requirement-unmet.json`](https://adcontextprotocol.org/schemas/v3/error-details/execution-requirement-unmet.json).
+  `resolved` is required when such a requirement is `ready`.
+- **Candidates are directly usable.** A `resource_id` MUST be a value the
+  binding field accepts: the `event_source_id` returned by `sync_event_sources`
+  (including a seller-managed source) or a `catalog_id`. A seller whose
+  platform ID differs MUST return the AdCP-facing ID, never the raw platform ID.
+  `candidates[]` appears only when `readiness_status` is `selection_required`, lists
+  resources the seller has no evidence would fail the requirement (it MAY
+  include one whose event types it cannot verify, since some platforms do not
+  expose them), and never discloses another account's resources.
+- **Connections report one state.** A `downstream_connection` requirement
+  reports `connection_state`, the state of the connection the seller would use
+  (its documented default when several are connected), and its `readiness_status` derives
+  from `connection_state.status`: `connected` and `not_required` are `ready`; `missing`, `pending`,
+  `expired`, and `revoked` are `setup_required`; `unknown` is `unknown`. A
+  `missing`, `expired`, or `revoked` connection SHOULD include
+  `authorization_url` or `authorization_instructions`; `pending` MAY omit both. This
+  slice does not list several identities or let the buyer choose among them.
+  `selection_required` and `input_required` never apply to connections.
+- **Account-scoped and advisory.** The map appears only when the request set
+  `include_execution_readiness: true` and carried an `account` the caller is
+  authorized for; otherwise the seller omits it (an `account` that does not
+  resolve still returns `ACCOUNT_NOT_FOUND`). It covers only the products on the
+  response. `create_media_buy` still revalidates and rejects per
+  `execution-requirement-unmet.json` or `AUTHORIZATION_REQUIRED`, which echo the
+  same requirement.
+- **Seller cost.** Whether an account has a pixel, catalog, or connection is the
+  same answer for every product that needs it. Sellers SHOULD read it once per
+  account and requirement kind and stamp every product on the page.
+
+**Caching.** The map is not part of the `cache_scope` layer. It does not change
+`cache_scope`, `wholesale_feed_version`, or `pricing_version`, so a public
+wholesale catalog stays `cache_scope: "public"` when readiness is added.
+`execution_readiness.version` is an opaque token for the account's readiness,
+independent of both feed tokens. Buyers MUST NOT dedupe or cache the map under
+the public key; they key it by `(account, execution_readiness.version)`. Sellers
+MUST NOT put it in wholesale feed webhooks. It is omitted on `unchanged: true`
+responses, which carry no products, so refreshing readiness means refetching the
+page; conditional fetch of the map is not specified. `version` identifies the
+account's readiness state, not the page: equal versions MUST imply identical
+entries for any product present in both responses, and buyers merge pages by
+`product_id`.
+
+Not in this slice: `lead_form` and `messaging_destination` requirements and
+bindings (Meta and TikTok attach lead forms at the ad level, so placement on the
+creative is checked first), listing several identities and buyer choice among
+them (tracked with the identity model in
+[adcp#7782](https://github.com/adcontextprotocol/adcp/issues/7782)), how a
+proposal carries bindings, conditional fetch of the map, and readiness change
+notifications. Proposal-derived packages remain outside the `execution_requirements`
+rejection rule.
 
 ### Product identity absence and reach reporting (experimental)
 
@@ -411,6 +552,111 @@ every contributing package selected a product with
 `persistent_identifier: false`; mixed-product totals do not make a
 product-specific identity claim. Sellers use package or product-bound
 breakdowns to report and verify reach or frequency for mixed buys.
+
+### Match keys and cross-publisher frequency capping (experimental)
+
+A match key declares one identifier a party can resolve, the entity scopes it
+resolves at, and what it is used for
+([`core/match-key.json`](https://adcontextprotocol.org/schemas/latest/core/match-key.json)).
+Buyers read match keys before committing addressable spend, to learn whether a
+seller can apply their suppression, retargeting, attribution, and frequency
+caps on a given product. Sellers using match keys list `media_buy.match_keys`
+in `experimental_features`.
+
+| Field | Meaning |
+|---|---|
+| `uid_type` | Identifier type from `enums/uid-type.json`. Match keys draw from this enum only. `supported_identifier_types` (`hashed_email`, `hashed_phone`) remains the list of PII-derived identifiers that `sync_audiences` accepts, and is not a source of match keys. |
+| `vendor` | BrandRef domain of the graph or resolution vendor that produces the key at the declared scopes. Required when `uid_type` is `other`, when `scopes` include `households`, and when a `maid` or `publisher_first_party` key lists `individuals`. Those scopes always come from a graph, so the graph is named. |
+| `scopes` | One or more values from `enums/reach-unit.json`, excluding `custom`. A key that resolves at more than one scope lists each. |
+| `uses` | `audience_include`, `audience_exclude`, `frequency_cap`, `identity_match`, `conversion_attribution`. Retargeting is `audience_include` with a `crm` audience. |
+| `property_types` | Seller-wide entries only. The property types (`website`, `mobile_app`, `ctv_app`, …) on which the key resolves. Omitted means every property type the seller sells. |
+
+Match keys appear in three places:
+
+- **Seller-wide:** `get_adcp_capabilities` → `media_buy.supported_match_keys[]`.
+- **Per product:** `Product.identity.match_keys[]`. When present, it is
+  authoritative for that product. Every entry MUST be covered by a seller-wide
+  entry with the same `uid_type` and `vendor` whose `scopes` and `uses` include
+  it. Product-level keys inherit the product's `channels` and the property
+  types of the properties it sells. A seller whose resolution of a key
+  differs across those property types MUST split the product or omit the key.
+  `Product.identity` requires `persistent_identifier`, so a seller declaring
+  product-level keys also declares that. Sellers declaring
+  `Product.identity` also list `media_buy.product_identity`.
+- **TMP provider registration:** `match_keys[]` in the same shape, with
+  `uses: ["identity_match"]`. These entries add scope and vendor to
+  `uid_types`. Every `uid_type` they list MUST appear in `uid_types`, which
+  stays the router's routing and filtering input.
+
+Existing lists stay as the fallback for buyers that predate match keys. A
+`uid_type` declared for `audience_include` or `audience_exclude` MUST also
+appear in `audience_targeting.supported_uid_types`, and one declared for
+`conversion_attribution` MUST appear in `conversion_tracking.supported_uid_types`,
+when those lists are present. For a key with `frequency_cap`, every scope MUST
+appear in `frequency_capping.supported_per_units` when that list is present.
+
+#### Who enforces a cap
+
+| Layer | Who counts | Spans | Match-key use |
+|---|---|---|---|
+| Package `frequency_cap` | Seller | One package | `frequency_cap` |
+| MediaBuy `frequency_cap` | Seller | Every package in one buy | `frequency_cap` |
+| Cross-MediaBuy grouping (planned, #7490) | Seller | Several buys with one seller | `frequency_cap` |
+| TMP Identity Match | Buyer: the impression tracker writes cap state keyed by identity, seller agent, and package | Every seller whose products forward a compatible key | `identity_match` |
+
+Seller-enforced caps apply within one seller. The only place an impression can
+be counted across sellers is buyer-side, through
+[Identity Match frequency capping](/docs/trusted-match/identity-match-implementation).
+Both can apply to the same package with AND semantics: an impression serves
+only when every applicable cap allows it.
+
+`frequency_cap` means the seller counts impressions against the key when it
+enforces its own caps. `identity_match` means that, for this product, the
+seller's TMP router forwards the key to buyer-side Identity Match, so the
+buyer's tracker can count the product's impressions against caps that span
+sellers. A product-level key with `identity_match` requires
+`trusted_match.identity_match: true` on the product, and its `uid_type` SHOULD
+appear in `uid_types` of an Identity Match provider the product lists. When
+`persistent_identifier` is `false`, the product MUST NOT declare a key with
+`frequency_cap` or `identity_match`.
+
+`pairid` and `hashed_email` keys MUST NOT list `identity_match`. PAIR is
+publisher-scoped and rotates every 30 days. Unsalted hashed email in TMP widens
+the identity-leak surface; this restriction stays until
+[#8449](https://github.com/adcontextprotocol/adcp/issues/8449) is resolved. Both remain valid for audience and attribution uses.
+
+#### Compatibility across sellers
+
+Two match keys are compatible at scope `S` when:
+
+1. they have the same `uid_type`,
+2. both list `S` in `scopes`, and
+3. when both declare `vendor`, the vendor domains are equal. Because `vendor`
+   is required for `other` and for every graph-derived scope, two keys at
+   `households`, or two `other` keys, are compatible only under the same
+   vendor.
+
+A buyer planning a cap per `households` across sellers counts it only on
+products whose `identity_match` keys are compatible at `households` with a
+key the buyer's Identity Match provider declares. The cap is only as wide as
+that set of products. Products without a compatible key are still capped by
+any seller-enforced cap, but their impressions don't count toward the buyer's
+cross-seller cap.
+
+#### Freshness and privacy
+
+Match keys describe what a party can resolve now. Resolution can change without
+a spec change, for example when a browser or OS release blocks a resolution
+vendor's domains. A change to `supported_match_keys` is a material capability
+change: the seller advances `adcp.capability_changes.capabilities_version` and
+`last_modified` and, for subscribers, fires `capabilities.changed` with
+`/media_buy/supported_match_keys` in `changed_paths`. Buyers SHOULD NOT rely
+on a cached declaration past `cache_ttl_seconds`. A product-level change is a
+product change and follows the catalog's revision rules.
+
+A match key describes capability only. It MUST NOT carry match rates, audience
+sizes, coverage, or any per-user or per-graph data, and it does not promise the
+identifier is present on every impression.
 
 - **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy. A `media_buy_id` is a stable handle to any order in the seller's ad server that the authenticated account owns — not only orders originally booked via AdCP.
 
@@ -501,184 +747,6 @@ targeting with assignment replacement, or when an inline-only seller has no
 creative library. A targeting change that would orphan an assignment MUST be
 validated with its complete assignment replacement in the same facade update;
 `control_media_buy` followed by `sync_creatives` cannot provide that guarantee.
-
-### Definition pins
-
-`terms_digest` covers `commercial_terms`, but `commercial_terms` names some
-definitions that a third party publishes and can change after the proposal is
-committed: a publisher's format option, a placement, a collection, a data
-provider's signal. A pin records what the seller resolved when it authored the
-terms, so a buyer or seller can detect that a referenced definition changed even
-though `terms_digest` still verifies.
-
-Pins are `commercial_terms.definition_pins[]` entries
-([`definition-pin.json`](https://adcontextprotocol.org/schemas/latest/core/definition-pin.json)).
-Each carries `ref_kind`, a closed canonical `reference` identity object, a
-lowercase-hex SHA-256 `content_digest`, and an optional informational
-`source_version`.
-
-#### Covered set
-
-A covered reference is one of these, found in `commercial_terms.purchases[]`:
-
-| `ref_kind` | Where it occurs | Reference | Published entry |
-| --- | --- | --- | --- |
-| `publisher_format_option` | `format_option_refs[]` items with `scope: publisher` | `{ publisher_domain, format_option_id }` | Top-level `formats[]` of the publisher's `adagents.json` |
-| `publisher_placement` | `targeting_overlay.placement_selection.placement_refs[]` when `mode` is `selected`, for a `placement-identity` of `kind: publisher_ref` or a legacy `{ publisher_domain, placement_id }` that resolves in the publisher's `placements[]` | `{ publisher_domain, placement_id }` | `placements[]` |
-| `publisher_collection` | `targeting_overlay.collection_selection.collections[]`, one pin per `collection_ids[]` entry | `{ publisher_domain, collection_id }` | `collections[]` |
-| `data_provider_signal` | `targeting_overlay.signal_targeting_groups` entries, and the deprecated `signal_targeting`, whose `signal_ref` has `scope: data_provider` | `{ data_provider_domain, signal_id }` | `signals[]` of the data provider's `adagents.json` |
-
-These are not pinned: property lists and collection lists (buyer-managed and
-designed to change during a flight, with `list_applications` receipts as the
-evaluation record), product-local format options, seller-inline placements,
-product-scoped and signal-source signals (a seller would only be hashing and
-checking its own data), default-mode selections (`mode: default`), and the
-installment references in `purchases[].installments` (experimental,
-`media_buy.installment_selection`) — an installment is the seller's own
-published data, so a pin would again have it hashing and checking itself, and
-its schedule is expected to move, which is what `valid_until` and the
-reschedule flows exist for. The consequence is stated under
-[known limitations](/docs/reference/known-limitations#compact-product-lifecycle):
-`terms_digest` binds which slot identifiers were bought, not what is later
-published under them. A pin
-covers the entry as published, not the entries it names by ID: a placement pin
-does not pin the catalog format options that placement lists, which are pinned
-only when a purchase references them itself.
-
-#### Authoring and verification
-
-- A seller MUST emit one pin for every distinct covered reference in
-  `purchases[]` on every `new_media_buy` and `media_buy_update` draft and
-  revision, and MUST NOT emit such terms without the pins. Entries are unique by
-  `(ref_kind, reference)`, with `reference` compared by its JCS bytes, and
-  ordered by `ref_kind`, then by the JCS bytes of `reference`, both compared as
-  UTF-8 bytes, so equal terms always produce equal `terms_digest` values. An
-  amendment is a new commitment over the whole resulting envelope, so its pins
-  are issued at the current definitions; the prior accepted snapshot is
-  immutable and keeps its own pins. A `media_buy_cancellation` proposal commits
-  no new reference and carries no pins. Sellers emit pins, and
-  `definition_changed`, only to callers negotiating AdCP 3.3 or later.
-- Only sellers author pins. The `request_proposals`, `refine_proposals`,
-  `accept_proposal`, and `buy_products` inputs reject `definition_pins` with
-  `INVALID_REQUEST`; `check_governance` is exempt because it carries the
-  seller-authored proposal. A direct `buy_products` creates the seller-authored
-  pins and the accepted snapshot atomically.
-- A revision re-resolves every covered definition and issues fresh pins. A
-  committed proposal is term-preserving, so `refine_proposals` `finalize`
-  re-resolves each existing pin and verifies every pin in the batch **before**
-  taking any hold. If any pin fails, no hold is taken and the entry is
-  `outcome: unable` with `reason_code: definition_changed` and a required
-  `drifted_pins[]` naming each failing pin and the digest the definition
-  resolves to now; its own `definition_changed` takes precedence over
-  `batch_aborted`, which the otherwise-eligible siblings return. Only
-  `commercial_terms` is frozen; `forecast` may differ between a draft and its
-  committed successor.
-- `accept_proposal` re-verifies every pin **before** mutating any state, after
-  the cheaper proposal ID, digest, expiry, and authorization checks. A failing
-  pin returns `REFERENCE_DEFINITION_CHANGED`, one error per drifted pin, with
-  `error.field` naming the pin (for example `commercial_terms.definition_pins[2]`)
-  and `details.current_content_digest`. An idempotent replay of an acceptance
-  that already completed returns the stored result without re-verifying pins.
-  The seller fetches and compares outside the commit, performs no network I/O
-  while holding a lock, and commits only if the proposal state is still the one
-  it verified. `finalize` likewise runs its authorization and expiry checks
-  before any fetch.
-- Resolution uses a copy of the publisher's document no older than its own HTTP
-  cache validity and in any case no older than 300 seconds: a verifier
-  revalidates an older copy with a conditional request, and the
-  serve-stale-on-error fallback does not apply to pin verification. A verifier
-  fetches each distinct domain once per verification under an aggregate
-  deadline and follows the `adagents.json` location, `authoritative_location`,
-  redirect, and size rules unchanged. A document that was fetched and validated but no longer
-  contains the entry means the definition was withdrawn: that is drift, with
-  `current_content_digest` omitted. A document that cannot be fetched or
-  parsed is transient, not drift: the seller returns `SERVICE_UNAVAILABLE`
-  at task level without taking a hold or mutating state, with an error message
-  that does not expose the fetch target, resolver detail, or internal addresses.
-  Duplicate IDs in the
-  source array make the definition unresolvable. Document-level context outside
-  the entry (`properties[]`, `authorized_agents`, tag maps) is outside the pin.
-- Accepted terms retain their pins as the historical record. Post-acceptance
-  drift and remedy policy, retention of pinned content, and signal-source
-  signals are not specified in this version.
-- Private-list credentials, including `auth_token`, never appear in a pin.
-  Keeping them out of accepted commercial terms is specified separately from
-  this version's pins. A readback of accepted terms shows pins as the record of
-  what was resolved at commitment and makes no ongoing integrity claim.
-  `check_governance` carries a buyer-submitted proposal, so a governance agent
-  treats its pins as unverified claims.
-
-#### Definition pin preimage
-
-The preimage rules cannot change without making existing pins unverifiable, so
-the normative form is data:
-[`test-vectors/definition-pins/vectors.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/definition-pins/vectors.json)
-`projection_rules`. The algorithm is:
-
-1. Take the published entry exactly as parsed from the publisher's
-   `adagents.json`, resolved from the same source the seller used for the
-   reference. Apply no schema defaults; an absent member and a `null` member are
-   different. Every own member is hashed, including one literally named
-   `__proto__`. An entry that is not I-JSON ([RFC 7493](https://www.rfc-editor.org/rfc/rfc7493)),
-   such as one with a lone surrogate, a duplicate member name, a number that is
-   not finite or not exactly representable as an IEEE 754 double, nesting deeper
-   than 64 levels, or an entry or nested element that is not an object, has no
-   JCS form; a verifier treats that definition as unresolvable, which is drift.
-   Pins are computed only from public, unauthenticated sources.
-2. Remove the top-level members named in the kind's exclusion list below.
-   Exclusion applies only to top-level members, and to top-level members of each
-   element of a nested array. Deeper members stay verbatim.
-3. For each named set array present, de-duplicate its elements by JCS bytes and
-   sort them ascending by the UTF-8 bytes of their JCS serialization. A nested
-   array is a set array whose elements are projected first, either with another
-   kind's rules or with element rules given inline for that array (an exclusion
-   list and named set arrays of the element's own).
-4. Serialize with [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JCS),
-   compute SHA-256 over the UTF-8 bytes, and encode as lowercase hex with no
-   algorithm prefix.
-
-| `ref_kind` | Excluded members | Named set arrays |
-| --- | --- | --- |
-| `publisher_format_option` | `display_name`, `ext`, `publisher_domain`, `reference_renderer`, `sample_render_url`, `seller_preference` | `applies_to_channels`, `applies_to_property_ids`, `applies_to_property_tags`, `v1_format_ref` |
-| `publisher_placement` | `description`, `ext`, `name`, `presentation_ref`, `preview_provider`, `publisher_domain`, `tags` | `audio_distribution_types`, `channels`, `collection_ids`, `identifiers`, `property_ids`, `property_tags`, `social_placement_surfaces`, `sponsored_placement_types`, `video_placement_types`; `format_options[]` elements are projected as `publisher_format_option` and then treated as a set |
-| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` | `genre`; `distribution[]` elements are projected with `followers` excluded and then treated as a set |
-| `data_provider_signal` | `criteria_url`, `description`, `ext`, `last_updated`, `name`, `tags` | `allowed_values`, `consent_basis`, `countries`, `data_sources`, `id_types`, `policy_categories`, `restricted_attributes` |
-
-The exclusions are display text, presentation pointers, collection-card media
-(`images`, `sample_content`, and the collection page `url`), extension data,
-freshness timestamps, cast, tags, and the origin-dependent `publisher_domain`.
-Only a top-level `ext` is excluded (and the top-level `ext` of each element
-projected with another kind's rules); an `ext` deeper in the entry, such as
-inside `params` or a `distribution` entry, stays verbatim.
-Excluding `tags` is deliberate: authorization scope is verified through supply
-path, not through pins. Everything else, including members the AdCP schemas do
-not name, is part of the preimage. A rename or a new card thumbnail is not drift; a change to
-`content_rating`, creative `params`, a collection's `status`, or a signal's
-`segmentation_criteria` is. A refreshed platform-reported follower count
-(`distribution[].followers`) is not drift; a change to any other member of a
-`distribution` entry, such as an identifier, is. Publishers keep non-material
-metadata in `ext`.
-Arrays that are not named set arrays keep their published order. The table is
-frozen for each `ref_kind`; changing a rule requires a new `ref_kind` value,
-because the pin carries no projection version. The pointer members
-`presentation_ref`, `preview_provider`, `reference_renderer`, and `criteria_url`
-are excluded because they name where to find presentation or disclosure
-material, not what is being bought; a verified pin does not vouch for what those
-pointers serve, so consumers apply the SSRF profile when fetching them. The digest does not bind
-`ref_kind` or `reference`: the pin's own fields and `terms_digest` bind identity,
-and a digest is only ever compared with the digest of the same pin.
-
-Re-resolving a pin is a fetch of the publisher's `adagents.json` and follows the
-same safeguards as every other counterparty-controlled fetch (HTTPS, reserved
-address rejection, bounded redirects, no credentials; see the
-[SSRF profile](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf)).
-The pin's domains are seller-chosen, so a buyer verifying pins applies those
-rules rather than trusting the host named in a pin. `source_version` is never
-dereferenced.
-
-The vectors include a collection-mutation case: the pinned collection's
-`content_rating` changes after commitment, `terms_digest` still verifies, and
-the pin fails.
 
 ### Media Buy State Transitions
 
@@ -1237,7 +1305,6 @@ Common error codes:
 - `BIDDING_PLACEMENT_CONFLICT`: Media-buy/package bidding scopes cannot be represented by the provider's native campaign, package, or shared-strategy placement. Sellers MUST reject before mutation and identify conflicting scopes where safe.
 - `AMBIGUOUS_BIDDING_POLICY`: Canonical `bidding` and legacy bidding fields are both present on the same effective package. Sellers reject rather than choosing precedence.
 - `REQUOTE_REQUIRED`: An `update_media_buy` request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The `pricing_option` remains locked; the seller is declining the requested shape at that price. Distinct from `TERMS_REJECTED` (measurement) and `POLICY_VIOLATION` (content). Details SHOULD follow [`error-details/requote-required.json`](https://adcontextprotocol.org/schemas/v3/error-details/requote-required.json): `envelope_field` names the breached paths, `change_term_id` identifies the governing accepted right when present, and `decline_reason` SHOULD classify a structured seller-policy reason when the coarse dimension is safe to disclose. AdCP 3.2 buyers use the reason to inform refinement of `accepted_proposal_id`; some policies still require the buyer-safe message, a free-text `ask`, or human negotiation. Legacy 3.1 callers adjust the update, rediscover products or terms, add packages when available, or create a separate media buy.
-- `REFERENCE_DEFINITION_CHANGED`: A third-party-published definition pinned in `commercial_terms.definition_pins[]` no longer resolves to the pinned `content_digest`. `accept_proposal` returns it before mutating state. Details SHOULD follow [`error-details/reference-definition-changed.json`](https://adcontextprotocol.org/schemas/latest/error-details/reference-definition-changed.json). Recovery: refine the proposal to obtain fresh pins, review the changed definition, and finalize again. See [Definition pins](#definition-pins).
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_MISSING`: No credentials were presented. Recovery: correctable.
 - `AUTH_INVALID`: Credentials were presented but rejected (expired / revoked / malformed). Recovery: terminal.
@@ -1281,7 +1348,6 @@ A conformant Media Buy Protocol sales agent MUST:
 8. Omit `targeting_resolution` for exact matches and disclose only modifications for configured alternatives
 9. Treat placement, property, and collection selection as targeting and return complete effective package targeting on readback
 10. Return dimension-specific execution details, including demographics, inside the generic package `targeting_resolution` envelope
-11. For callers negotiating AdCP 3.3 or later, pin every covered third-party-published definition in `commercial_terms.definition_pins[]`, verify the pins at `finalize` and before `accept_proposal` mutates state, and never accept request-authored pins
 
 See [Required tasks by protocol](/docs/protocol/required-tasks) for a consolidated view of required and optional tasks across all AdCP protocols.
 

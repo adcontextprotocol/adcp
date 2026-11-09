@@ -122,10 +122,10 @@ const MCP_ROLE_PROFILE_TOOLS = {
 // version bump never needs a hand edit to the base lists above.
 const MCP_ROLE_PROFILE_LINE_TOOLS = {
   'media-buy': {
-    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue'],
+    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue', 'request_account'],
   },
   creative: {
-    '3.3.0': ['get_creative_addons'],
+    '3.3.0': ['request_account', 'get_creative_addons'],
   },
 };
 
@@ -2871,6 +2871,10 @@ async function main() {
     }
   }
 
+  // Record the inputs latest/ was built from, so tests and tooling that read
+  // the built tree (scripts/built-schemas.cjs) rebuild only when they change.
+  require('./built-schemas.cjs').writeBuildStamp();
+
   console.log('');
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
@@ -2911,7 +2915,8 @@ module.exports = {
 };
 
 if (require.main === module) {
-  main().catch(err => {
+  // One build of dist/schemas/latest at a time (scripts/built-schemas.cjs).
+  require('./built-schemas.cjs').withBuildLock(main).catch(err => {
     console.error('❌ Build failed:', err.message);
     process.exit(1);
   });

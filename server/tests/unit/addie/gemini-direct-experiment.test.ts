@@ -3,7 +3,12 @@ import type { GenerateContentParameters, GenerateContentResponse, Part } from '@
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(), recordCost: vi.fn(), checkCostCap: vi.fn(), notifyToolError: vi.fn(),
+  logError: vi.fn(),
 }));
+vi.mock('../../../src/logger.js', () => {
+  const logger = { error: mocks.logError, warn: vi.fn(), info: vi.fn(), debug: vi.fn(), child: () => logger };
+  return { logger, createLogger: () => logger };
+});
 vi.mock('../../../src/db/client.js', () => ({ query: mocks.query }));
 vi.mock('../../../src/db/addie-db.js', () => ({ AddieDatabase: class {} }));
 vi.mock('../../../src/addie/error-notifier.js', () => ({
@@ -108,6 +113,7 @@ beforeEach(() => {
   mocks.recordCost.mockReset().mockResolvedValue(undefined);
   mocks.checkCostCap.mockReset().mockResolvedValue({ ok: true });
   mocks.notifyToolError.mockReset();
+  mocks.logError.mockReset();
   const assignments = new Map<string, unknown>();
   mocks.query.mockReset().mockImplementation(async (sql: string, parameters: unknown[]) => {
     if (sql.startsWith('UPDATE addie_threads')) {
@@ -123,6 +129,20 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Gemini Direct production integration', () => {
+  it('includes safe adapter receipts in streaming alerts without exposing provider errors', async () => {
+    const f = fixture([]);
+    f.dispatch.mockImplementation(async function* () {
+      throw Object.assign(new Error('private provider request payload'), { status: 400 });
+    });
+    const { response } = await run(f.input);
+    expect(response?.text).toBe(answer.text);
+    expect(f.control).toHaveBeenCalledOnce();
+    expect(mocks.logError).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'google', model: GOOGLE_ROUTER_MODEL, kind: 'provider_transport', httpStatus: 400,
+    }), 'Addie Stream: Error during streaming');
+    expect(JSON.stringify(mocks.logError.mock.calls)).not.toContain('private provider request payload');
+  });
+
   it('reports exact recovery, observed containment, unresolved errors, and historical coverage separately', async () => {
     const results = await getGeminiDirectResults();
     const sql = String(mocks.query.mock.calls.at(-1)?.[0]);

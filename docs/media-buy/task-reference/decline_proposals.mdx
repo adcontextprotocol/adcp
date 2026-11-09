@@ -33,4 +33,6 @@ Each result has an explicit `declined` or `unable` outcome and preserves request
 
 When `opportunity` is present, every proposal must belong to its `opportunity_id`. Proposal outcomes are independent, but the opportunity update is applied only if every result is `declined`; any `unable` result leaves the opportunity unchanged.
 
+Declining a seller offer (experimental in AdCP 3.3, a proposal with `proposal_initiator: "seller"` against an accepted buy) works the same way: the signed terms of the accepted buy stand and the offer can no longer be accepted. An offer the buyer ignores lapses at `expires_at` (disposition `expired`) with no call and the signed terms stand, and declining an offer that has already lapsed returns `declined`. See [Seller offers](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers).
+
 The request does not carry `proposal_version`. Each `proposal_id` identifies one immutable commercial snapshot; [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) mints a new ID whenever terms change.

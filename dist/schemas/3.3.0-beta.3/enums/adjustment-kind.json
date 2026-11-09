@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/adjustment-kind.json",
+  "title": "Price Adjustment Kind",
+  "description": "Categorizes how a price adjustment affects the transaction",
+  "type": "string",
+  "enum": [
+    "fee",
+    "discount",
+    "commission",
+    "settlement",
+    "operator_fee"
+  ],
+  "enumDescriptions": {
+    "fee": "Increases the price the buyer pays and the revenue the seller receives. Applied between list_price and the seller's fixed_price (e.g., ad serving fees, data/targeting surcharges, brand safety verification).",
+    "discount": "Reduces the price the buyer pays and the revenue the seller receives. Applied between list_price and the seller's fixed_price (e.g., volume discounts, negotiated rates, early booking).",
+    "commission": "Does not change the buyer's price or budget. Represents a revenue split — the portion retained by an intermediary (e.g., agency commission). Budgets are managed inclusive of commissions.",
+    "settlement": "Does not change the committed price or budget. Applied at invoicing or payment time (e.g., cash discount for early payment). Informational for buyer agents; affects actual settlement amount.",
+    "operator_fee": "Increases the price the advertiser pays without changing the seller's revenue: a fee the account's operator (e.g., an agency buying for a brand) or its buying platform keeps out of the advertiser's budget. Like fee, rate is a markup on the running price. Applied after every fee and discount; the running price before the first operator_fee is the seller's price. Only the operator's buying platform adds it, in breakdowns returned to the operator and the advertiser; sellers MUST NOT author it."
+  }
+}

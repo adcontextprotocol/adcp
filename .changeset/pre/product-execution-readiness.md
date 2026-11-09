@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add experimental per-account execution readiness (`media_buy.execution_readiness`) for products that declare `execution_requirements`. A `get_products` request with `account` can set `include_execution_readiness: true` to receive a response-level `execution_readiness` map keyed by `product_id`, versioned independently of `wholesale_feed_version` so public wholesale catalogs keep `cache_scope: "public"`. Each product and each requirement reports `ready`, `setup_required`, `selection_required`, `input_required`, or `unknown` (seller could not check, distinct from the account lacking the resource), with account-scoped candidates whose `resource_id` is directly usable in the existing binding field, and the connection state for `downstream_connection` requirements. Adds the `execution-readiness-status` enum, `product-execution-readiness` and `execution-requirement-readiness` schemas, normative rules in the media-buy specification, and the `media_buy.execution_readiness` conformance scenario. Lead-form and messaging-destination requirements, buyer choice among several identities, and proposal bindings are not part of this change.

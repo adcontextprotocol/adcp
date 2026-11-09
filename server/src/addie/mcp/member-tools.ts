@@ -74,7 +74,6 @@ import {
 } from '../services/compliance-testing.js';
 import {
   listAllComplianceStoryboards,
-  getComplianceStoryboardById,
   createTestClient,
   testCapabilityDiscovery,
   type AgentProfile,
@@ -82,6 +81,7 @@ import {
   type StoryboardContext,
   type StoryboardStepResult,
 } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from '../../compliance/storyboard-cache.js';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
@@ -1754,7 +1754,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'request_brand_domain_challenge',
     description:
-      "Issue a DNS TXT challenge so the caller's selected organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. If the caller belongs to multiple organizations, or the current org is a personal workspace while the domain matches a company org, STOP and ask them to choose the company organization_id before issuing a challenge. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '<!-- STATUS: <code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain.",
+      "Issue a DNS TXT challenge so the caller's selected organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. If the caller belongs to multiple organizations, or the current org is a personal workspace while the domain matches a company org, STOP and ask them to choose the company organization_id before issuing a challenge. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '<!-- STATUS: <code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, manual_domain_upgrade, collision, invalid_domain, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain.",
     usage_hints: 'Use when the user explicitly asks to claim a domain they control but cannot link (cross-org dispute, "claim nike.com for us"). Do NOT call speculatively or as a status check. Include organization_id when the user has selected a specific org.',
     input_schema: {
       type: 'object',
@@ -1765,6 +1765,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
         organization_id: { type: 'string', description: 'Optional explicit WorkOS organization ID to issue the challenge under. Required when the caller must choose between a personal workspace and a company org.' },
         organization_name: { type: 'string', description: 'Optional explicit organization name. Must match exactly one active organization for the caller. Prefer organization_id when available.' },
+        replace_manual_domain: { type: 'boolean', description: 'True only after the user confirms a manual_domain_upgrade.' },
       },
       required: ['domain'],
     },
@@ -3423,9 +3424,19 @@ export function createMemberToolHandlers(
       return '<!-- STATUS: not_admin -->\n\nOnly your organization\'s admin or owner can claim a brand domain. Ask one of them to run this.';
     }
 
-    const result = await issueDomainChallenge({ workos: getWorkos(), brandDb, orgId, rawDomain });
+    const result = await issueDomainChallenge({
+      workos: getWorkos(),
+      brandDb,
+      orgId,
+      rawDomain,
+      replaceManualDomain: input.replace_manual_domain === true,
+    });
 
     if (!result.ok) {
+      if (result.code === 'manual_domain_upgrade') {
+        // Anti-loop: replacing the domain has a cost, so the user decides.
+        return `<!-- STATUS: manual_domain_upgrade -->\n\n${result.message}\n\n**Stop here.** Ask the user whether to go ahead before calling again with \`replace_manual_domain: true\`.`;
+      }
       if (result.code === 'collision') {
         return `<!-- STATUS: collision -->\n\n${rawDomain} is already registered by another organization. If that's wrong (an acquisition or naming overlap), let me file a brand-ownership escalation for the team to review.`;
       }
@@ -3514,6 +3525,9 @@ export function createMemberToolHandlers(
         // Anti-loop: tell the model to STOP, not to retry. The user should
         // confirm the record is live before another attempt.
         return `<!-- STATUS: still_pending -->\n\nWorkOS hasn't found the DNS TXT record yet. ${result.message}\n\n**Stop here. Do NOT call verify_brand_domain_challenge again.** Ask the user to confirm the record is published and resolves correctly (a \`dig TXT <record-name>\` from their machine should show the verification value), then wait for them to ask before retrying.`;
+      }
+      if (result.code === 'manual_domain' || result.code === 'verified_elsewhere') {
+        return `<!-- STATUS: ${result.code} -->\n\n${result.message}`;
       }
       return `<!-- STATUS: workos_error -->\n\nVerification failed: ${result.message}`;
     }
@@ -5685,7 +5699,7 @@ export function createMemberToolHandlers(
     const runTarget = targetFromInput(input);
     const runOptions = hostedComplianceOptions(runTarget);
 
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) {
       const all = listAllComplianceStoryboards(runOptions);
       const ids = all.map(s => `\`${s.id}\``).join(', ');
@@ -5765,7 +5779,7 @@ export function createMemberToolHandlers(
     }
 
     const runOptions = hostedComplianceOptions(runTarget);
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
 
     try {
@@ -6051,7 +6065,7 @@ export function createMemberToolHandlers(
     }
 
     const runOptions = hostedComplianceOptions(runTarget);
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
     // Resolve stepId: if caller passed a phase ID, remap to first step of that phase.

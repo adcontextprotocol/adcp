@@ -18,7 +18,14 @@ import {
 } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
-import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import {
+  clearAccountStore,
+  clearAccountStoreForSession,
+  clearProcessLocalAccountStore,
+  callerAccountStates,
+  handleSyncAccounts,
+  seedAccountFixture,
+} from '../../src/training-agent/account-handlers.js';
 import {
   buildCreativeComplyConfig,
   buildGovernanceComplyConfig,
@@ -254,10 +261,11 @@ describe('comply_test_controller', () => {
         'query_provenance_audit_observations',
         'evaluate_distributed_brand_resolution',
         'verify_governance_token',
+        'reporting_subscription_probe',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(29);
+      expect(scenarios.length).toBe(30);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -362,6 +370,20 @@ describe('comply_test_controller', () => {
       });
       expect(seededAccount.result.success).toBe(true);
 
+      // A normal update must retain fixture origin even when it rehydrates
+      // the account into the brand-owned public-handler partition.
+      const updatedAccount = await simulateCallTool(server, 'sync_accounts', {
+        accounts: [{
+          brand: originalAccountFixture.brand,
+          operator: originalAccountFixture.operator,
+          billing: originalAccountFixture.billing,
+          sandbox: true,
+        }],
+      });
+      expect(updatedAccount.result.accounts).toEqual([
+        expect.objectContaining({ account_id: 'reset_account_fixture', action: 'updated' }),
+      ]);
+
       const syncedCatalog = await simulateCallTool(server, 'sync_catalogs', {
         account: ACCOUNT,
         catalogs: [{ catalog_id: 'reset_catalog_fixture', name: 'Before reset', items: [] }],
@@ -388,8 +410,36 @@ describe('comply_test_controller', () => {
       });
       expect(reseededAccount.result.success).toBe(true);
 
+      const listed = await simulateCallTool(server, 'list_accounts', { account: { account_id: 'reset_account_fixture' } });
+      expect(listed.result.accounts).toEqual([
+        expect.objectContaining({ account_id: 'reset_account_fixture', status: 'paused' }),
+      ]);
+
       const catalogsAfterReset = await simulateCallTool(server, 'sync_catalogs', { account: ACCOUNT });
       expect(catalogsAfterReset.result.catalogs).toEqual([]);
+    });
+
+    it('preserves ordinary accounts and other callers or seed sessions when resetting fixtures', async () => {
+      const owner: TrainingContext = { mode: 'open', principal: 'reset-owner' };
+      const other: TrainingContext = { mode: 'open', principal: 'reset-other' };
+      const otherSession: TrainingContext = { ...owner, mode: 'training', userId: 'other-user', moduleId: 'other-module' };
+      const seed = (ctx: TrainingContext, id: string) => seedAccountFixture({ params: {
+        account_id: id,
+        fixture: { brand: { domain: `${id}.example` }, operator: 'buyer.example', sandbox: true },
+      } }, ctx);
+      const ordinary = await handleSyncAccounts({ accounts: [{
+        brand: { domain: 'ordinary-reset.example' }, operator: 'buyer.example', billing: 'operator', sandbox: true,
+      }] }, owner) as { accounts: Array<{ account_id: string }> };
+      const ordinaryId = ordinary.accounts[0].account_id;
+      expect(await seed(owner, 'fixture-owner')).toMatchObject({ success: true });
+      expect(await seed(other, 'fixture-other')).toMatchObject({ success: true });
+      expect(await seed(otherSession, 'fixture-session')).toMatchObject({ success: true });
+      await clearAccountStoreForSession(sessionKeyFromArgs({}, owner.mode), owner.principal);
+      clearProcessLocalAccountStore();
+      const owned = (await callerAccountStates(owner)).map(account => account.accountId);
+      expect(owned).toEqual(expect.arrayContaining([ordinaryId, 'fixture-session']));
+      expect(owned).not.toContain('fixture-owner');
+      expect((await callerAccountStates(other)).map(account => account.accountId)).toEqual(['fixture-other']);
     });
   });
 

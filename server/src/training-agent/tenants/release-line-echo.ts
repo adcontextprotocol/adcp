@@ -5,6 +5,7 @@ import {
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from '../types.js';
+import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
 
 type ResponseEnhancer = NonNullable<CreateAdcpServerFromPlatformOptions['responseEnhancer']>;
 
@@ -39,7 +40,8 @@ export function runWithReleaseLineEcho<T>(body: unknown, fn: () => T): T {
  * structured result and its JSON text mirror agree with the negotiated
  * release. Inert once the current bundle is the release line itself.
  */
-export const releaseLineEchoEnhancer: ResponseEnhancer = (response) => {
+export const releaseLineEchoEnhancer: ResponseEnhancer = (response, context) => {
+  echoPreview(response, context);
   if (servingReleaseLine.getStore() !== true) return;
   const structured = (response as { structuredContent?: unknown }).structuredContent;
   if (!structured || typeof structured !== 'object' || Array.isArray(structured)) return;
@@ -50,3 +52,24 @@ export const releaseLineEchoEnhancer: ResponseEnhancer = (response) => {
   record.adcp_version = TRAINING_AGENT_CURRENT_ADCP_RELEASE;
   if (textMirrorsStructured && first) first.text = JSON.stringify(record);
 };
+
+/**
+ * A response served at the opt-in preview echoes it (versioning.mdx: the echo
+ * names the release served). The SDK stamps the echo on framework tools; the
+ * sales tenant's custom tools (list_accounts, request_account, get_principal,
+ * ...) carry none, so add it there. Stable responses are left as they are.
+ */
+function echoPreview(
+  response: Parameters<ResponseEnhancer>[0],
+  context: Parameters<ResponseEnhancer>[1],
+): void {
+  if (!TRAINING_AGENT_PREVIEW_ADCP_VERSION || context?.servedAdcpVersion !== TRAINING_AGENT_PREVIEW_ADCP_VERSION) return;
+  const structured = (response as { structuredContent?: unknown }).structuredContent;
+  if (!structured || typeof structured !== 'object' || Array.isArray(structured)) return;
+  const record = structured as Record<string, unknown>;
+  if (record.adcp_version !== undefined) return;
+  const first = Array.isArray(response.content) ? response.content[0] as { type?: unknown; text?: unknown } | undefined : undefined;
+  const textMirrorsStructured = first?.type === 'text' && first.text === JSON.stringify(record);
+  record.adcp_version = TRAINING_AGENT_PREVIEW_ADCP_VERSION;
+  if (textMirrorsStructured && first) first.text = JSON.stringify(record);
+}

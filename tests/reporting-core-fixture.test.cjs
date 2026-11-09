@@ -7,6 +7,9 @@ const assert = require('node:assert/strict');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
@@ -18,10 +21,10 @@ async function compile(uri) {
     allErrors: true,
     strict: false,
     discriminator: true,
-    loadSchema: async ref => readSchema(ref),
+    loadSchema: async ref => readBuiltSchema(ref),
   });
   addFormats(ajv);
-  return ajv.compileAsync(readSchema(uri));
+  return ajv.compileAsync(readBuiltSchema(uri));
 }
 
 // Core keeps a fixed revision-binding JCS/SHA-256 digest, but does not carry

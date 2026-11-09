@@ -137,6 +137,10 @@ components:
         brand_manifest:
           type: object
           additionalProperties: {}
+        brand:
+          type: object
+          additionalProperties: {}
+          description: Complete brand entry selected from the same source as this response, retaining brand.json field shapes including localized names, tagline, fonts, colors, and tone. A portfolio contributes only the uniquely selected inline entry; a canonical document contributes the brand document itself. Absent for unresolved/ambiguous entries and agent-only or unexpanded pointer documents. Existing brand_manifest semantics are unchanged; brand is identity data, not additional relationship authorization.
         source:
           type: string
           enum:
@@ -262,6 +266,14 @@ components:
         claimed_house_domain:
           type: string
           description: Unilateral parent claim from the brand's own document. Not trust-extending. Present for `leaf_only` and `unverifiable`.
+        house_link:
+          type: string
+          enum:
+            - confirmed
+            - house_declared
+            - brand_declared
+            - inferred
+          description: "Present when the list is filtered by `house_domain`: how this brand is known to belong to that house. `confirmed` means both sides publish the link or the brand redirects to the house, and is the only value that extends trust. `house_declared` means the house's own manifest lists the brand and the house has shown it controls its domain. `brand_declared` means the brand's own brand.json names the house. `inferred` means an enrichment or community record links them."
       required:
         - domain
         - source
@@ -797,13 +809,21 @@ components:
                 type: number
               has_coverage_gap_skip:
                 type: boolean
+              skipped_by_reason:
+                type: object
+                additionalProperties:
+                  type: integer
+                description: Skipped steps in this track, counted by skip reason (e.g. fixture_unavailable, missing_test_controller, capability_unsupported). Absent when nothing was skipped.
             required:
               - track
               - status
               - scenario_count
               - passed_count
               - duration_ms
-          description: Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller.
+          description: Latest-run per-track summary. A track with has_coverage_gap_skip=true has steps that were not exercised for a setup reason, such as a runner fixture gap (fixture_unavailable) or a missing comply_test_controller. The track may still pass.
+        coverage_incomplete:
+          type: boolean
+          description: "True when any track in the latest run has a coverage-gap skip. Reported beside status, not folded into it: a passing run can have incomplete coverage, and storyboards that were not exercised do not count toward verification badges."
         streak_days:
           type: integer
         last_checked_at:
@@ -4385,13 +4405,21 @@ components:
                 type: number
               has_coverage_gap_skip:
                 type: boolean
+              skipped_by_reason:
+                type: object
+                additionalProperties:
+                  type: integer
+                description: Skipped steps in this track, counted by skip reason (e.g. fixture_unavailable, missing_test_controller, capability_unsupported). Absent when nothing was skipped.
             required:
               - track
               - status
               - scenario_count
               - passed_count
               - duration_ms
-          description: Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller.
+          description: Latest-run per-track summary. A track with has_coverage_gap_skip=true has steps that were not exercised for a setup reason, such as a runner fixture gap (fixture_unavailable) or a missing comply_test_controller. The track may still pass.
+        coverage_incomplete:
+          type: boolean
+          description: "True when any track in the latest run has a coverage-gap skip. Reported beside status, not folded into it: a passing run can have incomplete coverage, and storyboards that were not exercised do not count toward verification badges."
         streak_days:
           type: integer
         last_checked_at:
@@ -5554,6 +5582,11 @@ components:
                 incomplete_bundle_count:
                   type: integer
                   minimum: 0
+                not_applicable_universal_bundle_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Universal bundles left partial only because the agent advertises none of the tools for a surface it does not declare. They do not count as incomplete.
                 relevant_failure_count:
                   type: integer
                   minimum: 0
@@ -5743,6 +5776,9 @@ components:
         tracks_partial:
           type: integer
         tracks_json: {}
+        coverage_incomplete:
+          type: boolean
+          description: True when any track in this run has a coverage-gap skip (tracks_json[].has_coverage_gap_skip).
         total_duration_ms:
           type:
             - number
@@ -7112,7 +7148,7 @@ paths:
     get:
       operationId: listBrands
       summary: List brands
-      description: List all brands in the registry with optional search, pagination, and source filter.
+      description: List all brands in the registry with optional search, pagination, source and house filters.
       tags:
         - Brand Resolution
       parameters:
@@ -7120,6 +7156,14 @@ paths:
             type: string
           required: false
           name: search
+          in: query
+        - schema:
+            type: string
+            example: pg.com
+            description: "List the brands linked to this house by any evidence, each with a `house_link` saying how the link is known: `confirmed` (both sides, or the brand redirects to the house), `house_declared` (the house lists the brand in its own manifest and has shown it controls its domain), `brand_declared` (the brand names the house in its own brand.json) or `inferred` (an enrichment or community record). Only `confirmed` extends trust. `stats` honours the filter, and the response adds the house's own record as `house`."
+          required: false
+          description: "List the brands linked to this house by any evidence, each with a `house_link` saying how the link is known: `confirmed` (both sides, or the brand redirects to the house), `house_declared` (the house lists the brand in its own manifest and has shown it controls its domain), `brand_declared` (the brand names the house in its own brand.json) or `inferred` (an enrichment or community record). Only `confirmed` extends trust. `stats` honours the filter, and the response adds the house's own record as `house`."
+          name: house_domain
           in: query
         - schema:
             type: integer
@@ -7189,11 +7233,30 @@ paths:
                       - houses
                       - sub_brands
                       - with_manifest
+                  house:
+                    type:
+                      - object
+                      - "null"
+                    properties:
+                      domain:
+                        type: string
+                        example: pg.com
+                      brand_name:
+                        type: string
+                        example: Procter & Gamble
+                      verified:
+                        type: boolean
+                        description: The house has shown it controls its domain. Only a verified house's manifest produces `house_declared` links.
+                    required:
+                      - domain
+                      - brand_name
+                      - verified
+                    description: "Present when `house_domain` is set: the house's own registry record, or null when the registry has no public record for it."
                 required:
                   - brands
                   - stats
         "400":
-          description: Invalid source filter value
+          description: Invalid source filter, a house_domain that is not a domain, or a parameter given more than once
           content:
             application/json:
               schema:

@@ -122,6 +122,10 @@ vi.mock('../../src/services/verification-profile-shadow.js', () => ({
   deriveVerificationProfileShadowAssessment: mocks.deriveVerificationProfileShadowAssessment,
 }));
 
+vi.mock('../../src/services/verification-profile-tool-obligations.js', () => ({
+  undeclaredSurfaceMissingToolStoryboards: () => new Set<string>(),
+}));
+
 vi.mock('../../src/notifications/compliance.js', () => ({
   notifyComplianceChange: vi.fn(),
   notifyComplianceTimeout: vi.fn(),

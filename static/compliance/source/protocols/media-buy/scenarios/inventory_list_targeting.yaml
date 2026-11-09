@@ -84,8 +84,6 @@ phases:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_inventory_list_targeting_discover_product_get_products_brief"
           buying_mode: "brief"
           brief: "Outdoor lifestyle programming. Q3 flight, $30K budget."
-          filters:
-            is_fixed_price: true
           required_overlay_support:
             property_list: true
           account:
@@ -110,8 +108,8 @@ phases:
             path: "products[0].product_id"
             description: "Product has a product_id"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "The captured pricing option identifies either fixed pricing or an auction option; the runner supplies the auction bid from discovery"
 
   - id: create_with_property_list
     title: "Create media buy with property_list targeting"

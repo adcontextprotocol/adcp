@@ -24,7 +24,7 @@ import type { ToolArgs, TrainingContext } from '../../src/training-agent/types.j
 const FIELD = 'start_requires_all_creatives_approved';
 const ACCOUNT = { brand: { domain: 'nova-start-policy.example' }, operator: 'pinnacle-agency.example', sandbox: true };
 const BRAND = { domain: 'nova-start-policy.example' };
-const CANDIDATE_CTX: TrainingContext = { mode: 'open', servedAdcpVersion: '3.3-beta.0' };
+const CANDIDATE_CTX: TrainingContext = { mode: 'open', servedAdcpVersion: '3.3-beta.1' };
 const STABLE_CTX: TrainingContext = { mode: 'open', servedAdcpVersion: '3.2' };
 const PRODUCT = { product_id: 'start_policy_display', pricing_option_id: 'fixed_cpm' };
 type Result = Record<string, unknown>;

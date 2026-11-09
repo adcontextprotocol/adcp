@@ -42,7 +42,7 @@ function fixture(responses: Array<GenerateContentResponse | Error> = [receipt()]
     if (!response || response instanceof Error) throw response ?? new Error('No response');
     return response;
   });
-  const provider = new GoogleGenerateContentProvider('unused', { models: {
+  const provider = GoogleGenerateContentProvider.forProductionResponses('unused', { models: {
     generateContent: dispatch,
     generateContentStream: async () => (async function* () { yield await dispatch(); })(),
   } });
@@ -110,6 +110,23 @@ describe('Global response provider policy', () => {
     expect(checkpointed).toBe(true);
   });
 
+  it.each(['stream', 'json'] as const)('preserves the actual redirected Google identity without falling back (%s)', async delivery => {
+    vi.stubEnv('ADDIE_RESPONSE_AUTOMATIC_FALLBACK', 'true');
+    const f = fixture([{ ...receipt(), modelVersion: 'gemini-3.8-flash' } as GenerateContentResponse]);
+    const selected = responseClient(f.client, 'web');
+    const result = delivery === 'json'
+      ? await selected.processMessage('Hello', [], undefined, undefined, f.options)
+      : (await collect(selected.processMessageStream('Hello', [], undefined, f.options)))
+        .find(event => event.type === 'done')?.response;
+    expect(result?.model_execution).toMatchObject({
+      source: 'provider', requested_provider: 'google', requested_model: GOOGLE_ROUTER_MODEL,
+      provider: 'google', model: 'gemini-3.8-flash', model_resolution: 'provider_canonicalized', fallback_reason: null,
+    });
+    expect(f.dispatch).toHaveBeenCalledOnce();
+    expect(f.fallback).not.toHaveBeenCalled();
+    expect(f.fallbackStream).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])('does not bypass the cost cap, even with fallback enabled=%s', async enabled => {
     vi.stubEnv('ADDIE_RESPONSE_AUTOMATIC_FALLBACK', String(enabled));
     mocks.checkCostCap.mockResolvedValue({ ok: false, reason: 'cap_exceeded' });
@@ -138,6 +155,29 @@ describe('Global response provider policy', () => {
     }
     expect(f.dispatch).toHaveBeenCalledTimes(1);
     expect(f.health.acquire('anthropic', 'chat').allowed).toBe(true);
+  });
+
+  it.each(['stream', 'json'] as const)('uses Sonnet during Google prepayment exhaustion without redispatching Gemini (%s)', async delivery => {
+    vi.stubEnv('ADDIE_RESPONSE_AUTOMATIC_FALLBACK', 'true');
+    const f = fixture([Object.assign(new Error('Your prepayment credits are depleted.'), { status: 402 })]);
+    for (let turn = 0; turn < 2; turn++) {
+      const selected = responseClient(f.client, 'web');
+      const result = delivery === 'json'
+        ? await selected.processMessage('Hello', [], undefined, undefined, f.options)
+        : (await collect(selected.processMessageStream('Hello', [], undefined, f.options)))
+          .find(event => event.type === 'done')?.response;
+      expect(result?.model_execution).toMatchObject({
+        requested_provider: 'google', provider: 'anthropic', model_resolution: 'fallback',
+      });
+      expect(result?.text).toBe(answer.text);
+    }
+    expect(f.dispatch).toHaveBeenCalledTimes(1);
+    expect(f.fallback.mock.calls.length + f.fallbackStream.mock.calls.length).toBe(2);
+    expect(f.health.acquire('google', 'chat')).toMatchObject({
+      allowed: false, category: 'billing_exhausted',
+    });
+    expect(f.health.acquire('anthropic', 'chat').allowed).toBe(true);
+    expect(f.action).not.toHaveBeenCalled();
   });
 
   it.each(['stream', 'json'] as const)('falls back only before action reservation in %s delivery', async delivery => {

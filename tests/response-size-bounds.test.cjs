@@ -145,6 +145,17 @@ describe('client response-size bound (security.mdx)', () => {
     assert.match(body, /backstop for a path with no cap of its own/i);
   });
 
+  it('confines the capabilities budget to the RFC 9421 profile and points large catalogs at Web Bot Auth (#8198)', () => {
+    const rs = read(RESPONSE_SIZE);
+    assert.match(rs, /binds only the discovery path of the \[RFC 9421 signing profile\]/);
+    assert.match(rs, /adds no way around it to that profile/);
+    assert.match(rs, /Adopt the \[Web Bot Auth profile\][^]*keep the capabilities document under 64 KiB/);
+    assert.doesNotMatch(rs, /scope: "signing_discovery"/, 'no request field was added');
+    const sec = read(SECURITY);
+    assert.match(sec, /\*\*The capabilities budget binds this path only\.\*\*/);
+    assert.match(sec, /3\.x does not add a way around the limit to the RFC 9421 profile/);
+  });
+
   it('points large-catalog producers at pagination rather than raised buyer limits', () => {
     assert.match(body, /it does not ask buyers to raise their limits/i);
   });
@@ -312,9 +323,12 @@ describe('pagination guidance (managing-response-size.mdx)', () => {
     // with agents the spec calls conformant.
     assert.match(body, /No normative cap exists/);
     assert.match(body, /MUST NOT reject an agent card at 64 KiB/);
-    // The capabilities figure binds signers, not everyone.
-    assert.match(body, /Binding on any agent that signs/);
-    assert.match(body, /purely non-signing agent is bounded only by the client default/i);
+    // The structural bounds are the limit; the capabilities figure is a
+    // receiver backstop, and binds as a fetch budget on RFC 9421 signers only (#8198).
+    assert.match(body, /Its structural bounds are the protocol's limit on the response\. `MAX_CAPABILITIES_BYTES` is a receiver backstop, not a design target/);
+    assert.match(body, /Binding only on an agent that signs under that profile/);
+    assert.match(body, /does not sign, is bounded by the structural limits\. Its receivers may still apply a backstop around 64 KiB at the HTTP or gateway layer/i);
+    assert.match(body, /agents MUST NOT design to a byte figure/);
   });
 });
 

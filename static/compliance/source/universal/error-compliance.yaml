@@ -1,5 +1,5 @@
 id: error_compliance
-version: "1.0.0"
+version: "1.0.1"
 title: "Error handling and compliance"
 category: error_compliance
 summary: "Validates that agents return properly structured AdCP errors with correct codes, recovery hints, and transport bindings."
@@ -9,6 +9,10 @@ requires:
 
 required_tools:
   - get_products
+
+requires_capability:
+  path: supported_protocols
+  contains: media_buy
 
 narrative: |
   Every AdCP agent must handle invalid input gracefully. When a buyer sends a negative budget,

@@ -1,5 +1,6 @@
 'use strict';
 
+require('./helpers/ajv-maglev-guard.cjs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');

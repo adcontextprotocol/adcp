@@ -1882,6 +1882,7 @@ describe('fixed cross-provider trace suite', () => {
     expect(isGoogleRouterModelRevision(GOOGLE_ROUTER_MODEL)).toBe(true);
     expect(isGoogleRouterModelRevision('gemini-3.7-flash-20260801')).toBe(true);
     for (const model of [
+      'gemini-3.8-flash',
       'gemini-3.7-flash-00000000',
       'gemini-3.7-flash-99999999',
       'gemini-3.7-flash-20260230',

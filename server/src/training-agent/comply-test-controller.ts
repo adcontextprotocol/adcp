@@ -9,6 +9,8 @@
  * `TestControllerStore` bound to our JSONB-persisted `SessionState`.
  */
 
+import { FORCE_HOLD_UNAVAILABLE, forceHoldUnavailable, holdsServed } from './holds/service.js';
+import { promoteStagedUpdate, stagedOnRejection } from './live-creative-updates.js';
 import {
   TestControllerError,
   SESSION_ENTRY_CAP,
@@ -38,6 +40,7 @@ import type {
 import {
   atLeastAdcpVersion,
   supportsAccountChangeFeed,
+  supportsAccountSurfaces33,
   supportsGetProductsRejected,
   supportsReliableReporting,
   supportsSalesFixedRate,
@@ -78,6 +81,7 @@ import {
   mintWrongAudDemoToken,
 } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { handleSeedCollection, SEED_COLLECTION_SCENARIO } from './collections/seed-collection.js';
 import {
   getSharedAccountCreative,
   removeSharedAccountCreative,
@@ -92,6 +96,8 @@ import {
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
 import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
+import { resetAccountRequests } from './account-requests.js';
+import { handleReportingSubscriptionProbe, REPORTING_SUBSCRIPTION_PROBE, resetReportingSubscriptionProbe } from './subscription-probe.js';
 import {
   taskRegistryNamespaceForTenant,
   type TaskRegistryTenant,
@@ -874,6 +880,62 @@ async function emitCreativeStatusChanged(
   }
 }
 
+/**
+ * Experimental (creative.live_updates): report the review outcome of a staged
+ * update to subscribers that registered `creative.staged_update_changed`. The
+ * creative's status does not transition on a staged outcome, so this never
+ * rides on `creative.status_changed`.
+ */
+async function emitCreativeStagedUpdateChanged(
+  sessionKey: string,
+  principal: string | undefined,
+  creative: CreativeState,
+  outcome: 'promoted' | 'rejected',
+  creativeStatus: string,
+  rejectionReason?: string,
+): Promise<void> {
+  const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.staged_update_changed', principal, creative.accountId, creative.accountRef);
+  if (subscribers.length === 0) return;
+  const firedAt = new Date().toISOString();
+  const notificationId = `su_${creative.creativeId}_${randomUUID()}`;
+  for (const subscriber of subscribers) {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: notificationId,
+      notification_type: 'creative.staged_update_changed',
+      fired_at: firedAt,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+      creative_id: creative.creativeId,
+      outcome,
+      ...(outcome === 'rejected' && rejectionReason && { rejection_reason: rejectionReason }),
+      creative_status: creativeStatus,
+      observed_at: firedAt,
+      initiator: 'seller',
+    };
+    const activityBase = {
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      fired_at: firedAt,
+      notification_type: 'creative.staged_update_changed',
+      payload_size_bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+    } as const;
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: 'creative.staged_update_changed',
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
+    } catch (err) {
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, undefined, err);
+    }
+  }
+}
+
 function recordCreativeWebhookActivity(
   creative: CreativeState,
   record: NonNullable<CreativeState['webhookActivity']>[number],
@@ -964,6 +1026,46 @@ function createStore(
       }
 
       const prev = creative.status;
+      let stagedRejectionStops = false;
+      // A pending staged update is the review in flight: approved promotes it,
+      // rejected rejects it under the seller's on_rejection policy.
+      // A rejected staged update is not under review: forcing a status then
+      // acts on the serving version as usual.
+      if (creative.stagedUpdate?.status === 'pending_review' && prev === 'approved' && (status === 'approved' || status === 'rejected')) {
+        if (status === 'rejected' && !rejectionReason) {
+          throw new TestControllerError('INVALID_PARAMS', 'rejection_reason is required when status = rejected', prev);
+        }
+        if (status === 'rejected' && stagedOnRejection() === 'stops') {
+          delete creative.stagedUpdate;
+          stagedRejectionStops = true;
+        } else {
+          if (status === 'approved') promoteStagedUpdate(creative);
+          else creative.stagedUpdate = { ...creative.stagedUpdate, status: 'rejected', rejectionReason };
+          const stagedAccountId = creative.accountId
+            ?? resolveAccountIdForRef(sessionKey, principal, creative.accountRef);
+          const outcome = status === 'approved' ? 'promoted' : 'rejected';
+          if (stagedAccountId) {
+            upsertSharedAccountCreative(stagedAccountId, creative);
+            const change = recordAccountChange(principal, {
+              resource: { type: 'creative', account_id: stagedAccountId, resource_id: creativeId },
+              action: 'updated',
+              origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+              changed_paths: outcome === 'promoted' ? ['/manifest', '/staged_update'] : ['/staged_update'],
+              repair: { task: 'list_creatives' },
+              reason: outcome === 'promoted' ? 'review_passed' : 'review_failure',
+              summary: `Connected training platform ${outcome} a staged creative update.`,
+            });
+            await emitAccountChangeRecordedWebhook(principal, change);
+          }
+          await emitCreativeStagedUpdateChanged(sessionKey, principal, creative, outcome, 'approved', rejectionReason);
+          return {
+            success: true,
+            previous_state: prev,
+            current_state: 'approved',
+            message: `Staged update for creative ${creativeId} ${outcome}`,
+          };
+        }
+      }
       if (prev === status) {
         return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} is already ${status}` };
       }
@@ -975,6 +1077,8 @@ function createStore(
       }
 
       creative.status = status;
+      // Leaving approved discards a pending or rejected staged update.
+      if (prev === 'approved' && status !== 'approved') delete creative.stagedUpdate;
       if (status === 'archived') {
         enforceMapCap(session.complyExtensions.forcedCreativeTerminalStates, creativeId, 'creative terminal states');
         session.complyExtensions.forcedCreativeTerminalStates.set(creativeId, status);
@@ -1005,6 +1109,12 @@ function createStore(
         await emitAccountChangeRecordedWebhook(principal, change);
       }
       await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
+      // Under on_rejection stops the creative also leaves approved, which is
+      // an ordinary status transition fired above; the staged outcome is
+      // reported separately to subscribers that asked for it.
+      if (stagedRejectionStops) {
+        await emitCreativeStagedUpdateChanged(sessionKey, principal, creative, 'rejected', status, rejectionReason);
+      }
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
 
@@ -1520,6 +1630,7 @@ function createStore(
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
   'reset_state',
+  'reporting_subscription_probe',
   'expire_account_change_cursor',
   'force_create_media_buy_arm',
   'force_media_buy_confirmation',
@@ -1542,6 +1653,7 @@ const LOCAL_SCENARIOS = [
   'query_account_governance_binding',
   'evaluate_distributed_brand_resolution',
   'verify_governance_token',
+  'force_hold_unavailable',
 ] as const;
 
 async function resolveOrCreateReportingProbeAccount(
@@ -1980,9 +2092,11 @@ function localScenariosFor(ctx: TrainingContext): string[] {
       && s !== 'reliable_reporting_managed_delivery_probe'
       && s !== 'reliable_reporting_reconciled_billing_probe'
     ));
-  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withChangeFeed = supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? currentOnly
     : currentOnly.filter(s => s !== 'expire_account_change_cursor');
+  // Experimental 3.3 holds (media_buy.hold_policy).
+  return holdsServed(ctx) ? withChangeFeed : withChangeFeed.filter(s => s !== FORCE_HOLD_UNAVAILABLE);
 }
 
 /**
@@ -2232,13 +2346,36 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ctx.moduleId,
       targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
     );
+  if (scenario === SEED_COLLECTION_SCENARIO) {
+    if (ctx.storyboardCompat?.version === '3.0') {
+      return { success: false, error: 'UNKNOWN_SCENARIO', error_detail: 'seed_collection is an experimental AdCP 3.3 scenario' };
+    }
+    return handleSeedCollection(rawArgs, ctx);
+  }
+  if (scenario === REPORTING_SUBSCRIPTION_PROBE) {
+    if (ctx.storyboardCompat?.version === '3.0' || !supportsAccountSurfaces33(ctx.servedAdcpVersion)) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'reporting_subscription_probe is an experimental AdCP 3.3 scenario',
+      };
+    }
+    return handleReportingSubscriptionProbe(params, ctx);
+  }
+  if (scenario === FORCE_HOLD_UNAVAILABLE) {
+    return forceHoldUnavailable(params, ctx);
+  }
   if (scenario === 'reset_state') {
+    // The caller's sandbox clock, grants, timezone changes, and account
+    // requests reset too (reporting_subscription_probe reset effects).
+    await resetReportingSubscriptionProbe(ctx);
+    await resetAccountRequests(ctx);
     // These stores intentionally use the same keys as their public handlers,
     // which differ from the principal-aware controller-fixture session above.
     const accountSessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
     const catalogSessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
     await clearSession(sessionKey);
-    clearAccountStoreForSession(accountSessionKey, ctx.principal);
+    await clearAccountStoreForSession(accountSessionKey, ctx.principal);
     clearCatalogEventStoresForSession(catalogSessionKey);
     clearForcedTaskCompletionsForScope(ctx.taskRegistryScope);
     SEED_CACHES.delete(sessionKey);

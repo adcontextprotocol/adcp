@@ -1,0 +1,317 @@
+id: media_buy_seller/dependency_impairment_audience
+version: "1.0.0"
+title: "Audience dependency impairment — suspension propagates to media buy health"
+category: media_buy_seller
+summary: "Syncs an audience, targets it from a package, forces ready → suspended, verifies an audience impairment, then restores ready and verifies recovery."
+track: media_buy
+
+required_tools:
+  - sync_audiences
+  - create_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+requires_capability:
+  path: media_buy.propagation_surfaces
+  contains: "snapshot"
+
+narrative: |
+  Audience status is a serving dependency, not catalog decoration. When a
+  seller suspends an audience targeted by a non-terminal media buy, every
+  affected package must surface an audience impairment and the buy's health
+  must become impaired. When the audience returns to a serviceable state, the
+  impairment must clear.
+
+  This is the audience sibling of dependency_impairment. It is additive and
+  capability-gated: sellers without audience_targeting, snapshot propagation,
+  sync_audiences, or the force_audience_status controller adapter grade the
+  unsupported path not-applicable rather than inheriting a new wire contract.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - audience_targeting
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller advertises media_buy.audience_targeting, snapshot propagation, and
+    a sandbox comply_test_controller with force_audience_status.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "audience_impairment_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "audience_impairment_display"
+      pricing_option_id: "audience_impairment_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+
+phases:
+  - id: setup
+    title: "Sync an audience and target it from a media buy"
+    requires_capability:
+      path: media_buy.audience_targeting
+      present: true
+    steps:
+      - id: sync_audience
+        title: "Register the audience"
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          audiences:
+            - audience_id: "acme_impairment_audience"
+              name: "Acme impairment audience"
+              audience_type: "crm"
+              add:
+                - external_id: "acme-impairment-001"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000101"
+                - external_id: "acme-impairment-002"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000102"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_audience_sync"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-audiences-response.json"
+          - check: field_value
+            path: "audiences[0].audience_id"
+            value: "acme_impairment_audience"
+            description: "Seller echoes the registered audience ID"
+
+      - id: force_audience_ready_baseline
+        title: "Establish a serviceable audience baseline"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_audience_status"
+          params:
+            audience_id: "acme_impairment_audience"
+            status: "ready"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller establishes the ready baseline"
+          - check: field_value
+            path: "current_state"
+            allowed_values: ["ready"]
+            description: "Audience is ready before the buy is created"
+
+      - id: create_audience_buy
+        title: "Create a buy targeting the synced audience"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-11-30T23:59:59Z"
+          packages:
+            - product_id: "audience_impairment_display"
+              budget: 5000
+              pricing_option_id: "audience_impairment_cpm"
+              targeting_overlay:
+                audience_include:
+                  - "acme_impairment_audience"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_audience_create"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+          - path: "packages[0].package_id"
+            key: "package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller creates the audience-targeted buy"
+
+  - id: baseline_healthy
+    title: "Establish the healthy baseline"
+    requires_capability:
+      path: media_buy.audience_targeting
+      present: true
+    steps:
+      - id: get_buy_healthy
+        title: "Read the healthy buy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["ok"]
+            description: "Buy starts healthy while the audience is serviceable"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments"
+            value: []
+            description: "No impairment is open at baseline"
+
+  - id: suspend_audience
+    title: "Suspend the targeted audience"
+    requires_capability:
+      path: media_buy.audience_targeting
+      present: true
+    steps:
+      - id: force_audience_suspended
+        title: "Force the audience offline"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_audience_status"
+          params:
+            audience_id: "acme_impairment_audience"
+            status: "suspended"
+            reason: "consent_expired"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller applies the audience suspension"
+          - check: field_value
+            path: "current_state"
+            allowed_values: ["suspended"]
+            description: "Audience is now suspended"
+
+  - id: verify_impaired
+    title: "Verify audience impairment propagation"
+    requires_capability:
+      path: media_buy.audience_targeting
+      present: true
+    steps:
+      - id: get_buy_impaired
+        title: "Read the impaired buy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["impaired"]
+            description: "Buy health becomes impaired"
+          - check: field_contains
+            path: "media_buys[0].impairments[*]"
+            value:
+              resource_type: "audience"
+              resource_id: "acme_impairment_audience"
+              package_ids:
+                - "$context.package_id"
+              transition:
+                to: "suspended"
+              reason_code: "consent_expired"
+            description: "Impairment identifies the suspended audience and affected package"
+
+  - id: recover_audience
+    title: "Restore the audience and verify recovery"
+    requires_capability:
+      path: media_buy.audience_targeting
+      present: true
+    steps:
+      - id: force_audience_ready
+        title: "Return the audience to ready"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_audience_status"
+          params:
+            audience_id: "acme_impairment_audience"
+            status: "ready"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller restores the audience"
+          - check: field_value
+            path: "current_state"
+            allowed_values: ["ready"]
+            description: "Audience is serviceable again"
+
+      - id: get_buy_recovered
+        title: "Read the recovered buy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["ok"]
+            description: "Buy health returns to ok"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments"
+            value: []
+            description: "Audience impairment is cleared"

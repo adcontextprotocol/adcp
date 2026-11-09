@@ -1,0 +1,387 @@
+id: media_buy_seller/terminal_package_retention
+version: "1.0.0"
+introduced_in: "3.3"
+title: Canceled buys retain recorded package identities and configuration
+category: media_buy_seller
+summary: Verifies that individual and whole-buy cancellation preserve the complete recorded package set, updated configuration, and earlier cancellation timestamp and party.
+track: media_buy
+requires:
+  - controller
+required_tools:
+  - get_media_buys
+  - update_media_buy
+narrative: |
+  AdCP 3.3 retains known package records while a seller returns their canceled
+  or completed buy. This scenario seeds an isolated buy awaiting creatives with two recorded
+  packages of the same product and different buyer correlation values. It reads
+  those records, commits a package budget update, cancels the first package,
+  then cancels the whole buy and reads it again by ID.
+
+  Package membership checks are independent of response ordering. They require
+  both original package IDs and their product/context bindings, the updated
+  budget rather than the seeded budget, and the first package's original
+  cancellation timestamp and party. Optional cancellation reasons and canceled
+  booleans need not be echoed. Whole-buy cancellation need not synthesize
+  cancellation fields for
+  the remaining package; the parent supplies its effective terminal state.
+  The containing buy supplies terminal state; this scenario does not impose a
+  new package status field or require every retained package to be canceled.
+
+  Applicability requires seed_account, seed_product, and seed_media_buy support
+  and successful self-serve budget/cancellation operations on the seeded buy.
+  Missing controller or fixture support is missing coverage, not a pass. This
+  is persisted-record readback coverage, not a native creation or live-platform
+  deletion probe. It neither assumes snapshot support nor simulates platform
+  deletion, completed subpackages, or historical delivery availability. Platform
+  extension retention needs separate applicable coverage using mappings the
+  seller previously exposed; this fixture does not require arbitrary extensions
+  to be exposed.
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - sells_media
+  examples:
+    - A seller with controller-seeded media buys and package controls
+caller:
+  role: buyer_agent
+  example: Pinnacle Agency (buyer)
+prerequisites:
+  controller_seeding: true
+  test_kit: test-kits/acme-outdoor.yaml
+  description: |
+    Seed an isolated sandbox account, a product, and a buy awaiting creatives whose two
+    packages permit self-serve budget changes and cancellation. Fixture
+    preparation must succeed before readback can establish coverage. The buy
+    remains retrievable after cancellation. The runner supplies its selected
+    AdCP 3.3 release, including beta or RC releases, in the request envelope.
+context:
+  account: &account
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-terminal-package-retention
+    sandbox: true
+fixtures:
+  accounts:
+    - account_id: acct_terminal_package_retention
+      fixture:
+        brand:
+          domain: acmeoutdoor.example
+        operator: pinnacle-agency.example
+        operator_unit:
+          id: compliance-terminal-package-retention
+        sandbox: true
+        billing: operator
+        status: active
+  products:
+    - product_id: retention_display
+      name: Package retention display inventory
+      description: Isolated product for persisted package readback
+      delivery_type: non_guaranteed
+      allowed_actions:
+        - action: decrease_budget
+          modes: [self_serve]
+        - action: remove_packages
+          modes: [self_serve]
+        - action: cancel
+          modes: [self_serve]
+      format_options:
+        - format_option_id: retention_image
+          format_kind: image
+          params:
+            width: 300
+            height: 250
+      pricing_options:
+        - pricing_option_id: retention_cpm
+          pricing_model: cpm
+          currency: USD
+          fixed_price: 10
+  media_buys:
+    - media_buy_id: mb_terminal_package_retention
+      account: *account
+      status: pending_creatives
+      currency: USD
+      total_budget: 10000
+      confirmed_at: "2026-10-01T09:00:00Z"
+      revision: 1
+      start_time: "2026-10-01T09:00:00Z"
+      end_time: "2099-12-31T23:59:59Z"
+      available_actions:
+        - action: decrease_budget
+          mode: self_serve
+        - action: remove_packages
+          mode: self_serve
+        - action: cancel
+          mode: self_serve
+      packages:
+        - package_id: pkg_retention_first
+          product_id: retention_display
+          pricing_option_id: retention_cpm
+          budget: 5000
+          context:
+            buyer_ref: retention_line_01
+        - package_id: pkg_retention_second
+          product_id: retention_display
+          pricing_option_id: retention_cpm
+          budget: 5000
+          context:
+            buyer_ref: retention_line_02
+phases:
+  - id: establish_recorded_packages
+    title: Read both recorded packages before mutation
+    steps:
+      - id: read_recorded_buy
+        title: Establish the known package identities and buyer correlations
+        task: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request:
+          adcp_major_version: 3
+          account: *account
+          media_buy_ids: [mb_terminal_package_retention]
+        validations:
+          - check: response_schema
+            description: Readback matches the get-media-buys response schema
+          - check: field_pattern
+            path: adcp_version
+            pattern: '^3\.3(?:-(?:beta|rc)\.\d+)?$'
+            description: The seller actually serves the retention contract's release
+          - check: array_length
+            path: media_buys
+            value: 1
+            description: Exactly the requested buy is returned
+          - check: field_value
+            path: media_buys[0].media_buy_id
+            value: mb_terminal_package_retention
+            description: Readback belongs to the seeded buy
+          - check: field_value
+            path: media_buys[0].status
+            value: pending_creatives
+            description: The buy starts in its seeded nonterminal state
+          - check: array_length
+            path: media_buys[0].packages
+            value: 2
+            description: Both recorded packages are visible before cancellation
+          - check: field_contains
+            path: media_buys[0].packages[*]
+            value:
+              package_id: pkg_retention_first
+              product_id: retention_display
+              context: { buyer_ref: retention_line_01 }
+            description: The first seller package maps to the first buyer line
+          - check: field_contains
+            path: media_buys[0].packages[*]
+            value:
+              package_id: pkg_retention_second
+              product_id: retention_display
+              budget: 5000
+              context: { buyer_ref: retention_line_02 }
+            description: The second package has its distinct identity and original budget
+
+  - id: change_and_cancel_one_package
+    title: Commit a configuration change and cancel one package
+    steps:
+      - id: update_second_package_budget
+        title: Accept a configuration change after the package was recorded
+        task: update_media_buy
+        schema_ref: media-buy/update-media-buy-request.json
+        response_schema_ref: media-buy/update-media-buy-response.json
+        doc_ref: /media-buy/task-reference/update_media_buy
+        stateful: true
+        sample_request:
+          adcp_major_version: 3
+          account: *account
+          media_buy_id: mb_terminal_package_retention
+          idempotency_key: $generate:uuid_v4#terminal_retention_budget
+          total_budget: { amount: 9000, currency: USD }
+          packages:
+            - package_id: pkg_retention_second
+              budget: 4000
+        validations:
+          - check: response_schema
+            description: The configuration change returns a valid update response
+          - check: field_value
+            path: media_buy_id
+            value: mb_terminal_package_retention
+            description: The update succeeded on the expected buy
+          - check: field_contains
+            path: affected_packages[*]
+            value:
+              package_id: pkg_retention_second
+              budget: 4000
+            description: The seller committed the replacement package budget
+
+      - id: cancel_first_package
+        title: Cancel only the first package and capture its original timestamp
+        task: update_media_buy
+        schema_ref: media-buy/update-media-buy-request.json
+        response_schema_ref: media-buy/update-media-buy-response.json
+        doc_ref: /media-buy/task-reference/update_media_buy
+        stateful: true
+        sample_request:
+          adcp_major_version: 3
+          account: *account
+          media_buy_id: mb_terminal_package_retention
+          idempotency_key: $generate:uuid_v4#terminal_retention_package_cancel
+          packages:
+            - package_id: pkg_retention_first
+              canceled: true
+              cancellation_reason: First line canceled before the whole buy
+        context_outputs:
+          - path: affected_packages[0].cancellation.canceled_at
+            key: original_package_canceled_at
+        validations:
+          - check: response_schema
+            description: Individual package cancellation matches the update schema
+          - check: field_value
+            path: media_buy_id
+            value: mb_terminal_package_retention
+            description: The cancellation succeeded on the expected buy
+          - check: array_length
+            path: affected_packages
+            value: 1
+            description: Only the individually canceled package was modified
+          - check: field_value
+            path: affected_packages[0].package_id
+            value: pkg_retention_first
+            description: The captured cancellation belongs to the first package
+          - check: field_contains
+            path: affected_packages[*]
+            value:
+              package_id: pkg_retention_first
+              cancellation:
+                canceled_by: buyer
+            description: The full affected package includes committed cancellation state
+          - check: field_present
+            path: affected_packages[0].cancellation.canceled_at
+            description: The original package cancellation has a timestamp
+          - check: field_value
+            path: affected_packages[0].cancellation.canceled_by
+            value: buyer
+            description: The buyer initiated the original package cancellation
+
+      - id: read_after_package_cancel
+        title: Keep both package records while the buy awaits creatives
+        task: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request: &read_request
+          adcp_major_version: 3
+          account: *account
+          media_buy_ids: [mb_terminal_package_retention]
+          include_snapshot: false
+        validations:
+          - check: response_schema
+            description: Package cancellation remains readable without requesting statistics
+          - check: array_length
+            path: media_buys
+            value: 1
+            description: Exactly the requested buy remains visible
+          - check: field_value
+            path: media_buys[0].media_buy_id
+            value: mb_terminal_package_retention
+            description: The read identifies the expected buy
+          - check: field_value
+            path: media_buys[0].status
+            value: pending_creatives
+            description: Canceling one package does not cancel the whole buy
+          - check: array_length
+            path: media_buys[0].packages
+            value: 2
+            description: Individual cancellation does not drop either known package
+          - check: field_contains
+            path: media_buys[0].packages[*]
+            value: &canceled_first_package
+              package_id: pkg_retention_first
+              product_id: retention_display
+              context: { buyer_ref: retention_line_01 }
+              cancellation:
+                canceled_at: $context.original_package_canceled_at
+                canceled_by: buyer
+            description: The first package retains identity and its original cancellation timestamp and party
+          - check: field_contains
+            path: media_buys[0].packages[*]
+            value: &updated_second_package
+              package_id: pkg_retention_second
+              product_id: retention_display
+              budget: 4000
+              context: { buyer_ref: retention_line_02 }
+            description: The second package retains its identity and latest committed budget
+
+  - id: cancel_buy_and_recover_packages
+    title: Recover recorded packages from the canceled buy
+    steps:
+      - id: cancel_whole_buy
+        title: Cancel the whole buy with a different reason
+        task: update_media_buy
+        schema_ref: media-buy/update-media-buy-request.json
+        response_schema_ref: media-buy/update-media-buy-response.json
+        doc_ref: /media-buy/task-reference/update_media_buy
+        stateful: true
+        sample_request:
+          adcp_major_version: 3
+          account: *account
+          media_buy_id: mb_terminal_package_retention
+          idempotency_key: $generate:uuid_v4#terminal_retention_buy_cancel
+          canceled: true
+          cancellation_reason: Whole buy canceled after the first line
+        validations:
+          - check: response_schema
+            description: Whole-buy cancellation matches the update schema
+          - check: field_value
+            path: media_buy_id
+            value: mb_terminal_package_retention
+            description: The expected buy was canceled successfully
+          - check: field_value
+            path: media_buy_status
+            value: canceled
+            description: The buy has reached its terminal canceled state
+
+      - id: read_after_buy_cancel
+        title: Recover both package identities without a delivery snapshot
+        task: get_media_buys
+        schema_ref: media-buy/get-media-buys-request.json
+        response_schema_ref: media-buy/get-media-buys-response.json
+        doc_ref: /media-buy/task-reference/get_media_buys
+        stateful: true
+        sample_request: *read_request
+        validations:
+          - check: response_schema
+            description: The canceled buy is returned with a valid recorded package list
+          - check: field_pattern
+            path: adcp_version
+            pattern: '^3\.3(?:-(?:beta|rc)\.\d+)?$'
+            description: The retention assurance applies to the actually served release
+          - check: array_length
+            path: media_buys
+            value: 1
+            description: Exactly the canceled buy remains retrievable by ID
+          - check: field_value
+            path: media_buys[0].media_buy_id
+            value: mb_terminal_package_retention
+            description: Readback belongs to the original recorded buy
+          - check: field_value
+            path: media_buys[0].status
+            value: canceled
+            description: The containing buy provides terminal lifecycle state
+          - check: array_length
+            path: media_buys[0].packages
+            value: 2
+            description: Whole-buy cancellation preserves the complete known package set
+          - check: field_contains
+            path: media_buys[0].packages[*]
+            value: *canceled_first_package
+            description: Earlier package cancellation timestamp and party are unchanged after whole-buy cancellation
+          - check: field_contains
+            path: media_buys[0].packages[*]
+            value:
+              package_id: pkg_retention_second
+              product_id: retention_display
+              budget: 4000
+              context: { buyer_ref: retention_line_02 }
+            description: Recovery preserves the second package's identity, buyer context, and updated configuration

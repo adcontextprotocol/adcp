@@ -4,6 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 const REPO_ROOT = path.join(__dirname, '..');
 const SOURCE_SCHEMA_ROOT = path.join(REPO_ROOT, 'static', 'schemas', 'source');
@@ -25,7 +28,7 @@ function loadSchemaUri(uri) {
   const filename = versionMatch
     ? path.join(REPO_ROOT, 'dist', 'schemas', versionMatch[1], versionMatch[2])
     : path.join(SOURCE_SCHEMA_ROOT, relative);
-  return JSON.parse(fs.readFileSync(filename, 'utf8'));
+  return versionMatch ? JSON.parse(fs.readFileSync(filename, 'utf8')) : readBuiltSchema(filename);
 }
 
 async function compileSchema(schema) {
@@ -206,6 +209,10 @@ test('2.5, 3.0, and 3.1 preserve products-only brief discovery through an explic
     const fabricatedFence = structuredClone(vector.compact_projection);
     fabricatedFence.feed_version = `synthetic-${vector.source_version}`;
     assert.equal(validateCompact(fabricatedFence), false, `${vector.source_version} must not fabricate a feed fence`);
+
+    const fabricatedPricingFence = structuredClone(vector.compact_projection);
+    fabricatedPricingFence.pricing_version = `synthetic-${vector.source_version}`;
+    assert.equal(validateCompact(fabricatedPricingFence), false, `${vector.source_version} must not fabricate a pricing fence`);
   }
 });
 

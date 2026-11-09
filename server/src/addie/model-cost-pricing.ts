@@ -13,6 +13,7 @@ import {
 } from './claude-pricing.js';
 import {
   GOOGLE_ROUTER_MODEL,
+  GOOGLE_RESPONSE_REDIRECT_MODEL,
   isGoogleRouterModelRevision,
 } from './model-providers/google-generate-content-provider.js';
 import type { ModelProviderId, ModelUsage } from './model-providers/model-provider.js';
@@ -20,6 +21,8 @@ import { OPENAI_ROUTER_MODEL } from './model-providers/openai-responses-provider
 
 export const GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION =
   'google-gemini-3.7-flash-through-2026-12-31' as const;
+export const GOOGLE_GEMINI_3_8_FLASH_PRICING_VERSION =
+  'google-gemini-3.8-flash-through-2026-12-31' as const;
 
 export interface ModelCostPricing {
   provider: ModelProviderId;
@@ -102,14 +105,20 @@ export function resolveModelCostPricing(
     && isGoogleRouterModelRevision(model)
     ? GOOGLE_ROUTER_MODEL
     : null;
-  if (canonicalGoogleModel) {
+  const googleResponseRedirect = provider === 'google' && model === GOOGLE_RESPONSE_REDIRECT_MODEL;
+  if (canonicalGoogleModel || googleResponseRedirect) {
     return {
       provider: 'google',
       model,
-      version: GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
+      version: googleResponseRedirect
+        ? GOOGLE_GEMINI_3_8_FLASH_PRICING_VERSION
+        : GOOGLE_GEMINI_3_7_FLASH_PRICING_VERSION,
       validBefore: new Date('2027-01-01T00:00:00.000Z'),
       // Official standard pricing checked 2026-09-17: $0.75/M input,
       // $0.075/M cached input, and $3.75/M output (including thought tokens).
+      // 3.8 redirect rates independently checked 2026-11-06 at
+      // https://aistudio.google.com/docs/pricing#gemini-3.8-flash:
+      // the same rates apply through 2026-12-31, with a separate version.
       // Explicit-cache storage is $0.50/M tokens/hour through 2026-12-31,
       // but this adapter uses implicit caching and has no storage lifecycle.
       // A cache-read count above input is charged in addition to all input,

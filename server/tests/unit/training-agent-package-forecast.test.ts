@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
   process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.0';
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
 });
 
 import {
@@ -27,7 +27,7 @@ const PRODUCT_ID = 'streamhaus_forecast_product';
 
 const call = (toolName: string, args: Record<string, unknown>) => runWithSessionContext(async () => {
   const result = await executeTrainingAgentTool(toolName, {
-    adcp_version: '3.3-beta.0',
+    adcp_version: '3.3-beta.1',
     idempotency_key: randomUUID(),
     account: ACCOUNT,
     ...args,
@@ -84,7 +84,7 @@ describe('structured package forecasts on the reference training agent', () => {
       products: Array<Record<string, unknown>>;
       refinement_applied: Array<Record<string, unknown>>;
     };
-    expect(data.adcp_version).toBe('3.3-beta.0');
+    expect(data.adcp_version).toBe('3.3-beta.1');
     expect(data.refinement_applied).toEqual([{
       scope: 'product', product_id: PRODUCT_ID, status: 'unable', notes: expect.stringMatching(/\S/),
     }]);

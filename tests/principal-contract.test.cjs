@@ -311,6 +311,39 @@ describe('sync_principal contract', () => {
       },
     }), false);
 
+    // setup_url checks the scheme only (#8398): a query string, fragment, and
+    // percent-encoding are valid, and the credential rule is the receiver's.
+    for (const setupUrl of [
+      'https://data-warehouse.example/setup?account=a%20b#step-2',
+      'https://data-warehouse.example/caf%C3%A9?q=1',
+    ]) {
+      const response = {
+        status: 'completed',
+        result: {
+          kind: 'applied',
+          action: 'updated',
+          dry_run: false,
+          principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+          principal_kind: 'buyer_agent',
+          configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
+          configuration: {
+            notification_configs: [],
+            reporting_destinations: [{
+              destination_id: warehouseDestination.destination_id,
+              destination_ref: 'dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV',
+              state: 'action_required',
+              configuration: warehouseDestination,
+              setup: {
+                action: 'grant_access',
+                setup_url: setupUrl,
+              },
+            }],
+          },
+        },
+      };
+      assert.equal(validateResponse(response), true, `${setupUrl}: ${JSON.stringify(validateResponse.errors)}`);
+    }
+
     assert.equal(validateResponse({
       status: 'completed',
       result: {
@@ -329,7 +362,7 @@ describe('sync_principal contract', () => {
             configuration: warehouseDestination,
             setup: {
               action: 'grant_access',
-              setup_url: 'https://data-warehouse.example/setup?token=must-not-be-embedded',
+              setup_url: 'http://data-warehouse.example/setup',
             },
           }],
         },

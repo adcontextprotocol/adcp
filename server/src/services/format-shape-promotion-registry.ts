@@ -11,9 +11,14 @@ export type PromotedFormatShape = {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REGISTRY_PATH = process.env.NODE_ENV === 'production'
-  ? path.join(__dirname, '../../static/schemas/source/core/format-shape-vocabulary.json')
-  : path.join(__dirname, '../../../static/schemas/source/core/format-shape-vocabulary.json');
+// Emitted modules live in dist/services; source modules live in server/src/services.
+// Either layout can run under any NODE_ENV and from a different working directory.
+const isCompiled = path.basename(path.dirname(__dirname)) === 'dist';
+const REGISTRY_PATH = path.resolve(
+  __dirname,
+  isCompiled ? '../..' : '../../..',
+  'static/schemas/source/core/format-shape-vocabulary.json',
+);
 
 let cached: Readonly<Record<string, PromotedFormatShape>> | undefined;
 

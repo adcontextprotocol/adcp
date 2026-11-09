@@ -43,10 +43,13 @@ Consequences, stated so they can be applied without argument:
 - **Adding an optional field to a closed schema is a `minor` change**, never a
   patch, because strict validators on the prior version reject payloads that
   carry it. PR authors declare the `minor` changeset and cite this record;
-  reviewers do not relitigate.
+  reviewers do not relitigate. *Superseded by DR-0036: a minor release never
+  adds a property to a closed schema, so such a field moves to an open schema
+  or waits for the next major.*
 - **Loosening a closed schema to open is Normative**, non-breaking, and must
   name this record and the unknown-key lint that replaces the validation the
-  closed schema provided.
+  closed schema provided. *Amended by DR-0036: loosening permits no additions
+  within the major, unless DR-0036 records it as a correction.*
 - **Tightening an open schema remains Breaking** per DR-0009.
 
 ## Rationale

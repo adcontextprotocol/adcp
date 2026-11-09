@@ -1,0 +1,943 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        },
+        "media_buy_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "media_buy_status": {
+          "$ref": "#/$defs/external:enums~1media-buy-status.json"
+        },
+        "implementation_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "affected_package_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "package"
+          },
+          "uniqueItems": true
+        },
+        "available_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-media-buy-action.json"
+          },
+          "uniqueItems": true
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1warning.json"
+              },
+              {
+                "properties": {
+                  "code": {
+                    "const": "inventory_shortfall_forecast"
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "media_buy_id",
+        "revision"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "failed"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "warnings"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          }
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "warnings"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "external:enums/media-buy-status.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/media-buy-status.json",
+      "type": "string",
+      "enum": [
+        "pending_creatives",
+        "pending_start",
+        "active",
+        "paused",
+        "completed",
+        "rejected",
+        "canceled"
+      ]
+    },
+    "external:core/canonical-media-buy-action.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-media-buy-action.json",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "change_term_link": "When change_term_id is present, it resolves to the accepted proposal change term governing this action. The projected sla agrees with processing_sla. Issue reporting is an operational capability, not a negotiated change right.",
+          "legacy_alias_agreement": "When both change_term_id and deprecated terms_ref are emitted as proposal-term links, their values are identical."
+        }
+      },
+      "type": "object",
+      "discriminator": {
+        "propertyName": "task"
+      },
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1canonical-media-buy-action-fields.json"
+            }
+          ],
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "type": "string",
+              "const": "report_media_buy_issue"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "report_media_buy_issue"
+              ]
+            },
+            "mode": {
+              "type": "string",
+              "const": "seller_managed"
+            },
+            "sla": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1escalation-sla.json"
+            },
+            "change_term_id": false,
+            "terms_ref": false
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1canonical-media-buy-action-fields.json"
+            },
+            {
+              "if": {
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "const": "update_creative_start_policy"
+                  }
+                },
+                "required": [
+                  "action"
+                ]
+              },
+              "then": {
+                "required": [
+                  "applicable_package_ids"
+                ],
+                "properties": {
+                  "change_term_id": false,
+                  "terms_ref": false
+                }
+              }
+            }
+          ],
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "const": "control_media_buy"
+            },
+            "action": {
+              "enum": [
+                "pause",
+                "resume",
+                "cancel",
+                "update_name",
+                "update_creative_start_policy",
+                "increase_budget",
+                "decrease_budget",
+                "reallocate_budget",
+                "update_budget_allocation",
+                "update_targeting",
+                "update_pacing",
+                "update_bidding",
+                "update_frequency_caps",
+                "update_media_buy_frequency_cap",
+                "update_catalog_assignments",
+                "update_keywords",
+                "update_optimization_goals",
+                "update_impression_goal",
+                "update_spend_target",
+                "update_reporting_webhook",
+                "remove_packages"
+              ]
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1canonical-media-buy-action-fields.json"
+            }
+          ],
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "const": "refine_proposals"
+            },
+            "action": {
+              "enum": [
+                "cancel",
+                "extend_flight",
+                "shorten_flight",
+                "update_flight_dates",
+                "increase_budget",
+                "decrease_budget",
+                "reallocate_budget",
+                "update_budget_allocation",
+                "update_targeting",
+                "update_pacing",
+                "update_bidding",
+                "update_frequency_caps",
+                "update_media_buy_frequency_cap",
+                "add_packages",
+                "remove_packages"
+              ]
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1canonical-media-buy-action-fields.json"
+            }
+          ],
+          "required": [
+            "task"
+          ],
+          "properties": {
+            "task": {
+              "const": "sync_creatives"
+            },
+            "action": {
+              "enum": [
+                "replace_creative",
+                "update_creative_assignments",
+                "remove_creative"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "external:core/canonical-media-buy-action-fields.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-media-buy-action-fields.json",
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string",
+          "enum": [
+            "control_media_buy",
+            "refine_proposals",
+            "sync_creatives",
+            "report_media_buy_issue"
+          ]
+        },
+        "action": {
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:enums~1canonical-media-buy-action-mode.json"
+        },
+        "sla": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1sla-window.json"
+        },
+        "review_sla": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1creative-review-sla.json",
+          "x-added-in": "3.3.0"
+        },
+        "change_term_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1media-buy-change-term-id.json"
+        },
+        "terms_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1media-buy-legacy-terms-ref.json"
+        },
+        "applicable_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1applicable-package-id.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "task",
+        "action",
+        "mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "review_sla"
+            ]
+          },
+          "then": {
+            "properties": {
+              "task": {
+                "const": "sync_creatives"
+              },
+              "action": {
+                "enum": [
+                  "replace_creative",
+                  "update_creative_assignments"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/canonical-media-buy-action-mode.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/canonical-media-buy-action-mode.json",
+      "type": "string",
+      "enum": [
+        "self_serve",
+        "conditional_self_serve",
+        "seller_managed",
+        "requires_approval"
+      ]
+    },
+    "external:core/sla-window.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/sla-window.json",
+      "type": "object",
+      "properties": {
+        "clock": {
+          "type": "string",
+          "enum": [
+            "elapsed",
+            "business"
+          ],
+          "default": "elapsed",
+          "x-added-in": "3.3.0"
+        },
+        "business_calendar_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "business_calendar",
+          "x-added-in": "3.3.0"
+        },
+        "response_max": {
+          "type": "string",
+          "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$"
+        },
+        "completion_max": {
+          "type": "string",
+          "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "clock": {
+                "const": "business"
+              }
+            },
+            "required": [
+              "clock"
+            ]
+          },
+          "then": {
+            "required": [
+              "business_calendar_id"
+            ],
+            "properties": {
+              "response_max": {
+                "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+              },
+              "completion_max": {
+                "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "business_calendar_id"
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "calendar_reference": "A business_calendar_id resolves to exactly one immutable get_adcp_capabilities.business_calendars declaration whose coverage includes receipt and the computed deadline. Invalid or unresolved calendars never fall back to elapsed time.",
+          "request_snapshot": "Pending requests retain the SLA and calendar resolved at receipt. Maxima are independent upper bounds; a completion maximum shorter than the response maximum does not invalidate either commitment."
+        }
+      }
+    },
+    "external:core/creative-review-sla.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/creative-review-sla.json",
+      "x-added-in": "3.3.0",
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1sla-window.json"
+        }
+      ],
+      "required": [
+        "completion_max"
+      ]
+    },
+    "external:core/media-buy-change-term-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/media-buy-change-term-id.json",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "x-entity": "media_buy_change_term"
+    },
+    "external:core/media-buy-legacy-terms-ref.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/media-buy-legacy-terms-ref.json",
+      "type": "string",
+      "deprecated": true,
+      "x-deprecated-in": "3.2.0",
+      "x-removed-in": "4.0.0"
+    },
+    "external:core/applicable-package-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/applicable-package-id.json",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "package"
+    },
+    "external:core/escalation-sla.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/escalation-sla.json",
+      "x-added-in": "3.3.0",
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1sla-window.json"
+        }
+      ],
+      "required": [
+        "response_max"
+      ],
+      "properties": {
+        "clock": {
+          "type": "string",
+          "const": "elapsed"
+        },
+        "response_max": {
+          "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+        },
+        "completion_max": false
+      }
+    },
+    "external:core/warning.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/warning.json",
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:enums~1warning-code.json"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "affected_resource": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1warning-resource.json"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/control-media-buy-response.json#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "affected_resource"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "enum": [
+                  "inventory_shortfall_forecast",
+                  "flight_change_creates_pacing_risk"
+                ]
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "affected_resource": {
+                "properties": {
+                  "resource_type": {
+                    "const": "package"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "fields_ignored_due_to_precedence"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "affected_resource": {
+                "properties": {
+                  "resource_type": {
+                    "enum": [
+                      "media_buy",
+                      "package"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "warning_capability_requirements": {
+            "inventory_shortfall_forecast": {
+              "supported_indicator_type": "inventory_shortfall_forecast"
+            },
+            "flight_change_creates_pacing_risk": {
+              "supported_indicator_type": "pacing_risk"
+            },
+            "fields_ignored_due_to_precedence": null
+          }
+        },
+        "spec": "specs/relationship-scoped-indicators.md#warning-contract"
+      },
+      "additionalProperties": true
+    },
+    "external:enums/warning-code.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/warning-code.json",
+      "type": "string",
+      "enum": [
+        "inventory_shortfall_forecast",
+        "flight_change_creates_pacing_risk",
+        "fields_ignored_due_to_precedence"
+      ]
+    },
+    "external:core/warning-resource.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/warning-resource.json",
+      "type": "object",
+      "properties": {
+        "resource_type": {
+          "type": "string",
+          "enum": [
+            "media_buy",
+            "package",
+            "creative",
+            "creative_assignment"
+          ]
+        },
+        "media_buy_id": {
+          "type": "string",
+          "x-entity": "media_buy"
+        },
+        "package_id": {
+          "type": "string",
+          "x-entity": "package"
+        },
+        "creative_id": {
+          "type": "string",
+          "x-entity": "creative"
+        }
+      },
+      "required": [
+        "resource_type"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "media_buy"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "package"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id",
+              "package_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "creative"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "creative_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "creative_assignment"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id",
+              "package_id",
+              "creative_id"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/ext.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/ext.json",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/context.json",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/error.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/error.json",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string",
+          "x-max-length-4.0": 1024
+        },
+        "buyer_reason": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "x-max-length-4.0": 1024
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": true
+        },
+        "field": {
+          "type": "string",
+          "x-max-length-4.0": 256
+        },
+        "suggestion": {
+          "type": "string",
+          "x-max-length-4.0": 1024
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string",
+                "x-max-length-4.0": 256
+              },
+              "message": {
+                "type": "string",
+                "x-max-length-4.0": 512
+              },
+              "keyword": {
+                "type": "string",
+                "x-max-length-4.0": 64
+              },
+              "schemaPath": {
+                "type": "string",
+                "x-max-length-4.0": 256
+              },
+              "schema_id": {
+                "type": "string",
+                "x-max-length-4.0": 256
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string",
+                      "x-max-length-4.0": 128
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ],
+                      "x-max-length-4.0": 128
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                "x-max-items-4.0": 8
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          },
+          "x-max-items-4.0": 10
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "mutation_outcome": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "x-added-in": "3.3.0"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string",
+          "x-max-length-4.0": 128
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true,
+      "dependentRequired": {
+        "buyer_reason": [
+          "recovery"
+        ]
+      }
+    }
+  }
+}

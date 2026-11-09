@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/audience-evidence-target.json",
+  "title": "Audience Evidence Target",
+  "description": "Experimental (media_buy.audience_evidence_targets). An audience the buyer wants evidence for. Satisfied only by an admissible audience_evidence item with an exactly matching audience, the same relationship, and value >= minimum_value. Planning and ranking input, never a targeting predicate. Matching rules: get_products docs.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "properties": {
+    "audience": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/audience-characteristic.json",
+      "description": "Compared to audience_evidence[].audience as an exact canonical key (label ignored)."
+    },
+    "relationship": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/audience-evidence-relationship.json",
+      "description": "Only evidence with the same relationship is compared."
+    },
+    "minimum_value": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Smallest satisfying evidence value: a fraction for composition, a ratio for index, an integer count for reach_estimate."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "audience",
+    "relationship",
+    "minimum_value"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "relationship": {
+            "const": "composition"
+          }
+        },
+        "required": [
+          "relationship"
+        ]
+      },
+      "then": {
+        "properties": {
+          "minimum_value": {
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "relationship": {
+            "const": "reach_estimate"
+          }
+        },
+        "required": [
+          "relationship"
+        ]
+      },
+      "then": {
+        "properties": {
+          "minimum_value": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

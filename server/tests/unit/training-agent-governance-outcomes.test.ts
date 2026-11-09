@@ -66,7 +66,7 @@ describe('report_plan_outcome authorization and ledger binding', () => {
       const logs = await audit();
       const outcome = logs.plans[0].entries.find((entry: any) => entry.type === 'outcome');
 
-      expect(result).toMatchObject({ outcome_state: 'findings', status: 'findings', committed_budget: 100 });
+      expect(result).toMatchObject({ outcome_state: 'findings', status: 'completed', committed_budget: 100 });
       expect(logs.plans[0].budget.committed).toBe(100);
       expect(outcome).toMatchObject({ committed_budget: 100, reported_committed_budget: 25 });
     });
@@ -84,7 +84,7 @@ describe('report_plan_outcome authorization and ledger binding', () => {
       const result = await report(intent, 80);
 
       expect(execution.verdict).toBe('approved');
-      expect(result).toMatchObject({ status: 'accepted', committed_budget: 80 });
+      expect(result).toMatchObject({ outcome_state: 'accepted', status: 'completed', committed_budget: 80 });
       expect((await audit()).plans[0].budget.committed).toBe(80);
     });
   });
@@ -293,7 +293,8 @@ describe('report_plan_outcome authorization and ledger binding', () => {
       const replay = await report(intent, 100);
       expect(replay).toMatchObject({
         outcome_id: first.outcome_id,
-        status: 'accepted',
+        outcome_state: 'accepted',
+        status: 'completed',
         replayed: true,
       });
       expect(retiredPlan?.committedBudget).toBe(100);
@@ -303,7 +304,7 @@ describe('report_plan_outcome authorization and ledger binding', () => {
   it('rejects idempotency-key reuse with a different outcome payload', async () => {
     await runWithSessionContext(async () => {
       const intent = await setupIntent(100);
-      expect((await report(intent, 100)).status).toBe('accepted');
+      expect((await report(intent, 100)).outcome_state).toBe('accepted');
       const conflict = await report(intent, 99);
 
       expect(conflict.errors?.[0]?.code).toBe('IDEMPOTENCY_CONFLICT');
@@ -314,7 +315,7 @@ describe('report_plan_outcome authorization and ledger binding', () => {
   it('treats governance_context as part of exact outcome replay identity', async () => {
     await runWithSessionContext(async () => {
       const intent = await setupIntent(100);
-      expect((await report(intent, 100)).status).toBe('accepted');
+      expect((await report(intent, 100)).outcome_state).toBe('accepted');
       const conflict = await report({ ...intent, governance_context: `${intent.governance_context}.changed` }, 100);
 
       expect(conflict.errors?.[0]?.code).toBe('IDEMPOTENCY_CONFLICT');
@@ -331,7 +332,7 @@ describe('report_plan_outcome authorization and ledger binding', () => {
         phase: 'purchase',
         planned_delivery: { total_budget: 80, currency: 'USD' },
       }, SELLER_CTX) as Record<string, any>;
-      expect((await report(intent, 80)).status).toBe('accepted');
+      expect((await report(intent, 80)).outcome_state).toBe('accepted');
 
       const duplicate = await handleReportPlanOutcome({
         plan_id: PLAN.plan_id,
@@ -396,7 +397,7 @@ describe('report_plan_outcome authorization and ledger binding', () => {
       const logs = await audit();
       const deliveryEntry = logs.plans[0].entries.find((entry: any) => entry.outcome === 'delivery');
 
-      expect(result.status).toBe('accepted');
+      expect(result.outcome_state).toBe('accepted');
       expect(result.delivery_reconciliation_status).toBe('consistent');
       expect(equivocation.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
       expect(logs.plans[0].budget.committed).toBe(100);

@@ -239,6 +239,45 @@ describe('registry badge routes', () => {
     });
   });
 
+  it('reports incomplete coverage beside a passing status', async () => {
+    const trackDetails = [
+      { track: 'core', status: 'pass', scenario_count: 3, passed_count: 3, duration_ms: 10, has_coverage_gap_skip: false },
+      {
+        track: 'media_buy',
+        status: 'pass',
+        scenario_count: 4,
+        passed_count: 4,
+        duration_ms: 10,
+        has_coverage_gap_skip: true,
+        skipped_by_reason: { fixture_unavailable: 1 },
+      },
+    ];
+    complianceMocks.bulkGetComplianceStatus.mockResolvedValue(new Map([[AGENT_URL, {
+      status: 'passing',
+      lifecycle_stage: 'production',
+      tracks_summary_json: { core: 'pass', media_buy: 'pass' },
+      track_details_json: trackDetails,
+      streak_days: 0,
+      last_checked_at: new Date('2026-11-09T10:00:00Z'),
+      headline: 'All 2 track(s) pass',
+    }]]));
+    complianceMocks.bulkGetRegistryMetadata.mockResolvedValue(new Map([[AGENT_URL, {
+      compliance_opt_out: false,
+      monitoring_paused: false,
+      check_interval_hours: 12,
+    }]]));
+    complianceMocks.bulkGetActiveBadges.mockResolvedValue(new Map());
+
+    const response = await request(buildApp()).get('/api/registry/agents?compliance=true');
+
+    expect(response.status).toBe(200);
+    expect(response.body.agents[0].compliance).toMatchObject({
+      status: 'passing',
+      coverage_incomplete: true,
+      track_details: trackDetails,
+    });
+  });
+
   it.each([
     'badge/buying.svg',
     'badge/buying/3.1.svg',

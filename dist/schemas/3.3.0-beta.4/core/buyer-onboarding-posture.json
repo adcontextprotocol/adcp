@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/buyer-onboarding-posture.json",
+  "title": "Buyer Onboarding Posture",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "How a buying agent considers sellers: a mode, the requirements a seller must meet, and where a seller's human starts. Published only in the buyer's trust.json: in the agent entry (agents[].profiles.adcp.onboarding), or as a record-level default (profiles.adcp.onboarding). Public and identical for every reader. mode uses the same enum as the seller's posture; here it says how the buyer considers sellers. See specs/agent-identity-3-3.md R7 (#8114).",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/agent-onboarding-mode.json"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/agent-onboarding-requirement.json"
+      },
+      "description": "What a seller must satisfy. Uses the kinds that apply when a buyer gates a seller (aao_verified, storyboard, sandbox, experimental_feature)."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where a seller's human starts. Untrusted: surface it, never fetch or execute it."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary; the fallback whenever a reader does not understand a requirement."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "mode"
+  ],
+  "additionalProperties": true
+}

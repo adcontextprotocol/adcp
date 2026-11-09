@@ -73,7 +73,7 @@ fixtures:
         sandbox: true
   products:
     - product_id: "async_lifecycle_video_q3"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
@@ -85,7 +85,7 @@ fixtures:
       pricing_option_id: "async_lifecycle_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 18.0
+      floor_price: 18.0
 
 phases:
   - id: submit_async_media_buy
@@ -165,6 +165,7 @@ phases:
             - product_id: "async_lifecycle_video_q3"
               budget: 30000
               pricing_option_id: "async_lifecycle_cpm"
+              bid_price: 27
           idempotency_key: "$generate:uuid_v4#media_buy_seller_create_media_buy_async_lifecycle_submit"
           context:
             correlation_id: "create_media_buy_async_lifecycle--create_submitted"
@@ -323,6 +324,7 @@ phases:
                   product_id: "async_lifecycle_video_q3"
                   budget: 30000
                   pricing_option_id: "async_lifecycle_cpm"
+                  bid_price: 27
                   paused: false
               context:
                 correlation_id: "create_media_buy_async_lifecycle--terminal_result"

@@ -1,0 +1,341 @@
+id: media_buy_seller/account_timezone_buyer_selected
+version: "1.0.1"
+title: "Buyer-selected account timezone resolution"
+category: media_buy_seller
+summary: "Verifies advertised timezone selection, cold-start lookup through list_accounts, and a separate account when a buyer selects another timezone."
+track: media_buy
+introduced_in: "3.2"
+
+requires_capability:
+  path: account.timezone.account_selection
+  equals: buyer_selected
+
+required_tools:
+  - sync_accounts
+  - list_accounts
+
+narrative: |
+  In buyer-selected account-fixed mode, the buyer chooses one advertised
+  timezone while provisioning. A buyer whose preferred local clock is not in
+  supported_timezones must choose an advertised value (for example UTC) or
+  decline to provision; it cannot ask the seller to coerce an off-list value.
+
+  The selected timezone is an account attribute set when the account opens. A
+  buyer recovering from a cold start finds the account and its account_id
+  through list_accounts, filtered by the timezone. If the seller advertises a
+  second timezone, a second provisioning entry with it opens a second account;
+  both accounts must remain independently resolvable.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - buyer_selected_account_timezone
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises account_fixed timezone selection by the buyer."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_and_provision
+    title: "Choose an advertised account timezone"
+    steps:
+      - id: discover_supported_timezones
+        title: "Read the account timezone allowlist"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: account_timezone
+            path: "account.timezone.supported_timezones[0]"
+          - name: supported_account_timezones
+            path: "account.timezone.supported_timezones"
+          - name: timezone_test_operator_unit_id
+            generate: uuid_v4
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_value
+            path: "account.timezone.mode"
+            value: "account_fixed"
+            description: "Buyer selection is an account-fixed mode"
+          - check: field_value
+            path: "account.timezone.account_selection"
+            value: "buyer_selected"
+            description: "Buyer selects the account timezone"
+          - check: field_present
+            path: "account.timezone.supported_timezones[0]"
+            description: "At least one selectable timezone is advertised"
+          - check: field_absent
+            path: "account.timezone.fixed_timezone"
+            description: "Account-fixed mode does not declare a seller-wide timezone"
+
+      - id: provision_selected_timezone
+        title: "Provision with one advertised timezone"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "$context.timezone_test_operator_unit_id"
+                name: "Timezone reconciliation test"
+              timezone: "$context.account_timezone"
+              billing: "operator"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#account_timezone_buyer_selected_provision"
+        validations:
+          - check: response_schema
+            description: "Provisioning response matches the canonical schema"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "created"
+            description: "Provisioning opens a fresh account for this run"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Provisioning echoes the buyer-selected timezone"
+          - check: field_in_context_array
+            path: "accounts[0].timezone"
+            context_key: "supported_account_timezones"
+            description: "The accepted timezone belongs to the advertised allowlist"
+          - check: field_equals_context
+            path: "accounts[0].operator_unit.id"
+            context_key: "timezone_test_operator_unit_id"
+            description: "Provisioning echoes the per-run operator_unit attribute"
+
+  - id: natural_key_roundtrip
+    title: "Round-trip the timezone-bearing natural AccountRef"
+    depends_on: [discover_and_provision]
+    steps:
+      - id: list_by_natural_key
+        title: "Resolve the account by its natural key"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "$context.timezone_test_operator_unit_id"
+            timezone: "$context.account_timezone"
+            sandbox: true
+        context_outputs:
+          - name: original_account_id
+            path: "accounts[0].account_id"
+          - name: recovered_brand_domain
+            path: "accounts[0].brand.domain"
+          - name: recovered_operator
+            path: "accounts[0].operator"
+          - name: recovered_operator_unit_id
+            path: "accounts[0].operator_unit.id"
+          - name: recovered_account_timezone
+            path: "accounts[0].timezone"
+          - name: recovered_sandbox
+            path: "accounts[0].sandbox"
+        validations:
+          - check: response_schema
+            description: "Natural-key read matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Readback preserves the account timezone"
+          - check: field_value
+            path: "accounts[0].brand.domain"
+            value: "acmeoutdoor.example"
+            description: "Readback exposes the reusable brand key"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-agency.example"
+            description: "Readback exposes the reusable operator key"
+          - check: field_equals_context
+            path: "accounts[0].operator_unit.id"
+            context_key: "timezone_test_operator_unit_id"
+            description: "Readback exposes the reusable operator-unit key"
+          - check: field_value
+            path: "accounts[0].sandbox"
+            value: true
+            description: "Readback exposes the reusable sandbox qualifier"
+
+  - id: select_second_timezone
+    title: "Select a second advertised timezone as a separate account"
+    depends_on: [natural_key_roundtrip]
+    requires_capability:
+      path: account.timezone.supported_timezones.1
+      present: true
+    narrative: |
+      When a buyer needs another advertised clock alongside the first account,
+      it opens a second account with the other timezone. This phase runs only
+      when the seller advertises a second choice; a seller that offers only UTC
+      has no second clock to select.
+    steps:
+      - id: discover_second_timezone
+        title: "Read the second advertised timezone"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: second_account_timezone
+            path: "account.timezone.supported_timezones[1]"
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_present
+            path: "account.timezone.supported_timezones[1]"
+            description: "A second selectable timezone is advertised"
+
+      - id: provision_second_timezone
+        title: "Open a second account with the second timezone"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "$context.timezone_test_operator_unit_id"
+                name: "Timezone reconciliation test"
+              timezone: "$context.second_account_timezone"
+              billing: "operator"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#account_timezone_buyer_selected_second"
+        validations:
+          - check: response_schema
+            description: "Second provisioning response matches the canonical schema"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "created"
+            description: "A second entry with a different timezone opens a separate account"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "second_account_timezone"
+            description: "The second account uses the newly selected timezone"
+          - check: field_in_context_array
+            path: "accounts[0].timezone"
+            context_key: "supported_account_timezones"
+            description: "The second selection also belongs to the advertised allowlist"
+
+  - id: verify_both_timezone_keys
+    title: "Verify both timezone accounts"
+    depends_on: [select_second_timezone]
+    requires_capability:
+      path: account.timezone.supported_timezones.1
+      present: true
+    steps:
+      - id: read_original_after_second_timezone
+        title: "Read the original timezone-bearing key again"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "$context.timezone_test_operator_unit_id"
+            timezone: "$context.account_timezone"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Original-key read matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Creating a second key did not mutate the original timezone"
+          - check: field_equals_context
+            path: "accounts[0].operator_unit.id"
+            context_key: "timezone_test_operator_unit_id"
+            description: "The original natural key remains resolvable"
+
+      - id: read_second_timezone_key
+        title: "Read the second timezone-bearing key"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "$context.timezone_test_operator_unit_id"
+            timezone: "$context.second_account_timezone"
+            sandbox: true
+        context_outputs:
+          - name: second_account_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: response_schema
+            description: "Second-key read matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "second_account_timezone"
+            description: "The second natural key resolves its own account timezone"
+          - check: field_equals_context
+            path: "accounts[0].operator_unit.id"
+            context_key: "timezone_test_operator_unit_id"
+            description: "The second natural key remains resolvable"
+
+      - id: read_original_by_account_id
+        title: "Resolve the original canonical account handle"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.original_account_id"
+        validations:
+          - check: response_schema
+            description: "Original-handle read matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "The original handle still resolves the original account timezone"
+
+      - id: read_second_by_account_id
+        title: "Resolve the second canonical account handle"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.second_account_id"
+        validations:
+          - check: response_schema
+            description: "Second-handle read matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "second_account_timezone"
+            description: "The second handle resolves the second account timezone"

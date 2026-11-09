@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // contract is the only way the training agent serves 3.3.
 vi.hoisted(() => {
   process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
-  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.0';
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.1';
 });
 
 import {
@@ -29,7 +29,7 @@ import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../..
 // project onto core/canonical-installment.json, which drops the legacy
 // deprecated collection_id shorthand and requires collection_ref.
 
-const THREE_THREE_VERSION = '3.3-beta.0';
+const THREE_THREE_VERSION = '3.3-beta.1';
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.example', sandbox: true };
 

@@ -96,6 +96,7 @@ function evaluate(
     index?: number;
     activeHoldCount?: number;
     productForPurchase?: (productId: string) => unknown;
+    forcedHoldUnavailable?: ReadonlySet<string>;
   } = {}
 ) {
   const profile = options.profile ?? "typed-negotiation";
@@ -106,6 +107,7 @@ function evaluate(
     activeHoldCount: options.activeHoldCount ?? 0,
     purchaseForProduct: (productId) => purchase(productId),
     ...(options.productForPurchase && { productForPurchase: options.productForPurchase }),
+    ...(options.forcedHoldUnavailable && { forcedHoldUnavailable: options.forcedHoldUnavailable }),
   };
   const evaluation: ProposalEvaluationContext<
     CanonicalProposal,
@@ -349,6 +351,30 @@ describe("deterministic proposal negotiation profiles", () => {
       "hold_unavailable",
       "batch_aborted",
     ]);
+  });
+
+  it("fails the drafts a force_hold_unavailable directive names and aborts their siblings", () => {
+    const batch: ProposalRefinement[] = [
+      { proposal_id: "proposal_forced_first", action: "finalize" },
+      { proposal_id: "proposal_forced_second", action: "finalize" },
+    ];
+    const forced = new Set(["proposal_forced_second"]);
+    for (const profile of ["typed-negotiation", "finalization-failure"] as const) {
+      const results = batch.map((refinement, index) =>
+        evaluate(refinement, { profile, refinements: batch, index, forcedHoldUnavailable: forced })
+      );
+      // The named entry fails with hold_unavailable even when it is not first,
+      // which the finalization-failure profile's own rule would not produce.
+      expect(
+        results.map((result) => ("reason_code" in result ? result.reason_code : result.outcome))
+      ).toEqual(["batch_aborted", "hold_unavailable"]);
+    }
+    // A directive for a draft outside the batch does not shape it.
+    const unrelated = evaluate(batch[0]!, {
+      refinements: [batch[0]!],
+      forcedHoldUnavailable: new Set(["proposal_elsewhere"]),
+    });
+    expect(unrelated.outcome).toBe("finalized");
   });
 
   it("uses SDK preflight for the ten-alternative and 25-refinement boundaries", () => {
