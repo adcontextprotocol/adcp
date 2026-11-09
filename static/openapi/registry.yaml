@@ -809,13 +809,21 @@ components:
                 type: number
               has_coverage_gap_skip:
                 type: boolean
+              skipped_by_reason:
+                type: object
+                additionalProperties:
+                  type: integer
+                description: Skipped steps in this track, counted by skip reason (e.g. fixture_unavailable, missing_test_controller, capability_unsupported). Absent when nothing was skipped.
             required:
               - track
               - status
               - scenario_count
               - passed_count
               - duration_ms
-          description: Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller.
+          description: Latest-run per-track summary. A track with has_coverage_gap_skip=true has steps that were not exercised for a setup reason, such as a runner fixture gap (fixture_unavailable) or a missing comply_test_controller. The track may still pass.
+        coverage_incomplete:
+          type: boolean
+          description: "True when any track in the latest run has a coverage-gap skip. Reported beside status, not folded into it: a passing run can have incomplete coverage, and storyboards that were not exercised do not count toward verification badges."
         streak_days:
           type: integer
         last_checked_at:
@@ -4397,13 +4405,21 @@ components:
                 type: number
               has_coverage_gap_skip:
                 type: boolean
+              skipped_by_reason:
+                type: object
+                additionalProperties:
+                  type: integer
+                description: Skipped steps in this track, counted by skip reason (e.g. fixture_unavailable, missing_test_controller, capability_unsupported). Absent when nothing was skipped.
             required:
               - track
               - status
               - scenario_count
               - passed_count
               - duration_ms
-          description: Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller.
+          description: Latest-run per-track summary. A track with has_coverage_gap_skip=true has steps that were not exercised for a setup reason, such as a runner fixture gap (fixture_unavailable) or a missing comply_test_controller. The track may still pass.
+        coverage_incomplete:
+          type: boolean
+          description: "True when any track in the latest run has a coverage-gap skip. Reported beside status, not folded into it: a passing run can have incomplete coverage, and storyboards that were not exercised do not count toward verification badges."
         streak_days:
           type: integer
         last_checked_at:
@@ -5760,6 +5776,9 @@ components:
         tracks_partial:
           type: integer
         tracks_json: {}
+        coverage_incomplete:
+          type: boolean
+          description: True when any track in this run has a coverage-gap skip (tracks_json[].has_coverage_gap_skip).
         total_duration_ms:
           type:
             - number

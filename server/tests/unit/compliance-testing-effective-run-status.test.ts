@@ -19,6 +19,7 @@ vi.mock('../../src/services/adcp-taxonomy.js', () => ({
 }));
 
 import { complianceResultToDbInput } from '../../src/addie/services/compliance-testing.js';
+import { isCoverageIncomplete } from '../../src/compliance/run-publication.js';
 
 function makeTrack(status: string, scenarioCount = 3) {
   return {
@@ -205,7 +206,7 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     ]);
   });
 
-  it('keeps runner fixture gaps non-failing but coverage-incomplete', () => {
+  it('passes a run whose only gap is a runner fixture gap, keeping coverage incomplete visible', () => {
     const result = makeResult([
       makeTrack('silent'),
       {
@@ -234,6 +235,20 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
               },
             ],
           },
+          {
+            // A legacy cascade from the fixture abort is the same runner gap.
+            scenario: 'creative_fate_after_cancellation/cancel',
+            overall_passed: true,
+            steps: [
+              {
+                step: 'Cancel the media buy',
+                passed: true,
+                skipped: true,
+                skip_reason: 'prerequisite_failed',
+                duration_ms: 0,
+              },
+            ],
+          },
         ],
       },
     ] as any, 'passing');
@@ -244,15 +259,386 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
       'production',
     );
 
-    expect(out.overall_status).toBe('partial');
+    expect(out.overall_status).toBe('passing');
+    expect(out.tracks_passed).toBe(1);
+    expect(out.tracks_failed).toBe(0);
+    expect(out.tracks_partial).toBe(0);
     expect(out.tracks_json).toEqual([
       expect.objectContaining({ track: 'core', has_coverage_gap_skip: false }),
       expect.objectContaining({
         track: 'creative',
         status: 'skip',
         has_coverage_gap_skip: true,
+        skipped_by_reason: { fixture_unavailable: 1, prerequisite_failed: 1 },
       }),
     ]);
+    expect(out.tracks_json[0]).not.toHaveProperty('skipped_by_reason');
+    expect(isCoverageIncomplete(out.tracks_json)).toBe(true);
+    // The aborted storyboard stays untested, so it cannot count toward a badge.
+    expect(out.storyboard_statuses).toEqual([
+      expect.objectContaining({
+        storyboard_id: 'creative_fate_after_cancellation',
+        status: 'untested',
+        steps_total: 0,
+      }),
+    ]);
+  });
+
+  it('passes the reported seller shape: a fixture gap and its cascade inside an otherwise passing track', () => {
+    // adcp-client#3596: @adcp/sdk before #3663 grades this track partial;
+    // the hosted adapter re-grades it from the steps that ran.
+    const result = makeResult([
+      makeTrack('pass'),
+      {
+        track: 'media_buy',
+        label: 'Media Buy',
+        status: 'partial',
+        duration_ms: 1000,
+        skipped_scenarios: [],
+        observations: [],
+        scenarios: [
+          {
+            scenario: 'media_buy_seller/create_media_buy/create',
+            overall_passed: true,
+            steps: [{ step: 'Create media buy', task: 'create_media_buy', passed: true, duration_ms: 5 }],
+          },
+          {
+            scenario: 'media_buy_seller/creative_fate_after_cancellation/setup',
+            overall_passed: true,
+            steps: [
+              { step: 'Capture format', task: 'list_creative_formats', passed: true, duration_ms: 5 },
+              {
+                step: 'Sync a creative and assign to the package',
+                task: 'sync_creatives',
+                passed: true,
+                skipped: true,
+                skip_reason: 'fixture_unavailable',
+                warnings: ['creative_asset_fixture_unavailable: slot "alt_text", asset type "text"'],
+                duration_ms: 0,
+              },
+            ],
+          },
+          {
+            scenario: 'media_buy_seller/creative_fate_after_cancellation/cancel',
+            overall_passed: true,
+            steps: [
+              {
+                step: 'Cancel the media buy',
+                task: 'update_media_buy',
+                passed: true,
+                skipped: true,
+                skip_reason: 'prerequisite_failed',
+                duration_ms: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any, 'partial');
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('passing');
+    expect(out.tracks_passed).toBe(2);
+    expect(out.tracks_partial).toBe(0);
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'core', status: 'pass', has_coverage_gap_skip: false }),
+      expect.objectContaining({
+        track: 'media_buy',
+        status: 'pass',
+        has_coverage_gap_skip: true,
+        skipped_by_reason: { fixture_unavailable: 1, prerequisite_failed: 1 },
+      }),
+    ]);
+    expect(isCoverageIncomplete(out.tracks_json)).toBe(true);
+    expect(out.storyboard_statuses).toEqual(expect.arrayContaining([
+      expect.objectContaining({ storyboard_id: 'media_buy_seller/create_media_buy', status: 'passing' }),
+      expect.objectContaining({
+        storyboard_id: 'media_buy_seller/creative_fate_after_cancellation',
+        status: 'untested',
+        steps_total: 0,
+      }),
+    ]));
+  });
+
+  it('does not pass a run whose only exercised behavior was a runner fixture gap', () => {
+    const result = makeResult([
+      {
+        track: 'creative',
+        label: 'Creative',
+        status: 'pass',
+        duration_ms: 1000,
+        scenarios: [
+          {
+            scenario: 'creative_fate_after_cancellation/sync',
+            overall_passed: true,
+            steps: [{
+              step: 'Fixture unavailable',
+              passed: true,
+              skipped: true,
+              skip_reason: 'fixture_unavailable',
+              duration_ms: 0,
+            }],
+          },
+        ],
+      },
+    ] as any, 'passing');
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('partial');
+    expect(out.tracks_passed).toBe(0);
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'creative', status: 'skip', has_coverage_gap_skip: true }),
+    ]);
+  });
+
+  it('keeps a seller-owned coverage gap partial when a runner fixture gap is also present', () => {
+    const fixtureTrack = {
+      track: 'media_buy',
+      label: 'Media Buy',
+      status: 'pass',
+      duration_ms: 1000,
+      scenarios: [
+        {
+          scenario: 'media_buy_seller/create_media_buy/create',
+          overall_passed: true,
+          steps: [{ step: 'Create media buy', passed: true, duration_ms: 5 }],
+        },
+        {
+          scenario: 'media_buy_seller/creative_fate_after_cancellation/setup',
+          overall_passed: true,
+          steps: [{
+            step: 'Fixture unavailable',
+            passed: true,
+            skipped: true,
+            skip_reason: 'fixture_unavailable',
+            duration_ms: 0,
+          }],
+        },
+      ],
+    };
+    const controllerTrack = {
+      track: 'reporting',
+      label: 'Reporting & Delivery',
+      status: 'skip',
+      duration_ms: 1000,
+      scenarios: [
+        {
+          scenario: 'delivery_reporting/requirement_unmet',
+          overall_passed: true,
+          steps: [{
+            step: 'requirement_unmet:controller',
+            passed: true,
+            skipped: true,
+            skip_reason: 'missing_test_controller',
+            duration_ms: 0,
+          }],
+        },
+      ],
+    };
+    const result = makeResult([fixtureTrack, controllerTrack] as any, 'passing');
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('partial');
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'media_buy', status: 'pass', has_coverage_gap_skip: true }),
+      expect.objectContaining({
+        track: 'reporting',
+        status: 'skip',
+        has_coverage_gap_skip: true,
+        skipped_by_reason: { missing_test_controller: 1 },
+      }),
+    ]);
+  });
+
+  it('keeps an agent-caused prerequisite skip partial when a runner fixture gap is also present', () => {
+    const result = makeResult([
+      {
+        track: 'media_buy',
+        label: 'Media Buy',
+        status: 'partial',
+        duration_ms: 1000,
+        scenarios: [
+          {
+            scenario: 'media_buy_seller/create_media_buy/create',
+            overall_passed: true,
+            steps: [{ step: 'Create media buy', passed: true, duration_ms: 5 }],
+          },
+          {
+            // No fixture abort precedes this cascade, so the agent owns it.
+            scenario: 'media_buy_seller/pause_resume/resume',
+            overall_passed: true,
+            steps: [{
+              step: 'Resume the media buy',
+              passed: true,
+              skipped: true,
+              skip_reason: 'prerequisite_failed',
+              duration_ms: 0,
+            }],
+          },
+          {
+            scenario: 'media_buy_seller/creative_fate_after_cancellation/setup',
+            overall_passed: true,
+            steps: [{
+              step: 'Fixture unavailable',
+              passed: true,
+              skipped: true,
+              skip_reason: 'fixture_unavailable',
+              duration_ms: 0,
+            }],
+          },
+        ],
+      },
+    ] as any, 'partial');
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('partial');
+    expect(out.tracks_partial).toBe(1);
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({
+        track: 'media_buy',
+        status: 'partial',
+        skipped_by_reason: { prerequisite_failed: 1, fixture_unavailable: 1 },
+      }),
+    ]);
+  });
+
+  it('keeps a partial seller failure partial next to a runner fixture gap', () => {
+    const result = makeResult([
+      makeTrack('pass'),
+      {
+        track: 'media_buy',
+        label: 'Media Buy',
+        status: 'partial',
+        duration_ms: 1000,
+        scenarios: [
+          {
+            scenario: 'media_buy_seller/create_media_buy/create',
+            overall_passed: false,
+            steps: [
+              { step: 'Create media buy', passed: true, duration_ms: 5 },
+              { step: 'Read back the media buy', passed: false, error: 'status mismatch', duration_ms: 5 },
+            ],
+          },
+          {
+            scenario: 'media_buy_seller/creative_fate_after_cancellation/setup',
+            overall_passed: true,
+            steps: [{
+              step: 'Fixture unavailable',
+              passed: true,
+              skipped: true,
+              skip_reason: 'fixture_unavailable',
+              duration_ms: 0,
+            }],
+          },
+        ],
+      },
+    ] as any, 'partial');
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('partial');
+    expect(out.tracks_partial).toBe(1);
+  });
+
+  it('keeps unverified request-signing coverage out of a pass, with or without a runner fixture gap', () => {
+    // @adcp/sdk flattens the probe skip to skip_reason only (no canonical
+    // skip.reason), and the hosted classifier grades that reason as a failed
+    // step. The SDK grades the track partial (adcp-client#2954). Pin today's
+    // hosted grade: this change must not move it.
+    const signingTrack = {
+      track: 'security',
+      label: 'Security',
+      status: 'partial',
+      duration_ms: 1000,
+      scenarios: [
+        {
+          scenario: 'signed_requests/request_signing_vectors',
+          overall_passed: true,
+          steps: [{
+            step: 'Vector 001',
+            task: 'request_signing_probe',
+            passed: true,
+            skipped: true,
+            skip_reason: 'signing_transport_unavailable',
+            warnings: ['signing_transport_unavailable'],
+            duration_ms: 0,
+          }],
+        },
+      ],
+    };
+    const fixtureTrack = {
+      track: 'creative',
+      label: 'Creative',
+      status: 'pass',
+      duration_ms: 1000,
+      scenarios: [
+        {
+          scenario: 'creative_lifecycle/sync',
+          overall_passed: true,
+          steps: [{ step: 'List formats', passed: true, duration_ms: 5 }],
+        },
+        {
+          scenario: 'creative_fate_after_cancellation/setup',
+          overall_passed: true,
+          steps: [{
+            step: 'Fixture unavailable',
+            passed: true,
+            skipped: true,
+            skip_reason: 'fixture_unavailable',
+            duration_ms: 0,
+          }],
+        },
+      ],
+    };
+
+    for (const tracks of [[makeTrack('pass'), signingTrack], [makeTrack('pass'), signingTrack, fixtureTrack]]) {
+      const out = complianceResultToDbInput(
+        makeResult(tracks as any, 'partial') as any,
+        'https://agent.example.com/mcp',
+        'production',
+      );
+
+      expect(out.overall_status).toBe('failing');
+      expect(out.tracks_json).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          track: 'security',
+          status: 'fail',
+          skipped_by_reason: { signing_transport_unavailable: 1 },
+        }),
+      ]));
+    }
+  });
+
+  it('buckets skip reasons that are not runner codes as other', () => {
+    const result = makeResult([
+      {
+        track: 'core',
+        label: 'Core',
+        status: 'pass',
+        duration_ms: 1000,
+        scenarios: [
+          {
+            scenario: 'capability_discovery/discover',
+            overall_passed: true,
+            steps: [
+              { step: 'Discover', passed: true, duration_ms: 5 },
+              { step: 'Optional', passed: true, skipped: true, skip_reason: 'capability_unsupported', duration_ms: 0 },
+              { step: 'Odd', passed: true, skipped: true, skip_reason: '<b>Not a code</b>', duration_ms: 0 },
+              { step: 'Missing', passed: true, skipped: true, duration_ms: 0 },
+            ],
+          },
+        ],
+      },
+    ] as any, 'passing');
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.tracks_json[0].skipped_by_reason).toEqual({ capability_unsupported: 1, other: 2 });
+    expect(isCoverageIncomplete(out.tracks_json)).toBe(false);
   });
 
   it('keeps a genuine seller failure above a concurrent runner fixture gap', () => {
