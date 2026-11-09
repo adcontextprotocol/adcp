@@ -383,7 +383,7 @@ A request that carries `adcp_major_version` and no `adcp_version` is served the 
 
 ### Schemas are open by default
 
-([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), working-group decision of 2026-11-09.) 3.3 opens the schemas that were meant to be open. Closing a schema only breaks validators that hard-code it, so opening one is not a protocol break. `additionalProperties` goes from `false` to `true` at 778 of the 859 closed locations in the 3.3 source. Nothing else in those schemas changes, and every payload that was valid stays valid. 3.2.10 opens the same locations that 3.2 has.
+([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), working-group decision of 2026-11-09.) 3.3 opens the schemas that were meant to be open. Closing a schema only breaks validators that hard-code it, so opening one is not a protocol break. `additionalProperties` goes from `false` to `true` at 760 of the 859 closed locations in the 3.3 source. Nothing else in those schemas changes, and every payload that was valid stays valid. 3.2.10 opens the same locations that 3.2 has.
 
 A location stays closed only where closure enforces something:
 
@@ -392,7 +392,10 @@ A location stays closed only where closure enforces something:
 - **Join keys.** Metric `qualifier` objects and forecast dimensions. Consumers join on their key sets.
 - **Canonical identity and signatures.** `canonical-installment-ref` and the JWS response-payload envelope.
 - **Privacy clamps.** The TMP identity and context match requests, `catalog-item-reference-not-found-error`, the per-agent `PERMISSION_DENIED` and `BILLING_NOT_PERMITTED_FOR_AGENT` details, the failed and unconfigured `get_principal` results, and the `get_reporting_status` `lookup_unavailable` failure. That failure was open in `3.3.0-beta.1` through `beta.5` and is closed again, as in 3.2, so that unknown and unauthorized identifiers return one identical shape.
+- **No key material or markup.** `trust.json`, which sits on the signature-verification fetch path and whose keys are published only in the key directory, and `placement-presentation`, a declarative frame that consumers render.
 - **Maps keyed by identifiers,** where closure checks the keys (`patternProperties`).
+
+Where closure also rejected a specific field the protocol defines elsewhere, such as `trackers` on an `unassign` operation or `expires_at` on a hold entry, the opened schema names it in a `not` clause, so that payload is still rejected.
 
 A minor may add to an open schema. It adds nothing to a schema that stays closed; that waits for the next major. The additive-minor check enforces both, and still fails on removals, renames, retypes, removed enum values, tightened bounds, new required names, and closing an open schema.
 
