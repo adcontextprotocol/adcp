@@ -199,7 +199,7 @@
     "eval:addie-matched-v4-plan": "tsx server/tests/manual/matched-v4-evaluation-plan.ts",
     "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts",
     "postinstall": "node scripts/install-sdk-creative-build-probe.cjs",
-    "test:auction-only-compliance": "node --test --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs"
+    "test:auction-only-compliance": "node --test --test-force-exit --test-timeout=30000 tests/auction-only-seller-compliance.test.cjs tests/creative-format-gate-compliance.test.cjs"
   },
   "dependencies": {
     "@adcp/sdk": "14.0.0-rc.53",
