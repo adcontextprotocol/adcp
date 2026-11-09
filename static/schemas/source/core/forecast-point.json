@@ -33,24 +33,24 @@
       "$ref": "/schemas/enums/impression-estimation-basis.json",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.dooh_impression_basis). On a DOOH point that forecasts `impressions` from `plays`, the methodology tier the forecast uses, when it is the same for every expected play. When the point covers plays expected on different tiers, omit it and report `impression_basis_breakdown`. Lets forecast and delivery reconcile on the same declaration. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`."
+      "description": "Experimental (media_buy.dooh_impression_basis). On a DOOH point that forecasts `impressions` from `plays`, the methodology tier the forecast uses, when it is the same for every expected play. When the point covers plays expected on different tiers, including the fallback plays a sensor-equipped screen is expected to estimate on `seller_modeled` while its sensor is not reporting, sellers MUST omit it, never substituting `hybrid` or the majority tier, and report `impression_basis_breakdown`; a point never carries both. Lets forecast and delivery reconcile on the same declaration. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`."
     },
     "audience_multiplier": {
       "type": "number",
       "minimum": 0,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.dooh_impression_basis). The planning multiplier of a DOOH point: the `impressions / plays` the forecast applies, so `metrics.impressions.mid ≈ metrics.plays.mid × audience_multiplier`. A declaration, not a forecastable metric, so it sits outside `metrics`."
+      "description": "Experimental (media_buy.dooh_impression_basis). The planning multiplier of a single-tier DOOH point: the `impressions / plays` the forecast applies, so `metrics.impressions.mid ≈ metrics.plays.mid × audience_multiplier`. A point that reports `impression_basis_breakdown` SHOULD omit it and give each entry's planning multiplier instead: a multiplier blended across tiers mixes different units and misleads. A declaration, not a forecastable metric, so it sits outside `metrics`."
     },
     "impression_basis_breakdown": {
       "type": "array",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.dooh_impression_basis). For a DOOH point covering plays expected on different tiers, one entry per tier with the expected plays and impressions behind the point's midpoints. A point reports either `impression_basis` or this breakdown.",
+      "description": "Experimental (media_buy.dooh_impression_basis). For a DOOH point covering plays expected on different tiers, one entry per tier with the expected plays and impressions behind the point's midpoints: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to `metrics.plays.mid` and `metrics.impressions.mid`. It SHOULD include the fallback the seller expects: the plays sensor-equipped screens are expected to estimate on `seller_modeled` while their sensor is not reporting. A point never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier, and plays and spend across tiers.",
       "items": {
         "$ref": "/schemas/core/impression-basis-breakdown-entry.json"
       },
-      "minItems": 1
+      "minItems": 2
     },
     "metrics": {
       "type": "object",
@@ -148,5 +148,10 @@
     }
   },
   "required": ["metrics"],
+  "dependencies": {
+    "impression_basis_breakdown": {
+      "not": { "required": ["impression_basis"] }
+    }
+  },
   "additionalProperties": true
 }

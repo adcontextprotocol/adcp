@@ -4,7 +4,7 @@
   "title": "Impression Basis Breakdown Entry",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Experimental (media_buy.dooh_impression_basis). The plays of a DOOH row, or of a forecast point, whose audience was estimated on one tier, and the impressions they produced. A row that aggregates plays estimated on different tiers (sensor-equipped screens and screens without a sensor, or one screen whose sensor stopped reporting for part of the flight) lists one entry per tier instead of a row-level `impression_basis`. At most one entry per tier. In a delivery row the entries' `plays` and `impressions` sum to the row's `plays` and `impressions`; in a forecast point they are the expected values behind the point's midpoints.",
+  "description": "Experimental (media_buy.dooh_impression_basis). The plays of a DOOH row, or of a forecast point, whose audience was estimated on one tier, and the impressions they produced. A row that aggregates plays estimated on different tiers (sensor-equipped screens and screens without a sensor, or one screen whose sensor stopped reporting for part of the flight) lists one entry per tier instead of a row-level `impression_basis`: at least two entries, at most one per tier. In a delivery row the entries' `plays` and `impressions` sum exactly to the row's `plays` and `impressions`; in a forecast point they are the expected values behind the point's midpoints. Entries of different tiers are different units with no exchange rate.",
   "type": "object",
   "properties": {
     "impression_basis": {

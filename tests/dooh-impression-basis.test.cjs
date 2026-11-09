@@ -30,9 +30,11 @@ function assertMultiplier(multiplier, impressions, plays, where) {
   assert.ok(Math.abs(ratio - multiplier) / ratio < 0.005, `${where}: ${impressions} / ${plays} = ${ratio}, declared ${multiplier}`);
 }
 
-// Breakdown entries: one per tier, summing to the row's counts, each multiplier consistent.
+// Breakdown entries: at least two, one per tier, summing exactly to the row's counts, each
+// multiplier consistent. Draft-07 cannot count matches, so distinct tiers are checked here.
 function assertBreakdown(entries, plays, impressions, where) {
   const tiers = entries.map((entry) => entry.impression_basis);
+  assert.ok(entries.length >= 2, `${where}: at least two entries`);
   assert.equal(new Set(tiers).size, tiers.length, `${where}: one entry per tier`);
   assert.equal(entries.reduce((sum, entry) => sum + entry.plays, 0), plays, `${where}: plays sum`);
   assert.equal(entries.reduce((sum, entry) => sum + entry.impressions, 0), impressions, `${where}: impressions sum`);
@@ -41,16 +43,36 @@ function assertBreakdown(entries, plays, impressions, where) {
       assertMultiplier(entry.audience_multiplier, entry.impressions, entry.plays, `${where} ${entry.impression_basis}`);
 }
 
-// Every delivery row: either a single tier or a breakdown, a consistent multiplier, and a
-// basis_metric that joins a vendor_metric_values row of the same object.
+// A row's counts per tier: its breakdown entries, or its single tier holding all its counts.
+function tierCounts(dooh, plays, impressions) {
+  const entries = dooh.impression_basis_breakdown ?? [{ impression_basis: dooh.impression_basis, plays, impressions }];
+  return Object.fromEntries(entries.map((entry) => [entry.impression_basis, { plays: entry.plays, impressions: entry.impressions }]));
+}
+
+// Each tier entry of a parent row is the sum of its children's entries for that tier.
+function assertParentSumsChildren(parent, children, where) {
+  const sum = {};
+  for (const child of children)
+    for (const [tier, counts] of Object.entries(tierCounts(child.dooh_metrics, child.plays, child.impressions))) {
+      sum[tier] ??= { plays: 0, impressions: 0 };
+      sum[tier].plays += counts.plays;
+      sum[tier].impressions += counts.impressions;
+    }
+  assert.deepEqual(tierCounts(parent.dooh_metrics, parent.plays, parent.impressions), sum, `${where}: tiers sum over children`);
+}
+
+// Every delivery row: either a single tier or a breakdown, a consistent multiplier (none blended
+// across tiers), and a basis_metric that joins a vendor_metric_values row of the same object.
 function assertDeliveryRow(row, where) {
   const dooh = row.dooh_metrics;
   assert.ok(dooh, `${where}: dooh_metrics`);
   assert.ok((dooh.impression_basis === undefined) !== (dooh.impression_basis_breakdown === undefined), `${where}: impression_basis xor impression_basis_breakdown`);
   if (dooh.audience_multiplier !== undefined)
     assertMultiplier(dooh.audience_multiplier, row.impressions, row.plays, where);
-  if (dooh.impression_basis_breakdown)
+  if (dooh.impression_basis_breakdown) {
     assertBreakdown(dooh.impression_basis_breakdown, row.plays, row.impressions, where);
+    assert.equal(dooh.audience_multiplier, undefined, `${where}: no multiplier blended across tiers`);
+  }
   if (dooh.basis_metric) {
     const joined = (row.vendor_metric_values ?? []).find((value) =>
       value.vendor.domain === dooh.basis_metric.vendor.domain && value.metric_id === dooh.basis_metric.metric_id);
@@ -105,6 +127,16 @@ describe("DOOH impression basis schemas", () => {
     assert.ok(!readSchema("/schemas/enums/forecastable-metric.json").enum.includes("audience_multiplier"));
   });
 
+  it("requires two or more entries and never a breakdown beside a row-level tier", () => {
+    const dooh = readSchema("/schemas/core/delivery-metrics.json").properties.dooh_metrics;
+    const point = readSchema("/schemas/core/forecast-point.json");
+    const exclusion = { impression_basis_breakdown: { not: { required: ["impression_basis"] } } };
+    for (const schema of [dooh, point]) {
+      assert.equal(schema.properties.impression_basis_breakdown.minItems, 2);
+      assert.deepEqual(schema.dependencies, exclusion);
+    }
+  });
+
   it("lists the feature id in the experimental-status table", () => {
     const doc = fs.readFileSync(path.join(ROOT, "docs", "reference", "experimental-status.mdx"), "utf8");
     assert.match(doc, /^\| `media_buy\.dooh_impression_basis` \|/m);
@@ -132,15 +164,20 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
     assert.deepEqual(tiers, ["sensor_measured", "seller_modeled"]);
   });
 
-  it("forecast: the planning multiplier and the expected split reconcile with the midpoints", () => {
+  // The concourse's sensor screens are expected to fall back on 30% of their plays, the share
+  // of fallback plays on sensor screens in the adopter's production data (9% of 30%).
+  it("forecast: the expected split, fallback included, reconciles with the midpoints", () => {
     const forecast = fixture("forecast.json");
     assert.equal(validateForecast(forecast), true, JSON.stringify(validateForecast.errors, null, 2));
     for (const point of forecast.points) {
       const plays = point.metrics.plays.mid;
       const impressions = point.metrics.impressions.mid;
-      assertMultiplier(point.audience_multiplier, impressions, plays, point.label);
       assertBreakdown(point.impression_basis_breakdown, plays, impressions, point.label);
+      assert.equal(point.audience_multiplier, undefined, `${point.label}: no multiplier blended across tiers`);
     }
+    const [sensor, modeled] = forecast.points[0].impression_basis_breakdown;
+    const platformPlays = 58300;
+    assert.equal(sensor.plays / (sensor.plays + modeled.plays - platformPlays), 0.7, "concourse: 70% sensor plays, 30% fallback");
   });
 
   it("delivery: totals, package and placements carry a consistent basis, including a sensor screen that fell back", () => {
@@ -148,12 +185,12 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
     assert.equal(validateDelivery(delivery), true, JSON.stringify(validateDelivery.errors, null, 2));
     for (const buy of delivery.media_buy_deliveries) {
       assertDeliveryRow(buy.totals, "totals");
+      assertParentSumsChildren(buy.totals, buy.by_package, "totals");
       for (const pkg of buy.by_package) {
         assertDeliveryRow(pkg, pkg.package_id);
         for (const placement of pkg.by_placement)
           assertDeliveryRow(placement, placement.placement_id);
-        for (const key of ["plays", "impressions"])
-          assert.equal(pkg.by_placement.reduce((sum, placement) => sum + placement[key], 0), pkg[key], `${pkg.package_id}: placements' ${key}`);
+        assertParentSumsChildren(pkg, pkg.by_placement, pkg.package_id);
       }
     }
     const fallback = delivery.media_buy_deliveries[0].by_package[0].by_placement[0].dooh_metrics.impression_basis_breakdown;
@@ -180,8 +217,26 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
       assert.equal(reject((dooh) => { delete dooh.impression_basis_breakdown[1].impression_basis; }), false);
     });
 
-    it("an empty breakdown", () => {
+    it("a breakdown with fewer than two entries", () => {
+      assert.equal(reject((dooh) => { dooh.impression_basis_breakdown = [dooh.impression_basis_breakdown[0]]; }), false);
       assert.equal(reject((dooh) => { dooh.impression_basis_breakdown = []; }), false);
+      const point = fixture("forecast.json");
+      point.points[0].impression_basis_breakdown.pop();
+      assert.equal(validateForecast(point), false);
+    });
+
+    it("a breakdown repeating a tier", () => {
+      // Draft-07 cannot count the entries of one tier: the rule is prose, checked here.
+      const row = placementRow();
+      const entries = row.dooh_metrics.impression_basis_breakdown.map((entry) => ({ ...entry, impression_basis: "sensor_measured" }));
+      assert.throws(() => assertBreakdown(entries, row.plays, row.impressions, row.placement_id), /one entry per tier/);
+    });
+
+    it("a row carrying both a tier and a breakdown", () => {
+      assert.equal(reject((dooh) => { dooh.impression_basis = "sensor_measured"; }), false);
+      const forecast = fixture("forecast.json");
+      forecast.points[0].impression_basis = "seller_modeled";
+      assert.equal(validateForecast(forecast), false);
     });
 
     it("a basis_metric without its metric_id", () => {

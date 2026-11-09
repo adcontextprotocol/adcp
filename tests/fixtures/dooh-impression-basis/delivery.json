@@ -14,7 +14,6 @@
       "plays": 86072,
       "dooh_metrics": {
         "screens_used": 256,
-        "audience_multiplier": 15.68,
         "impression_basis_breakdown": [
           { "impression_basis": "sensor_measured", "plays": 21340, "impressions": 397808, "audience_multiplier": 18.64 },
           { "impression_basis": "seller_modeled", "plays": 64732, "impressions": 951545, "audience_multiplier": 14.7 }
@@ -31,7 +30,6 @@
       "plays": 86072,
       "dooh_metrics": {
         "screens_used": 256,
-        "audience_multiplier": 15.68,
         "impression_basis_breakdown": [
           { "impression_basis": "sensor_measured", "plays": 21340, "impressions": 397808, "audience_multiplier": 18.64 },
           { "impression_basis": "seller_modeled", "plays": 64732, "impressions": 951545, "audience_multiplier": 14.7 }
@@ -45,7 +43,6 @@
           "plays": 27805,
           "dooh_metrics": {
             "screens_used": 85,
-            "audience_multiplier": 18.35,
             "impression_basis_breakdown": [
               { "impression_basis": "sensor_measured", "plays": 21340, "impressions": 397808, "audience_multiplier": 18.64 },
               { "impression_basis": "seller_modeled", "plays": 6465, "impressions": 112525, "audience_multiplier": 17.41 }
