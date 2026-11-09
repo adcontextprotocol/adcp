@@ -58,5 +58,6 @@
   },
   "required": ["goal"],
   "anyOf": [{ "required": ["volume"] }, { "required": ["cost_per"] }],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "anyOf": [{ "required": ["threshold_rate"] }, { "required": ["per_ad_spend"] }] }
 }

@@ -27,7 +27,8 @@
         "status",
         "requested_operator_identity"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["reason"] }
     },
     {
       "title": "AccountIdentityChangeRejected",

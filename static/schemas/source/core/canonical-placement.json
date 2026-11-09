@@ -104,5 +104,6 @@
       "required": ["kind", "name"]
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["format_ids"] }
 }

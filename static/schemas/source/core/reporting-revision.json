@@ -71,5 +71,6 @@
     "set_ordering": "media_buy_ids is a mathematical set and MUST be serialized in ascending Unicode code-point order so equivalent denominators have one representation.",
     "digest_requirement": "revision_content_sha256 is required for every revision and is SHA-256 of RFC 8785 JCS for {reporting_revision_id,row_count,control_totals,reporting_rows}. Exact revision reads MUST return metadata, rows, ID, count, totals, and this digest identically to status. canonical_content_digest is separate external-materialization evidence: it is optional for non-billing delivery profiles and mandatory when a referenced materialization selects canonical_digest and for every billing obligation."
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["destination_ref"] }
 }

@@ -17,4 +17,6 @@ Open the 3.2 schemas that were closed by accident, so a 3.2 validator no longer 
 - `placement-presentation`, which carries no key material or markup.
 - `patternProperties` maps keyed by IDs.
 
+Where closure was the only thing rejecting a specific field that the protocol defines elsewhere or forbids (for example `trackers` on `unassign`, `staged_update` on `creative.status_changed`, `access_token` on the delivery-ready webhook, `auth_token` on list-application receipts, or credentials on a notification-config readback), the opened schema now rejects that field by name with `not`. Descriptions of opened schemas no longer say they are closed.
+
 The MCP model-context projection now omits `additionalProperties: true` as well as `false`, since `true` is the JSON Schema default.

@@ -181,6 +181,7 @@
     "initiator"
   ],
   "additionalProperties": true,
+  "not": { "required": ["staged_update"] },
   "examples": [
     {
       "description": "Approved → rejected post-approval revocation (paired with a media-buy impairment)",

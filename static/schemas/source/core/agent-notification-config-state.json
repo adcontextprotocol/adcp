@@ -63,7 +63,8 @@
       "required": [
         "schemes"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["credentials"] }
     },
     "active": {
       "type": "boolean",

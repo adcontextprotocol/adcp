@@ -55,7 +55,8 @@
         }
       },
       "required": ["mode"],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["placement_refs"] }
     }
   ]
 }

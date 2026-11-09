@@ -32,7 +32,15 @@
         }
       },
       "minProperties": 1,
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["modes"] },
+          { "required": ["cost_per_strengths"] },
+          { "required": ["roas_strengths"] },
+          { "required": ["supported_combinations"] }
+        ]
+      }
     },
     "policy_profile": {
       "type": "object",

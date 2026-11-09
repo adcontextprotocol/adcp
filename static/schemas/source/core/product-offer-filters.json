@@ -67,7 +67,8 @@
         }
       },
       "required": ["start_time", "end_time"],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": { "required": ["timezone"] }
     },
     "budget_range": {
       "$ref": "/schemas/core/budget-range.json"

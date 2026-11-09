@@ -105,7 +105,8 @@
           }
         },
         "required": ["collection_id", "relationship"],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "not": { "required": ["publisher_domain"] }
       }
     },
     "ext": {

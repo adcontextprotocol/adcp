@@ -72,7 +72,7 @@
             },
             "qualifier": {
               "type": "object",
-              "description": "Disambiguator — same shape as `committed_metrics.qualifier`. Carry `viewability_standard` for MRC vs GroupM viewability feedback; `completion_source` for seller- vs vendor-attested completion feedback; `attribution_methodology` and `attribution_window` for outcome-metric feedback (the buyer pinning a specific methodology or window when the feedback is methodology-sensitive). Closed (`additionalProperties: false`); new keys ship explicitly in subsequent minors.",
+              "description": "Disambiguator — same shape as `committed_metrics.qualifier`. Carry `viewability_standard` for MRC vs GroupM viewability feedback; `completion_source` for seller- vs vendor-attested completion feedback; `attribution_methodology` and `attribution_window` for outcome-metric feedback (the buyer pinning a specific methodology or window when the feedback is methodology-sensitive). Closed (`additionalProperties: false`), because consumers join on the key set; new keys ship in a major release.",
               "properties": {
                 "viewability_standard": {
                   "$ref": "/schemas/enums/viewability-standard.json"
