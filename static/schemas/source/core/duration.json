@@ -17,5 +17,5 @@
     }
   },
   "required": ["interval", "unit"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

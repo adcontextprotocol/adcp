@@ -57,7 +57,7 @@
           "else": { "not": { "required": ["custom_event_name"] } }
         }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -107,7 +107,7 @@
       "allOf": [
         { "$ref": "/schemas/core/vast-tracker-constraints.json" }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
@@ -157,7 +157,7 @@
       "allOf": [
         { "$ref": "/schemas/core/daast-tracker-constraints.json" }
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ],
   "discriminator": { "propertyName": "asset_type" }

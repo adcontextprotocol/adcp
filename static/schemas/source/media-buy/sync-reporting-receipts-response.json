@@ -28,7 +28,7 @@
               }
             },
             "required": ["result", "receipt"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "title": "Unchanged reporting receipt",
@@ -43,7 +43,7 @@
               }
             },
             "required": ["result", "receipt"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "title": "Recorded reporting adjustment receipt",
@@ -58,7 +58,7 @@
               }
             },
             "required": ["result", "adjustment_receipt"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "title": "Unchanged reporting adjustment receipt",
@@ -73,7 +73,7 @@
               }
             },
             "required": ["result", "adjustment_receipt"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "title": "Failed reporting receipt",
@@ -84,7 +84,7 @@
               "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1, "maxItems": 16 }
             },
             "required": ["result", "reporting_receipt_id", "errors"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },

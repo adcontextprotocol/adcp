@@ -90,7 +90,7 @@
                 }
               },
               "required": ["property_name", "value"],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           }
         },

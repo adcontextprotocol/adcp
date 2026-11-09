@@ -22,7 +22,7 @@
       },
       "minProperties": 1,
       "maxProperties": 1,
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "coverage_requirement": { "type": "string", "enum": ["full", "allow_partial"], "description": "Whether every package in the resolved media-buy scope must support the exact selected offering. full fails closed when any package is unsupported or unknown. allow_partial permits publication only for the explicitly covered package denominator; every revision and status response still exposes partial coverage and MUST NOT present covered-subset totals as whole-buy totals." },
     "required_finality": { "$ref": "/schemas/enums/reporting-finality.json", "description": "Finality the durable path must ultimately provide. Snapshot delivery may still precede an official requirement." },
@@ -53,5 +53,5 @@
     "authoritative_party": "Reserved for the billing-authority unification tracked in issue 7440. Absence is identical to seller. A seller that does not implement a buyer-deposited billing revision task — every seller in 3.2 — MUST reject a configuration generation declaring authoritative_party: consumer with UNSUPPORTED_FEATURE at sync_accounts validation, before the generation becomes ready and before any obligation is created. It MUST NOT silently coerce the value to seller. Only one implication is conditioned on this field: feed_purpose billing implies reconciliation_mode consumer_receipt when authoritative_party is seller or absent, so a later minor can define the consumer-authoritative shape additively. The other two constraints are unconditional for both values — reconciliation_mode consumer_receipt still implies method, and feed_purpose billing still requires required_finality official. Naming measurement authority for invoicing remains measurement_terms.billing_measurement on the media buy; this field only records which party produces the reporting feed that carries it.",
     "coverage_requirement": "A full configuration MUST NOT become ready for a current nonempty partial, none, or unknown scope and any later incomplete period becomes action_required with REPORTING_COVERAGE_INCOMPLETE. allow_partial MAY become ready when some scope is covered, but every obligation and revision freezes exact coverage and aggregate consumers keep the partial label."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -18,5 +18,5 @@
     "terms_ref": { "type": "string", "description": "Optional advisory pointer to published commercial terms. It is not a proposal change-term identity." }
   },
   "required": ["action", "modes"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -131,7 +131,7 @@
               }
             },
             "required": ["agent_url"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "embedded_at": {
             "type": "string",
@@ -173,7 +173,7 @@
               }
             },
             "required": ["agent_url"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "c2pa_action": {
             "$ref": "/schemas/enums/c2pa-watermark-action.json",

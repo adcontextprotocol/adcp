@@ -67,7 +67,7 @@
         }
       },
       "required": ["start_time", "end_time"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "budget_range": {
       "$ref": "/schemas/core/budget-range.json"
@@ -109,7 +109,7 @@
           "system",
           "code"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -185,7 +185,7 @@
           "minItems": 1
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "required_features": {
       "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-features.json" }],
@@ -222,7 +222,7 @@
           "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" }
         },
         "anyOf": [{ "required": ["vendor"] }, { "required": ["metric_id"] }],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -241,5 +241,5 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

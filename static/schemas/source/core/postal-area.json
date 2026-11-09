@@ -32,7 +32,7 @@
         }
       },
       "required": ["country", "system", "values"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "PostalAreaWithFusedSystem",
@@ -54,7 +54,7 @@
         }
       },
       "required": ["system", "values"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

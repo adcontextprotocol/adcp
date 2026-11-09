@@ -94,5 +94,5 @@
     "status",
     "url"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

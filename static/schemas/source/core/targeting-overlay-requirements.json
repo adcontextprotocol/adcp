@@ -20,7 +20,7 @@
             }
           },
           "required": ["systems"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -38,7 +38,7 @@
             }
           },
           "required": ["supported_match_types"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -57,7 +57,7 @@
             }
           },
           "required": ["families"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -97,7 +97,7 @@
               }
             }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     }
@@ -167,7 +167,7 @@
             { "required": ["geometry"] },
             { "required": ["transport_modes"] }
           ],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -182,7 +182,7 @@
           "type": "object",
           "properties": { "age": { "$ref": "#/definitions/required" } },
           "required": ["age"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -211,5 +211,5 @@
   },
   "minProperties": 1,
   "not": { "required": ["frequency_cap", "frequency_cap_support"] },
-  "additionalProperties": false
+  "additionalProperties": true
 }

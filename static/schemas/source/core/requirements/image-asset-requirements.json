@@ -74,7 +74,7 @@
             }
           },
           "required": ["uniform"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "properties": {
@@ -84,7 +84,7 @@
             "left": { "type": "number", "minimum": 0 }
           },
           "required": ["top", "right", "bottom", "left"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },

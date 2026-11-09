@@ -525,7 +525,7 @@
               "at",
               "reason_code"
             ],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "webhook_activity": {
             "type": "array",

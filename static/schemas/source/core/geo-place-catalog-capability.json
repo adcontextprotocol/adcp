@@ -28,7 +28,7 @@
     }
   },
   "required": ["current_version", "supported_versions", "resolver"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-adcp-validation": {
     "member_of": { "field": "current_version", "array_field": "supported_versions" },
     "description": "JSON Schema draft-07 cannot express scalar membership in a sibling array; conformance tooling MUST verify current_version is present in supported_versions."

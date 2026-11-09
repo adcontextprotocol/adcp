@@ -56,5 +56,5 @@
     "acceptance_match": "accepted requires exact equality with the selected materialization verification evidence: row count and control totals always; canonical digest or manifest digest when selected. A mismatch MUST be submitted or recorded as rejected.",
     "immutability": "A reporting_receipt_id is immutable. Exact retries are idempotent; reuse with different content is a conflict. A consumer retains one current leaf per obligation and revision: a new ID may supersede only that current rejected leaf. History remains append-only; an accepted current leaf is terminal."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

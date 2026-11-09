@@ -103,7 +103,7 @@
         "submitted_count": { "type": "integer", "minimum": 0 }
       },
       "required": ["submitted_count"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "list_applications": {
       "type": "array",

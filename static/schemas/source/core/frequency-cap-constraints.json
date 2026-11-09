@@ -54,7 +54,7 @@
     { "required": ["window_constraints"] },
     { "required": ["suppression_constraints"] }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-adcp-validation": {
     "unique_window_units": "window_constraints MUST contain at most one entry for each unit.",
     "unique_suppression_units": "suppression_constraints MUST contain at most one entry for each unit."

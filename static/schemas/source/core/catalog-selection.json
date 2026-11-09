@@ -31,5 +31,5 @@
     }
   },
   "required": ["catalog_id"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

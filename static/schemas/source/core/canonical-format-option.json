@@ -71,5 +71,5 @@
       }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

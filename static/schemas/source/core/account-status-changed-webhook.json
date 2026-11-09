@@ -95,7 +95,7 @@
       "required": [
         "message"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -113,7 +113,7 @@
     "observed_at",
     "reason_code"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Account requires payment action",

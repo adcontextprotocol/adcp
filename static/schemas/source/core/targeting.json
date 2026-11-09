@@ -80,7 +80,7 @@
           }
         },
         "required": ["system", "values"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -226,7 +226,7 @@
         }
       },
       "required": ["min"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "device_platform": {
       "type": "array",
@@ -346,7 +346,7 @@
               }
             },
             "required": ["value", "unit"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "transport_mode": {
             "$ref": "/schemas/enums/transport-mode.json",
@@ -367,7 +367,7 @@
               }
             },
             "required": ["value", "unit"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "geometry": {
             "type": "object",
@@ -384,7 +384,7 @@
               }
             },
             "required": ["type", "coordinates"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "ext": {
             "$ref": "/schemas/core/ext.json"
@@ -454,7 +454,7 @@
           }
         },
         "required": ["keyword", "match_type"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },

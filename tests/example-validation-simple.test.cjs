@@ -1516,7 +1516,8 @@ async function runTests() {
 
   // get_products refine[] — migration regressions for the `id` → `product_id`/`proposal_id` rename (adcp#2775).
   // These fixtures exercise exactly the payload shape a pre-rename orchestrator would send today, so the test
-  // proves the schema rejects it with a migration-diagnosable error.
+  // proves the schema rejects it with a migration-diagnosable error. The refine entries are open (DR-0009),
+  // so the error names the missing renamed field rather than the stray `id`.
   await expectInvalid(
     {
       "idempotency_key": "550e8400-e29b-41d4-a716-446655440002",
@@ -1524,8 +1525,8 @@ async function runTests() {
       "refine": [{ "scope": "product", "id": "prod_video_premium", "action": "include" }]
     },
     '/schemas/media-buy/get-products-request.json',
-    'refine[] product with old `id` field is rejected and error flags the unknown property',
-    ['product_id', /additionalProperties|must NOT have additional propert/i]
+    'refine[] product with old `id` field is rejected and error names the missing product_id',
+    ['product_id']
   );
 
   await expectInvalid(
@@ -1535,8 +1536,8 @@ async function runTests() {
       "refine": [{ "scope": "proposal", "id": "prop_balanced_v1", "action": "finalize" }]
     },
     '/schemas/media-buy/get-products-request.json',
-    'refine[] proposal with old `id` field is rejected and error flags the unknown property',
-    ['proposal_id', /additionalProperties|must NOT have additional propert/i]
+    'refine[] proposal with old `id` field is rejected and error names the missing proposal_id',
+    ['proposal_id']
   );
 
   // Happy path — optional `action` defaults to include server-side; schema must accept the minimal shape.

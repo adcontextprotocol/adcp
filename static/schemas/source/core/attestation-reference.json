@@ -41,7 +41,7 @@
             }
           },
           "required": ["type", "credential_uri"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "title": "AttestationIssuerCredentialIdLocator",
@@ -70,7 +70,7 @@
             }
           },
           "required": ["type", "credential_id", "resolver_id"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       ]
     },
@@ -93,7 +93,7 @@
         }
       },
       "required": ["format", "value"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "content_digest": {
       "type": "string",
@@ -119,7 +119,7 @@
           "format": "date-time"
         }
       },
-      "additionalProperties": false,
+      "additionalProperties": true,
       "minProperties": 1
     },
     "verify_agent": {
@@ -133,7 +133,7 @@
         }
       },
       "required": ["agent_url"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -158,7 +158,7 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "issuer": {

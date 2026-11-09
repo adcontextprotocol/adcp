@@ -151,7 +151,7 @@
           }
         },
         "required": ["system", "code"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -251,7 +251,7 @@
           "minItems": 1
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "audience_activation_methods": {
       "type": "array",
@@ -266,7 +266,7 @@
               "pattern": { "type": "string", "const": "sync_audiences" }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -280,11 +280,11 @@
                   "agent_url": { "type": "string", "format": "uri" }
                 },
                 "required": ["agent_url"],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -311,7 +311,7 @@
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -324,7 +324,7 @@
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -337,7 +337,7 @@
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "type": "object",
@@ -350,7 +350,7 @@
               }
             },
             "required": ["pattern"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },
@@ -449,7 +449,7 @@
             }
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },
@@ -521,7 +521,7 @@
               }
             },
             "required": ["value", "unit"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "transport_mode": {
             "$ref": "/schemas/enums/transport-mode.json",
@@ -542,7 +542,7 @@
               }
             },
             "required": ["value", "unit"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "geometry": {
             "type": "object",
@@ -559,7 +559,7 @@
               }
             },
             "required": ["type", "coordinates"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "oneOf": [
@@ -633,7 +633,7 @@
           }
         },
         "anyOf": [{ "required": ["vendor"] }, { "required": ["metric_id"] }],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "examples": [
@@ -668,7 +668,7 @@
           }
         },
         "required": ["keyword"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1
     },

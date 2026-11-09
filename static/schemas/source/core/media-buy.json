@@ -77,7 +77,7 @@
           "maxLength": 500
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "total_budget": {
       "type": "number",

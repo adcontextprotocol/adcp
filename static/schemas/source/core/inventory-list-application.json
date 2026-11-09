@@ -69,7 +69,7 @@
             }
           },
           "required": ["matched", "unmatched"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "required": [
@@ -81,7 +81,7 @@
         "evaluated_at",
         "summary"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "Collection list application",
@@ -134,7 +134,7 @@
             }
           },
           "required": ["matched", "unmatched"],
-          "additionalProperties": false
+          "additionalProperties": true
         }
       },
       "required": [
@@ -146,7 +146,7 @@
         "evaluated_at",
         "summary"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

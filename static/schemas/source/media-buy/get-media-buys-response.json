@@ -176,7 +176,7 @@
                 "maxLength": 500
               }
             },
-            "additionalProperties": false
+            "additionalProperties": true
           },
           "revision": {
             "type": "integer",
@@ -414,7 +414,7 @@
                       "maxLength": 500
                     }
                   },
-                  "additionalProperties": false
+                  "additionalProperties": true
                 },
                 "creative_deadline": {
                   "type": "string",

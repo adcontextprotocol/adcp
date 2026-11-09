@@ -15,5 +15,5 @@
     }
   },
   "required": ["type", "value"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

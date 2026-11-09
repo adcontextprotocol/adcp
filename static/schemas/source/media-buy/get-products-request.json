@@ -76,7 +76,7 @@
               }
             },
             "required": ["scope", "ask"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "properties": {
@@ -103,7 +103,7 @@
               }
             },
             "required": ["scope", "product_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "properties": {
@@ -130,7 +130,7 @@
               }
             },
             "required": ["scope", "proposal_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       }

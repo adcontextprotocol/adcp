@@ -60,7 +60,7 @@
                 "category_id",
                 "status"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           },
           "resolved_policies": {
@@ -96,7 +96,7 @@
                 "source",
                 "enforcement"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           }
         },
@@ -105,7 +105,7 @@
           "status",
           "version"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "replayed": {

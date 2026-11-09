@@ -72,7 +72,12 @@ describe('product discovery MCP schema parity', () => {
     for (const runtime of tools.values()) {
       expect(JSON.stringify(runtime)).not.toContain('"$ref":"/schemas/');
     }
-    expect(resolveLocalRef(list, list.properties.brand)).toMatchObject({ required: ['domain'], additionalProperties: false });
+    const brandKey = JSON.parse(readFileSync(
+      join(process.cwd(), 'static/schemas/source/core/brand-key.json'),
+      'utf8',
+    )) as JsonSchema;
+    expect(resolveLocalRef(list, list.properties.brand))
+      .toMatchObject({ required: ['domain'], additionalProperties: brandKey.additionalProperties });
     expect(resolveLocalRef(list, list.properties.fields)).toMatchObject({
       minItems: 1,
       uniqueItems: true,
@@ -91,7 +96,10 @@ describe('product discovery MCP schema parity', () => {
       });
     const declineTool = tools.get('decline_proposals')!;
     expect(resolveLocalRef(declineTool, declineTool.properties.declines.items))
-      .toMatchObject({ required: ['proposal_id', 'reason'], additionalProperties: false });
+      .toMatchObject({
+        required: ['proposal_id', 'reason'],
+        additionalProperties: sourceSchema('proposal-decline').additionalProperties,
+      });
   });
 
   it('bundles each tools/list input schema as a valid standalone document', () => {

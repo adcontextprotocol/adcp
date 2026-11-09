@@ -64,7 +64,7 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "daily_budget_cap": {
       "type": "number",

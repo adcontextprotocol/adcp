@@ -53,7 +53,7 @@
         }
       },
       "required": ["scope", "metric_id", "committed_at"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -108,7 +108,7 @@
         }
       },
       "required": ["scope", "vendor", "metric_id", "committed_at"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

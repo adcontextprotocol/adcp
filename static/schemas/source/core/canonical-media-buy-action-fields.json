@@ -23,5 +23,5 @@
     }
   },
   "required": ["task", "action", "mode"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

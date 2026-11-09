@@ -75,7 +75,7 @@
       "required": [
         "schemes"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "active": {
       "type": "boolean",
@@ -103,7 +103,7 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Single subscriber receiving creative lifecycle events",

@@ -14,7 +14,7 @@
         "height": { "type": "integer", "minimum": 1 }
       },
       "required": ["width", "height"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "CanonicalDoohPlacementAttributes": {
       "title": "Canonical DOOH Placement Attributes",
@@ -104,5 +104,5 @@
       "required": ["kind", "name"]
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

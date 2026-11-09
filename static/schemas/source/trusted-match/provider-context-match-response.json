@@ -33,7 +33,7 @@
           "key",
           "value"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     }
   },

@@ -1235,7 +1235,7 @@
               }
             },
             "required": ["vendor", "metric_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "not_yet_measurable_vendor_metrics_by_package": {
@@ -1258,7 +1258,7 @@
                 }
               },
               "required": ["vendor", "metric_id"],
-              "additionalProperties": false
+              "additionalProperties": true
             }
           }
         },

@@ -29,7 +29,7 @@
         }
       },
       "required": ["countries"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
   "properties": {
@@ -41,5 +41,5 @@
     }
   },
   "required": ["systems"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

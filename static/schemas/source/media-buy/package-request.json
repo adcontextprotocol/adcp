@@ -233,7 +233,7 @@
               }
             },
             "required": ["scope", "metric_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           },
           {
             "properties": {
@@ -278,7 +278,7 @@
               }
             },
             "required": ["scope", "vendor", "metric_id"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         ]
       },

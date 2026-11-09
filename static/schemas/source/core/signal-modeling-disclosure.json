@@ -45,7 +45,7 @@
           }
         },
         "required": ["country", "regulation"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "notes": {
@@ -68,5 +68,5 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

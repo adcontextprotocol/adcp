@@ -112,7 +112,7 @@
         "metric_id",
         "value"
       ],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "allOf": [
         {
           "if": {
@@ -234,7 +234,7 @@
         "metric_id",
         "value"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

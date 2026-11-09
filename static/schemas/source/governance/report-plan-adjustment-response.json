@@ -28,7 +28,7 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
       },
       "required": ["amount", "currency"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "headroom_restored": {
       "type": "number",
@@ -49,7 +49,7 @@
         "budget_remaining": { "type": "number" }
       },
       "required": ["accounting_mode", "gross_committed", "adjustments_reported", "adjustments_verified", "net_cost", "headroom_restored", "ledger_committed", "net_committed", "budget_remaining"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "replayed": {
       "type": "boolean",

@@ -158,7 +158,10 @@ test("prompt argument adapter expands compact targeting requirements before vali
     strict: false,
     validateFormats: false,
   }).compile(canonicalSchema);
-  assert.equal(validator(compactArguments), false);
+  // The requirements container is open (DR-0009), so the compact form also
+  // validates, but only as unknown requirements, which match no product. The
+  // adapter turns it into the canonical dimensions.
+  assert.equal(validator(compactArguments), true, JSON.stringify(validator.errors));
   assert.equal(validator(adapted), true, JSON.stringify(validator.errors));
 });
 

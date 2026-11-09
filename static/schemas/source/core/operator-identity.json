@@ -19,5 +19,5 @@
   "required": [
     "operator"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
