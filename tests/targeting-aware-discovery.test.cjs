@@ -2005,9 +2005,19 @@ test("required overlay requirements exclude seller limit fields", async () => {
     false,
     "seller maxima are response-only"
   );
+  // The requirements container is open (DR-0009). An unknown
+  // hard requirement still isn't ignored: matching fails closed on it. The
+  // functional case is in server/tests/unit/training-agent.test.ts.
   assert.equal(
     validate({ future_unknown_dimension: true }),
-    false,
+    true,
+    errors(validate)
+  );
+  assert.match(
+    JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting-overlay-requirements.json"), "utf8")
+    ).description,
+    /Missing or unknown required fields do not match\./,
     "unknown hard requirements must not be ignored"
   );
   for (const zeroCapability of [
