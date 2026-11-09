@@ -112,6 +112,12 @@ phases:
             - "image"
           context:
             correlation_id: "creative_native_in_feed--list_native_formats"
+        # An empty list means the seller declares no native-shaped format; the
+        # native phases below are then skipped instead of failing a seller that
+        # offers only display tags or VAST tags (adcp#8770).
+        context_outputs:
+          - path: "formats"
+            key: "native_formats"
         validations:
           - check: response_schema
             description: "Response matches list-creative-formats-response.json schema"
@@ -126,8 +132,43 @@ phases:
             value: "creative_native_in_feed--list_native_formats"
             description: "Context correlation_id returned unchanged"
 
+  - id: confirm_no_native_formats
+    title: "Record that no format accepts text and image assets"
+    skip_if: "!context.native_formats || context.native_formats.0"
+    narrative: |
+      Runs only when the seller answered the format query with an empty list,
+      and records that answer so the text and image phases below are skipped.
+
+    steps:
+      - id: confirm_no_native_formats
+        title: "Find formats that accept text and image assets"
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return the same empty list of formats that accept text and image assets.
+        sample_request:
+          asset_types:
+            - "text"
+            - "image"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "creative_native_in_feed--confirm_no_native_formats"
+        context_outputs:
+          - path: "formats"
+            key: "no_native_formats"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+
   - id: sync_native_creative
     title: "Sync a full native asset bundle"
+    skip_if: "context.no_native_formats"
     narrative: |
       The buyer submits a native creative with all 12 slots populated: title, body_text,
       main_image (1200×627), CTA from the declared cta_values enum, advertiser_name,
@@ -234,6 +275,7 @@ phases:
 
   - id: validation_failures
     title: "Validation rejection paths"
+    skip_if: "context.no_native_formats"
     narrative: |
       Each step submits a single invalid native creative and asserts the seller returns
       the correct error code. Steps are isolated (separate sync_creatives calls, separate
@@ -473,6 +515,7 @@ phases:
 
   - id: preview_native
     title: "Preview the native creative"
+    skip_if: "context.no_native_formats"
     narrative: |
       The buyer calls preview_creative for the accepted native bundle. The seller's
       renderer composes the native unit — assembling title, image, body, CTA, and
