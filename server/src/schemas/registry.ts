@@ -904,6 +904,9 @@ const BadgeGradingEvidenceSchema = z.object({
   relevant_bundle_ids: z.array(z.string()),
   failing_bundle_count: z.number().int().nonnegative(),
   incomplete_bundle_count: z.number().int().nonnegative(),
+  not_applicable_universal_bundle_ids: z.array(z.string()).optional().openapi({
+    description: "Universal bundles left partial only because the agent advertises none of the tools for a surface it does not declare. They do not count as incomplete.",
+  }),
   relevant_failure_count: z.number().int().nonnegative(),
   missing_universal_bundle: z.boolean(),
   missing_protocol_bundle: z.boolean(),
