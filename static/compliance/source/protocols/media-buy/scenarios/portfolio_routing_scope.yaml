@@ -1,5 +1,5 @@
 id: media_buy_seller/portfolio_routing_scope
-version: "1.1.0"
+version: "1.1.1"
 title: "Seller declares brief-routing portfolio scope"
 category: media_buy_seller
 summary: "Advises when a media-buy seller omits its complete country or channel routing allowlist."
@@ -139,7 +139,8 @@ phases:
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         sample_request:
-          buying_mode: "wholesale"
+          buying_mode: "brief"
+          brief: "Sandbox inventory across the channels this seller sells."
           account:
             brand:
               domain: "acmeoutdoor.example"

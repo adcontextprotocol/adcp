@@ -1927,3 +1927,66 @@ test('product signal targeting never sends an unresolved product_id to its rejec
   assert.equal(probe.skipped, true);
   assert.equal(probe.skip_reason, 'prerequisite_failed');
 });
+
+async function runWithStubbedSeller(storyboard, rawCapabilities, respond) {
+  const executable = { ...storyboard, requires: undefined, prerequisites: undefined, fixtures: undefined };
+  const tools = ['get_adcp_capabilities', ...(storyboard.required_tools ?? [])];
+  const dispatched = [];
+  const result = await runStoryboard('https://agent.example/mcp', executable, {
+    _profile: { tools, raw_capabilities: rawCapabilities },
+    agentTools: tools,
+    _client: {
+      resetContext() {},
+      async executeTask(task, request) {
+        dispatched.push({ task, request });
+        return respond(task, request);
+      },
+    },
+  });
+  return { result, dispatched };
+}
+
+test('product_coverage_filters skips its wholesale get_products phase for brief-only sellers', async () => {
+  const storyboard = loadMediaBuyStoryboard('product_coverage_filters');
+  const legacy = storyboard.phases.find(phase => phase.id === 'legacy_coverage');
+  const compact = storyboard.phases.find(phase => phase.id === 'compact_coverage');
+  assert.deepEqual(legacy.requires_capability, { path: 'media_buy.buying_modes', contains: 'wholesale' });
+  assert.deepEqual(compact.depends_on, []);
+
+  const { result, dispatched } = await runWithStubbedSeller(
+    storyboard,
+    { media_buy: { buying_modes: ['brief', 'refine'] } },
+    () => ({ success: false, status: 'failed', error: 'stub' })
+  );
+
+  assert.equal(dispatched.some(call => call.task === 'get_products'), false);
+  const legacyResult = result.phases.find(phase => phase.phase_id === 'legacy_coverage');
+  assert.equal(legacyResult.steps[0].skipped, true);
+  assert.equal(legacyResult.steps[0].skip_reason, 'not_applicable');
+  const compactResult = result.phases.find(phase => phase.phase_id === 'compact_coverage');
+  assert.notEqual(compactResult.steps[0].skip_reason, 'prerequisite_failed');
+});
+
+test('portfolio_routing_scope reads declared channels in brief mode', async () => {
+  const storyboard = loadMediaBuyStoryboard('portfolio_routing_scope');
+  const capabilities = {
+    adcp: { major_versions: [3] },
+    supported_protocols: ['media_buy'],
+    media_buy: {
+      buying_modes: ['brief', 'refine'],
+      portfolio: { primary_countries: ['US'], primary_channels: ['display'] },
+    },
+  };
+
+  const { dispatched } = await runWithStubbedSeller(storyboard, capabilities, (task, request) => {
+    if (task === 'get_adcp_capabilities') {
+      return { success: true, status: 'completed', data: { ...capabilities, context: request.context } };
+    }
+    return { success: true, status: 'completed', data: { products: [], context: request.context } };
+  });
+
+  const reads = dispatched.filter(call => call.task === 'get_products');
+  assert.equal(reads.length, 1);
+  assert.equal(reads[0].request.buying_mode, 'brief');
+  assert.equal(typeof reads[0].request.brief, 'string');
+});
