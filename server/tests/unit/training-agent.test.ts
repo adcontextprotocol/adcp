@@ -509,11 +509,9 @@ describe('buildCatalog', () => {
       }
     });
 
-    it('has format_ids as a non-empty array', () => {
+    it('has format_ids as an array', () => {
       for (const cp of catalog) {
-        const fids = cp.product.format_ids as unknown[];
-        expect(Array.isArray(fids)).toBe(true);
-        expect(fids.length).toBeGreaterThanOrEqual(1);
+        expect(Array.isArray(cp.product.format_ids)).toBe(true);
       }
     });
 
@@ -525,7 +523,6 @@ describe('buildCatalog', () => {
         'agent_placement',
       ]);
       for (const cp of catalog) {
-        const formatIds = cp.product.format_ids as Array<{ agent_url: string; id: string }>;
         const formatOptions = cp.product.format_options as Array<{
           format_kind: string;
           format_option_id: string;
@@ -534,17 +531,32 @@ describe('buildCatalog', () => {
           v1_format_ref?: Array<{ agent_url: string; id: string }>;
         }>;
 
-        expect(formatOptions, `${cp.product.product_id} missing canonical format_options`).toHaveLength(formatIds.length);
+        expect(formatOptions?.length, `${cp.product.product_id} missing canonical format_options`).toBeGreaterThan(0);
         expect(formatOptions.every(option => option.format_kind && option.format_option_id && option.params)).toBe(true);
-        formatOptions.forEach((option, index) => {
+        for (const option of formatOptions) {
           if (canonicalOnlyKinds.has(option.format_kind)) {
             expect(option.canonical_formats_only).toBe(true);
             expect(option.v1_format_ref).toBeUndefined();
           } else {
             expect(option.canonical_formats_only).toBeUndefined();
-            expect(option.v1_format_ref).toEqual([formatIds[index]]);
+            expect(option.v1_format_ref).toHaveLength(1);
           }
-        });
+        }
+      }
+    });
+
+    // adcp#8802: core/product.json requires format_ids and format_options to
+    // describe the same formats, and a canonical_formats_only declaration is
+    // absent from format_ids. The SDK runtime refuses a get_products answer
+    // that dual-emits anything else.
+    it('projects format_ids from exactly the format options v1_format_ref values', () => {
+      const key = (ref: { agent_url: string; id: string }) => `${ref.agent_url}#${ref.id}`;
+      for (const cp of catalog) {
+        const formatIds = (cp.product.format_ids ?? []) as Array<{ agent_url: string; id: string }>;
+        const refs = ((cp.product.format_options ?? []) as Array<{ v1_format_ref?: Array<{ agent_url: string; id: string }> }>)
+          .flatMap(option => option.v1_format_ref ?? []);
+        expect(formatIds.map(key).sort(), cp.product.product_id).toEqual(refs.map(key).sort());
+        expect(new Set(formatIds.map(key)).size, `${cp.product.product_id} repeats a format_id`).toBe(formatIds.length);
       }
     });
 
@@ -889,8 +901,14 @@ describe('NovaMind AI publisher', () => {
       const fids = cp.product.format_ids as Array<Record<string, unknown>>;
       return fids.map(f => f.id);
     });
-    expect(allFormatIds).toContain('ai_sponsored_agent');
     expect(allFormatIds).toContain('ai_sponsored_recommendation');
+    // agent_placement has no v1 named format, so the sponsored agent is offered
+    // only as a canonical option, not as a legacy format_id.
+    const agentOptions = novamindProducts.flatMap(cp => cp.product.format_options ?? [])
+      .filter(option => option.format_option_id === 'ai_sponsored_agent_agent_placement');
+    expect(agentOptions.length).toBeGreaterThan(0);
+    expect(agentOptions.every(option => option.canonical_formats_only === true)).toBe(true);
+    expect(allFormatIds).not.toContain('ai_sponsored_agent');
   });
 });
 
@@ -6030,19 +6048,18 @@ describe('create_media_buy handler', () => {
     });
   });
 
-  it('accepts every advertised legacy selector whose canonical kind is intentionally non-equivalent', async () => {
+  it('accepts every advertised legacy selector on the 3.0 surface', async () => {
     const server = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
-    const cases = buildCatalog().flatMap(({ product }) => {
-      const formatIds = product.format_ids ?? [];
-      const formatOptions = product.format_options ?? [];
-      return formatOptions.flatMap((option, index) => option.canonical_formats_only === true
-        ? [{ product, formatId: formatIds[index] }]
-        : []);
-    });
+    // One case per distinct legacy format, on the first product that advertises it.
+    const seen = new Set<string>();
+    const cases = buildCatalog().flatMap(({ product }) => (product.format_ids ?? []).flatMap(formatId => {
+      if (seen.has(formatId.id)) return [];
+      seen.add(formatId.id);
+      return [{ product, formatId }];
+    }));
     expect(cases.length).toBeGreaterThan(0);
 
     for (const [index, { product, formatId }] of cases.entries()) {
-      expect(formatId, `${product.product_id} canonical-only option lacks its independent legacy selector`).toBeDefined();
       const account = {
         brand: { domain: `legacy-canonical-only-${index}.example` },
         operator: 'pinnacle-agency.example',
