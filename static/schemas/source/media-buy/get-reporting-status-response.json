@@ -152,13 +152,19 @@
       "oneOf": [
         {
       "title": "Unavailable lookup",
+      "description": "Closed so that unknown and unauthorized identifiers return one identical shape (x-adcp-validation caller_isolation). The envelope fields are declared here because draft-07 does not evaluate properties across allOf.",
       "type": "object",
       "properties": {
+        "adcp_version": { "type": "string" },
+        "adcp_major_version": { "type": "integer" },
         "status": { "type": "string", "const": "failed" },
         "view": { "enum": ["summary", "periods", "revision"] },
         "failure_kind": { "type": "string", "const": "lookup_unavailable" },
+        "context_id": { "type": "string" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "replayed": { "type": "boolean" },
         "adcp_error": {
           "type": "object",
           "properties": {
@@ -166,7 +172,7 @@
             "message": { "const": "Reporting status resource is unavailable." }
           },
           "required": ["code", "message"],
-          "additionalProperties": true
+          "additionalProperties": false
         },
         "errors": {
           "type": "array",
@@ -179,12 +185,12 @@
               "message": { "const": "Reporting status resource is unavailable." }
             },
             "required": ["code", "message"],
-            "additionalProperties": true
+            "additionalProperties": false
           }
         }
       },
       "required": ["status", "view", "failure_kind", "errors"],
-      "additionalProperties": true,
+      "additionalProperties": false,
       "not": { "anyOf": [{ "required": ["ledger_snapshot_id"] }, { "required": ["ledger_as_of"] }, { "required": ["account_id"] }] }
     },
     {
