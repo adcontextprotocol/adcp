@@ -364,7 +364,8 @@ function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] 
 /**
  * Explicit compatibility projection for every legacy format still exposed by
  * the training agent. Products are authored from these canonical declarations;
- * format_ids are retained only so older 3.x clients can consume the catalog.
+ * format_ids are projected from them only so older 3.x clients can consume the
+ * catalog.
  */
 const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Record<string, CanonicalFormatProjection> = {
   display_image: {
@@ -534,12 +535,27 @@ const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Record<string, CanonicalFormatPr
   },
 };
 
+/**
+ * Canonical kinds the spec marks `v1_translatable: false`: no v1 named format
+ * expresses them, so their options carry `canonical_formats_only` and no
+ * `v1_format_ref`.
+ */
 const CANONICAL_ONLY_FORMAT_KINDS = new Set([
   'image_carousel',
   'sponsored_placement',
   'responsive_creative',
   'agent_placement',
 ]);
+
+/**
+ * The deprecated `format_ids` projection: exactly the v1 formats the options
+ * name in `v1_format_ref`. When a product carries both fields they MUST
+ * describe the same formats, and a `canonical_formats_only` option is absent
+ * from `format_ids` (core/product.json, core/product-format-declaration.json).
+ */
+function legacyFormatIdsForOptions(options: ProductFormatDeclaration[]): FormatID[] {
+  return options.flatMap(option => (option as { v1_format_ref?: FormatID[] }).v1_format_ref ?? []);
+}
 
 function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclaration[] {
   return formatIds.map(formatId => {
@@ -924,8 +940,7 @@ function buildProduct(
     }
   }
 
-  const formatIds = formatIdsForChannels(template.channels, agentUrl);
-  const formatOptions = formatOptionsForFormatIds(formatIds);
+  const formatOptions = formatOptionsForFormatIds(formatIdsForChannels(template.channels, agentUrl));
   const pricingOptions = effectivePricing.map((t, i) => buildPricingOption(t, productId, i));
   if (pricingOptions.length === 0) {
     throw new Error(`Training product ${productId} has no pricing options`);
@@ -942,7 +957,7 @@ function buildProduct(
       ? [{ publisher_domain: pub.domain, selection_type: 'by_id' as const, property_ids: [offer.propertyId] }]
       : publisherPropertySelectors(pub, template.channels)) as Product['publisher_properties'],
     channels: template.channels as MediaChannel[],
-    format_ids: formatIds,
+    format_ids: legacyFormatIdsForOptions(formatOptions),
     ...(formatOptions.length > 0 ? { format_options: formatOptions as Product['format_options'] } : {}),
     delivery_type: template.deliveryType as DeliveryType,
     delivery_measurement: {
