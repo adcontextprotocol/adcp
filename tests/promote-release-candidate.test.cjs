@@ -100,7 +100,7 @@ const path = require('node:path');
     const line = finalBeta.replace(/-beta\.\d+$/, '');
     const target = `${line}-rc.0`;
     const nextBeta = `${line}-beta.${Number(finalBeta.split('.').pop()) + 1}`;
-    const escape = (value) => value.replace(/\./g, '\\.');
+    const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-rc-promotion-'));
     try {
       fs.mkdirSync(path.join(root, '.changeset'));
