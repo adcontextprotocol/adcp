@@ -5,14 +5,17 @@
 # UNRECOGNIZED_TERMS instead of accepting it, dropping the member, or carrying it uninterpreted.
 #
 # buy_products purchases[] become accepted_proposal.commercial_terms.purchases[], so the seller
-# is the accepting party. The unrecognized member sits in format_option_refs[0], a schema that is
-# open (additionalProperties: true), so the request passes schema validation and fails for one
-# reason only. The control step sends the same purchase without the member and must succeed.
+# is the accepting party. The control phase first proves the purchase is acceptable as is. The
+# rejection phase depends on it and sends the identical purchase plus one member,
+# adcp_compliance_undefined_member, in format_option_refs[0]. That name is reserved as
+# undefined: no AdCP release defines it and none will, so a conformant seller cannot
+# legitimately interpret it. format_option_refs[] entries are open (additionalProperties: true),
+# so the request passes schema validation and fails for that one reason only.
 id: media_buy_seller/unrecognized_terms_rejected
 version: "1.0.0"
 title: "Seller rejects commercial terms it cannot interpret"
 category: media_buy_seller
-summary: "Verifies that buy_products rejects a purchase carrying a member the seller cannot interpret with UNRECOGNIZED_TERMS, and accepts the same purchase without it."
+summary: "Verifies that buy_products accepts a purchase, then rejects the identical purchase carrying a reserved undefined member with UNRECOGNIZED_TERMS."
 track: media_buy
 introduced_in: "3.3"
 
@@ -35,11 +38,14 @@ narrative: |
   member would record terms the buyer did not send; carrying it would bind the
   seller to a term it never read.
 
-  The buyer sends a purchase whose format option reference carries
-  delivery_share, a member no AdCP release defines. The format option
-  reference schema is open, so the request is schema-valid. The seller rejects
-  it with UNRECOGNIZED_TERMS. The same purchase without the member then
-  completes, which shows the member is the only reason for the rejection.
+  The buyer first buys the product with a plain purchase, which proves the
+  seller accepts that purchase as is. It then sends the identical purchase
+  with one added member in its format option reference:
+  adcp_compliance_undefined_member. The name is reserved as undefined, so no
+  conformant seller can legitimately interpret it. The format option reference
+  schema is open, so the request is schema-valid, and the seller rejects it
+  with UNRECOGNIZED_TERMS. The member is the only difference between the two
+  requests, so it is the only reason for the rejection.
 
 agent:
   interaction_model: media_buy_seller
@@ -151,54 +157,15 @@ phases:
             path: "feed_version"
             description: "The response carries the feed_version buy_products requires"
 
-  - id: purchase
-    title: "Reject terms with an unrecognized member, then accept them without it"
+  - id: control_purchase
+    title: "Accept the purchase without the undefined member"
     depends_on: [discover_offer]
     narrative: |
-      Both requests are identical except for delivery_share inside
-      format_option_refs[0]. Only the first carries it.
+      Proves the purchase is acceptable as is, so the rejection phase that
+      follows can only fail on the added member.
     steps:
-      - id: reject_unrecognized_member
-        title: "Reject a purchase whose format option reference carries an unrecognized member"
-        task: buy_products
-        schema_ref: "media-buy/buy-products-request.json"
-        response_schema_ref: "media-buy/buy-products-response.json"
-        doc_ref: "/media-buy/task-reference/buy_products"
-        expect_error: true
-        negative_path: payload_well_formed
-        stateful: true
-        expected: |
-          Reject with UNRECOGNIZED_TERMS. The purchase would become commercial_terms
-          the seller is bound by, and the seller cannot interpret delivery_share.
-          Do not create a MediaBuy, drop the member, or record it uninterpreted.
-
-        sample_request:
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_unrecognized_terms_purchase_reject"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-          feed_version: "$context.feed_version"
-          pricing_version: "$context.pricing_version"
-          purchases:
-            - product_id: "unrecognized_terms_display"
-              pricing_option_id: "unrecognized_terms_cpm"
-              format_option_refs:
-                - scope: "product"
-                  format_option_id: "unrecognized_terms_display_300x250"
-                  delivery_share: 0.6
-              budget: 1000
-          start_time: "asap"
-          end_time: "2099-09-30T23:59:59Z"
-        validations:
-          - check: response_schema
-            description: "Rejected response matches buy-products-response.json"
-          - check: error_code
-            value: "UNRECOGNIZED_TERMS"
-            description: "A member the seller cannot interpret blocks acceptance of the terms"
-
       - id: accept_without_member
-        title: "Accept the same purchase without the unrecognized member"
+        title: "Accept the purchase"
         task: buy_products
         schema_ref: "media-buy/buy-products-request.json"
         response_schema_ref: "media-buy/buy-products-response.json"
@@ -208,7 +175,7 @@ phases:
           Create the MediaBuy and return the accepted proposal snapshot.
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_unrecognized_terms_purchase_accept"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_unrecognized_terms_control_purchase_accept"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -229,7 +196,54 @@ phases:
             description: "Response matches buy-products-response.json"
           - check: field_present
             path: "media_buy_id"
-            description: "The purchase without the member creates a MediaBuy"
+            description: "The purchase creates a MediaBuy"
           - check: field_present
             path: "accepted_proposal.terms_digest"
             description: "The seller records the accepted terms and their digest"
+
+  - id: reject_undefined_member
+    title: "Reject the identical purchase carrying the undefined member"
+    depends_on: [control_purchase]
+    narrative: |
+      The request is the control purchase plus adcp_compliance_undefined_member
+      inside format_option_refs[0]. Nothing else differs.
+    steps:
+      - id: reject_unrecognized_member
+        title: "Reject a purchase whose format option reference carries the undefined member"
+        task: buy_products
+        schema_ref: "media-buy/buy-products-request.json"
+        response_schema_ref: "media-buy/buy-products-response.json"
+        doc_ref: "/media-buy/task-reference/buy_products"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with UNRECOGNIZED_TERMS. The purchase would become commercial_terms
+          the seller is bound by, and no seller can interpret
+          adcp_compliance_undefined_member. Do not create a MediaBuy, drop the
+          member, or record it uninterpreted.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_unrecognized_terms_reject_undefined_member"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          feed_version: "$context.feed_version"
+          pricing_version: "$context.pricing_version"
+          purchases:
+            - product_id: "unrecognized_terms_display"
+              pricing_option_id: "unrecognized_terms_cpm"
+              format_option_refs:
+                - scope: "product"
+                  format_option_id: "unrecognized_terms_display_300x250"
+                  adcp_compliance_undefined_member: 0.6
+              budget: 1000
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+        validations:
+          - check: response_schema
+            description: "Rejected response matches buy-products-response.json"
+          - check: error_code
+            value: "UNRECOGNIZED_TERMS"
+            description: "A member the seller cannot interpret blocks acceptance of the terms"

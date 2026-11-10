@@ -83,9 +83,9 @@ describe('undeclared members in commercial terms', () => {
     expect(undeclaredMembers(purchase, PURCHASE)).toEqual([]);
     const withMember = {
       ...purchase,
-      format_option_refs: [{ scope: 'product', format_option_id: 'f1', delivery_share: 0.6 }],
+      format_option_refs: [{ scope: 'product', format_option_id: 'f1', adcp_compliance_undefined_member: 0.6 }],
     };
-    expect(undeclaredMembers(withMember, PURCHASE)).toEqual([['format_option_refs', '0', 'delivery_share']]);
+    expect(undeclaredMembers(withMember, PURCHASE)).toEqual([['format_option_refs', '0', 'adcp_compliance_undefined_member']]);
   });
 
   it('counts ext members as uninterpreted and context members as opaque', () => {

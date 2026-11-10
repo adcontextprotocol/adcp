@@ -35,6 +35,6 @@ When `opportunity` is present, every proposal must belong to its `opportunity_id
 
 Declining a seller offer (experimental in AdCP 3.3, a proposal with `proposal_initiator: "seller"` against an accepted buy) works the same way: the signed terms of the accepted buy stand and the offer can no longer be accepted. An offer the buyer ignores lapses at `expires_at` (disposition `expired`) with no call and the signed terms stand, and declining an offer that has already lapsed returns `declined`. See [Seller offers](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers).
 
-A buyer that cannot interpret every member of a proposal's `commercial_terms` must not accept it, because acceptance binds it to every member. It declines with reason `unrecognized_terms`. See [Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently).
+A buyer that cannot interpret every member of a proposal's `commercial_terms` must not accept it, because acceptance binds it to every member. It declines with reason [`UNRECOGNIZED_TERMS`](/docs/building/verification/compliance-catalog#error-code-unrecognized-terms), the same condition a seller reports as the error code of that name. See [Verify terms independently](/docs/media-buy/product-discovery/proposal-negotiation#3-verify-terms-independently).
 
 The request does not carry `proposal_version`. Each `proposal_id` identifies one immutable commercial snapshot; [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) mints a new ID whenever terms change.

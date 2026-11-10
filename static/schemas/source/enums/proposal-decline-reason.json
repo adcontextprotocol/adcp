@@ -14,7 +14,7 @@
     "timing",
     "budget_changed",
     "selected_alternative",
-    "unrecognized_terms",
+    "UNRECOGNIZED_TERMS",
     "other"
   ],
   "enumDescriptions": {
@@ -27,7 +27,7 @@
     "timing": "The schedule, expiry, approval timing, or delivery window did not fit.",
     "budget_changed": "The buyer's budget, scope, or campaign plan changed after evaluation.",
     "selected_alternative": "The buyer selected another approach or supply source.",
-    "unrecognized_terms": "commercial_terms carry a member, at any depth and including ext, that the buyer cannot interpret. Accepting signed terms binds the buyer to every member, so a buyer that cannot interpret every member MUST NOT accept the proposal and declines it with this reason.",
+    "UNRECOGNIZED_TERMS": "The buyer declines because it cannot interpret every member of the proposal's signed commercial_terms, at any depth and including ext. This is the same condition a seller reports as error code UNRECOGNIZED_TERMS, seen from the buyer's side. Accepting signed terms binds the buyer to every member, so a buyer that cannot interpret every member MUST NOT accept the proposal.",
     "other": "Another reason; detail is required."
   }
 }
