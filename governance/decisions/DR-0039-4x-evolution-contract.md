@@ -120,32 +120,16 @@ the breaking-change notice the versioning page requires.
 
 **Implementers are protected by the previous major's support window.** After a
 major's GA, the last minor of the previous major stays supported for at least
-**[6 or 12 — pending Brian]** months. For 4.0 that minor is 3.3. Supported
+**12 months** after the successor's GA. For 4.0 that minor is 3.3. The 12
+months match the minimum the versioning page already publishes. Supported
 means security fixes and corrections in patches of that line, and no new
 features. This widens the versioning page, which today promises the previous
 major security patches only. The end-of-support date is published on a sunset
 page at the successor's GA.
 
-**N is open.** Brian's ruling of 2026-11-10 says six months. These sources say
-twelve:
-
-- the versioning page ("Support for previous major after successor GA:
-  minimum 12 months", and the support-window section);
-- DR-0007, which expects support windows to lengthen at future majors;
-- RFC #8756, which proposes 3.3 as a long-term-support line for at least 12
-  months after 4.0 GA.
-
-Six would shorten a published commitment. The record takes the value Brian
-confirms, and the other sources are updated to match.
-
-**This replaces the stable deprecation-notice rule.** These go:
-
-- the versioning page's "Deprecation notices are published at least 6 months
-  before any feature is removed", its "at least one full release cycle"
-  clause, and the "Deprecation notice before removal: minimum 6 months" row;
-- the 6-month countdown in `docs/reference/specification-lifecycle.mdx`.
-
-"The original removal date holds" becomes "the `x-removed-in` major holds".
+**This replaces the stable deprecation-notice rule.** The minimum 6 months'
+notice before a removal no longer applies. PR #8858 carries that doc change.
+When a deprecated node is modified, its `x-removed-in` major holds.
 
 ### 5. Experimental surfaces have a clock
 
@@ -240,15 +224,10 @@ served the release that defines it. Nothing in 4.x weakens it.
 ## Implications
 
 - **On ratification**, before `4.0.0-beta.1`:
-  - `docs/reference/versioning.mdx`: deprecation policy, release-cadence
-    table, and support window, with N and with corrections added to the
-    security-only promise.
-  - `docs/reference/specification-lifecycle.mdx`: the Deprecated stage and the
-    6-month countdown.
-  - `docs/reference/experimental-status.mdx`: add the clock, and drop "a
-    deliberate relaxation of the 6-month deprecation notice".
-  - DR-0007: if N is 6, a superseding record replaces its 12-month window for
-    the previous major.
+  - `docs/reference/versioning.mdx`: the support window adds corrections to
+    its security-only promise.
+  - `docs/reference/experimental-status.mdx`: add the clock.
+  - PR #8858 carries the removal of the 6-month deprecation notice.
 - **Tooling for 4.0:**
   - `tests/schema-deprecation-metadata.test.cjs` reads the fields, not prose.
   - New checks for `x-closed-reason` and the experimental clock.
@@ -257,7 +236,6 @@ served the release that defines it. Nothing in 4.x weakens it.
 - **3.x minors and patches don't change.** They never remove. This record
   governs the removals that 4.0 makes of 3.x deprecations.
 - **Not settled here:**
-  - N.
   - Support terms for 3.1.x and 3.2.x at 4.0 GA.
   - How `commercial-terms` grows in 4.0. A declared must-understand extension
     point is the expected direction (DR-0036).
