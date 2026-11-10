@@ -116,7 +116,7 @@ The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration
 On 2026-11-09 the working group decided that 3.x opens the schemas that were closed by accident ([Schemas are open by default](#schemas-are-open-by-default)). The [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) triage then re-checked every beta feature that had been withdrawn, or proposed for withdrawal, because its schema was closed. It applied three reasons, in this order:
 
 1. **Deprecated surface.** A field on a deprecated task or row leaves, whatever its schema: `get_products`, `create_media_buy`, `update_media_buy`, `sync_creatives` `assignments[]`, and package creative assignments. The live tasks keep the feature where they already carry it.
-2. **Signed meaning.** A field that would change what a signed term means leaves. `commercial-terms` and the term objects inside it stay closed, because `terms_digest` binds them, so these fields wait for 4.0.
+2. **Held closed until 4.0.** `commercial-terms` and the term objects inside it, and `proposal-budget-constraint`, are held closed until 4.0. A field that would extend one of them leaves, and waits for 4.0.
 3. **Closure only.** The withdrawal is moot, and the feature stays in 3.3.
 
 Only the fields below change between beta.5 and rc.0 because of the triage. The three features withdrawn after beta.1 stay withdrawn ([above](#withdrawn-from-3-3-planned-for-4-0)).
@@ -146,24 +146,24 @@ Only the fields below change between beta.5 and rc.0 because of the triage. The 
 | `predecessor_media_buy_id`, `lineage_reason` | `create_media_buy` | `buy_products`, `accept_proposal`, and `get_media_buys` (`media_buy.lineage`) |
 | `artifact_webhook.signing_profile` | `create_media_buy` | No other task |
 | `start_requires_all_creatives_approved` | Packages on `create_media_buy` and `update_media_buy` | `control_media_buy` package controls (`media_buy.features.creative_start_policy`) |
-| `target_audiences` | Packages on `create_media_buy` and `update_media_buy` | Purchases, in 4.0 ([below](#leaves-3-3-signed-meaning-planned-for-4-0)) |
-| `metric_id` | `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json` | Performance standards, in 4.0 ([below](#leaves-3-3-signed-meaning-planned-for-4-0)) |
+| `target_audiences` | Packages on `create_media_buy` and `update_media_buy` | Purchases, in 4.0 ([below](#leaves-3-3-held-closed-until-4-0)) |
+| `metric_id` | `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json` | Performance standards, in 4.0 ([below](#leaves-3-3-held-closed-until-4-0)) |
 
-### Leaves 3.3: signed meaning, planned for 4.0
+### Leaves 3.3: held closed until 4.0
 
 | Field | Why it waits |
 |---|---|
-| `metric_id` on `core/canonical-performance-standard.json` | It selects which vendor value decides a signed performance standard, so a 3.2 buyer would read the same standard differently. |
-| `price_adjustments` (`media_buy.price_adjustments`) | Its 3.3 home is the legacy `get_products` pricing option, a deprecated surface, and `canonical-pricing-option` stays closed with the signed terms. The whole experiment waits for 4.0. |
-| `counting_mechanisms` on `measurement_terms` (`media_buy.measurement_provenance`) | `measurement_terms` sits on deprecated tasks, and the canonical measurement terms stay closed. `vendor_metric_provenance[]` on delivery metrics stays in 3.3. |
-| `target_audiences` on purchases | A purchase records its terms in `product-purchase.json`, which stays closed with the signed terms. |
+| `metric_id` on `core/canonical-performance-standard.json` | The canonical performance standard is one of the commercial terms held closed until 4.0. |
+| `price_adjustments` (`media_buy.price_adjustments`) | Its 3.3 home is the legacy `get_products` pricing option, a deprecated surface, and `canonical-pricing-option` is held closed until 4.0. The whole experiment waits for 4.0. |
+| `counting_mechanisms` on `measurement_terms` (`media_buy.measurement_provenance`) | `measurement_terms` sits on deprecated tasks, and the canonical measurement terms are held closed until 4.0. `vendor_metric_provenance[]` on delivery metrics stays in 3.3. |
+| `target_audiences` on purchases | A purchase records its terms in `product-purchase.json`, which is held closed until 4.0. |
 
 ### Moves within 3.3
 
 | Field | From | To |
 |---|---|---|
 | `include_execution_readiness`, `execution_readiness` | `get_products` | `list_products` (`media_buy.execution_readiness`) |
-| `clock`, `business_calendar_id` | `core/sla-window.json`, which returns to its 3.2 shape because `change_terms[].processing_sla` is a signed term | The creative-review SLA (`creative-review-sla`) |
+| `clock`, `business_calendar_id` | `core/sla-window.json`, which returns to its 3.2 shape because it sits inside the commercial terms held closed until 4.0 (`change_terms[].processing_sla`) | The creative-review SLA (`creative-review-sla`) |
 | `available_installment_statuses` | `core/reporting-capabilities.json` | `core/canonical-reporting-capabilities.json` (`media_buy.installment_lifecycle`) |
 
 **If you built from a beta bundle.** Stop emitting and accepting the fields that leave, and move the ones that change home. Regenerate from the rc.0 bundle. An open schema ignores a field it no longer defines, so a stale sender is not rejected there, but the field carries no 3.3 meaning. A schema that stays closed, such as the canonical performance standard, rejects it. The fields that stay need no action.
@@ -622,7 +622,7 @@ Many 3.3 additions sit inside objects that 3.2.9 and earlier publish closed, so 
 
 New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_metrics` in `available-metric`, `operator_fee` in `adjustment-kind`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
 
-**Correction: the proposal flow and the other accidentally closed schemas are open.** 3.2 published the `list_products`, `request_proposals`, `refine_proposals`, `buy_products`, `accept_proposal`, `decline_proposals`, and `control_media_buy` request and response roots closed, along with `canonical-proposal`, `canonical-product`, `product-discovery-criteria`, `proposal-refinement`, `package-control`, and `opportunity-context`. 3.2.8 reopened them first. Under the 2026-11-09 decision, 3.3 and 3.2.10 open every schema that was closed without a structural reason ([Schemas are open by default](#schemas-are-open-by-default)). Opening a schema is a correction under [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), not a protocol break. Every payload that was valid stays valid, and the rejections closure provided are kept by name. A field that only the legacy Product defines, such as `format_ids`, `is_custom`, or `product_card`, is still rejected on a canonical product. A root `feed_version` or `pricing_version` on a `request_proposals` response, and `warnings` on an error or submitted `buy_products`, `accept_proposal`, or `control_media_buy` response, are also still rejected. A strict validator built from an earlier 3.2 patch still rejects new fields on these schemas, so the rule above applies. `commercial_terms` and the purchases inside it stay closed.
+**Correction: the proposal flow and the other accidentally closed schemas are open.** 3.2 published the `list_products`, `request_proposals`, `refine_proposals`, `buy_products`, `accept_proposal`, `decline_proposals`, and `control_media_buy` request and response roots closed, along with `canonical-proposal`, `canonical-product`, `product-discovery-criteria`, `proposal-refinement`, `package-control`, and `opportunity-context`. 3.2.8 reopened them first. Under the 2026-11-09 decision, 3.3 and 3.2.10 open every schema that was closed without a structural reason ([Schemas are open by default](#schemas-are-open-by-default)). Opening a schema is a correction under [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), not a protocol break. Every payload that was valid stays valid, and the rejections closure provided are kept by name. A field that only the legacy Product defines, such as `format_ids`, `is_custom`, or `product_card`, is still rejected on a canonical product. A root `feed_version` or `pricing_version` on a `request_proposals` response, and `warnings` on an error or submitted `buy_products`, `accept_proposal`, or `control_media_buy` response, are also still rejected. A strict validator built from an earlier 3.2 patch still rejects new fields on these schemas, so the rule above applies. `commercial_terms` and the purchases inside it are held closed until 4.0.
 
 `get_adcp_capabilities` runs before negotiation, so a seller cannot gate its capability document. A 3.3 seller's `media_buy.features.catalog_ingestion` object fails a 3.2 schema that admits only booleans there. Buyers parse capabilities tolerantly, as [Versioning](/docs/reference/versioning) recommends.
 

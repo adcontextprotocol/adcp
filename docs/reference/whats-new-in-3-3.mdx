@@ -27,7 +27,7 @@ No stable field, enum value, or task is removed. Two result fields, one usage, t
 
 rc.0 (2026-11-16) is the first release candidate. Its main changes since beta.5 open the schemas that were closed by accident and settle which beta features stay in 3.3.
 
-**Schemas are open by default ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), decided 2026-11-09).** Closing a schema only breaks validators that hard-code it, so 3.x opens the schemas that were meant to be open: 744 of the 859 closed locations in the 3.3 schemas. 115 stay closed for a structural reason, such as unions told apart by key presence, the signed `commercial_terms`, join keys, privacy clamps, and `trust.json`.
+**Schemas are open by default ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), decided 2026-11-09).** Closing a schema only breaks validators that hard-code it, so 3.x opens the schemas that were meant to be open: 744 of the 859 closed locations in the 3.3 schemas. 115 stay closed. Most have a structural reason, such as unions told apart by key presence, join keys, privacy clamps, and `trust.json`. The nodes inside `commercial_terms`, with `proposal-budget-constraint`, are held closed until 4.0.
 - Every payload that was valid stays valid. Where closure also rejected a specific field, the opened schema rejects it by name.
 - Generated types change. TypeScript types gain index signatures, Pydantic models stop forbidding extra fields, and Zod validators accept unknown keys where the schema opened.
 - A strict validator built from 3.2.9 or earlier still rejects 3.3 fields, so send them only to 3.3 peers. 3.2.10 opens the same locations that 3.2 has.
@@ -35,7 +35,7 @@ rc.0 (2026-11-16) is the first release candidate. Its main changes since beta.5 
 
 **What stays and what leaves ([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).** Features withdrawn from the betas only because their schema was closed stay in 3.3. They include `review_sla` on media-buy actions, `signing_profile` on notification configs, and `trackers` and `landing_page_url` on `assign` operations.
 - **Deprecated tasks.** Fields the betas added to deprecated tasks and rows leave: `refine[].package`, `include_collections`, and `filters.target_audiences` on `get_products`; lineage, the creative start gate, and `target_audiences` on `create_media_buy` and `update_media_buy`; and assignment `trackers` and `landing_page_url` on `sync_creatives` `assignments[]`. The live tasks keep those features where they already carry them, and `execution_readiness` moves to `list_products`.
-- **Signed terms.** Fields that would change a signed term wait for 4.0: `metric_id` on performance standards, `price_adjustments`, `counting_mechanisms`, and `target_audiences` on purchases.
+- **Commercial terms.** Fields that would extend the commercial terms, which are held closed until 4.0, wait for 4.0: `metric_id` on performance standards, `price_adjustments`, `counting_mechanisms`, and `target_audiences` on purchases.
 - The [migration guide](/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3) lists every field and what to do if you built from a beta.
 
 **Boolean `demographics` is deprecated ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), from [#8772](https://github.com/adcontextprotocol/adcp/pull/8772)).** On the overlay requirement and support schemas, `demographics: true` is the 3.2 shorthand for `{ "age": true }`. Senders MUST send the object form, and receivers MUST accept `true`. Only support with `gender: true` satisfies a `gender` requirement.
@@ -372,7 +372,7 @@ Three features are not part of 3.3. All three add terms to `commercial_terms`, w
 
 The designs are kept for 4.0: see [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3).
 
-The closed-schema triage adds four more fields to the 4.0 list at rc.0, because each would change a signed term: `metric_id` on performance standards, `price_adjustments`, `counting_mechanisms`, and `target_audiences` on purchases ([New in rc.0](#new-in-rc-0)). {/* depends on #8854, #8758 and #8767 */}
+The closed-schema triage adds four more fields to the 4.0 list at rc.0, because each would extend the commercial terms held closed until 4.0: `metric_id` on performance standards, `price_adjustments`, `counting_mechanisms`, and `target_audiences` on purchases ([New in rc.0](#new-in-rc-0)). {/* depends on #8854, #8758 and #8767 */}
 
 ## In review for 3.3
 
