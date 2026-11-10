@@ -363,3 +363,15 @@ test('timezone is changeable only where changeable_attributes lists it', () => {
   assert.match(doc, /change only on a seller that lists them/);
   assert.match(fs.readFileSync(path.join(ROOT, 'docs/protocol/sync_principal.mdx'), 'utf8'), /on a seller that lists `timezone` in `account\.requests\.changeable_attributes`/);
 });
+
+test('account, sync_accounts, and get_principal setup share core/setup-step.json (#8292)', () => {
+  const sites = {
+    'core/account.json': read('core/account.json').properties.setup,
+    'core/principal-relationship.json': read('core/principal-relationship.json').properties.setup,
+    'account/sync-accounts-response.json': read('account/sync-accounts-response.json').oneOf[0].properties.accounts.items.properties.setup,
+  };
+  for (const [file, setup] of Object.entries(sites)) {
+    assert.equal(setup.$ref, '/schemas/core/setup-step.json', `${file} setup must $ref the shared schema, not re-inline it`);
+  }
+  assert.match(read('core/setup-step.json').description, /untrusted/);
+});

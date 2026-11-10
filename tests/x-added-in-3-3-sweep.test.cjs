@@ -54,12 +54,9 @@ const PROPERTIES_3_3 = [
   ['account/list-accounts-request.json', ['properties', 'requests_pagination']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'request_id']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'resolution']],
-  ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'setup', 'properties', 'waiting_on']],
-  ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'setup', 'properties', 'kind']],
-  ['core/account.json', ['properties', 'setup', 'properties', 'waiting_on']],
-  ['core/account.json', ['properties', 'setup', 'properties', 'kind']],
-  ['core/principal-relationship.json', ['properties', 'setup', 'properties', 'waiting_on']],
-  ['core/principal-relationship.json', ['properties', 'setup', 'properties', 'kind']],
+  // account, sync_accounts, and get_principal setup all $ref core/setup-step.json.
+  ['core/setup-step.json', ['properties', 'waiting_on']],
+  ['core/setup-step.json', ['properties', 'kind']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'account', 'properties', 'requests']],
   ['media-buy/sync-audiences-response.json', ['oneOf', 0, 'properties', 'audiences', 'items', 'properties', 'audience_size']],
   ['media-buy/sync-audiences-response.json', ['oneOf', 0, 'properties', 'audiences', 'items', 'properties', 'targetable_size']],
@@ -197,4 +194,6 @@ test('surfaces shipped in 3.2 are not marked 3.3', () => {
   // placement-evidence and ooh_metrics are in the 3.2 release artifacts.
   assert.equal(load('core/placement-evidence.json')['x-added-in'], '3.2.0');
   assert.equal(load('core/delivery-metrics.json').properties.ooh_metrics['x-added-in'], undefined);
+  // setup-step.json is a new file, but its shape is the 3.x account setup object.
+  assert.equal(load('core/setup-step.json')['x-added-in'], undefined);
 });

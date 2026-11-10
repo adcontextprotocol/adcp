@@ -201,7 +201,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_376_000.
 // Experimental match keys (#8375) reach the seeded Product through
 // Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
-const PARITY_COMPILE_LIMIT = 1_384_000;
+// Extracting the account setup object to core/setup-step.json (#8292) adds the
+// shared schema's $id, title, use-site $ref, and its untrusted-display-data
+// sentence; the controller reaches it once, through the seeded Account:
+// 1_383_804 → 1_384_180 bytes. Bound at 1_385_000.
+const PARITY_COMPILE_LIMIT = 1_385_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
