@@ -511,7 +511,7 @@
                     },
                     "by_creative": {
                       "type": "array",
-                      "description": "Metrics broken down by creative within this package. Available when the seller supports creative-level reporting.",
+                      "description": "Metrics broken down by creative within this package, one row per creative for the whole reporting period. Available when the seller supports creative-level reporting. Creatives that entered the seller's library outside sync_creatives appear under their seller-assigned creative_id.",
                       "items": {
                         "$ref": "/schemas/core/creative-delivery-metrics.json"
                       }
@@ -944,7 +944,7 @@
                               "creative_id": {
                                 "type": "string",
                                 "minLength": 1,
-                                "description": "Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment. For library-backed sellers this is the sync_creatives identifier; inline-only sellers use the packages[].creatives creative_id.",
+                                "description": "Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment. For library-backed sellers this is the creative's library creative_id: the buyer's sync_creatives identifier, or the seller-assigned ID of a creative that entered the library outside sync_creatives; inline-only sellers use the packages[].creatives creative_id.",
                                 "x-entity": "creative"
                               },
                               "spot_status": {
@@ -1078,7 +1078,7 @@
                     },
                     "daily_breakdown": {
                       "type": "array",
-                      "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring. A row may omit impressions from AdCP 3.3 (see core/delivery-metrics.json impressions): absence means not measured, not zero.",
+                      "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring. Reach and frequency on a row, when present, cover that day only and do not add up to period reach. A row may omit impressions from AdCP 3.3 (see core/delivery-metrics.json impressions): absence means not measured, not zero.",
                       "items": {
                         "type": "object",
                         "properties": {
@@ -1215,7 +1215,7 @@
           },
           "daily_breakdown": {
             "type": "array",
-            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field. Sellers MUST also omit this aggregate breakdown when the media buy's packages span more than one reporting timezone; package-level daily_breakdown remains, each in its own product's reporting timezone. A row may omit impressions from AdCP 3.3 (see core/delivery-metrics.json impressions): absence means not measured, not zero.",
+            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field. Sellers MUST also omit this aggregate breakdown when the media buy's packages span more than one reporting timezone; package-level daily_breakdown remains, each in its own product's reporting timezone. Reach and frequency on a row, when present, cover that day only and do not add up to period reach. A row may omit impressions from AdCP 3.3 (see core/delivery-metrics.json impressions): absence means not measured, not zero.",
             "items": {
               "type": "object",
               "properties": {

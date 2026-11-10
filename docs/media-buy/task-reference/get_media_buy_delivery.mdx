@@ -653,6 +653,12 @@ asyncio.run(main())
 | **Pacing Index** | Actual vs. expected delivery rate (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead) |
 | **CPM** | Cost per thousand impressions (spend/impressions * 1000) |
 
+### Reach and frequency across days
+
+Daily reach doesn't add up to period reach. A person reached on Monday and again on Tuesday counts once in each day's reach but only once in the week's reach, so the sum of seven daily values overstates weekly reach. Frequency doesn't combine across days either: the average of seven daily frequencies is not the week's frequency, which is measured over the week's unique audience.
+
+This holds for every row whose `reach` or `frequency` covers part of a longer period: `daily_breakdown` rows, `windows[]` slices, and any response for a shorter date range, including the one-day [`by_creative` reads](#daily-delivery-per-creative). For reach over a longer period, request that period and read its own `reach`. Each row's `reach_window` says what its value covers: `period` and `rolling` values are never summed across rows, and a `cumulative` value replaces the previous one rather than adding to it.
+
 ## Query Behavior
 
 ### Context-Based Queries
@@ -791,9 +797,9 @@ A seller MAY emit `projection` without advertising `pacing_risk`, and the revers
 When the seller supports creative-level reporting (`supports_creative_breakdown` in reporting capabilities), each package includes a `by_creative` array with per-creative delivery metrics.
 
 Each creative entry includes:
-- **`creative_id`**: Creative identifier matching the creative assignment
+- **`creative_id`**: The creative's ID in the seller's creative library: the buyer's own ID for a creative it synced, or the seller-assigned ID for a creative that entered the library outside [`sync_creatives`](/docs/creative/task-reference/sync_creatives) (see [Creatives the buyer didn't sync](#creatives-the-buyer-didnt-sync))
 - **`creative_name`**: Optional human-readable name current when the report is generated. This is convenience metadata; use `creative_id` as the stable identity.
-- **`weight`**: Delivery weight for this creative during the reporting period (0-100)
+- **`weight`**: Observed share of the package's delivery for this creative during the reporting period (0-100). It reports what delivered, not a configured assignment weight.
 - All standard delivery metrics (impressions, spend, clicks, ctr, etc.)
 
 ```json
@@ -837,6 +843,89 @@ Each creative entry includes:
 For deeper creative analytics including variant-level delivery data (asset combination optimization, generative creative), use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery). This is a Creative Protocol task — call it on any agent that implements the Creative Protocol, which may be the same sales agent if it declares `"creative"` in `supported_protocols`. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 By default `by_creative` is returned automatically at the seller's discretion, with no limit, sort, or truncation contract. To answer questions like "top creatives by completion rate," include `reporting_dimensions: { "creative": { "limit": 10, "sort_by": "quartile_100" } }` in the request — this negotiates the breakdown, making `by_creative_truncated`, `by_creative_sorted_by`, and `by_creative_sort_direction` binding. See [Dimension Breakdowns](#dimension-breakdowns).
+
+### Creatives the buyer didn't sync
+
+On some platforms, typically self-serve social and search platforms, an advertiser can add ads in the platform's own tools to a campaign that a buyer's agent also manages. Those creatives deliver in the buyer's packages and count toward the package totals, but the buyer never synced them, so they have no buyer-assigned ID.
+
+AdCP 3.3 reports them under a seller-assigned `creative_id`. No `null` ID or separate array is needed:
+
+1. The creative is listed by [`list_creatives`](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp) under a `creative_id` the seller assigned, with the platform's own identifier in `platform_id`.
+2. Its `by_creative` row carries that same `creative_id`. `by_creative` rows have no `platform_id`; the buyer reads it from `list_creatives`.
+3. A seller that declares [`creative.stable_creative_ids`](/docs/protocol/get_adcp_capabilities#creative) keeps that ID the same for the creative's lifetime and never reuses a buyer's ID, so a buyer can store delivery history under it. Without that declaration the ID can change between reports, so a buyer can't rely on it to join one report to the next.
+
+A complete `by_creative` array (`by_creative_truncated: false`) includes these rows. Leaving them out would hide delivery that is part of the package totals. Here `slr_7f3c2a91` is an ad the advertiser made in the platform's tools:
+
+```json
+{
+  "package_id": "pkg_spring_social",
+  "spend": 1840.5,
+  "impressions": 214000,
+  "pricing_model": "cpm",
+  "rate": 8.6,
+  "currency": "USD",
+  "by_creative": [
+    {
+      "creative_id": "acme_spring_hero_15s",
+      "creative_name": "Spring hero, 15 seconds",
+      "impressions": 151000,
+      "spend": 1298.6,
+      "clicks": 2114
+    },
+    {
+      "creative_id": "slr_7f3c2a91",
+      "creative_name": "Spring carousel",
+      "impressions": 63000,
+      "spend": 541.9,
+      "clicks": 1260
+    }
+  ],
+  "by_creative_truncated": false,
+  "by_creative_sorted_by": "spend",
+  "by_creative_sort_direction": "desc"
+}
+```
+
+The matching `list_creatives` row gives the platform's identifier:
+
+```json
+{
+  "creative_id": "slr_7f3c2a91",
+  "platform_id": "8814402271",
+  "name": "Spring carousel",
+  "status": "approved"
+}
+```
+
+To take over such a creative as the buyer's own, see [Adopting a creative made outside AdCP](/docs/creative/task-reference/sync_creatives#adopting-a-creative-made-outside-adcp).
+
+### Daily delivery per creative
+
+`by_creative` rows cover the whole reporting period. `daily_breakdown` exists only on packages (with `include_package_daily_breakdown`) and on the media buy, and requested breakdowns don't apply to `windows[]` slices. To follow each creative day by day, for example to spot a creative whose frequency rises while its click-through rate falls, request one day per call: set `start_date` to the day and `end_date` to the next day (the range is end-exclusive), and include the creative dimension.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json",
+  "media_buy_ids": ["mb_spring_social"],
+  "start_date": "2026-04-15",
+  "end_date": "2026-04-16",
+  "reporting_dimensions": { "creative": {} }
+}
+```
+
+Each response's `by_creative` rows then cover that day. This needs `reporting_capabilities.date_range_support: "date_range"` on the product and costs one call per day. Reach and frequency on these rows cover that day only, and they don't add up across days; see [Reach and frequency across days](#reach-and-frequency-across-days).
+
+### Delivery before and after a merge
+
+When a buyer [merges](/docs/creative/task-reference/sync_creatives#merging-a-seller-created-copy) a seller-assigned creative into its own creative on a package, the seller reports that delivery under the buyer's `creative_id` from the merge onward. Delivery before the merge stays under the seller-assigned `creative_id`, and the seller does not restate it. A report whose period spans the merge therefore has one row for each ID on that package.
+
+To see the creative's whole life, the buyer joins the two IDs itself:
+
+- Add counts and money across the two rows: `impressions`, `spend`, `clicks`, `conversions`, `conversion_value`, and other additive metrics.
+- Recompute rates such as `ctr` and `cpm` from those sums rather than averaging the rows' rates.
+- Don't add `reach` or `frequency` across the two rows. The same person can be in both, and a buyer-side join can't remove the overlap. Read them per ID, or per day for days that fall wholly before or after the merge.
+
+`list_creatives` and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) don't show the pairing after the fact, so buyers keep it from the `merges[]` entries of the `sync_creatives` response (`merged_creative_id`, `creative_id`, `package_id`). A seller that emits `creative.assignment_changed` sends `unassigned` and `assigned` with the same `observed_at`, and a seller with the account change feed records two `creative_assignment` changes sharing one `batch_id`.
 
 ## Catalog-item reporting
 
@@ -1042,7 +1131,7 @@ For social inventory, the platform or serving app maps to the property axis and 
 
 Spot rows are channel-neutral as-run records. Linear TV commonly supplies `network`, radio commonly supplies `station`, and sellers MAY populate both; neither is required. `spot_id` identifies the scheduled occurrence and remains stable when the same airing is re-reported across Live, C3, C7, or another measurement-window progression. `aired_at` proves that it aired. Sellers MUST order rows ascending by `aired_at`, or by `scheduled_at` for rows that have no `aired_at`. When `reporting_dimensions.spot.limit` is omitted, sellers SHOULD return the complete log for the requested reporting period. `by_spot_truncated` tells the buyer whether the returned log is complete.
 
-The optional `creative_id` identifies the creative that aired, matching the package's creative asset or assignment. For library-backed sellers this is the [`sync_creatives`](/docs/creative/task-reference/sync_creatives) identifier; inline-only sellers use the `creative_id` supplied through `packages[].creatives`. Sellers SHOULD populate it whenever they can associate a specific airing with a creative, particularly when the package could serve more than one creative during any part of the reporting period, including a mid-period replacement. Sellers that cannot make that association MUST omit the field rather than emit a default or placeholder. Buyers MUST NOT aggregate `by_spot` rows by `creative_id` and expect the result to equal `by_creative[]` impressions for the same creative: the two dimensions are independently produced at different granularities and are subject to different metric-maturation and attribution semantics within the package `measurement_window`. `by_creative` is the authoritative creative-performance aggregate; `creative_id` on a spot row identifies which creative aired, not an independent metric roll-up source.
+The optional `creative_id` identifies the creative that aired, matching the package's creative asset or assignment. For library-backed sellers this is the creative's library `creative_id`: the buyer's [`sync_creatives`](/docs/creative/task-reference/sync_creatives) identifier, or the seller-assigned ID of a creative that entered the library outside `sync_creatives`; inline-only sellers use the `creative_id` supplied through `packages[].creatives`. Sellers SHOULD populate it whenever they can associate a specific airing with a creative, particularly when the package could serve more than one creative during any part of the reporting period, including a mid-period replacement. Sellers that cannot make that association MUST omit the field rather than emit a default or placeholder. Buyers MUST NOT aggregate `by_spot` rows by `creative_id` and expect the result to equal `by_creative[]` impressions for the same creative: the two dimensions are independently produced at different granularities and are subject to different metric-maturation and attribution semantics within the package `measurement_window`. `by_creative` is the authoritative creative-performance aggregate; `creative_id` on a spot row identifies which creative aired, not an independent metric roll-up source.
 
 Delivery metrics on a spot row are optional. Omission means the metric is not yet available in the package's current `measurement_window`, or the product did not declare it in `supports_spot_breakdown.available_metrics`. A later window may return the same `spot_id` with impressions populated. An explicit `impressions: 0` is a measured zero; it does not mean pending or unavailable, and `null` is invalid.
 
