@@ -1,6 +1,6 @@
 {
   "$comment": "Non-additive schema changes recorded by scripts/lint-additive-minor.cjs, relative to the release named in base. This list only shrinks: CI rejects an entry that the target branch does not have. Remove an entry when its change is reverted or released, and record the decision in reason. A property-added-to-closed entry records an addition to a schema that stays closed for a structural reason (DR-0036).",
-  "base": "3.2.8",
+  "base": "3.2.9",
   "entries": [
     {
       "file": "core/canonical-performance-standard.json",
