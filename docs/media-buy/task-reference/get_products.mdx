@@ -490,7 +490,7 @@ Audience evidence does not populate `targeting_overlay`, `demographic_targeting`
 **Experimental** (`media_buy.audience_evidence_targets`). `target_audiences` is part of AdCP 3.3 as an experimental surface: its schemas carry `x-status: experimental`, sellers that evaluate it MUST list `media_buy.audience_evidence_targets` in `experimental_features`, and it may change between 3.x releases with notice. Check the seller's `experimental_features` before sending it. See [Experimental status](/docs/reference/experimental-status).
 </Note>
 
-`target_audiences` is a sibling of `audience_evidence_requirements`, not a member of it: the requirements object is a closed schema and a minor release never changes a closed schema. `target_audiences` MUST be sent with `audience_evidence_requirements`, whose `requirement_mode`, `evidence_presence` and admissibility constraints govern it. The requirements above constrain evidence *quality*. `target_audiences[]` adds *which audience* the buyer cares about, so a buyer can ask for "evidence that at least 40% of this inventory's audience is 25–54" instead of burying the preference in the brief.
+`target_audiences` is a sibling of `audience_evidence_requirements`, not a member of it, because the two constrain different things: the requirements above constrain evidence *quality*, and `target_audiences[]` names *which audience* the buyer cares about. `target_audiences` MUST be sent with `audience_evidence_requirements`, whose `requirement_mode`, `evidence_presence` and admissibility constraints govern it. That lets a buyer say which audience it cares about, so a buyer can ask for "evidence that at least 40% of this inventory's audience is 25–54" instead of burying the preference in the brief.
 
 ```json
 {

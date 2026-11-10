@@ -321,7 +321,7 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 
 ## Withdrawn from 3.3, planned for 4.0
 
-Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` stays closed within 3.x: a buyer must not be bound by terms it cannot read, and `terms_digest` signs exactly those terms. If the object were open, a 3.2 buyer could accept a 3.3 term it silently ignored. 4.0 gives `commercial_terms` a declared extension point with must-understand and brings them back ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).
+Three features are not part of 3.3. All three add terms to `commercial_terms`, which is held closed until 4.0. 4.0 gives `commercial_terms` a declared extension point with must-understand and brings them back ([adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).
 
 | Feature | Where it stood | What changes |
 |---|---|---|

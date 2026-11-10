@@ -1355,8 +1355,9 @@ function main() {
       '\nA minor release only adds. Make the change additive instead: add the property to an open' +
       ' object, keep removed values and properties, and keep new properties optional. If the change' +
       ' has to ship anyway, it needs a WG decision and a major release. If the published spec text' +
-      ' already required it, record it as a correction in DR-0036 and' +
-      ' scripts/lint-additive-minor-corrections.json.',
+      ' already required it, add it as a correction to scripts/lint-additive-minor-corrections.json' +
+      ' (DR-0036). A correction sets a bound or a required name; to add a property to a closed' +
+      ' schema, open the schema instead.',
     );
   }
   process.exitCode = 1;

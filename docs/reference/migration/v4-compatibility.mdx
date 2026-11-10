@@ -134,13 +134,13 @@ No storyboard step inspects every annotated field, so the suite reports this che
 
 **Detects:** a seller that lists `media_buy.audience_evidence_targets` in `experimental_features` does not accept `target_audiences` on `buy_products` purchases and `list_products` `offer_filters`.
 
-In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `get_products` filters and on `create_media_buy` packages. A purchase records its terms in `product-purchase.json`, which stays closed with the signed commercial terms ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so `buy_products` purchases gain the field in 4.0, and `list_products` `offer_filters` gains it with them.
+In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `get_products` filters and on `create_media_buy` packages. A purchase records its terms in `product-purchase.json`, which is held closed with the commercial terms until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so `buy_products` purchases gain the field in 4.0, and `list_products` `offer_filters` gains it with them.
 
 **Fix:** accept the sibling on those surfaces and record it in the accepted purchase snapshot. Until 4.0, a buyer that needs an audit record keeps its own copy of the requirements and targets it sent. A 3.x run cannot observe this check, so it reports as not observable.
 
 ## Planned for 4.0: withdrawn from 3.3
 
-The three checks below record 3.3 features that are withdrawn and planned for 4.0. All three add terms to `commercial_terms`. The `commercial-terms` schema is closed on purpose: a buyer must not be bound by terms it cannot read, and `terms_digest` signs exactly those terms. If the object were open, a 3.2 buyer could accept a 3.3 term it silently ignored. That is a structural reason to keep it closed ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so these features wait for 4.0, where `commercial_terms` gets a declared extension point with must-understand. The decision and its reasoning are in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501). The [3.3 migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) says what changed between `3.3.0-beta.0` and `3.3.0-beta.1`.
+The three checks below record 3.3 features that are withdrawn and planned for 4.0. All three add terms to `commercial_terms`. The `commercial-terms` schema is held closed until 4.0 ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)), so these features wait for 4.0, where `commercial_terms` gets a declared extension point with must-understand. The decision and its reasoning are in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501). The [3.3 migration guide](/docs/reference/migration/3-2-to-3-3#withdrawn-from-3-3-planned-for-4-0) says what changed between `3.3.0-beta.0` and `3.3.0-beta.1`.
 
 Nothing here is graded. 3.3 has no wire form for any of it after beta.1, so a run cannot observe it. The designs are preserved at the merge commits named below, so the 4.0 work starts from them instead of from a blank page: `git show <commit>:<path>` prints any file.
 
@@ -206,7 +206,7 @@ Nothing here is graded. 3.3 has no wire form for any of it after beta.1, so a ru
 
 **Detects:** a seller that changes a signed purchase on its own authority carries no seller-held entry in `commercial_terms.change_terms[]` naming the bounded change.
 
-In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers) that the buyer accepts. A way for the buyer to pre-agree bounded seller changes (a budget release, a schedule shift, ordered line alternates) would add `holder` and `purchase_index` to `change-term.json` and new constraint kinds. `commercial_terms` and `change-term.json` stay closed with the signed terms, and a minor adds nothing to a schema that stays closed, so the lane ships in 4.0. The expected shape is in [Planned for 4.0](/docs/media-buy/product-discovery/proposal-negotiation#planned-for-40-seller-held-change-terms).
+In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/docs/media-buy/product-discovery/proposal-negotiation#seller-offers) that the buyer accepts. A way for the buyer to pre-agree bounded seller changes (a budget release, a schedule shift, ordered line alternates) would add `holder` and `purchase_index` to `change-term.json` and new constraint kinds. `commercial_terms` and `change-term.json` are held closed until 4.0, so the lane ships in 4.0. The expected shape is in [Planned for 4.0](/docs/media-buy/product-discovery/proposal-negotiation#planned-for-40-seller-held-change-terms).
 
 **Fix:** until 4.0, send a seller offer for every seller-initiated change to a signed buy. A 3.x run cannot observe this check, so it reports as not observable.
 
@@ -217,7 +217,7 @@ In 3.3 a seller-initiated change to a signed buy is always a [seller offer](/doc
 
 **Detects:** a seller that lists `media_buy.measurement_provenance` in `experimental_features` declares `counting_mechanisms` on `measurement_terms.billing_measurement` but not on the canonical commercial terms.
 
-In 3.3 the experimental `billing_measurement.counting_mechanisms[]` is carried on `core/measurement-terms.json` only. `core/canonical-measurement-terms.json` holds terms the buyer is bound by and stays closed, and a minor adds nothing to a schema that stays closed, so the canonical terms gain the field in 4.0.
+In 3.3 the experimental `billing_measurement.counting_mechanisms[]` is carried on `core/measurement-terms.json` only. `core/canonical-measurement-terms.json` holds terms the buyer is bound by and is held closed until 4.0, so the canonical terms gain the field in 4.0.
 
 **Fix:** declare `counting_mechanisms` on the canonical terms as well. A 3.x run cannot observe this check, so it reports as not observable.
 
@@ -230,7 +230,7 @@ A check is added once its 4.0 change is decided. These changes are still proposa
 - the `account_id` from `sync_accounts` as the only account reference after provisioning ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850))
 - nested `status` renamed to `media_buy_status` ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905))
 
-The schemas also mark 46 deprecated fields with `x-removed-in: "4.0.0"`. The registry lists each one, either under the check that covers it or in `schema_removals_not_checked` with the reason no check covers it yet. Most uncovered fields are sent by buyers, so a seller run can't observe them. A few are seller-emitted and checkable but not graded yet: flat `valid_actions`, response-wide delivery `currency` and `aggregated_totals`, `inline_creative_management`, and the format-level build and pricing surface that `list_transformers` replaces.
+The schemas also mark 48 deprecated fields with `x-removed-in: "4.0.0"`. The registry lists each one, either under the check that covers it or in `schema_removals_not_checked` with the reason no check covers it yet. Most uncovered fields are sent by buyers, so a seller run can't observe them. A few are seller-emitted and checkable but not graded yet: flat `valid_actions`, response-wide delivery `currency` and `aggregated_totals`, `inline_creative_management`, boolean `demographics` in product support, and the format-level build and pricing surface that `list_transformers` replaces.
 
 The full list of planned 4.0 work is the [4.0 milestone](https://github.com/adcontextprotocol/adcp/milestone/5).
 

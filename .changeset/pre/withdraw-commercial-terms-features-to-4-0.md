@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-Withdraw definition pins, purchase rights, and installment selection from 3.3 and plan them for 4.0 (adcp#8501). All three add terms to `commercial_terms`. The `commercial-terms` schema is closed on purpose: a buyer must not be bound by terms it cannot read, and `terms_digest` signs exactly those terms. If the object were open, a 3.2 buyer could accept a 3.3 term it silently ignored. That is a structural reason to keep it closed (DR-0036), so additions to it wait for a major. 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it.
+Withdraw definition pins, purchase rights, and installment selection from 3.3 and plan them for 4.0 (adcp#8501). All three add terms to `commercial_terms`. The `commercial-terms` schema is held closed until 4.0 (DR-0036). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it.
 
 **All three shipped in `3.3.0-beta.1` and are removed after it.** This is a beta-to-beta change, not a change to a stable release. Both betas are immutable, so a seller or SDK built from a beta bundle has the surfaces below to remove. The two experimental features also leave `experimental_features`: a seller stops listing `media_buy.purchase_rights` and `media_buy.installment_selection`.
 
