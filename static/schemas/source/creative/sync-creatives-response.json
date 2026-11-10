@@ -197,7 +197,7 @@
         "merges": {
           "type": "array",
           "x-added-in": "3.3.0",
-          "description": "One entry per merge assignment operation the seller applied, in request order (under dry_run, one per merge that would be applied). Present exactly when the request contained merge operations and succeeded. A merge that fails verification fails the whole request with CREATIVE_MERGE_REJECTED, whose details list every rejected merge and its reason; a merge awaiting a person's confirmation is reported on the submitted task's completion artifact, never as a partial result here.",
+          "description": "One entry per merge assignment operation the seller applied, in request order (under dry_run, one per merge that would be applied). A library-level merge (no package_id in the request) adds one entry without package_id that records the account-wide binding, followed by one entry per assignment it moved, ordered by package_id. Present exactly when the request contained merge operations and succeeded. A merge that fails verification fails the whole request with CREATIVE_MERGE_REJECTED, whose details list every rejected merge and its reason; a merge awaiting a person's confirmation is reported on the submitted task's completion artifact, never as a partial result here.",
           "items": {
             "type": "object",
             "properties": {
@@ -210,20 +210,23 @@
               "package_id": {
                 "type": "string",
                 "minLength": 1,
+                "description": "Package whose assignment was merged. Absent only on the entry that records a library-level merge's account-wide binding.",
                 "x-entity": "package"
               },
               "merged_creative_id": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Seller-assigned creative whose assignment on package_id was merged into creative_id.",
+                "description": "Seller-assigned creative whose assignment on package_id was merged into creative_id, or, on an entry without package_id, that is now bound to creative_id across the account.",
                 "x-entity": "creative"
               },
               "approval_status": {
                 "$ref": "/schemas/enums/creative-approval-status.json",
-                "description": "Approval state the merged assignment inherited from merged_creative_id."
+                "description": "Approval state the merged assignment inherited from merged_creative_id. Present on every entry that has package_id."
               }
             },
-            "required": ["creative_id", "package_id", "merged_creative_id", "approval_status"],
+            "required": ["creative_id", "merged_creative_id"],
+            "if": { "required": ["package_id"] },
+            "then": { "required": ["approval_status"] },
             "additionalProperties": true
           }
         },

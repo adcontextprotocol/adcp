@@ -256,6 +256,7 @@ not maintain it omits it and the buyer falls back to rereading.
 |-------|------|-------------|
 | `creative_id` | string | Unique creative identifier. Assigned by the seller for creatives created outside AdCP. |
 | `platform_id` | string | The seller's identifier for the creative in its source of truth. Same value `sync_creatives` returns. |
+| `merged_into_creative_id` | string | Present on a seller-assigned creative that a [library-level merge](/docs/creative/task-reference/sync_creatives#merging-across-the-account) bound to a buyer creative: the buyer's `creative_id`, which now holds its assignments and delivery. Such a creative has no assignments of its own. |
 | `revision_id` | string | Current buyer-authored input revision when the current content is revision-bound. Omitted for legacy/unversioned current content. |
 | `seller_revision` | integer or string | Optional seller-maintained, monotonic, opaque change token, distinct from `revision_id`. Advances on every committed change to the creative from any origin. See [Seller revision](#seller-revision). Added in 3.3. |
 | `name` | string | Human-readable name |
@@ -321,7 +322,7 @@ To manage one of these creatives, a buyer uses its `creative_id` as-is. See [sel
 
 `platform_id` is the seller's identifier for the creative in its source of truth, the same value `sync_creatives` returns. It lets operators match a creative to the seller's own UI and reports without keeping the sync response. Buyers address creatives by `creative_id`, never by `platform_id`.
 
-Delivery reporting uses the same seller-assigned `creative_id`. When such a creative delivers in a buyer's package, [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery#creatives-the-buyer-didnt-sync) reports it in `by_package[].by_creative[]` under that ID, and [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) does too. To take one over as the buyer's own creative, see [Adopting a creative made outside AdCP](/docs/creative/task-reference/sync_creatives#adopting-a-creative-made-outside-adcp).
+Delivery reporting uses the same seller-assigned `creative_id`. When such a creative delivers in a buyer's package, [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery#creatives-the-buyer-didnt-sync) reports it in `by_package[].by_creative[]` under that ID, and [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) does too. To take one over as the buyer's own creative, see [Adopting a creative made outside AdCP](/docs/creative/task-reference/sync_creatives#adopting-a-creative-made-outside-adcp). After a library-level merge, the seller-assigned creative stays listed with `merged_into_creative_id` naming the buyer's creative, so the pairing can be read back at any time.
 
 ### Assignment indicators
 
