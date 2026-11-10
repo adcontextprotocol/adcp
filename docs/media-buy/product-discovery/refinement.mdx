@@ -329,13 +329,12 @@ Client implementations should validate refinement requests against the [request 
 | `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls (one finalize per `get_products` call) |
 | `INVALID_REQUEST` | `refine` provided in `brief` or `wholesale` mode, empty `refine` array, or missing required fields | Check `buying_mode` and required fields |
 
-### Troubleshooting: a stray `id` on `refine[]`
+### Troubleshooting: "must NOT have additional properties" on `refine[].id`
 
-Each scope branch in `refine[]` is open, so an unknown field is not itself an error. A refine entry in the pre-3.0-rc shape still fails validation: its generic `id` field doesn't stand in for the `product_id` or `proposal_id` that its scope requires. The error reads along the lines of:
+Each scope branch in `refine[]` requires its own identifier, so an entry that carries only the generic `id` field from the pre-3.0-rc refine shape is rejected, with an error along the lines of:
 
 ```
-/refine/0: must have required property 'product_id' { missingProperty: "product_id" }
-/refine/0: must match exactly one schema in oneOf
+/refine/0: must have required property 'product_id'
 ```
 
 If you see this, an orchestrator is still constructing product or proposal refine entries with the generic `id` field. Rename to `product_id` under `scope: "product"` and `proposal_id` under `scope: "proposal"`. See the [task reference](/docs/media-buy/task-reference/get_products#refine-array) for the current shape. The same rename applies to `refinement_applied[]` if you're echoing on the seller side.
