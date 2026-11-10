@@ -1651,7 +1651,7 @@
         },
         "account_id": {
           "type": "string",
-          "description": "Seller-assigned sandbox account to target. Required by expire_account_change_cursor.",
+          "description": "Seller-assigned sandbox account the request targets. Required by expire_account_change_cursor.",
           "x-entity": "account"
         }
       },
