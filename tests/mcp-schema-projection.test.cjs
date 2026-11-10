@@ -201,7 +201,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_376_000.
 // Experimental match keys (#8375) reach the seeded Product through
 // Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
-const PARITY_COMPILE_LIMIT = 1_384_000;
+// Declaring the simulate_delivery row sub-objects as core/identifier.json and
+// core/installment-ref.json, plus account.account_id (#8345), adds both
+// closures once: 1_383_804 → 1_386_200 bytes. Bound at 1_386_500.
+const PARITY_COMPILE_LIMIT = 1_386_500;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

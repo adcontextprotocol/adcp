@@ -1320,7 +1320,7 @@
             "required": ["publisher_domain", "identifier", "impressions", "spend"],
             "properties": {
               "publisher_domain": { "type": "string" },
-              "identifier": { "type": "object", "required": ["type", "value"] },
+              "identifier": { "$ref": "/schemas/core/identifier.json" },
               "impressions": { "type": "number", "minimum": 0 },
               "spend": { "type": "number", "minimum": 0 }
             },
@@ -1335,9 +1335,9 @@
             "type": "object",
             "required": ["installment_ref", "publisher_domain", "identifier", "impressions", "spend"],
             "properties": {
-              "installment_ref": { "type": "object", "required": ["collection_ref", "installment_id"] },
+              "installment_ref": { "$ref": "/schemas/core/installment-ref.json" },
               "publisher_domain": { "type": "string" },
-              "identifier": { "type": "object", "required": ["type", "value"] },
+              "identifier": { "$ref": "/schemas/core/identifier.json" },
               "impressions": { "type": "number", "minimum": 0 },
               "spend": { "type": "number", "minimum": 0 }
             },
@@ -1354,7 +1354,7 @@
             "type": "object",
             "required": ["installment_ref", "spend"],
             "properties": {
-              "installment_ref": { "type": "object", "required": ["collection_ref", "installment_id"] },
+              "installment_ref": { "$ref": "/schemas/core/installment-ref.json" },
               "impressions": { "type": "number", "minimum": 0 },
               "spend": { "type": "number", "minimum": 0 }
             },
@@ -1648,6 +1648,11 @@
           "type": "boolean",
           "const": true,
           "description": "MUST be true. The seller MUST verify the targeted account is sandbox by looking up the persisted account record, not by trusting this field. A request asserting sandbox: false schema-rejects before reaching the seller — defense-in-depth on top of the per-request gate."
+        },
+        "account_id": {
+          "type": "string",
+          "description": "Seller-assigned sandbox account to target. Required by expire_account_change_cursor.",
+          "x-entity": "account"
         }
       },
       "additionalProperties": true
