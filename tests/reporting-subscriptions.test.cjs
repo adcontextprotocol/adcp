@@ -146,7 +146,8 @@ test('lost authority is reported in the caller\'s own subscription state', () =>
   assert.ok(state({ ...current, accounts_unauthorized: [revoked], accounts_unauthorized_count: 1 }), JSON.stringify(state.errors));
   const { withheld_period_count: _w, ...noCount } = revoked;
   assert.equal(state({ ...current, accounts_unauthorized: [noCount], accounts_unauthorized_count: 1 }), false, 'withheld_period_count required');
-  assert.equal(state({ ...current, accounts_unauthorized: [{ ...revoked, covered: [] }], accounts_unauthorized_count: 1 }), false, 'no current account data');
+  // Open by default (DR-0036): `covered` is defined nowhere here, so it is an unknown key and validates.
+  assert.ok(state({ ...current, accounts_unauthorized: [{ ...revoked, covered: [] }], accounts_unauthorized_count: 1 }), 'covered is an ignored unknown key');
   const caps = read('core/reporting-delivery-capabilities.json').properties.subscriptions.properties.backfill_on_regrant.description;
   assert.match(caps, /no gap is recorded/);
   assert.ok(state({ ...current, prior_versions: [{ subscription_version: 1, accepted_at: '2026-10-01T00:00:00Z', superseded_at: '2026-11-01T00:00:00Z' }], prior_versions_count: 1 }), JSON.stringify(state.errors));
@@ -192,8 +193,10 @@ test('coverage readback lists exceptions only, each with its interval', () => {
   ];
   for (const doc of ok) assert.ok(v(doc), `${doc.status}: ${JSON.stringify(v.errors)}`);
 
+  // Open by default (DR-0036): `covered` is not declared (asserted above), so a positive listing is an ignored unknown key.
+  assert.ok(v({ ...coverageBase, status: 'active', covered: [] }), 'a positive covered listing is an ignored unknown key');
+
   const bad = [
-    ['a positive covered listing', { ...coverageBase, status: 'active', covered: [] }],
     ['unauthorized is not an account status here', { ...coverageBase, status: 'unauthorized' }],
     ['an exception without from', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity' }] }],
     ['a gap without until', { ...coverageBase, status: 'active', gaps: [{ from, reason: 'unauthorized' }] }],

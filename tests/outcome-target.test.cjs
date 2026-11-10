@@ -221,12 +221,13 @@ describe('outcome_target reverse-forecast criteria', () => {
     assert.equal(forecastable.includes('store_visits_14d_exposed'), false);
   });
 
-  it('keeps threshold_rate and per_ad_spend out of outcome_target', () => {
+  it('reserves threshold_rate and per_ad_spend for a later minor; they are currently ignored', () => {
     // Deferred past 3.3: planning semantics for threshold_rate are undecided
     // and per_ad_spend needs event-scoped value delivery does not carry.
     const goal = { kind: 'metric', metric: 'clicks' };
     for (const field of ['threshold_rate', 'per_ad_spend']) {
-      assert.equal(validateCriteria({ outcome_target: { goal, volume: 10, [field]: { value: 0.5 } } }), false, field);
+      // Open by default (DR-0036): neither is declared, so each is an unknown key and validates.
+      assert.equal(validateCriteria({ outcome_target: { goal, volume: 10, [field]: { value: 0.5 } } }), true, field);
     }
   });
 

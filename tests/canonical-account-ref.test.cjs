@@ -36,6 +36,9 @@ test('the account_id form names no natural-key member, and the natural key names
   assert.equal(validate({ account_id: 'acc_nova_nl', brand: BRAND }), false, 'brand beside account_id');
   assert.equal(validate({ account_id: 'acc_nova_nl', operator: OPERATOR }), false, 'operator beside account_id');
   assert.equal(validate({ account_id: 'acc_nova_nl', brand: BRAND, operator: OPERATOR }), false, 'both forms at once');
+  assert.equal(validate({ account_id: 'acc_nova_nl', sandbox: true }), false, 'sandbox beside account_id');
+  assert.equal(validate({ account_id: 'acc_nova_nl', currency: 'USD' }), false, 'currency beside account_id');
+  assert.equal(validate({ brand: BRAND, operator: OPERATOR, account_id: 'acc_nova_nl' }), false, 'account_id beside the natural key');
 });
 
 test('an unknown key on a canonical account ref validates', async () => {

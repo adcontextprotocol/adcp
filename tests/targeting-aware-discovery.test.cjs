@@ -271,8 +271,9 @@ test("frequency cap detail preserves the legacy boolean and separates aggregate 
     validateConstraints({
       max_impressions_constraints: { minimum: 1, maximum: 10, step: 2 },
     }),
-    false,
-    "count ranges have no step"
+    // Open by default (DR-0036): `step` is defined nowhere, so it is an unknown key and validates.
+    true,
+    "count ranges declare no step; it is an ignored unknown key"
   );
 
   const requirementsSchema = JSON.parse(
@@ -654,8 +655,9 @@ test("product responses expose symmetric property and collection list applicatio
   );
   assert.equal(
     validateReceipt({ ...collectionReceipt, mode: "exclude" }),
-    false,
-    "effect is the only application discriminator"
+    // Open by default (DR-0036): `mode` is defined nowhere, so it is an unknown key and validates.
+    true,
+    "effect is the only declared application discriminator; mode is ignored"
   );
   assert.equal(
     validateReceipt({ ...collectionReceipt, entries_total: 200 }),

@@ -6769,7 +6769,8 @@ async function runTests() {
     },
     'Rejects DSR routing that declares no access, erasure, or objection channel'
   );
-  await testSchemaRejection(
+  // Open by default (DR-0036): signal-level gpc_honored is an unknown key and validates (ignored).
+  await testSchemaValidation(
     '/schemas/core/signal-definition.json',
     {
       id: 'dsr_gpc_not_signal_level',
@@ -6785,7 +6786,7 @@ async function runTests() {
         gpc_honored: true
       }
     },
-    'Rejects signal-level gpc_honored in DSR routing'
+    'Ignores signal-level gpc_honored in DSR routing (unknown key)'
   );
   log('');
 
