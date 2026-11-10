@@ -55,17 +55,19 @@ narrative: |
 
   **Synchronous primary trigger.** The first webhook trigger decides which
   path the rest of the run grades. When `create_media_buy` returns an inline
-  terminal result (the response carries `media_buy_id`, so the runner records
-  `context.media_buy_id`), no webhook is owed: the runner asserts that none
+  terminal result, no webhook is owed. The runner detects that case from
+  `context.media_buy_id`, recorded from the response, then asserts that none
   arrives for that trigger and skips the emitted-webhook phases
   (`idempotency_key_presence`, `operation_id_echo`,
   `idempotency_replay_side_effects`, `idempotency_key_stability`,
   `signing_keys_published`, `signature_validity`). When the trigger returns
-  `submitted` or `working`, those phases run and the seller must deliver
-  signed webhooks. Triggers that do not return a `media_buy_id` (other
-  primary emitters) keep the emitted-webhook grading. A synchronous agent
-  that declares `webhook_signing.supported: true` still has its signing JWKS
-  graded (`signing_keys_published_declared`).
+  `submitted`, or `working` without a `media_buy_id`, those phases run and
+  the seller must deliver signed webhooks. A `working` response that carries
+  `media_buy_id` is currently misclassified as synchronous; see
+  `synchronous_trigger_silence`. Triggers that do not return a
+  `media_buy_id` (other primary emitters) keep the emitted-webhook grading.
+  A synchronous agent that declares `webhook_signing.supported: true` still
+  has its signing JWKS graded (`signing_keys_published_declared`).
 
   Grading is observable-behavior only. The runner hosts a webhook receiver per
   the contract at `test-kits/webhook-receiver-runner.yaml`, drives storyboards
@@ -263,8 +265,11 @@ phases:
       push_notification_config pointed at the runner's per-step receiver. The
       response decides which path the rest of the run grades: an interim
       `submitted` or `working` response owes webhooks, which the following
-      phases grade; an inline terminal `create_media_buy` result owes none,
-      and the runner records its `media_buy_id` in `context.media_buy_id`.
+      phases grade; an inline terminal `create_media_buy` result owes none.
+      The runner tells them apart by `context.media_buy_id`, which it
+      records from the response, so a `working` response that carries
+      `media_buy_id` is graded as synchronous (a runner limitation; see
+      `synchronous_trigger_silence`).
 
     steps:
       - id: trigger_webhook_operation
@@ -323,10 +328,11 @@ phases:
       The classification reads `context.media_buy_id` because a storyboard
       cannot read the trigger's task status. A `submitted` envelope cannot
       carry `media_buy_id` (the schema forbids it), but a `working` envelope
-      may. Runners that record `media_buy_id` from an interim envelope
-      classify that seller as synchronous and fail its completion webhook
-      here. That is a runner limitation, not a seller obligation; it is
-      tracked in adcontextprotocol/adcp-client#3682.
+      may. The reference runner records `media_buy_id` from any
+      `create_media_buy` response, so it classifies that seller as
+      synchronous and fails its completion webhook here. That is a runner
+      limitation, not a seller obligation; it is tracked in
+      adcontextprotocol/adcp-client#3682.
     skip_if: "!context.media_buy_id"
 
     steps:
