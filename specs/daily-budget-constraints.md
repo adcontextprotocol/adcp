@@ -21,13 +21,11 @@ not add a temporary second home for minimums merely to fit them into 3.3.
 
 <!-- depends on #8866 (which schemas stay closed) and #8858 (the DR-0036 rewrite) -->
 `core/canonical-pricing-option.json`, `media-buy/product-purchase.json`, and
-`media-buy/commercial-terms.json` stay closed throughout 3.x: they are signed
-commercial terms that `terms_digest` binds, a structural reason under DR-0036
-(decided 2026-11-09). A minor adds nothing to a schema kept closed for a
-structural reason, and the additive-minor gate rejects new properties there.
-`media-buy/product-purchase-input.json` opens in 3.3, but a minimum accepted
-there would have no home in the signed purchase it produces, so these budget
-semantics still wait for 4.0.
+`media-buy/commercial-terms.json` are held closed until 4.0 (DR-0036, decided
+2026-11-09). A minor adds nothing to them, and the additive-minor gate rejects
+new properties there. `media-buy/product-purchase-input.json` opens in 3.3,
+but a minimum accepted there would have no home in the purchase it produces,
+so these budget semantics still wait for 4.0.
 
 ## Recommended release sequence
 
