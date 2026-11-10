@@ -1307,7 +1307,9 @@ If the seller needs a person to confirm a match, it returns the [`submitted` env
 
 1. **Find it.** [`list_creatives`](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp) returns the creative under a seller-assigned `creative_id`, with the platform's own identifier in `platform_id`. With `include_assignments: true`, it also lists the packages the creative is assigned to. Confirm that the seller declares `creative.stable_creative_ids` and `creative.supports_assignment_merge`.
 2. **Sync the buyer's copy.** Build a creative under the buyer's own `creative_id` from the same assets (media, text, click-through) in the same format, and sync it. A copy whose content differs is rejected at merge time with `content_mismatch`, and one in a different format with `format_mismatch`.
-3. **Merge each assignment.** Send one `merge` per package the seller-assigned creative is assigned to. The seller keeps the running serving object, its approval and its delivery, and reports it under the buyer's `creative_id` from then on.
+3. **Merge.** If the seller declares `creative.supports_library_merge`, send one `merge` without `package_id` (see [Merging across the account](#merging-across-the-account)). Otherwise send one `merge` per package the seller-assigned creative is assigned to. Either way, the seller keeps the running serving object, its approval and its delivery, and reports it under the buyer's `creative_id` from then on.
+
+Per package:
 
 ```json
 {
@@ -1331,10 +1333,64 @@ If the seller needs a person to confirm a match, it returns the [`submitted` env
 }
 ```
 
-Two limits apply in AdCP 3.3:
+Two limits apply:
 
-- **Merge is per package.** Each assignment needs its own `merge`. If the seller-assigned creative is assigned to another package later, for example because the advertiser adds the same creative to a new ad in the platform's tools, that assignment is reported under the seller-assigned ID until the buyer merges it too. Buyers that adopt creatives watch for new assignments through `creative.assignment_changed` notifications or by rereading `list_creatives`.
-- **History stays split.** Delivery before each merge stays under the seller-assigned ID. To report the creative's whole life, the buyer joins the two IDs; see [delivery before and after a merge](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-before-and-after-a-merge).
+- **A package merge covers one package.** Each assignment needs its own `merge`. If the seller-assigned creative is assigned to another package later, for example because the advertiser adds the same creative to a new ad in the platform's tools, that assignment is reported under the seller-assigned ID until the buyer merges it too. Buyers that adopt creatives this way watch for new assignments through `creative.assignment_changed` notifications or by rereading `list_creatives`. A [library-level merge](#merging-across-the-account) removes this limit.
+- **History stays split.** Delivery before each merge stays under the seller-assigned ID, with either kind of merge. To report the creative's whole life, the buyer joins the two IDs; see [delivery before and after a merge](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-before-and-after-a-merge).
+
+### Merging across the account
+
+On many platforms one creative can run in many ads across many packages. A buyer adopting it wants to say once that the seller's creative is its own, so that every assignment, now and later, reports under the buyer's `creative_id`. A `merge` without `package_id` does that. It is a library-level merge: "`slr_7f3c2a91` is my `acme_spring_carousel`, everywhere in this account."
+
+{/* Library-level merge is not yet released: these two examples use /schemas/latest/. Update to the major alias after release. */}
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json",
+  "account": { "account_id": "acct_acme_2026" },
+  "idempotency_key": "4a9e1c7b-2d5f-4f08-b6a3-8e0d2c5f1b97",
+  "assignment_operations": [{
+    "operation": "merge",
+    "creative_id": "acme_spring_carousel",
+    "merged_creative_id": "slr_7f3c2a91"
+  }]
+}
+```
+
+Buyers MUST NOT send a `merge` without `package_id` unless the seller declares [`creative.supports_library_merge`](/docs/protocol/get_adcp_capabilities#creative). A seller that does not declare it rejects one with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), even if it declares `creative.supports_assignment_merge`. A seller that declares it:
+
+- MUST verify the pairing as for a package merge, and MUST treat `merged_creative_id` as the same creative as `creative_id` everywhere in the account.
+- MUST merge every current assignment of `merged_creative_id`, as a package merge would. Current means on a package that is not canceled, in a media buy that is not in a terminal state. Paused packages are included. Assignments in terminal media buys stay as they were, with their delivery history.
+- MUST make every later assignment of that creative under `creative_id`. When the seller's source of truth assigns the same creative to another package, for example because the advertiser adds it to a new ad in the platform's tools, the seller reports that assignment in `list_creatives`, `get_media_buys` and delivery under `creative_id`, never under `merged_creative_id`. A seller that emits `creative.assignment_changed` sends `assigned` for `creative_id`.
+- MUST keep listing `merged_creative_id` in `list_creatives` while it exists in the seller's source of truth, with no assignments and with `merged_into_creative_id` set to `creative_id`. The merge doesn't purge it, and it stays out of `delete_missing` as before.
+- MUST report delivery under `creative_id` from the merge onward and MUST NOT restate earlier delivery, which stays under `merged_creative_id`. `merged_into_creative_id` is the durable record buyers use to [join the two IDs](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-before-and-after-a-merge).
+
+**Verification.** The library-level merge is all or nothing. If the seller can't merge any one current assignment, it applies no operation in the request and returns [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) with one rejection per blocking package, each with its `package_id` and a `reason` (`format_mismatch` or `not_supported`). Reasons about the pairing itself carry no `package_id`:
+
+| `reason` | Meaning | Who acts |
+|---|---|---|
+| `content_mismatch` | The seller judges that `merged_creative_id` is a different creative. | Nobody: the seller's creative is not this creative. |
+| `not_in_account` | `merged_creative_id` is not a seller-assigned creative in this account. Unknown IDs get the same reason, so the response doesn't reveal whether an ID exists elsewhere. | The buyer: reread `list_creatives` and correct the pairing. |
+| `already_merged` | An earlier library-level merge bound `merged_creative_id` to a different `creative_id`. A seller-assigned creative is bound to at most one buyer creative. | The buyer: read `merged_into_creative_id` in `list_creatives`. |
+
+`not_on_package` doesn't apply to a library-level merge. Confirmation, `dry_run`, and atomicity with the rest of the request work as for a package merge.
+
+**Response.** `merges[]` gets one entry without `package_id` for the account-wide binding, followed by one entry per assignment the merge moved, ordered by `package_id`, each with its inherited `approval_status`. A seller-assigned creative with no current assignments yields only the binding entry. Repeating a library-level merge of the same pair succeeds with only the binding entry.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json",
+  "status": "completed",
+  "creatives": [],
+  "merges": [
+    { "creative_id": "acme_spring_carousel", "merged_creative_id": "slr_7f3c2a91" },
+    { "creative_id": "acme_spring_carousel", "package_id": "pkg_spring_retargeting", "merged_creative_id": "slr_7f3c2a91", "approval_status": "approved" },
+    { "creative_id": "acme_spring_carousel", "package_id": "pkg_spring_social", "merged_creative_id": "slr_7f3c2a91", "approval_status": "approved" }
+  ]
+}
+```
+
+Each moved assignment produces the same `creative.assignment_changed` notifications and account change feed records as a package merge. A library-level merge has no undo. To stop running `creative_id` on a package, `unassign` it or `replace` it as usual.
 
 ### Dry run
 

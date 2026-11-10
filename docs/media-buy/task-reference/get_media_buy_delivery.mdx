@@ -925,7 +925,7 @@ To see the creative's whole life, the buyer joins the two IDs itself:
 - Recompute rates such as `ctr` and `cpm` from those sums rather than averaging the rows' rates.
 - Don't add `reach` or `frequency` across the two rows. The same person can be in both, and a buyer-side join can't remove the overlap. Read them per ID, or per day for days that fall wholly before or after the merge.
 
-`list_creatives` and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) don't show the pairing after the fact, so buyers keep it from the `merges[]` entries of the `sync_creatives` response (`merged_creative_id`, `creative_id`, `package_id`). A seller that emits `creative.assignment_changed` sends `unassigned` and `assigned` with the same `observed_at`, and a seller with the account change feed records two `creative_assignment` changes sharing one `batch_id`.
+After a [library-level merge](/docs/creative/task-reference/sync_creatives#merging-across-the-account), `list_creatives` shows the pairing on the seller-assigned creative as `merged_into_creative_id`, and every later assignment reports under the buyer's ID. After a package merge, `list_creatives` and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) don't show the pairing after the fact, so buyers keep it from the `merges[]` entries of the `sync_creatives` response (`merged_creative_id`, `creative_id`, `package_id`). A seller that emits `creative.assignment_changed` sends `unassigned` and `assigned` with the same `observed_at`, and a seller with the account change feed records two `creative_assignment` changes sharing one `batch_id`.
 
 ## Catalog-item reporting
 

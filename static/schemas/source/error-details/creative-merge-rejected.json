@@ -24,6 +24,7 @@
           "package_id": {
             "type": "string",
             "minLength": 1,
+            "description": "Package of the rejected merge. For a library-level merge, present only when one current assignment blocks the merge: one entry names each blocking package.",
             "x-entity": "package"
           },
           "merged_creative_id": {
@@ -35,7 +36,7 @@
             "$ref": "/schemas/enums/creative-merge-rejection-reason.json"
           }
         },
-        "required": ["operation_index", "creative_id", "package_id", "merged_creative_id", "reason"],
+        "required": ["operation_index", "creative_id", "merged_creative_id", "reason"],
         "additionalProperties": false
       }
     }

@@ -3256,6 +3256,12 @@
           "default": false,
           "x-added-in": "3.3.0"
         },
+        "supports_library_merge": {
+          "type": "boolean",
+          "description": "When true, this agent also accepts a merge operation without package_id in sync_creatives assignment_operations: a library-level merge that binds a seller-assigned creative to the buyer's creative across the account. The agent merges every current assignment of the seller-assigned creative, and makes every later assignment of it under the buyer's creative_id. Requires supports_assignment_merge: true. When false or absent, the agent rejects a merge without package_id with UNSUPPORTED_FEATURE and buyers MUST NOT send one.",
+          "default": false,
+          "x-added-in": "4.0.0"
+        },
         "live_updates": {
           "type": "object",
           "x-status": "experimental",
@@ -3615,6 +3621,20 @@
               "stable_creative_ids": { "type": "boolean", "const": true }
             },
             "required": ["has_creative_library", "stable_creative_ids"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_library_merge": { "const": true }
+            },
+            "required": ["supports_library_merge"]
+          },
+          "then": {
+            "properties": {
+              "supports_assignment_merge": { "type": "boolean", "const": true }
+            },
+            "required": ["supports_assignment_merge"]
           }
         },
         {

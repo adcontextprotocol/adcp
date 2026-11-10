@@ -354,14 +354,14 @@
           },
           {
             "title": "Merge seller copy",
-            "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, and placement routing to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires creative.supports_assignment_merge.",
+            "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, and placement routing to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires creative.supports_assignment_merge. Without package_id, the merge is library-level: it declares the two creatives the same everywhere in the account, merges every current assignment of merged_creative_id, and binds merged_creative_id to creative_id so that every later assignment of it is made under creative_id. A library-level merge requires creative.supports_library_merge.",
             "properties": {
               "operation": { "const": "merge" },
               "creative_id": { "type": "string", "minLength": 1, "description": "Buyer's creative that takes over the assignment. It need not already be assigned to package_id.", "x-entity": "creative" },
-              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
-              "merged_creative_id": { "type": "string", "minLength": 1, "description": "Seller-created creative (one that entered the library outside sync_creatives, under a seller-assigned creative_id) currently assigned to package_id that the seller verifies is the same creative as creative_id.", "x-entity": "creative" }
+              "package_id": { "type": "string", "minLength": 1, "description": "Package whose assignment of merged_creative_id is merged. Omit for a library-level merge across the account, which requires creative.supports_library_merge.", "x-entity": "package" },
+              "merged_creative_id": { "type": "string", "minLength": 1, "description": "Seller-created creative (one that entered the library outside sync_creatives, under a seller-assigned creative_id) that the seller verifies is the same creative as creative_id. With package_id, it must be currently assigned to package_id; without it, it must be in the account.", "x-entity": "creative" }
             },
-            "required": ["operation", "creative_id", "package_id", "merged_creative_id"],
+            "required": ["operation", "creative_id", "merged_creative_id"],
             "additionalProperties": false,
             "x-added-in": "3.3.0",
             "x-adcp-validation": {
@@ -370,13 +370,20 @@
                   "required_capability": "creative.supports_assignment_merge",
                   "without_capability": "UNSUPPORTED_FEATURE"
                 },
+                "library_merge_capability_gate": {
+                  "applies_when": "package_id_absent",
+                  "required_capability": "creative.supports_library_merge",
+                  "without_capability": "UNSUPPORTED_FEATURE"
+                },
                 "on_rejection": {
                   "evaluation": "evaluate_every_merge_in_request; any_rejection_fails_whole_request_and_changes_no_assignment",
                   "error_code": "CREATIVE_MERGE_REJECTED",
                   "details": "error-details/creative-merge-rejected.json rejections[] one entry per rejected merge",
                   "reasons": {
                     "not_on_package": "merged_creative_id_unknown_or_not_seller_assigned_or_not_assigned_to_package_in_account; reported_uniformly",
-                    "not_supported": "seller_cannot_merge_this_pairing_on_this_package",
+                    "not_in_account": "library_merge_only; merged_creative_id_unknown_or_not_seller_assigned_in_account; reported_uniformly",
+                    "already_merged": "library_merge_only; merged_creative_id_already_bound_to_a_different_creative_id",
+                    "not_supported": "seller_cannot_merge_this_pairing_on_this_package; for_library_merge_rejection_names_each_blocking_package_id",
                     "format_mismatch": "creative_id_cannot_take_over_merged_creative_serving_object",
                     "content_mismatch": "seller_judges_not_same_creative"
                   }
@@ -386,7 +393,14 @@
                   "readback": "response_merges_one_entry_per_applied_merge",
                   "approval": "inherit_merged_creative_approval_on_package_and_must_not_re_review_unless_content_differs",
                   "merged_creative": "remove_assignment_on_package_only; not_purged",
-                  "delivery_attribution": "report_under_creative_id_from_merge_time; prior_delivery_stays_under_merged_creative_id_and_must_not_be_restated"
+                  "delivery_attribution": "report_under_creative_id_from_merge_time; prior_delivery_stays_under_merged_creative_id_and_must_not_be_restated",
+                  "library_merge": {
+                    "current_assignments": "merge_every_assignment_of_merged_creative_id_on_a_package_not_canceled_in_a_media_buy_not_terminal; atomic",
+                    "later_assignments": "make_under_creative_id; never_under_merged_creative_id",
+                    "readback": "merges_entry_without_package_id_for_binding_then_one_entry_per_moved_assignment",
+                    "merged_creative": "list_creatives_shows_merged_into_creative_id_and_no_assignments; not_purged",
+                    "repeat_same_pair": "succeeds_with_binding_entry_only"
+                  }
                 }
               },
               "spec": "docs/creative/task-reference/sync_creatives.mdx#merging-a-seller-created-copy"
