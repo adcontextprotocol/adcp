@@ -3,6 +3,7 @@
 const { execFileSync } = require('child_process');
 
 const CHANGESET_FILE_RE = /^\.changeset\/[^/]+[.]md$/;
+const RELEASE_AUDIT_BRANCH_PREFIX = 'release-audit/';
 const PROTOCOL_CHANGESET_RE = /^["']adcontextprotocol["']\s*:\s*(major|minor|patch)\s*$/m;
 const PROTOCOL_BUMP_RANK = new Map([
   [null, 0],
@@ -205,6 +206,19 @@ function isChangesetDeleteOnlyCleanup(changes) {
   return deletedChangeset;
 }
 
+// Release managers correct pending changesets on main before each cut
+// (.agents/shortcuts/cut-beta.md), which can mean rewording text or escalating a
+// misclassified bump. Allow that only from release-audit/ branches whose diff
+// edits or deletes existing changesets and nothing else.
+function isReleaseAuditChangesetMaintenance(changes, headRef) {
+  if (!String(headRef || '').startsWith(RELEASE_AUDIT_BRANCH_PREFIX)) return false;
+  if (changes.length === 0) return false;
+
+  return changes.every(change => (change.status === 'M' || change.status === 'D')
+    && (change.paths || []).length > 0
+    && change.paths.every(isChangesetFile));
+}
+
 function isChangesetStatusExemptMaintenance(changes) {
   let exemptChange = false;
 
@@ -235,7 +249,9 @@ function changedPathForHead(change) {
   return change.paths[change.paths.length - 1] || null;
 }
 
-function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileAtBase = () => '') {
+function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileAtBase = () => '', { headRef = '' } = {}) {
+  if (isReleaseAuditChangesetMaintenance(changes, headRef)) return [];
+
   const changesetFiles = [];
   const protocolScopedFiles = [];
 
@@ -292,6 +308,14 @@ function defaultBaseRef() {
   return 'origin/main';
 }
 
+function defaultHeadRef() {
+  if (process.env.CHANGESET_SCOPE_HEAD_REF) return process.env.CHANGESET_SCOPE_HEAD_REF;
+  if (process.env.GITHUB_EVENT_NAME === 'pull_request' && process.env.GITHUB_HEAD_REF) {
+    return process.env.GITHUB_HEAD_REF;
+  }
+  return '';
+}
+
 function formatViolationMessage(violations) {
   return [
     'Non-protocol changeset detected:',
@@ -346,7 +370,8 @@ function run(argv = process.argv.slice(2)) {
   const violations = findChangesetProtocolScopeViolations(
     changes,
     readFileAtHead,
-    filePath => readFileAtRef(baseRef, filePath)
+    filePath => readFileAtRef(baseRef, filePath),
+    { headRef: defaultHeadRef() }
   );
 
   if (violations.length > 0) {
@@ -376,6 +401,7 @@ module.exports = {
   isChangesetEditOnlyMaintenance,
   isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
+  isReleaseAuditChangesetMaintenance,
   parseNameStatus,
   run,
 };

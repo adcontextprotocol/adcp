@@ -97,7 +97,9 @@ or other operational work. Empty changesets do not belong in the beta cut.
 
 Do not hand-edit `CHANGELOG.md`; changesets owns it. Correct or remove the
 source `.changeset/*.md` file on `main`, then wait for the release branch to
-regenerate.
+regenerate. Open that correction PR from a `release-audit/<version>` branch
+that touches only `.changeset/*.md`, so the changeset scope check accepts text
+edits and bump escalations.
 
 ### Publish
 
