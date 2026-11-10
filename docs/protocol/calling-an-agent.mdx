@@ -59,7 +59,7 @@ For the key-required operations listed above, a missing key produces `adcp_error
 "account": { "brand": { "domain": "acme.com" }, "operator": "pinnacle-media.com" }
 ```
 
-**Do NOT merge required fields across variants.** `additionalProperties: false` on each variant means `{account_id, brand}` fails BOTH.
+**Do NOT merge required fields across variants.** Each variant rejects the other's fields by name: the `account_id` variant rejects the natural-key fields (`brand`, `operator`, `operator_unit`, `currency`, `timezone`, `sandbox`), and the natural-key variant rejects `account_id`. So `{account_id, brand}` fails BOTH.
 
 When a task schema requires `account`, send an explicit `AccountRef` even if the SDK auto-selected the only account available to the authenticated credential. Hidden credential-implied defaulting is not a protocol model. When a task marks `account` optional, omission has only the semantics documented by that task.
 
