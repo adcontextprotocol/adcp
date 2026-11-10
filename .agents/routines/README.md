@@ -34,7 +34,9 @@ duplicate/owner detection, and implementation briefs **only**. It never
 creates branches, edits implementation code, opens or updates PRs, or
 pushes commits. `/triage execute` remains as backward-compatible intake and
 yields a Ready-to-implement brief (or the relevant defer/flag outcome);
-PR-feedback mode is read/respond only. Because the launcher reads the
+PR-feedback mode is read/respond only and grounded in the immutable
+`base_sha...head_sha` range the bridge validates (it fails closed on a
+missing or malformed SHA). Because the launcher reads the
 current prompt on every run, the repository policy covers scheduled,
 manual, and event runs after merge. The saved launcher is separate
 configuration: replace it with the routing-only launcher below in the

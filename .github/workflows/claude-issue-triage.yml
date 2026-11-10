@@ -245,7 +245,7 @@ jobs:
           html_url=$(echo "$issue" | jq -r '.html_url')
           # GitHub's issues API populates `pull_request` only when the issue
           # is actually a PR. When present, fetch PR-specific fields so the
-          # routine can branch on context (head/base ref, draft status, etc.).
+          # routine can branch on context (head/base ref + SHA, draft status, etc.).
           is_pr=$(echo   "$issue" | jq -r 'if .pull_request then "true" else "false" end')
 
           body_safe=$(printf '%s' "$body" | tr -d '\000' | head -c 8192)
@@ -255,14 +255,27 @@ jobs:
             pr=$(gh api "repos/$REPO/pulls/$ISSUE_NUMBER")
             pr_head=$(echo "$pr" | jq -r '.head.ref')
             pr_base=$(echo "$pr" | jq -r '.base.ref')
+            pr_head_sha=$(echo "$pr" | jq -r '.head.sha // ""')
+            pr_base_sha=$(echo "$pr" | jq -r '.base.sha // ""')
+            # Refs can move or be force-pushed before the routine reads them.
+            # Pin the reviewed diff to immutable commits and fail closed
+            # rather than fall back to mutable refs.
+            for pr_sha in "$pr_head_sha" "$pr_base_sha"; do
+              if ! [[ "$pr_sha" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::error::PR #${ISSUE_NUMBER} has a missing or malformed head/base SHA; refusing to fire with mutable refs only."
+                exit 1
+              fi
+            done
             pr_draft=$(echo "$pr" | jq -r '.draft')
             pr_state=$(echo "$pr" | jq -r '.state')
             pr_block=$(jq -n \
               --arg head "$pr_head" \
               --arg base "$pr_base" \
+              --arg head_sha "$pr_head_sha" \
+              --arg base_sha "$pr_base_sha" \
               --arg draft "$pr_draft" \
               --arg state "$pr_state" \
-              '{head_ref: $head, base_ref: $base, draft: ($draft == "true"), state: $state}')
+              '{head_ref: $head, base_ref: $base, head_sha: $head_sha, base_sha: $base_sha, draft: ($draft == "true"), state: $state}')
           fi
 
           # For comment-driven runs, fetch the specific comment so the routine
@@ -325,7 +338,7 @@ jobs:
             (if $is_pr == "true" then
               "is_pr: true\n" +
               "pr: " + $pr_block + "\n" +
-              "MODE: PR-feedback (read/respond only). Follow the `MODE: PR-feedback` rules in .agents/routines/triage-prompt.md. Never push commits, edit the PR branch, or open a new PR. If the comment requests a fix, reply with a scoped handoff brief linked to this existing PR; do not imply the routine will push the fix. If the comment asks a question or challenges a design choice, answer it in ONE coherent reply comment: lean compose/defer over inventing precedence/MUST/SHOULD rules, finalize your synthesis before posting, and if you must revise a prior answer, EDIT it rather than posting a correction/addendum. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
+              "MODE: PR-feedback (read/respond only). Follow the `MODE: PR-feedback` rules in .agents/routines/triage-prompt.md. Never push commits, edit the PR branch, or open a new PR. Read the PR diff as `base_sha...head_sha` from the pr block, never by branch name, and state that exact range in your reply. If the comment requests a fix, reply with a scoped handoff brief linked to this existing PR; do not imply the routine will push the fix. If the comment asks a question or challenges a design choice, answer it in ONE coherent reply comment: lean compose/defer over inventing precedence/MUST/SHOULD rules, finalize your synthesis before posting, and if you must revise a prior answer, EDIT it rather than posting a correction/addendum. If the comment is conversational with no action implied, post a short acknowledgement and stop.\n"
             else
               "is_pr: false\n" +
               "Current milestone: " + (if $current_milestone == "" then "none" else $current_milestone end) + "\n" +
