@@ -383,7 +383,7 @@ A request that carries `adcp_major_version` and no `adcp_version` is served the 
 
 ### Schemas are open by default
 
-([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), working-group decision of 2026-11-09.) 3.3 opens the schemas that were meant to be open. Closing a schema only breaks validators that hard-code it, so opening one is not a protocol break. `additionalProperties` goes from `false` to `true` at 747 of the 859 closed locations in the 3.3 source. Nothing else in those schemas changes, and every payload that was valid stays valid. 3.2.10 opens the same locations that 3.2 has, all but one: it keeps the `get_reporting_status` `lookup_unavailable` branch closed, as 3.2 published it.
+([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), working-group decision of 2026-11-09.) 3.3 opens the schemas that were meant to be open. Closing a schema only breaks validators that hard-code it, so opening one is not a protocol break. `additionalProperties` goes from `false` to `true` at 747 of the 859 closed locations in the 3.3 source. Nothing else in those schemas changes, and every payload that was valid stays valid. The next 3.2.x patch ([#8864](https://github.com/adcontextprotocol/adcp/pull/8864)) opens the same locations that 3.2 has, all but one: it keeps the `get_reporting_status` `lookup_unavailable` branch closed, as 3.2 published it.
 
 A location stays closed where closure enforces something, and the commercial terms are held closed until 4.0:
 
