@@ -48,6 +48,7 @@
       "description": "Echoed from the desired configuration when set."
     },
     "authentication": {
+      "description": "Rejects `credentials`: credentials are write-only and never read back.",
       "type": "object",
       "deprecated": true,
       "properties": {

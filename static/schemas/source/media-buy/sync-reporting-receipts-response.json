@@ -13,6 +13,7 @@
     "results": {
       "type": "array",
       "items": {
+        "description": "A result carries a receipt or an adjustment receipt, never both, and a failed result carries neither.",
         "anyOf": [
           {
             "title": "Recorded reporting receipt",
@@ -87,6 +88,7 @@
               "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1, "maxItems": 16 }
             },
             "required": ["result", "reporting_receipt_id", "errors"],
+            "not": { "anyOf": [{ "required": ["receipt"] }, { "required": ["adjustment_receipt"] }] },
             "additionalProperties": true
           }
         ]

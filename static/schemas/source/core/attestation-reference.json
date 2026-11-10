@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/attestation-reference.json",
   "title": "Attestation Reference",
-  "description": "Portable, reference-first presentation of an independently issued claim. It identifies the claimed issuer, claim vocabulary, subject, and either a stable credential locator or an embedded credential. A presentation is a locator and claim hint, not proof or a trust decision. The evaluator remains verifier-of-record and MUST resolve or inspect the credential only under its published attestation capabilities and local trust policy.",
+  "description": "Portable, reference-first presentation of an independently issued claim. It identifies the claimed issuer, claim vocabulary, subject, and either a stable credential locator or an embedded credential. A presentation is a locator and claim hint, not proof or a trust decision. The evaluator remains verifier-of-record and MUST resolve or inspect the credential only under its published attestation capabilities and local trust policy. Rejects `decision` and `confidence`: a presenter can't supply an evaluator's outcome, which only attestation-evaluation records.",
   "type": "object",
   "properties": {
     "issuer": {

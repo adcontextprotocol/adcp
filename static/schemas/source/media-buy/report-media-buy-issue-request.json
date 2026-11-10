@@ -3,7 +3,7 @@
   "$id": "/schemas/media-buy/report-media-buy-issue-request.json",
   "title": "Report Media Buy Issue Request",
   "x-added-in": "3.3.0",
-  "description": "Raise a seller-action report against an authorized media buy, optionally scoped to a package or creative. Completion of this task means the report was stored, not human acknowledgement or resolution. Reporting does not pause a buy or remove a creative. Requires advertised media_buy.issue_reporting and a matching available_actions entry.",
+  "description": "Raise a seller-action report against an authorized media buy, optionally scoped to a package or creative. Completion of this task means the report was stored, not human acknowledgement or resolution. Reporting does not pause a buy or remove a creative. Requires advertised media_buy.issue_reporting and a matching available_actions entry. Rejects `context_id`, which is not request authority, and `status` and `acknowledged_at`, which only the seller sets.",
   "x-tool-summary": "Report urgent seller-side delivery, creative, safety, or tracking issues.",
   "x-mutates-state": true,
   "x-operation-family": "report_media_buy_issue",

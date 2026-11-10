@@ -10,6 +10,7 @@
       "anyOf": [
         { "$ref": "#/definitions/required" },
         {
+          "description": "Rejects the seller limits `max_values_per_package` and `max_packages`, which only product support discloses.",
           "type": "object",
           "properties": {
             "systems": {
@@ -160,6 +161,7 @@
       "anyOf": [
         { "$ref": "#/definitions/required" },
         {
+          "description": "Rejects the seller limit `max_values_per_package`, which only product support discloses.",
           "type": "object",
           "properties": {
             "radius": { "$ref": "#/definitions/required" },

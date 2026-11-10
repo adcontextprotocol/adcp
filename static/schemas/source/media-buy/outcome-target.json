@@ -48,7 +48,7 @@
         {
           "type": "object",
           "x-added-in": "3.3.0",
-          "description": "Plan against a vendor-measured outcome, such as store visits. The (vendor, metric_id) pair is the key optimization goals and delivery's vendor_metric_values[] use. The forecast carries the flight total in points' vendor_metric_values[] with the vendor's declared unit, not in metrics, and the proposal binds the goal and a vendor reporting commitment on every purchase.",
+          "description": "Plan against a vendor-measured outcome, such as store visits. The (vendor, metric_id) pair is the key optimization goals and delivery's vendor_metric_values[] use. The forecast carries the flight total in points' vendor_metric_values[] with the vendor's declared unit, not in metrics, and the proposal binds the goal and a vendor reporting commitment on every purchase. Rejects `metric`, which belongs to the metric goal, and `target`, the deprecated target shape.",
           "properties": {
             "kind": { "type": "string", "const": "vendor_metric" },
             "vendor": {
@@ -77,6 +77,5 @@
   },
   "required": ["goal"],
   "anyOf": [{ "required": ["volume"] }, { "required": ["cost_per"] }],
-  "additionalProperties": true,
-  "not": { "anyOf": [{ "required": ["threshold_rate"] }, { "required": ["per_ad_spend"] }] }
+  "additionalProperties": true
 }

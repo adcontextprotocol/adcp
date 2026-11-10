@@ -878,7 +878,7 @@
         "implementation": {
           "x-added-in": "3.3.0",
           "type": "object",
-          "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation.",
+          "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation. Rejects `approved`, here and on each sdks entry: an agent can't assert its own approval.",
           "properties": {
             "sdks": {
               "type": "array",
@@ -923,7 +923,7 @@
                 },
                 "required": ["name", "version", "components"],
                 "additionalProperties": true,
-                "not": { "anyOf": [{ "required": ["approved"] }, { "required": ["verified"] }] }
+                "not": { "required": ["approved"] }
               },
               "uniqueItems": true,
               "maxItems": 16
@@ -931,7 +931,7 @@
           },
           "required": ["sdks"],
           "additionalProperties": true,
-          "not": { "anyOf": [{ "required": ["approved"] }, { "required": ["verified"] }] }
+          "not": { "required": ["approved"] }
         },
         "idempotency": {
           "type": "object",

@@ -71,7 +71,7 @@
             }
           },
           "required": ["kind", "principal_id", "principal_kind", "configuration_version", "configuration"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
           "title": "Recognized principal without standing configuration",

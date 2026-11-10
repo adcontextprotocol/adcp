@@ -3,7 +3,7 @@
   "$id": "/schemas/core/media-buy-issue.json",
   "title": "Media Buy Issue",
   "x-added-in": "3.3.0",
-  "description": "Seller-owned report status, separate from transport task status and MediaBuy revision. Only the seller may acknowledge or resolve it. Reporting never changes delivery or commercial terms.",
+  "description": "Seller-owned report status, separate from transport task status and MediaBuy revision. Only the seller may acknowledge or resolve it. Reporting never changes delivery or commercial terms. Rejects `revision` and `sla`: an issue snapshot carries no revision of its own and doesn't repeat the commitment metadata.",
   "type": "object",
   "properties": {
     "issue_id": {

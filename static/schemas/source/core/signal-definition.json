@@ -451,8 +451,7 @@
         }
       },
       "required": ["channels"],
-      "additionalProperties": true,
-      "not": { "required": ["gpc_honored"] }
+      "additionalProperties": true
     },
     "last_updated": {
       "type": "string",

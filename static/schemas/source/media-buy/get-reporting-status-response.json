@@ -151,6 +151,7 @@
       "required": ["status"],
       "oneOf": [
         {
+      "description": "Every unknown or unauthorized identifier returns this one shape: its message and error are constants, its error objects are closed, and it names no ledger snapshot, ledger time or account.",
       "title": "Unavailable lookup",
       "type": "object",
       "properties": {

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/geo-region-requirement.json",
   "title": "Geographic Region Requirement",
-  "description": "Buyer minimum requirements for ISO 3166-2 subdivision values that must remain independently selectable later. Country keys prevent a false cross-country capability claim. all_values requires support for every protocol-valid ISO subdivision active in the seller's support snapshot when the declaration is issued; values requests an exact finite candidate set. Exact delivery values known now belong in get_products.targeting_overlay instead.",
+  "description": "Buyer minimum requirements for ISO 3166-2 subdivision values that must remain independently selectable later. Country keys prevent a false cross-country capability claim. all_values requires support for every protocol-valid ISO subdivision active in the seller's support snapshot when the declaration is issued; values requests an exact finite candidate set. Exact delivery values known now belong in get_products.targeting_overlay instead. Rejects the seller limits `max_values_per_package` and `max_packages`, which only product support discloses.",
   "type": "object",
   "properties": {
     "countries": {
@@ -12,6 +12,7 @@
         "pattern": "^[A-Z]{2}$"
       },
       "additionalProperties": {
+        "description": "`all_values` and `values` exclude each other.",
         "anyOf": [
           {
             "type": "object",

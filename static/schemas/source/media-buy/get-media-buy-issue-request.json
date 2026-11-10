@@ -3,7 +3,7 @@
   "$id": "/schemas/media-buy/get-media-buy-issue-request.json",
   "title": "Get Media Buy Issue Request",
   "x-added-in": "3.3.0",
-  "description": "Read the latest seller-owned state of one issue within an authorized account and media buy. The read remains available after the buy is paused, canceled, or completed. An issue_id does not grant access.",
+  "description": "Read the latest seller-owned state of one issue within an authorized account and media buy. The read remains available after the buy is paused, canceled, or completed. An issue_id does not grant access. Rejects `context_id`, which is not request authority.",
   "x-tool-summary": "Read the acknowledgement and resolution of a media-buy issue.",
   "x-operation-family": "get_media_buy_issue",
   "x-legacy-fallback": {

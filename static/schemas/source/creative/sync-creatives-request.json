@@ -260,6 +260,7 @@
       "minItems": 1,
       "maxItems": 500,
       "items": {
+        "description": "`trackers` and `landing_page_url` belong only to assign: unassign, replace and merge reject them, and merge also rejects `weight`, which a later assign changes.",
         "type": "object",
         "discriminator": {
           "propertyName": "operation"

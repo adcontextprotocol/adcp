@@ -111,8 +111,7 @@
         "unauthorized_at",
         "withheld_period_count"
       ],
-      "additionalProperties": true,
-      "not": { "required": ["covered"] }
+      "additionalProperties": true
     }
   },
   "properties": {

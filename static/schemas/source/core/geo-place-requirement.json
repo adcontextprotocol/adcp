@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/geo-place-requirement.json",
   "title": "Geographic Place Requirement",
-  "description": "Identifier systems and collision-safe country/type pairs the buyer must be allowed to select later.",
+  "description": "Identifier systems and collision-safe country/type pairs the buyer must be allowed to select later. Rejects the seller limits `max_values_per_package` and `max_packages`, which only product support discloses.",
   "type": "object",
   "definitions": {
     "catalogRequirement": {

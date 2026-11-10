@@ -56,6 +56,7 @@
               { "$ref": "/schemas/core/reporting-subscription-coverage.json#/properties/timezone_cutovers/items" },
               { "required": ["offering_id", "previous_timezone"] }
             ],
+            "description": "Rejects `changed_at`, which belongs to the result, not to a cutover.",
             "not": { "required": ["changed_at"] }
           }
         }

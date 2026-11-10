@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-ref.json",
   "title": "Account Reference",
-  "description": "Reference to an advertiser account by seller-assigned account_id or by natural key. An account's identity is its account_id, which the seller issues when the account opens and never changes. The natural key is brand + operator, the account's parties; its optional brand.countries, operator_unit.id, currency, timezone, and sandbox fields are account attributes that act as lookup filters. Each supplied attribute must equal the account's value: countries compares as a set and operator_unit compares by id. An omitted attribute does not filter, except sandbox, which defaults to false. A natural key resolves only when exactly one of the caller's accounts matches it; when several match, the seller returns ACCOUNT_AMBIGUOUS. operator_unit identifies the operator-owned buying seat or business unit and is distinct from the seller account. Sending the natural key as the reference on account-scoped tasks after the account opens is deprecated as of 3.3 and planned for removal in 4.0; it stays valid throughout 3.x, and the natural key stays valid as a list_accounts filter. After the account opens, buyers send account_id.",
+  "description": "Reference to an advertiser account by seller-assigned account_id or by natural key. An account's identity is its account_id, which the seller issues when the account opens and never changes. The natural key is brand + operator, the account's parties; its optional brand.countries, operator_unit.id, currency, timezone, and sandbox fields are account attributes that act as lookup filters. Each supplied attribute must equal the account's value: countries compares as a set and operator_unit compares by id. An omitted attribute does not filter, except sandbox, which defaults to false. A natural key resolves only when exactly one of the caller's accounts matches it; when several match, the seller returns ACCOUNT_AMBIGUOUS. operator_unit identifies the operator-owned buying seat or business unit and is distinct from the seller account. Sending the natural key as the reference on account-scoped tasks after the account opens is deprecated as of 3.3 and planned for removal in 4.0; it stays valid throughout 3.x, and the natural key stays valid as a list_accounts filter. After the account opens, buyers send account_id. The two forms exclude each other: the account_id form rejects the natural-key fields (`brand`, `operator`, `operator_unit`, `currency`, `timezone`, `sandbox`), and the natural-key form rejects `account_id`.",
   "type": "object",
   "oneOf": [
     {
@@ -14,6 +14,7 @@
         }
       },
       "required": ["account_id"],
+      "not": { "anyOf": [{ "required": ["brand"] }, { "required": ["operator"] }, { "required": ["operator_unit"] }, { "required": ["currency"] }, { "required": ["timezone"] }, { "required": ["sandbox"] }] },
       "additionalProperties": true
     },
     {
@@ -49,6 +50,7 @@
         }
       },
       "required": ["brand", "operator"],
+      "not": { "required": ["account_id"] },
       "additionalProperties": true
     }
   ],

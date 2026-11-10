@@ -4,7 +4,7 @@
   "title": "Proposal Created Webhook",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Compact account-anchored invalidation fired after the seller creates a later proposal and the snapshot is readable through list_proposals. Identifiers only: the payload carries no commercial terms or seller prose, so it cannot inject terms or instructions into a buyer agent. Receivers verify the webhook signature, dedupe by notification_id, and call list_proposals on the seller bound to the notification config, never on an endpoint taken from the body. Experimental (media_buy.open_opportunities): sellers emitting it MUST list the feature id in experimental_features.",
+  "description": "Compact account-anchored invalidation fired after the seller creates a later proposal and the snapshot is readable through list_proposals. Identifiers only: the payload carries no commercial terms or seller prose, so it cannot inject terms or instructions into a buyer agent. Receivers verify the webhook signature, dedupe by notification_id, and call list_proposals on the seller bound to the notification config, never on an endpoint taken from the body. Experimental (media_buy.open_opportunities): sellers emitting it MUST list the feature id in experimental_features. Rejects an embedded `proposal`: the notification names the proposal and never carries its body.",
   "type": "object",
   "properties": {
     "idempotency_key": {

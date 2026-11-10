@@ -60,7 +60,7 @@
     },
     "selector": {
       "type": "object",
-      "description": "Offering attributes that are stable across sellers. The seller resolves the selector separately for each account and its products. An account, buy, or package with no matching offering is excluded with reason offering_unsupported; that never fails the subscription.",
+      "description": "Offering attributes that are stable across sellers. The seller resolves the selector separately for each account and its products. An account, buy, or package with no matching offering is excluded with reason offering_unsupported; that never fails the subscription. Rejects `offering_id`: the selector chooses by stable attributes, never by a seller-specific offering.",
       "properties": {
         "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"], "description": "Same values as the offering feed_purpose." },
         "period_duration": {
