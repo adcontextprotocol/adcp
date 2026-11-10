@@ -1,23 +1,48 @@
 ---
 title: What's new in AdCP 3.3
 sidebarTitle: What's new in 3.3
-description: "Adopter overview of the AdCP 3.3 beta: scheduled, human-gated, and offline media in the same buy as programmatic, honest delivery data for linear TV, print, and DOOH, and the places 3.2 implementations could still disagree, now closed."
+description: "Adopter overview of the AdCP 3.3 release candidate: scheduled, human-gated, and offline media in the same buy as programmatic, honest delivery data for linear TV, print, and DOOH, schemas open by default, and the places 3.2 implementations could still disagree, now closed."
 "og:title": "AdCP — What's New in 3.3"
 ---
 
 # What's new in AdCP 3.3
 
-<Warning>
-**3.3 is in its beta cycle.** The latest checkpoint is `3.3.0-beta.5`, published 2026-11-07. Beta.0 publishes the protocol artifacts before SDK support, and beta.1 through beta.5 incorporate integration feedback; a beta is SDK-backed only after SDK support for its exact bundle is published. Use the beta in development and staging, and read the [3.3 beta program](/docs/reference/3-3-beta) before testing. This page lists only what has merged; it is refreshed at each beta cut.
+{/* depends on the rc.0 Version Packages cut (planned 2026-11-16): confirm the published date */}
 
-**Three features that shipped in the betas are withdrawn after beta.1: definition pins (beta.0 and beta.1), purchase rights, and installment selection (both beta.1).** All three wait for 4.0, because `commercial-terms` stays closed within 3.x ([details](#withdrawn-from-3-3-planned-for-4-0)).
+<Warning>
+**3.3 is at its first release candidate.** The latest checkpoint is `3.3.0-rc.0`, published 2026-11-16, after six betas. A prerelease is SDK-backed only after SDK support for its exact bundle is published. Use the release candidate in development and staging, and read the [3.3 prerelease program](/docs/reference/3-3-beta) before testing. This page lists only what has merged; it is refreshed at each prerelease cut.
+
+**Three features that shipped in the betas are withdrawn after beta.1: definition pins (beta.0 and beta.1), purchase rights, and installment selection (both beta.1).** All three wait for 4.0, because `commercial-terms` stays closed within 3.x ([details](#withdrawn-from-3-3-planned-for-4-0)). **The closed-schema triage removes further beta fields at rc.0**, mostly 3.3 additions to deprecated tasks ([details](#new-in-rc-0)).
 </Warning>
 
 AdCP 3.3 lets scheduled, human-gated, and offline media run through the same buy as programmatic. A booking can say when it will be confirmed. A proposal request can target a vendor-measured outcome, and a governance plan can budget by period. Products, audiences, and delivery reports can carry what a linear-TV, print, or DOOH seller actually knows: spot lifecycle and makegoods, break position, print proof of insertion and circulation, structured DOOH location, property-grain rollups, and audience sizes as honest ranges. Minute-level dayparts, broadcast mezzanine formats, and the NMO and VideoAmp demographic systems fill in the TV edges.
 
 Around that, 3.3 tightens the places where two conformant 3.2 implementations could still disagree: discovery never provisions an account, one agent-resolution rule covers every signing surface, `required_for` is enforced over A2A with its hardening clauses required, and `reporting_webhook.operation_id` correlation fails closed. Catalog intake becomes an optional declaration, verifiers can advertise A2A `required_for` enforcement through `request_signing.operation_sources`, and `ext.adcp` becomes a reserved namespace. New single-adopter surfaces ship as experimental, so 3.4 can reshape them without breaking stable integrations.
 
-No stable field, enum value, or task is removed. Two result fields, one usage, the principal kind field, the account identity-rekey machinery, and the RFC 9421 signing profiles are deprecated, all functional throughout 3.x. They are `seller_id` on event source and audience results (use `platform_id`), and the natural key as the account reference after provisioning. They also include `account.identity_updates`, `operator_identity`, `ACCOUNT_MOVED`, `ACCOUNT_IDENTITY_CONFLICT`, and `account.stable_account_id` (use `account_id`), `principal_kind` and `expected_principal_kind` (a bound principal is always `buyer_agent`), and the RFC 9421 profiles (use the experimental Web Bot Auth profile). 3.3 adds optional fields, enum values, and capability declarations. Schema-valid 3.2 messages stay schema-valid except for the new domain identifier format, and unless they already used a name 3.3 now defines with a different shape; the list is in the [migration guide](/docs/reference/migration/3-2-to-3-3#what-can-fail-validation). The normative narrowings are recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/docs/reference/migration/3-2-to-3-3#required-to-claim-3-3-behavior).
+No stable field, enum value, or task is removed. Two result fields, one usage, the principal kind field, the account identity-rekey machinery, boolean overlay `demographics`, and the RFC 9421 signing profiles are deprecated. All remain functional throughout 3.x and are expected to be removed in 4.0. They are `seller_id` on event source and audience results (use `platform_id`), and the natural key as the account reference after provisioning. They also include `account.identity_updates`, `operator_identity`, `ACCOUNT_MOVED`, `ACCOUNT_IDENTITY_CONFLICT`, and `account.stable_account_id` (use `account_id`), `principal_kind` and `expected_principal_kind` (a bound principal is always `buyer_agent`), `demographics: true` (send `{ "age": true }`), and the RFC 9421 profiles (use the experimental Web Bot Auth profile). 3.3 adds optional fields, enum values, and capability declarations. Schema-valid 3.2 messages stay schema-valid except for the new domain identifier format, and unless they already used a name 3.3 now defines with a different shape; the list is in the [migration guide](/docs/reference/migration/3-2-to-3-3#what-can-fail-validation). The normative narrowings are recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/docs/reference/migration/3-2-to-3-3#required-to-claim-3-3-behavior).
+
+## New in rc.0
+
+{/* depends on #8866 (opened schemas, boolean demographics), #8864 (3.2.10), and the #8501 withdrawals (#8758, #8767, #8762, #8854) */}
+
+rc.0 (2026-11-16) is the first release candidate. Its main changes since beta.5 open the schemas that were closed by accident and settle which beta features stay in 3.3.
+
+**Schemas are open by default ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), decided 2026-11-09).** Closing a schema only breaks validators that hard-code it, so 3.x opens the schemas that were meant to be open: 744 of the 859 closed locations in the 3.3 schemas. 115 stay closed for a structural reason, such as unions told apart by key presence, the signed `commercial_terms`, join keys, privacy clamps, and `trust.json`.
+- Every payload that was valid stays valid. Where closure also rejected a specific field, the opened schema rejects it by name.
+- Generated types change. TypeScript types gain index signatures, Pydantic models stop forbidding extra fields, and Zod validators accept unknown keys where the schema opened.
+- A strict validator built from 3.2.9 or earlier still rejects 3.3 fields, so send them only to 3.3 peers. 3.2.10 opens the same locations that 3.2 has.
+- A minor adds to open schemas and adds nothing to a schema that stays closed. See [Schemas are open by default](/docs/reference/migration/3-2-to-3-3#schemas-are-open-by-default).
+
+**What stays and what leaves ([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)).** Features withdrawn from the betas only because their schema was closed stay in 3.3. They include `review_sla` on media-buy actions, `signing_profile` on notification configs, and `trackers` and `landing_page_url` on `assign` operations.
+- **Deprecated tasks.** Fields the betas added to deprecated tasks and rows leave: `refine[].package`, `include_collections`, and `filters.target_audiences` on `get_products`; lineage, the creative start gate, and `target_audiences` on `create_media_buy` and `update_media_buy`; and assignment `trackers` and `landing_page_url` on `sync_creatives` `assignments[]`. The live tasks keep those features where they already carry them, and `execution_readiness` moves to `list_products`.
+- **Signed terms.** Fields that would change a signed term wait for 4.0: `metric_id` on performance standards, `price_adjustments`, `counting_mechanisms`, and `target_audiences` on purchases.
+- The [migration guide](/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3) lists every field and what to do if you built from a beta.
+
+**Boolean `demographics` is deprecated ([#8866](https://github.com/adcontextprotocol/adcp/pull/8866), from [#8772](https://github.com/adcontextprotocol/adcp/pull/8772)).** On the overlay requirement and support schemas, `demographics: true` is the 3.2 shorthand for `{ "age": true }`. Senders MUST send the object form, and receivers MUST accept `true`. Only support with `gender: true` satisfies a `gender` requirement.
+
+**The rules for what changes between releases ([#8704](https://github.com/adcontextprotocol/adcp/pull/8704)).** The [versioning page](/docs/reference/versioning) now opens with them. A minor only adds. A replaced field is emitted alongside its replacement until the next major. Removals and breaking changes happen in a major. A fourth rule keeps a field off a mutating request in a minor when an older seller that ignored it would commit to something different, unless the field ships behind a capability the seller declares. Wire behavior is unchanged.
+
+**Conformance.** The dependency-impairment storyboards skip their image-creative phases for sellers whose format option is not an image format ([#8841](https://github.com/adcontextprotocol/adcp/pull/8841)). The signal-targeting storyboards run only for sellers that support wholesale discovery for both media buys and signals ([#8838](https://github.com/adcontextprotocol/adcp/pull/8838)). Legacy inline creative manifests are built from the captured format's exact required slots ([#8798](https://github.com/adcontextprotocol/adcp/pull/8798)).
 
 ## New in beta.5
 
@@ -169,7 +194,7 @@ A seller lists the `sync_creatives` `assignment_operations` it accepts in the ne
 
 ## Platform object IDs have one name
 
-`sync_event_sources` and `sync_audiences` results now use optional `platform_id` for the object's ID in the seller's ad platform, matching creatives and catalogs. A seller reporting this ID in 3.3 and later 3.x responses MUST emit both `platform_id` and the deprecated `seller_id` alias with identical values, including discovery responses. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when the new field is absent. Continue using `event_source_id` and `audience_id` in AdCP requests. The aliases keep working throughout 3.x; removal is no earlier than 4.0 under the six-month notice policy. Seller identity in `adagents.json` and publisher identifiers is unchanged. See [Deprecations](/docs/reference/migration/3-2-to-3-3#deprecations).
+`sync_event_sources` and `sync_audiences` results now use optional `platform_id` for the object's ID in the seller's ad platform, matching creatives and catalogs. A seller reporting this ID in 3.3 and later 3.x responses MUST emit both `platform_id` and the deprecated `seller_id` alias with identical values, including discovery responses. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when the new field is absent. Continue using `event_source_id` and `audience_id` in AdCP requests. The aliases keep working throughout 3.x and are expected to be removed in 4.0. Seller identity in `adagents.json` and publisher identifiers is unchanged. See [Deprecations](/docs/reference/migration/3-2-to-3-3#deprecations).
 
 ## Installments on the compact product lifecycle
 
@@ -199,7 +224,7 @@ These narrow what a conformant implementation may do. Each is detailed in the [m
 - **Multi-qualifier metrics omit flat totals.** When a buy's packages report a metric under more than one qualifier set, such as viewability at `mrc` and `groupm`, the seller omits that metric's flat carrier from buy and window `totals`; read the package rows. See [the migration guide](/docs/reference/migration/3-2-to-3-3#multi-qualifier-metrics-omit-flat-totals).
 - **Refinement carries compliance forward.** A `build_creative` refinement keeps the parent leaf's required disclosures and prohibited claims, and a refined leaf never inherits approval. See [the migration guide](/docs/reference/migration/3-2-to-3-3#refinement-carries-compliance-forward).
 
-Two more guarantees loosen here, and the response-size default a third ([below](#bounded-agent-responses)): a 3.2 verifier can reject a brand.json between 256 KiB and 2 MiB that a 3.3 verifier accepts, and a `ready` audience no longer promises match counts. Separately, `reporting_webhook.authentication` and `artifact_webhook.authentication` become optional on requests served at 3.3, so an integration can drop HMAC before 4.0 ([details](/docs/reference/migration/3-2-to-3-3#reporting-and-artifact-webhooks-can-omit-authentication)). Many new fields sit inside objects 3.2 closes, so send them only to peers that negotiated 3.3; see [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers).
+Two more guarantees loosen here, and the response-size default a third ([below](#bounded-agent-responses)): a 3.2 verifier can reject a brand.json between 256 KiB and 2 MiB that a 3.3 verifier accepts, and a `ready` audience no longer promises match counts. Separately, `reporting_webhook.authentication` and `artifact_webhook.authentication` become optional on requests served at 3.3, so an integration can drop HMAC before 4.0 ([details](/docs/reference/migration/3-2-to-3-3#reporting-and-artifact-webhooks-can-omit-authentication)). Many new fields sit inside objects that 3.2.9 and earlier publish closed, so send them only to peers that negotiated 3.3; see [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers).
 
 ## Optional declarations
 
@@ -305,7 +330,8 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 | A fixed-price, non-guaranteed seller | Claim `sales-fixed-rate`; keep a held buy in `pending_start` until you confirm or reject it. |
 | A seller that wants to send proposals after the first response | Opt in to `media_buy.open_opportunities`: advertise `list_proposals` first, then `later_proposals` with a `max_open_duration`, and honor buyer consent and limits. |
 | A linear TV, print, or DOOH seller | Adopt the delivery fields you can populate; gate 3.3-only rows and fields on the negotiated version. |
-| An SDK maintainer | Generate from the signed `3.3.0-beta.5` tarball, not `main`, and check the [SDK-facing changes](/docs/reference/migration/3-2-to-3-3#sdk-and-code-generator-maintainers). |
+| An SDK maintainer | Generate from the signed `3.3.0-rc.0` tarball, not `main`, and check the [SDK-facing changes](/docs/reference/migration/3-2-to-3-3#sdk-and-code-generator-maintainers), including the opened schemas, which change generated types. |
+| A seller, buyer, or SDK built from a beta bundle | Drop the beta fields that leave 3.3 at rc.0 and move the ones that change home; see the [closed-schema triage](/docs/reference/migration/3-2-to-3-3#closed-schema-triage-what-stays-in-3-3). |
 | A seller that opens buyer-declared accounts | Return `account_id` from `sync_accounts`, accept it on every account-scoped task, and never change it; update countries and other attributes in place. |
 | A seller supporting `account.requests` | Return `account`, with its money terms, on every request that resolves `matched` or `created`; send `effective_at` on money changes and `not_carried_over` on a separate account; refuse `currency` or `timezone` changes you don't list in `changeable_attributes`. |
 | A seller advertising `media_buy.reporting_subscriptions` | Publish `cancellation_effective_at`, `flight_history`, per-package `reporting_delivery_offering_ids`, `authorization.regranted_at`, and offering `available_from` / `withdrawn_at`; owe billing stubs at cutovers; deliver only inside a buy's flight; key managed-delivery rows on `account_id`; emit `packages[].added_at` on packages added after confirmation; treat a grant reduced without `get_reporting_status` as a loss of authority; list `reset_state` with `reporting_subscription_probe`. |
@@ -321,15 +347,14 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 | A seller that registers webhooks | Sign with the profile `signing_profile` names, default `adcp/webhook-signing/v1`; with `legacy_hmac_fallback: false`, reject an `authentication` block with `UNSUPPORTED_FEATURE`. |
 | A seller that returns product rosters | Return `publisher_properties: []` or `collections: []` only to callers served 3.3 or later; apply any exclusion list you accept against your full internal roster. |
 | A seller with canceled or completed buys | Keep the packages, with stable identities and the latest committed configuration, and disclose irrecoverable history through nonfatal errors. |
-| A seller or SDK that builds task responses | Compose the protocol envelope on every response, include `status`, and truncate (MUST, not fail) a `message` over 2,000 characters. Regenerate types from the beta.5 schemas. |
+| A seller or SDK that builds task responses | Compose the protocol envelope on every response, include `status`, and truncate (MUST, not fail) a `message` over 2,000 characters. Regenerate types from the rc.0 schemas. |
 | An in-house client that sends only `adcp_major_version` | You are served the oldest supported release in that major (3.0 where supported). Send `adcp_version` to get newer behavior. |
 | A seller that advertises `get_adcp_capabilities` fields | Stay within the structural bounds; do not design to a byte figure. |
 | A seller that wants to offer a change to a signed buy | Opt in to `media_buy.seller_offers` after `media_buy.open_opportunities`; send offers only to callers served 3.3. |
 | A seller of signals | Declare `signals.delivery_methods` before accepting a `delivery_method` pin; publish `signal_pricing_group_rules[]` if listings share a `pricing_group`. |
-| A seller with live creatives | Declare `creative.live_updates` per change kind, list `replace` in `creative.assignment_operations`, and refuse the rest with `CREATIVE_LIVE_UPDATE_UNSUPPORTED`. |
-| A compliance operator | Treat each 3.3 beta bundle as an implementation input. As for 3.2, prerelease grading runs are diagnostic, not a badge. |
-| A seller that accepts `assignment_operations` | List exactly the operations you accept in `creative.assignment_operations` and reject any other with `UNSUPPORTED_FEATURE`; buyers send nothing to a 3.3 seller that lists none. Transfer the replaced assignment's settings on `replace`, rejecting the request rather than dropping one, and apply tracker-slot limits only where the effective format declares a tracker slot. |
-| A buyer that sends `assignment_operations` | Send only the operations the seller lists in `creative.assignment_operations`, and follow a refusal's recovery only through operations the seller lists. |
+| A seller with live creatives | Declare `creative.live_updates` per change kind, and refuse the rest with `CREATIVE_LIVE_UPDATE_UNSUPPORTED`. |
+| A compliance operator | Treat each 3.3 prerelease bundle as an implementation input. As for 3.2, prerelease grading runs are diagnostic, not a badge. |
+| A seller that accepts `assignment_operations` | Transfer the replaced assignment's settings on `replace`, rejecting the request rather than dropping one, and apply tracker-slot limits only where the effective format declares a tracker slot. |
 | Any agent that sends AdCP responses | Emit only properties the served release defines, plus `ext.{namespace}` and open-payload fields. |
 | A verifier that computes eTLD+1 | Use a Public Suffix List bundled with the verifier and refreshed through dependency updates; never fetch it at runtime. |
 | A seller that matches identifiers for frequency caps | Optionally declare match keys under `media_buy.match_keys` (experimental), and send `Product.identity.match_keys` only to callers served 3.3. |
@@ -347,9 +372,11 @@ Three features are not part of 3.3. All three add terms to `commercial_terms`, w
 
 The designs are kept for 4.0: see [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3).
 
+The closed-schema triage adds four more fields to the 4.0 list at rc.0, because each would change a signed term: `metric_id` on performance standards, `price_adjustments`, `counting_mechanisms`, and `target_audiences` on purchases ([New in rc.0](#new-in-rc-0)). {/* depends on #8854, #8758 and #8767 */}
+
 ## In review for 3.3
 
-Open 3.3 proposals are not part of any beta until they merge. Six working-group decisions are ratified or accepted, and their normative text has merged:
+Open 3.3 proposals are not part of any prerelease until they merge. Six working-group decisions are ratified or accepted, and their normative text has merged:
 
 - **Agent identity is an origin ([DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md)).** Merged: the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) [#7894](https://github.com/adcontextprotocol/adcp/pull/7894), Web Bot Auth identities and the deprecation of the RFC 9421 brand.json profile [#8162](https://github.com/adcontextprotocol/adcp/pull/8162), first-contact binding [#8168](https://github.com/adcontextprotocol/adcp/pull/8168), the buyer walkthrough and migration guide [#8172](https://github.com/adcontextprotocol/adcp/pull/8172), the experimental production security profile [#8155](https://github.com/adcontextprotocol/adcp/pull/8155), seller onboarding posture [#8170](https://github.com/adcontextprotocol/adcp/pull/8170), and the R7/R8 erratum [#8219](https://github.com/adcontextprotocol/adcp/pull/8219). `request_account` [#8293](https://github.com/adcontextprotocol/adcp/pull/8293), then the single account write and reporting subscriptions ([#8543](https://github.com/adcontextprotocol/adcp/issues/8543): [#8551](https://github.com/adcontextprotocol/adcp/pull/8551), [#8552](https://github.com/adcontextprotocol/adcp/pull/8552)).
 - **Responses conform to the served release ([DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md), [#8117](https://github.com/adcontextprotocol/adcp/pull/8117)).** Merged. The rule is in [Serving an older pin](/docs/reference/versioning#serving-an-older-pin); advisory grading of undefined properties merged in [#8156](https://github.com/adcontextprotocol/adcp/pull/8156) (beta.4).
@@ -362,7 +389,7 @@ Records DR-0027 to DR-0030 (mutation outcome, `sales-fixed-rate`, delivery proje
 
 ## Start here
 
-1. Read the [3.3 beta program](/docs/reference/3-3-beta).
+1. Read the [3.3 prerelease program](/docs/reference/3-3-beta).
 2. Follow [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3).
 3. Choose the exact package and support level in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
 4. Use the [Release Notes](/docs/reference/release-notes#version-3-3-0) for the cumulative record.

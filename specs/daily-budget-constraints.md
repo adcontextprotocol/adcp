@@ -19,11 +19,15 @@ without the same planning information. Any legacy projection retained in 4.0
 should preserve the same constraints, subject to the negotiated schema. Do
 not add a temporary second home for minimums merely to fit them into 3.3.
 
-`core/canonical-pricing-option.json`, `media-buy/product-purchase-input.json`,
-`media-buy/product-purchase.json`, and `media-buy/commercial-terms.json` were
-published closed. The repository's additive-minor gate rejects new properties
-there. DR-0036 is proposed but its rule is enforced by that gate; these new
-budget semantics do not qualify as a correction of already-required behavior.
+<!-- depends on #8866 (which schemas stay closed) and #8858 (the DR-0036 rewrite) -->
+`core/canonical-pricing-option.json`, `media-buy/product-purchase.json`, and
+`media-buy/commercial-terms.json` stay closed throughout 3.x: they are signed
+commercial terms that `terms_digest` binds, a structural reason under DR-0036
+(decided 2026-11-09). A minor adds nothing to a schema kept closed for a
+structural reason, and the additive-minor gate rejects new properties there.
+`media-buy/product-purchase-input.json` opens in 3.3, but a minimum accepted
+there would have no home in the signed purchase it produces, so these budget
+semantics still wait for 4.0.
 
 ## Recommended release sequence
 
