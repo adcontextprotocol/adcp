@@ -320,11 +320,13 @@ phases:
       present, so the runner observes the trigger's receiver and fails if a
       matching task webhook arrives.
 
-      The classification reads `context.media_buy_id`, which the runner
-      records from any `create_media_buy` response carrying a
-      `media_buy_id`. An interim `working` envelope therefore MUST NOT carry
-      `media_buy_id`: the seller assigns it in the terminal result. A
-      `submitted` envelope cannot carry it (the schema forbids it).
+      The classification reads `context.media_buy_id` because a storyboard
+      cannot read the trigger's task status. A `submitted` envelope cannot
+      carry `media_buy_id` (the schema forbids it), but a `working` envelope
+      may. Runners that record `media_buy_id` from an interim envelope
+      classify that seller as synchronous and fail its completion webhook
+      here. That is a runner limitation, not a seller obligation; it is
+      tracked in adcontextprotocol/adcp-client#3682.
     skip_if: "!context.media_buy_id"
 
     steps:

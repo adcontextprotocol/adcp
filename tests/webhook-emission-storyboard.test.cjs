@@ -418,8 +418,8 @@ test('emitted-webhook phases are gated on a synchronous primary trigger', () => 
 // Runs the whole storyboard through the published SDK runner with a loopback
 // receiver. `buy` selects the seller: `sync` returns the media buy inline,
 // `sync_emit` also posts a task webhook for it, `submitted` returns a task,
-// `working_with_id` returns a working envelope that (wrongly) carries the
-// media_buy_id and then posts the completion webhook.
+// `working_with_id` returns a working envelope that carries the media_buy_id
+// and then posts the completion webhook.
 async function runWebhookRun(buy, capabilities = {}) {
   const source = loadStoryboard();
   for (const step of allSteps(source)) {
@@ -536,7 +536,7 @@ test('a synchronous seller without declared webhook signing skips the declared J
 // Documents a known limitation: the runner records context.media_buy_id from
 // any create_media_buy response, so a working envelope that carries a
 // media_buy_id is classified as synchronous and its legitimate completion
-// webhook fails the silence check. The phase narrative forbids that shape.
+// webhook fails the silence check (adcontextprotocol/adcp-client#3682).
 test('a working envelope carrying media_buy_id is classified as synchronous', async () => {
   const { steps, phases } = await runWebhookRun('working_with_id');
   assert.deepEqual(phases.get('idempotency_key_presence').steps, []);
