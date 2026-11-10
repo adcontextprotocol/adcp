@@ -1325,7 +1325,7 @@ Buyer's manifest, targeting the html5 option:
 **Routing rule for multi-element `format_options`** (normative):
 
 - `format_kind` selects the canonical and its slot vocabulary.
-- `format_option_ref` is **REQUIRED** on the manifest when the target product's `format_options` contains two or more declarations sharing the same `format_kind` — without it, the seller can't disambiguate which option the buyer is shipping against.
+- `format_option_ref` is **REQUIRED** on the manifest when the target product's `format_options` contains two or more declarations sharing the same `format_kind` — without it, the seller can't disambiguate which option the buyer is shipping against. This holds however many of those declarations the manifest's assets would satisfy. A seller MUST NOT infer the option from which declaration the assets fit.
 - `format_option_ref` is **OPTIONAL** when each `format_kind` in the product's `format_options` is unique (the example above: one html5 entry, one display_tag entry) — `format_kind` alone routes the manifest. Buyers MAY still send `format_option_ref` as a clarity hint.
 
 In this example each option carries a distinct `format_kind`, so `format_option_ref` is optional. Including it (as shown) is a recommended habit — it makes the manifest unambiguous to logs, replays, and downstream tooling, and it keeps the buyer-side codepath identical regardless of whether the seller's product has one or many options sharing a kind.

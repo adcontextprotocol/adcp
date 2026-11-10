@@ -111,7 +111,7 @@ This keeps manifests portable across compatible sellers and prevents a productio
 
 Validate a manifest against the selected product or publisher declaration:
 
-1. Resolve `format_option_ref` when present; otherwise select the unambiguous compatible `format_kind` declaration.
+1. Resolve `format_option_ref` when present. When it is absent, the target product's `format_options` must contain exactly one declaration with the manifest's `format_kind`; validate against that declaration. When two or more declarations share that `format_kind`, reject the manifest for the missing `format_option_ref`, even if its assets satisfy only one of them.
 2. Confirm all required slots are present.
 3. Validate each asset against its declared type and technical constraints.
 4. Check fixed dimensions, durations, codecs, file-size limits, and required disclosures.
