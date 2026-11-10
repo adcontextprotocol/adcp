@@ -34,6 +34,14 @@ const triggerIds = [
   'trigger_retry_scenario',
   'trigger_signed_webhook',
 ];
+const EMITTED_WEBHOOK_PHASES = [
+  'idempotency_key_presence',
+  'operation_id_echo',
+  'idempotency_replay_side_effects',
+  'idempotency_key_stability',
+  'signing_keys_published',
+  'signature_validity',
+];
 
 function allSteps(storyboard) {
   return storyboard.phases.flatMap(phase => phase.steps);
@@ -165,10 +173,15 @@ async function runTriggers(source, products, tools = ['get_adcp_capabilities', '
           product.pricing_options.some(price => price.pricing_option_id === pkg.pricing_option_id))) {
           return { success: false, data: { errors: [{ code: 'PRODUCT_NOT_FOUND', message: 'Unknown catalog product' }] } };
         }
+        // An async seller owes webhooks for every trigger, so every trigger
+        // phase runs; an inline media buy would gate those phases off. Only a
+        // repeated idempotency_key is a replay (graded by the replay step).
+        const replayed = calls.some(call => call !== calls.at(-1) && call.task === 'create_media_buy' &&
+          call.request.idempotency_key === request.idempotency_key);
         return {
           success: true,
-          data: { status: 'completed', media_buy_id: 'webhook-buy', confirmed_at: null, revision: 1,
-            packages: [{ package_id: 'webhook-package' }], replayed: true },
+          status: 'submitted',
+          data: { status: 'submitted', task_id: `webhook-buy-task-${calls.length}`, ...(replayed && { replayed }) },
         };
       },
     },
@@ -384,4 +397,148 @@ test('synchronous completion assertion is not applicable to a signals-only agent
   }
   const assertion = result.phases.find(phase => phase.phase_id === 'synchronous_completion_assertion');
   assert.equal(assertion.steps[0].skip_reason, 'not_applicable');
+});
+
+test('emitted-webhook phases are gated on a synchronous primary trigger', () => {
+  const storyboard = loadStoryboard();
+  const phaseIds = storyboard.phases.map(phase => phase.id);
+  const triggerPhase = phaseIds.indexOf('primary_webhook_trigger');
+  assert.deepEqual(storyboard.phases[triggerPhase].steps.map(step => step.id), ['trigger_webhook_operation']);
+  const silence = storyboard.phases.find(phase => phase.id === 'synchronous_trigger_silence');
+  assert.equal(silence.skip_if, '!context.media_buy_id');
+  assert.ok(phaseIds.indexOf('synchronous_trigger_silence') > triggerPhase);
+  assert.deepEqual(silence.steps.map(step => [step.task, step.triggered_by]), [['expect_no_webhook', 'trigger_webhook_operation']]);
+  for (const id of EMITTED_WEBHOOK_PHASES) {
+    const phase = storyboard.phases.find(candidate => candidate.id === id);
+    assert.equal(phase.skip_if, 'context.media_buy_id', id);
+    assert.ok(phaseIds.indexOf(id) > triggerPhase, id);
+  }
+});
+
+// Runs the whole storyboard through the published SDK runner with a loopback
+// receiver. `buy` selects the seller: `sync` returns the media buy inline,
+// `sync_emit` also posts a task webhook for it, `submitted` returns a task,
+// `working_with_id` returns a working envelope that (wrongly) carries the
+// media_buy_id and then posts the completion webhook.
+async function runWebhookRun(buy, capabilities = {}) {
+  const source = loadStoryboard();
+  for (const step of allSteps(source)) {
+    if (step.timeout_seconds !== undefined) step.timeout_seconds = 1;
+  }
+  const product = catalogProduct();
+  const tools = ['get_adcp_capabilities', 'get_products', 'create_media_buy'];
+  const buys = [];
+  const result = await runStoryboard('https://agent.example/mcp', {
+    ...source,
+    prerequisites: undefined,
+    requires: source.requires.filter(value => value !== 'controller'),
+  }, {
+    _profile: { tools, raw_capabilities: { supported_protocols: ['media_buy'], ...capabilities } },
+    agentTools: tools,
+    webhook_receiver: { mode: 'loopback_mock' },
+    _client: {
+      agent: { id: 'webhook-seller', agent_uri: 'https://agent.example/mcp' },
+      executor: {},
+      resetContext() {},
+      async getAdcpCapabilities() {
+        return { success: true, data: { supported_protocols: ['media_buy'], ...capabilities } };
+      },
+      async getProducts() {
+        return { success: true, data: { products: [product], cache_scope: 'account' } };
+      },
+      async createMediaBuy(request) {
+        buys.push(request);
+        if (buy === 'submitted') {
+          return { success: true, status: 'submitted', data: { status: 'submitted', task_id: `buy-task-${buys.length}` } };
+        }
+        if (buy === 'sync_emit' || buy === 'working_with_id') {
+          const { url, operation_id } = request.push_notification_config;
+          await fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              idempotency_key: `whk_sync_completion_${buys.length}_0000`,
+              operation_id,
+              task_id: `synthesized-task-${buys.length}`,
+              task_type: 'create_media_buy',
+              protocol: 'media-buy',
+              status: 'completed',
+              timestamp: new Date().toISOString(),
+              result: { media_buy_id: 'webhook-buy', confirmed_at: null, revision: 1, packages: [{ package_id: 'webhook-package' }] },
+            }),
+          });
+        }
+        if (buy === 'working_with_id') {
+          return { success: true, status: 'working', data: { status: 'working', task_id: 'buy-task-working', media_buy_id: 'webhook-buy' } };
+        }
+        return {
+          success: true,
+          status: 'completed',
+          data: { media_buy_id: 'webhook-buy', confirmed_at: null, revision: 1, packages: [{ package_id: 'webhook-package' }] },
+        };
+      },
+    },
+  });
+  const steps = new Map(result.phases.flatMap(phase => phase.steps).map(step => [step.step_id, step]));
+  const phases = new Map(result.phases.map(phase => [phase.phase_id, phase]));
+  return { result, steps, phases, buys };
+}
+
+test('a synchronous create_media_buy owes no webhook and passes without one', async () => {
+  const { result, steps, phases, buys } = await runWebhookRun('sync');
+  assert.equal(result.overall_passed, true, JSON.stringify([...steps.values()].filter(step => !step.passed)));
+  assert.equal(result.failed_count, 0);
+  assert.equal(buys.length, 1, 'only the primary trigger is dispatched');
+  assert.equal(steps.get('expect_sync_trigger_silence').passed, true);
+  assert.equal(steps.get('expect_sync_trigger_silence').skipped, undefined);
+  for (const id of EMITTED_WEBHOOK_PHASES) {
+    assert.deepEqual(phases.get(id).steps, [], id);
+  }
+});
+
+test('a synchronous create_media_buy that still sends a task webhook fails', async () => {
+  const { result, steps } = await runWebhookRun('sync_emit');
+  assert.equal(result.overall_passed, false);
+  const silence = steps.get('expect_sync_trigger_silence');
+  assert.equal(silence.passed, false);
+  assert.ok(silence.validations.some(validation => validation.check === 'expect_no_webhook' && !validation.passed),
+    JSON.stringify(silence.validations));
+});
+
+test('a submitted create_media_buy still owes the webhook', async () => {
+  const { result, steps, phases } = await runWebhookRun('submitted', { webhook_signing: { supported: true } });
+  assert.equal(result.overall_passed, false);
+  assert.deepEqual(phases.get('synchronous_trigger_silence').steps, []);
+  const presence = steps.get('expect_webhook_presence');
+  assert.equal(presence.passed, false);
+  assert.equal(presence.skipped, undefined);
+  assert.equal(steps.get('fetch_brand_json').passed, false);
+  assert.deepEqual(phases.get('signing_keys_published_declared').steps, []);
+});
+
+test('a synchronous seller that declares webhook signing is still graded on its JWKS', async () => {
+  const { steps, phases } = await runWebhookRun('sync', { webhook_signing: { supported: true } });
+  assert.deepEqual(phases.get('signing_keys_published').steps, []);
+  const declared = phases.get('signing_keys_published_declared').steps.map(step => step.step_id);
+  assert.deepEqual(declared, ['fetch_brand_json_declared', 'assert_webhook_signing_key_present_declared']);
+  // The fake agent publishes no brand.json, so the declared precheck fails.
+  assert.equal(steps.get('fetch_brand_json_declared').passed, false);
+  assert.equal(steps.get('fetch_brand_json_declared').skipped, undefined);
+});
+
+test('a synchronous seller without declared webhook signing skips the declared JWKS precheck', async () => {
+  const { phases } = await runWebhookRun('sync');
+  for (const step of phases.get('signing_keys_published_declared').steps) {
+    assert.equal(step.skip.reason, 'not_applicable', step.step_id);
+  }
+});
+
+// Documents a known limitation: the runner records context.media_buy_id from
+// any create_media_buy response, so a working envelope that carries a
+// media_buy_id is classified as synchronous and its legitimate completion
+// webhook fails the silence check. The phase narrative forbids that shape.
+test('a working envelope carrying media_buy_id is classified as synchronous', async () => {
+  const { steps, phases } = await runWebhookRun('working_with_id');
+  assert.deepEqual(phases.get('idempotency_key_presence').steps, []);
+  assert.equal(steps.get('expect_sync_trigger_silence').passed, false);
 });
