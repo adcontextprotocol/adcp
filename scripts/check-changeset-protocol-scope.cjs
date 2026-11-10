@@ -313,7 +313,12 @@ function defaultHeadRef() {
   if (process.env.GITHUB_EVENT_NAME === 'pull_request' && process.env.GITHUB_HEAD_REF) {
     return process.env.GITHUB_HEAD_REF;
   }
-  return '';
+  // Local runs (prep-for-pr) should grade a release-audit branch the way CI will.
+  try {
+    return git(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+  } catch {
+    return '';
+  }
 }
 
 function formatViolationMessage(violations) {
