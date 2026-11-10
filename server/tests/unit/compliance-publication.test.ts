@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { complianceResultToDbInput, type ComplianceResult } from '../../src/addie/services/compliance-testing.js';
 import { classifyComplianceStep } from '../../src/compliance/step-disposition.js';
 
@@ -138,6 +140,37 @@ describe('hosted compliance publication policy', () => {
   it('prefers canonical not_applicable over a future detailed reason', () => {
     expect(classifyComplianceStep({ skipped: true, skip_reason: 'new_reason', skip: { reason: 'not_applicable' } }))
       .toBe('not_applicable');
+  });
+
+  it('classifies every detailed SDK skip reason without a canonical skip.reason', () => {
+    // The SDK projection keeps only the detailed reason, so a reason missing
+    // from the hosted lists silently grades as a failed step (#8830).
+    // DETAILED_SKIP_TO_CANONICAL is not a public export; load it by path so an
+    // SDK bump that adds a reason fails here rather than in production.
+    const require = createRequire(import.meta.url);
+    const sdkRoot = dirname(require.resolve('@adcp/sdk/package.json'));
+    let DETAILED_SKIP_TO_CANONICAL: Record<string, string> | undefined;
+    try {
+      ({ DETAILED_SKIP_TO_CANONICAL } = require(join(sdkRoot, 'dist/lib/testing/storyboard/types.js')));
+    } catch (error) {
+      throw new Error(`SDK moved DETAILED_SKIP_TO_CANONICAL; update this guard (${String(error)})`);
+    }
+    if (!DETAILED_SKIP_TO_CANONICAL) throw new Error('SDK moved DETAILED_SKIP_TO_CANONICAL; update this guard');
+    // Graded in classifyRunStep from the pinned storyboard's requires_contract.
+    const handledWithStoryboardMetadata = new Set(['missing_test_kit_contract']);
+    // Unverified signing is a coverage gap, never a pass (adcp-client#2954).
+    const deliberateSetupGaps = new Set(['signing_transport_unavailable']);
+
+    const entries = Object.entries(DETAILED_SKIP_TO_CANONICAL)
+      .filter(([detailed]) => !handledWithStoryboardMetadata.has(detailed));
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [detailed, canonical] of entries) {
+      const disposition = classifyComplianceStep({ passed: true, skipped: true, skip_reason: detailed });
+      expect({ detailed, disposition }).not.toEqual({ detailed, disposition: 'failed' });
+      if (canonical !== 'not_applicable') continue;
+      const expected = deliberateSetupGaps.has(detailed) ? 'setup_gap' : 'not_applicable';
+      expect({ detailed, disposition }).toEqual({ detailed, disposition: expected });
+    }
   });
 
   it('retains genuine dependency failures after a passed producer and unrelated neutral skip', () => {

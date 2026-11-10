@@ -19,12 +19,17 @@ const NOT_APPLICABLE = new Set([
   'capability_profile_mismatch', 'transport_ungradable', 'mcp_mode_flattens_url_edges',
   'oauth_not_advertised', 'rate_limit_not_triggered', 'force_scenario_unsupported',
   'fixture_seed_unsupported', 'fixture_unsatisfied', 'capability_unsupported',
-  'capability_prerequisite_unavailable',
+  'capability_prerequisite_unavailable', 'session_probe_ungradable',
 ]);
 const SETUP_GAPS = new Set([
   'missing_test_controller', 'fixture_unavailable', 'unsatisfied_contract',
   'rate_abuse_opt_out', 'live_side_effect_opt_in_required',
   'operator_skip', 'controller_seeding_failed',
+  // Deliberate deviation: the SDK canonicalizes this to not_applicable for a
+  // wire-shape reason and weighs it through signingCoverage instead. No vector
+  // reached the agent's verifier, so it is missing coverage, never a pass
+  // (adcp-client#2954); compliance-testing grades the storyboard accordingly.
+  'signing_transport_unavailable',
 ]);
 export function classifyComplianceStep(step: GradedStep, scenario = ''): StepDisposition {
   // The synthetic seeding phase evaluates harness setup, not production behavior.
