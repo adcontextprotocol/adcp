@@ -23,6 +23,7 @@
       "type": "array",
       "description": "One or more campaign plans to sync.",
       "items": {
+        "description": "Rejects `version`, `status`, `syncedAt`, `revisionHistory`, `committedBudget` and `committedByType`: these names are reserved for the governance agent's persisted plan state and excluded from the plan_hash preimage, so a buyer MUST NOT send them.",
         "type": "object",
         "properties": {
           "plan_id": {
@@ -481,6 +482,7 @@
             }
           }
         ],
+        "not": { "anyOf": [{ "required": ["version"] }, { "required": ["status"] }, { "required": ["syncedAt"] }, { "required": ["revisionHistory"] }, { "required": ["committedBudget"] }, { "required": ["committedByType"] }] },
         "additionalProperties": true
       }
     },
