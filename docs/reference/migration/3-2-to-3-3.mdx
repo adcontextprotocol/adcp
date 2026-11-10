@@ -1,14 +1,16 @@
 ---
 title: Migrating from 3.2 to 3.3
 sidebarTitle: 3.2 to 3.3
-description: "Role-based migration checklist for adopting the AdCP 3.3 beta while preserving 3.2 compatibility: normative narrowings, loosened guarantees, version-gated new fields, SDK-facing schema changes, experimental notices, deprecated result fields, one deprecated usage, and the deprecated account identity-rekey machinery."
+description: "Role-based migration checklist for adopting the AdCP 3.3 release candidate while preserving 3.2 compatibility: normative narrowings, loosened guarantees, version-gated new fields, opened schemas, the closed-schema triage, SDK-facing schema changes, experimental notices, deprecated result fields, one deprecated usage, and the deprecated account identity-rekey machinery."
 "og:title": "AdCP — Migrating from 3.2 to 3.3"
 ---
 
 # Migrating from 3.2 to 3.3
 
+{/* depends on the rc.0 Version Packages cut (planned 2026-11-16): confirm the published date */}
+
 <Warning>
-**3.3 is in its beta cycle.** This guide is current through `3.3.0-beta.5` (published 2026-11-07). Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
+**3.3 is at its first release candidate.** This guide is current through `3.3.0-rc.0` (published 2026-11-16). Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. If you built from a beta bundle, read the [closed-schema triage](#closed-schema-triage-what-stays-in-3-3) first: some beta fields leave 3.3 at rc.0. See the [3.3 prerelease program](/docs/reference/3-3-beta) for artifact and SDK timing.
 </Warning>
 
 3.3 is a minor release over 3.2. It adds optional fields, enum values, and capability declarations. No stable field, enum value, or task is removed; the one removal is the experimental `build_creative.evaluator.evaluator_id` source form (see [below](#experimental-creative-evaluator-drops-evaluator_id)). `seller_id` on event source and audience results is deprecated in favor of the new `platform_id` field. Natural-key account references after provisioning, the account identity-rekey machinery, and condition (b) of `request_signature_required` are also deprecated (see [Deprecations](#deprecations)). A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
@@ -19,7 +21,7 @@ Read these first:
 - [Brand JSON size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib), [audience match counts](#audience-match-counts-may-be-absent), [audience targeting without member push](#audience-targeting-without-member-push), and the [4 MiB response-size default](#client-response-size-default-rises-to-4-mib): four loosened guarantees, so a 3.2 peer can reject or misread what a 3.3 peer sends.
 - [Recommended: bound agent response size](#recommended-bound-agent-response-size): a new SHOULD that tightens what an adopting buyer accepts.
 - [Send only to 3.3 peers](#send-only-to-3-3-peers): new fields a 3.2 validator rejects.
-- [Deprecations](#deprecations): `seller_id` on event source and audience results, `principal_kind` and `expected_principal_kind` on the principal tasks, the natural-key account reference after provisioning, the account identity-rekey machinery (`identity_updates`, `operator_identity`, `ACCOUNT_MOVED`, `ACCOUNT_IDENTITY_CONFLICT`, `stable_account_id`), and condition (b) of `request_signature_required`, and the boolean form of `demographics`; removal no earlier than 4.0.
+- [Deprecations](#deprecations): `seller_id` on event source and audience results, `principal_kind` and `expected_principal_kind` on the principal tasks, the natural-key account reference after provisioning, the account identity-rekey machinery (`identity_updates`, `operator_identity`, `ACCOUNT_MOVED`, `ACCOUNT_IDENTITY_CONFLICT`, `stable_account_id`), and condition (b) of `request_signature_required`, and the boolean form of `demographics`; each is expected to be removed in 4.0.
 - [SDK and code-generator maintainers](#sdk-and-code-generator-maintainers): schema-shape changes that alter generated types.
 
 Everything else is an optional declaration or a clarification. Agent identity (DR-0023) and demand-side grants (DR-0025) have their own role-by-role guide, [Migrating agent identity in AdCP 3.3](/docs/reference/migration/agent-identity-3-3). For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3).
@@ -28,15 +30,17 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 
 ## Upgrade checklist
 
+{/* depends on #8866 (opened schemas, boolean demographics) and on the #8501 withdrawals (#8758, #8767, #8762, #8854): rows 45 to 47 */}
+
 | Step | Who | Action |
 |---|---|---|
-| 1 | Everyone | Keep production on `"3.2"`; choose an exact 3.3 beta artifact for staging. |
-| 2 | SDK and codegen maintainers | Generate from the signed `3.3.0-beta.5` protocol tarball (the latest checkpoint), not `main` or `/schemas/latest/`. |
+| 1 | Everyone | Keep production on `"3.2"`; choose an exact 3.3 prerelease artifact for staging. |
+| 2 | SDK and codegen maintainers | Generate from the signed `3.3.0-rc.0` protocol tarball (the latest checkpoint), not `main` or `/schemas/latest/`. |
 | 3 | SDK and codegen maintainers | Treat `daypart_targets[].start_hour` / `end_hour` as optional in generated types (#8025). |
 | 4 | SDK and codegen maintainers | Resolve `#/$defs/Provenance` in bundled schemas instead of expecting inlined provenance (#7950, already in 3.2.4). |
 | 5 | SDK and codegen maintainers | Expect stricter response validation of `compact-task-submitted.json` (#7946, already in 3.2.4). |
 | 6 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
-| 7 | Buyers | Send `adcp_version: "3.3-beta.N"` only after exact capability discovery; never silently move between beta pins. |
+| 7 | Buyers | Send a prerelease pin such as `adcp_version: "3.3-rc.0"` only after exact capability discovery; never silently move between prerelease pins. |
 | 8 | Sellers that provision accounts lazily | Move provisioning off discovery tasks. |
 | 9 | Signing and verifying implementations | Check agent resolution and pinned keys against the list below; apply the A2A hardening clauses. |
 | 10 | Verifiers that fetch brand.json | Raise the brand.json body cap from 256 KiB to 2 MiB; leave JWKS and capabilities caps unchanged. |
@@ -55,7 +59,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 23 | Sellers and buyers of event sources and audiences | Sellers emit `platform_id` and the deprecated `seller_id` with identical values; buyers prefer `platform_id`. |
 | 24 | Sellers with a media-buy, account or creative revision | Advance it on every committed change from any origin, including `sync_creatives` assignments and ingested connected-platform changes; add `origin` to `history` entries; optionally return `seller_revision` on `list_creatives`. |
 | 25 | Buyers that update media buys | Pass the latest `revision`, and expect `CONFLICT` after a seller or connected-platform change; re-read and retry. |
-| 26 | Compliance operators | Use each 3.3 beta bundle for protocol feedback; as for 3.2, prerelease grading runs are diagnostic, not a badge. |
+| 26 | Compliance operators | Use each 3.3 prerelease bundle for protocol feedback; as for 3.2, prerelease grading runs are diagnostic, not a badge. |
 | 27 | Buyers and sellers of hosted video or audio | Optionally move playback trackers from `event: custom` to the new `pixel_tracker` playback events. |
 | 28 | Users of the experimental `creative.evaluator` surface | Replace `evaluator_id` with an allowlisted `agent_url` or inline `exemplars` ([details](#experimental-creative-evaluator-drops-evaluator_id)). |
 | 29 | Creative agents that advertise `creative.supports_refinement` | Retain each leaf's compliance inputs for as long as the leaf, apply them to every refinement, and never treat a refined leaf as approved ([details](#refinement-carries-compliance-forward)). |
@@ -74,7 +78,9 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 42 | Buyers and sellers of reporting | Adopt principal-level reporting subscriptions (experimental) and compute coverage from the wire. From beta.4, sellers emit `packages[].added_at` on packages added after confirmation, treat a grant reduced without `get_reporting_status` as a loss of authority, and list `reset_state` with the probe ([details](#reporting-subscriptions-experimental)). |
 | 43 | Sellers that adopt the commercial experiments | Gate [seller offers, price adjustments, execution readiness, gender targeting, signal pricing groups, provider-initiated delivery, and measurement provenance](#commercial-and-targeting-experiments) on the negotiated version and the feature id. |
 | 44 | Sellers that keep package records | Retain packages on canceled and completed buys, and start approved creatives by default when others are pending review ([details](#canceled-and-completed-buys-keep-their-packages)). |
-| 45 | Sellers and buyers of `sync_creatives` `assignment_operations` | Sellers list exactly the operations they accept in `creative.assignment_operations`, list `replace` if they declare `creative.live_updates`, and list `assign` if they sell through `buy_products` or `accept_proposal` with a creative library. Buyers send only listed operations ([details](#sellers-declare-the-assignment-operations-they-accept)). |
+| 45 | Sellers, buyers, and SDKs built from a beta bundle | Stop emitting and accepting the beta fields that leave 3.3 at rc.0, and move the ones that change home ([closed-schema triage](#closed-schema-triage-what-stays-in-3-3)). |
+| 46 | SDK and codegen maintainers, and anyone with a hand-written validator | Regenerate from rc.0: most schemas are now open, so generated types gain index signatures and stop rejecting unknown fields. Keep any rejection you relied on as your own check ([SDK changes](#sdk-and-code-generator-maintainers)). |
+| 47 | Buyers and sellers that use overlay demographics | Send the object form `{ "age": true }`, not boolean `demographics: true`, and keep accepting `true` ([deprecations](#deprecations)). |
 
 ## Withdrawn from 3.3, planned for 4.0
 
@@ -102,6 +108,65 @@ A seller no longer pins definitions, re-verifies pins at finalize, or fails `acc
 ### Where the designs are kept
 
 The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) and in the merge commits of #7960, #8101, and #8246.
+
+## Closed-schema triage: what stays in 3.3
+
+{/* depends on #8866 (schema opening), #8854 (metric_id, evaluator), #8758 (get_products and sync_creatives assignments), #8767 (create_media_buy and update_media_buy) and #8762 (sla-window). The available_installment_statuses move has no PR yet, and the list_products offer_filters decision is open. Re-check every row against what merged before the rc.0 cut */}
+
+On 2026-11-09 the working group decided that 3.x opens the schemas that were closed by accident ([Schemas are open by default](#schemas-are-open-by-default)). The [#8501](https://github.com/adcontextprotocol/adcp/issues/8501) triage then re-checked every beta feature that had been withdrawn, or proposed for withdrawal, because its schema was closed. It applied three reasons, in this order:
+
+1. **Deprecated surface.** A field on a deprecated task or row leaves, whatever its schema: `get_products`, `create_media_buy`, `update_media_buy`, `sync_creatives` `assignments[]`, and package creative assignments. The live tasks keep the feature where they already carry it.
+2. **Signed meaning.** A field that would change what a signed term means leaves. `commercial-terms` and the term objects inside it stay closed, because `terms_digest` binds them, so these fields wait for 4.0.
+3. **Closure only.** The withdrawal is moot, and the feature stays in 3.3.
+
+Only the fields below change between beta.5 and rc.0 because of the triage. The three features withdrawn after beta.1 stay withdrawn ([above](#withdrawn-from-3-3-planned-for-4-0)).
+
+### Stays in 3.3
+
+| Field | Where |
+|---|---|
+| `review_sla` | `core/canonical-media-buy-action-fields.json` and `core/media-buy-available-action.json` |
+| `start_time`, `end_time`, `time_granularity` | Daypart entries, and the overlay requirement and support objects (`media_buy.daypart_granularity`) |
+| `available_statuses`, `supports_break_position` | `core/spot-reporting-capability.json` (`media_buy.spot_lifecycle`) |
+| `collection_lists`, `collection_lists_exclude` | `core/targeting-overlay-requirements.json` (`media_buy.collection_lists`) |
+| `gender` | Overlay `demographics` (`media_buy.gender_targeting`). Boolean `demographics` is [deprecated](#deprecations). |
+| `trackers`, `landing_page_url` | The `assign` operation in `sync_creatives` `assignment_operations` |
+| `forced.proposal_id`, `forced.arm: unable` | `comply_test_controller` responses |
+| `signing_profile` | `core/notification-config.json` and `core/agent-notification-config.json` |
+| `evaluator` | `core/x-entity-types.json`, restored as a deprecated value. No 3.3 field carries it, and the `evaluator_id` removal stands ([below](#experimental-creative-evaluator-drops-evaluator_id)). |
+
+### Leaves 3.3: deprecated surface
+
+| Field | Leaves | The feature stays on |
+|---|---|---|
+| `trackers`, `landing_page_url` | `sync_creatives` `assignments[]`, and package creative assignments (`core/creative-assignment.json`) on `create_media_buy` and `update_media_buy` | `sync_creatives` `assignment_operations` |
+| `refine[].package`, and `result_product_id`, `resolved_start_time`, `resolved_end_time` on `refinement_applied[]` | `get_products` | No 3.3 task. The exact-package availability check ([#8468](https://github.com/adcontextprotocol/adcp/pull/8468)) needs a home on a live task. |
+| `include_collections`, `collections` | `get_products` | `list_products`, `request_proposals`, and `refine_proposals` |
+| `filters.target_audiences` | `get_products` | Undecided: shipping it on `list_products` `offer_filters` in 3.3 needs a working-group decision. Without one, `media_buy.audience_evidence_targets` has no 3.3 surface. |
+| `predecessor_media_buy_id`, `lineage_reason` | `create_media_buy` | `buy_products`, `accept_proposal`, and `get_media_buys` (`media_buy.lineage`) |
+| `artifact_webhook.signing_profile` | `create_media_buy` | No other task |
+| `start_requires_all_creatives_approved` | Packages on `create_media_buy` and `update_media_buy` | `control_media_buy` package controls (`media_buy.features.creative_start_policy`) |
+| `target_audiences` | Packages on `create_media_buy` and `update_media_buy` | Purchases, in 4.0 ([below](#leaves-3-3-signed-meaning-planned-for-4-0)) |
+| `metric_id` | `core/performance-standard.json`, and `required_performance_standards` in `core/product-offer-filters.json` | Performance standards, in 4.0 ([below](#leaves-3-3-signed-meaning-planned-for-4-0)) |
+
+### Leaves 3.3: signed meaning, planned for 4.0
+
+| Field | Why it waits |
+|---|---|
+| `metric_id` on `core/canonical-performance-standard.json` | It selects which vendor value decides a signed performance standard, so a 3.2 buyer would read the same standard differently. |
+| `price_adjustments` (`media_buy.price_adjustments`) | Its 3.3 home is the legacy `get_products` pricing option, a deprecated surface, and `canonical-pricing-option` stays closed with the signed terms. The whole experiment waits for 4.0. |
+| `counting_mechanisms` on `measurement_terms` (`media_buy.measurement_provenance`) | `measurement_terms` sits on deprecated tasks, and the canonical measurement terms stay closed. `vendor_metric_provenance[]` on delivery metrics stays in 3.3. |
+| `target_audiences` on purchases | A purchase records its terms in `product-purchase.json`, which stays closed with the signed terms. |
+
+### Moves within 3.3
+
+| Field | From | To |
+|---|---|---|
+| `include_execution_readiness`, `execution_readiness` | `get_products` | `list_products` (`media_buy.execution_readiness`) |
+| `clock`, `business_calendar_id` | `core/sla-window.json`, which returns to its 3.2 shape because `change_terms[].processing_sla` is a signed term | The creative-review SLA (`creative-review-sla`) |
+| `available_installment_statuses` | `core/reporting-capabilities.json` | `core/canonical-reporting-capabilities.json` (`media_buy.installment_lifecycle`) |
+
+**If you built from a beta bundle.** Stop emitting and accepting the fields that leave, and move the ones that change home. Regenerate from the rc.0 bundle. An open schema ignores a field it no longer defines, so a stale sender is not rejected there, but the field carries no 3.3 meaning. A schema that stays closed, such as the canonical performance standard, rejects it. The fields that stay need no action.
 
 ## Required to claim 3.3 behavior
 
@@ -529,7 +594,9 @@ Receivers of A2A push notifications and AdCP webhooks SHOULD bound the request b
 
 ## Send only to 3.3 peers
 
-Many 3.3 additions sit inside objects that 3.2 closes, so a strict 3.2 validator rejects them. Send a field or value that 3.3 defines only when the negotiated `adcp_version` is 3.3 or later. The cases most likely to bite:
+{/* depends on #8866 (3.3 opening) and #8864 (the 3.2.10 backport) */}
+
+Many 3.3 additions sit inside objects that 3.2.9 and earlier publish closed, so a strict validator built from those schemas rejects them. 3.2.10 opens the same locations that 3.3 opens, so a validator built from it ignores most of these fields instead, but a 3.2 peer still doesn't understand them. Either way, send a field or value that 3.3 defines only when the negotiated `adcp_version` is 3.3 or later ([DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md)). The "why" column describes 3.2.9 and earlier. The cases most likely to bite:
 
 | Sender | Field or value | Why a 3.2 peer rejects it |
 |---|---|---|
@@ -555,7 +622,7 @@ Many 3.3 additions sit inside objects that 3.2 closes, so a strict 3.2 validator
 
 New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_metrics` in `available-metric`, `operator_fee` in `adjustment-kind`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
 
-**Correction: proposal-flow schemas reopened.** 3.2 published the `list_products`, `request_proposals`, `refine_proposals`, `buy_products`, `accept_proposal`, `decline_proposals`, and `control_media_buy` request and response roots closed. It also closed `canonical-proposal`, `canonical-product`, `product-discovery-criteria`, `proposal-refinement`, `package-control`, and `opportunity-context`. [DR-0019](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md) keeps roots and containers open. So 3.3 and a 3.2.x patch reopen them, as a correction recorded in [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md). Every payload that was valid stays valid, and the rejections closure provided are kept by name. A field that only the legacy Product defines, such as `format_ids`, `is_custom`, or `product_card`, is still rejected on a canonical product. A root `feed_version` or `pricing_version` on a `request_proposals` response, and `warnings` on an error or submitted `buy_products`, `accept_proposal`, or `control_media_buy` response, are also still rejected. A strict validator on an earlier 3.2 patch still rejects new fields on them, so the rule above applies. `commercial_terms` and the purchases inside it stay closed.
+**Correction: the proposal flow and the other accidentally closed schemas are open.** 3.2 published the `list_products`, `request_proposals`, `refine_proposals`, `buy_products`, `accept_proposal`, `decline_proposals`, and `control_media_buy` request and response roots closed, along with `canonical-proposal`, `canonical-product`, `product-discovery-criteria`, `proposal-refinement`, `package-control`, and `opportunity-context`. 3.2.8 reopened them first. Under the 2026-11-09 decision, 3.3 and 3.2.10 open every schema that was closed without a structural reason ([Schemas are open by default](#schemas-are-open-by-default)). Opening a schema is a correction under [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md), not a protocol break. Every payload that was valid stays valid, and the rejections closure provided are kept by name. A field that only the legacy Product defines, such as `format_ids`, `is_custom`, or `product_card`, is still rejected on a canonical product. A root `feed_version` or `pricing_version` on a `request_proposals` response, and `warnings` on an error or submitted `buy_products`, `accept_proposal`, or `control_media_buy` response, are also still rejected. A strict validator built from an earlier 3.2 patch still rejects new fields on these schemas, so the rule above applies. `commercial_terms` and the purchases inside it stay closed.
 
 `get_adcp_capabilities` runs before negotiation, so a seller cannot gate its capability document. A 3.3 seller's `media_buy.features.catalog_ingestion` object fails a 3.2 schema that admits only booleans there. Buyers parse capabilities tolerantly, as [Versioning](/docs/reference/versioning) recommends.
 
@@ -593,6 +660,11 @@ These change generated types or bundle shape without changing what a conformant 
 - **`destination_overrides[]` items are one object type (#8718, beta.4).** The item's rules move from sibling `anyOf`, `not`, and `allOf` into one `if`/`then`/`else`, so json-schema-to-typescript and datamodel-codegen generate one object type with every field instead of empty objects. Validation is unchanged.
 - **Local-alignment durations (#8718, beta.4).** `core/reporting-schedule.json` and `core/reporting-schedule-offering.json` reject a `period_duration` with both a non-zero date and a non-zero time component under `account_timezone`, `source_timezone`, or `billing_cycle`. Generated validators reject `P1DT12H` there; `P1DT0H`, `P0DT12H`, and `utc` mixed durations stay valid.
 - **New error codes and shapes (beta.4 and beta.5).** `SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY` (recovery `correctable`) for a managed-delivery offering without `account_id` in its primary keys (#8718); `budget_field`, `basis`, `constraint`, and `related_field` on `BUDGET_TOO_LOW` details (#8710); `SetAccountTimezoneResult` on the controller response (#8717); and `core/match-key.json` with `enums/match-key-use.json` (#8446).
+
+{/* depends on #8866 (opened schemas) and the #8501 withdrawals (#8758, #8767, #8762, #8854) */}
+
+- **Opened schemas (#8866, rc.0).** `additionalProperties` goes from `false` to `true` at 744 of the 859 closed locations, and nothing else in those schemas changes. Generated types change: json-schema-to-typescript gives an opened object an index signature, Pydantic models stop forbidding extra fields, and Zod validators accept unknown keys where the schema opened. Where closure also rejected a specific field, the opened schema names it in `not: { anyOf: [{ required: [...] }] }`, so a validator keeps that rejection. Code that relied on a type or validation error for any other unknown key needs its own check. See [Schemas are open by default](#schemas-are-open-by-default).
+- **Withdrawn and moved beta fields (rc.0).** Regenerate to drop the fields the [closed-schema triage](#closed-schema-triage-what-stays-in-3-3) removes and to pick up the ones that change home, such as `execution_readiness` on `list_products`.
 
 ## Adopt by capability
 
@@ -830,16 +902,18 @@ Adopters of these patches have already seen these; their changesets reappear in 
 
 ## Deprecations
 
-3.3 deprecates two result fields, the principal kind field and assertion, the RFC 9421 signing profiles, one usage, the account identity-rekey machinery, and the boolean form of `demographics`; all remain functional throughout 3.x:
+{/* depends on the support-window policy change to versioning.mdx (separate PR, not yet open): confirm the 3.3 support window after 4.0 GA. The boolean demographics bullet depends on #8866 */}
 
-- **`seller_id` on `sync_event_sources` and `sync_audiences` results.** Use the new optional `platform_id` for the object's ID in the seller's ad platform, matching `sync_creatives` and `sync_catalogs`. **Sellers** reporting a platform identifier in 3.3 and later 3.x responses MUST emit both fields with identical values, including discovery responses and seller-managed event sources. **Buyers** MUST prefer `platform_id` and fall back to `seller_id` only when `platform_id` is absent. Either field may be absent in legacy responses, and both may be absent when no platform identifier is available. Continue using `event_source_id` and `audience_id` in AdCP requests. The aliases keep their object-ID semantics; they are never seller identity. `adagents.json` `contact.seller_id` and publisher identifiers of type `seller_id` are unchanged. Removal is no earlier than 4.0 and subject to the [six-month notice policy](/docs/reference/versioning#deprecation-policy). See [event source migration](/docs/media-buy/task-reference/sync_event_sources#platform-identifier-migration-adcp-3-3) and [audience migration](/docs/media-buy/task-reference/sync_audiences#platform-identifier-migration-adcp-3-3) ([#8290](https://github.com/adcontextprotocol/adcp/issues/8290)).
-- **`principal_kind` and `expected_principal_kind` on `sync_principal` and `get_principal`**, and the `enums/principal-kind.json` enum. A principal is the buyer agent as the seller has bound it, so the kind is always `buyer_agent` and carries no information. Sellers keep returning `principal_kind` and honoring `expected_principal_kind` throughout 3.x; buyers stop reading and sending them, and don't branch on `principal_kind`. Removal is no earlier than 4.0 and subject to the [six-month notice policy](/docs/reference/versioning#deprecation-policy). The task names are unchanged ([#8443](https://github.com/adcontextprotocol/adcp/pull/8443), [#8280](https://github.com/adcontextprotocol/adcp/issues/8280)).
+3.3 deprecates two result fields, the principal kind field and assertion, the RFC 9421 signing profiles, boolean overlay `demographics`, one usage, and the account identity-rekey machinery. All remain functional throughout 3.x, and each is expected to be removed in 4.0. Removals happen in a major. 3.3 stays supported for a published window after 4.0 reaches GA, so a 3.3 integration keeps working while it migrates; the length of that window is still to be confirmed.
+
+- **`seller_id` on `sync_event_sources` and `sync_audiences` results.** Use the new optional `platform_id` for the object's ID in the seller's ad platform, matching `sync_creatives` and `sync_catalogs`. **Sellers** reporting a platform identifier in 3.3 and later 3.x responses MUST emit both fields with identical values, including discovery responses and seller-managed event sources. **Buyers** MUST prefer `platform_id` and fall back to `seller_id` only when `platform_id` is absent. Either field may be absent in legacy responses, and both may be absent when no platform identifier is available. Continue using `event_source_id` and `audience_id` in AdCP requests. The aliases keep their object-ID semantics; they are never seller identity. `adagents.json` `contact.seller_id` and publisher identifiers of type `seller_id` are unchanged. The aliases are expected to be removed in 4.0. See [event source migration](/docs/media-buy/task-reference/sync_event_sources#platform-identifier-migration-adcp-3-3) and [audience migration](/docs/media-buy/task-reference/sync_audiences#platform-identifier-migration-adcp-3-3) ([#8290](https://github.com/adcontextprotocol/adcp/issues/8290)).
+- **`principal_kind` and `expected_principal_kind` on `sync_principal` and `get_principal`**, and the `enums/principal-kind.json` enum. A principal is the buyer agent as the seller has bound it, so the kind is always `buyer_agent` and carries no information. Sellers keep returning `principal_kind` and honoring `expected_principal_kind` throughout 3.x; buyers stop reading and sending them, and don't branch on `principal_kind`. They are expected to be removed in 4.0. The task names are unchanged ([#8443](https://github.com/adcontextprotocol/adcp/pull/8443), [#8280](https://github.com/adcontextprotocol/adcp/issues/8280)).
 - **The AdCP RFC 9421 signing profiles**, for requests (`adcp/request-signing/v1`) and webhooks (`adcp/webhook-signing/v1`), with keys found through brand.json and `identity.brand_json_url`. They keep working throughout 3.x and are removed in AdCP 4.0, together with the brand.json trust fields ([DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md)). Their replacement is the experimental Web Bot Auth profile ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities); role-by-role steps in the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3)): identity is the signer's origin, keys come from that origin's key directory, and no capabilities call is needed. **Signers** that serve no capabilities endpoint can move now. **Verifiers** keep accepting RFC 9421 signatures through 3.x, under the no-downgrade rule once an origin is bound.
 - **The natural key as the account reference after provisioning.** Sending the natural-key `AccountRef` on account-scoped tasks once the account exists is deprecated and planned for removal in AdCP 4.0 ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850)). It keeps working throughout 3.x. The natural key itself stays: buyers use it to open accounts with `sync_accounts` and as a `list_accounts` filter to look up an account's ID. **Buyers** store the returned ID and send it. See [Account identity](/docs/accounts/overview#account-identity).
 - **The account identity-rekey machinery** ([#8474](https://github.com/adcontextprotocol/adcp/pull/8474)). The `account.identity_updates` capability is deprecated and planned for removal in AdCP 4.0, with everything it gates. That covers `operator_identity` and `destination_billing_entity` on `sync_accounts`, the `identity_change` and `identity_change_preview` fields, and the `ACCOUNT_MOVED` and `ACCOUNT_IDENTITY_CONFLICT` error codes. `account.stable_account_id` is deprecated with it. An account's identity never changes, so no rekey or former key exists. **Sellers** that implement `operator_identity` keep it working through 3.x and SHOULD declare `stable_account_id: true` while the field exists. **Buyers** change `operator_unit` as an attribute and send `account_id` without checking `stable_account_id`.
 - **The boolean form of `demographics`** in product `overlay_support` (`core/targeting-overlay-support.json`) and in `required_overlay_support` (`core/targeting-overlay-requirements.json`). `demographics: true` is the 3.2 shorthand for `{ "age": true }`, and every 3.2 release accepts the object form on both schemas. **Senders** MUST send the object form. **Receivers** MUST accept `true` and read it as `{ "age": true }`, so it satisfies an age requirement and never a `gender` requirement. It is planned for removal in AdCP 4.0 ([#8778](https://github.com/adcontextprotocol/adcp/issues/8778)).
 
-3.3 also deprecates condition (b) of `request_signature_required` ([#8064](https://github.com/adcontextprotocol/adcp/pull/8064)), which exists only for the already-deprecated webhook `authentication` block. It is part of the `authentication` block's existing deprecation and is removed in 4.0 with the block. The experimental `configuration_task` field of `media_buy.reporting_delivery` is deprecated in favor of `configuration_tasks[]` and stays `"sync_accounts"` for clients pinned below 3.3 ([#8552](https://github.com/adcontextprotocol/adcp/pull/8552)). A deprecation window does not reset when a deprecated feature is modified. Other existing 3.2 deprecations keep their published removal windows.
+3.3 also deprecates condition (b) of `request_signature_required` ([#8064](https://github.com/adcontextprotocol/adcp/pull/8064)), which exists only for the already-deprecated webhook `authentication` block. It is part of the `authentication` block's existing deprecation and is removed in 4.0 with the block. The experimental `configuration_task` field of `media_buy.reporting_delivery` is deprecated in favor of `configuration_tasks[]` and stays `"sync_accounts"` for clients pinned below 3.3 ([#8552](https://github.com/adcontextprotocol/adcp/pull/8552)). Changing a deprecated feature does not move its removal. Deprecations from earlier 3.x releases are likewise removed only in a major.
 
 One earlier deprecation is worth restating before 4.0. The integer request field `adcp_major_version` and the `adcp.major_versions` capability field, deprecated in 3.1 in favor of `adcp_version` and `adcp.supported_versions`, keep working through 3.x and are **removed in 4.0** ([DR-0035](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0035-adcp-major-version-removed-in-4-0.md)). Buyers send `adcp_version` on every request and keep the integer mirror until then. Sellers keep emitting `adcp.major_versions` alongside `adcp.supported_versions` through 3.x. In-house clients that send only the integer should move to `adcp_version` now. The [v4 compatibility checks](/docs/reference/migration/v4-compatibility#major_versions_removed_in_4_0) flag sellers that still rely on the integer list.
 
@@ -861,12 +935,12 @@ These change grading results, not the wire.
 
 ## Rollback
 
-Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The [required rules](#required-to-claim-3-3-behavior) are the exception: they apply as soon as you claim 3.3 behavior (for [served-release conformance](#responses-conform-to-the-served-release), as soon as you list 3.3 in `supported_versions`), so keep a 3.2-pinned route until your discovery, verification, and delivery-webhook paths pass against the beta. A seller that advances revisions from every origin while serving 3.2 callers only makes stale-`revision` updates fail sooner, which 3.2 already allowed.
+Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The [required rules](#required-to-claim-3-3-behavior) are the exception: they apply as soon as you claim 3.3 behavior (for [served-release conformance](#responses-conform-to-the-served-release), as soon as you list 3.3 in `supported_versions`), so keep a 3.2-pinned route until your discovery, verification, and delivery-webhook paths pass against the release candidate. A seller that advances revisions from every origin while serving 3.2 callers only makes stale-`revision` updates fail sooner, which 3.2 already allowed.
 
 ## Related
 
 - [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3)
-- [3.3 beta program](/docs/reference/3-3-beta)
+- [3.3 prerelease program](/docs/reference/3-3-beta)
 - [Release Notes](/docs/reference/release-notes#version-3-3-0)
 - [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2)
 - [Versions & Compatibility](/docs/reference/versions)

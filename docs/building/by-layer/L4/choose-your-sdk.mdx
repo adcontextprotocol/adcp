@@ -37,17 +37,22 @@ Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. T
 
 SDK 16 removes AdCP 2 support and moves Reliable Reporting storage out of `@adcp/sdk` into `@adcp/reporting-storage`; follow the [reporting storage package migration](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-reporting-storage-package.md) if you import storage from `@adcp/sdk/reporting/*`. SDK 15 tightens OAuth issuer binding and provider/storage defaults. Before upgrading an existing integration, follow the [SDK 15 OAuth migration and owner recovery guide](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/docs/migration-oauth-issuer-bindings.md).
 
-### AdCP 3.3 beta support
+### AdCP 3.3 prerelease support
 
-Production stays on the 3.2 line and the packages above. For development and staging against the [3.3 beta](/docs/reference/3-3-beta):
+Production stays on the 3.2 line and the packages above. For development and staging against the [3.3 prerelease](/docs/reference/3-3-beta):
+
+{/* depends on the rc.0 SDK prereleases: add rows for them once they ship */}
 
 | SDK | Package | AdCP bundle | Roles and transports | Known limits |
 |---|---|---|---|---|
-| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.21` (npm `beta` dist-tag) | Signed `3.3.0-beta.5`; also bundles stable 3.2.8, 3.1.31 and 3.0.25. Earlier 3.3 betas require a matching external schema root | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. Use a Reliable Reporting storage release whose `@adcp/sdk` peer range matches this SDK. |
-| **`adcp`** (Python) | `10.0.0b13` (PyPI prerelease) | Signed `3.3.0-beta.5` | Buyer client and seller server, MCP and A2A | Negotiates only `3.3-beta.5`. Install the exact prerelease with `pip install --pre "adcp==10.0.0b13"`; for Reliable Reporting storage, use `adcp-reporting-storage` 0.2.0b3. |
+| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.22` (npm `beta` dist-tag) | Signed `3.3.0-beta.5`; also bundles stable 3.2.8, 3.1.31 and 3.0.25. Earlier 3.3 betas require a matching external schema root | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. Use a Reliable Reporting storage release whose `@adcp/sdk` peer range matches this SDK. |
+| **`adcp`** (Python) | `10.0.0b15` (PyPI prerelease) | Signed `3.3.0-beta.5` | Buyer client and seller server, MCP and A2A | Negotiates only `3.3-beta.5`. Install the exact prerelease with `pip install --pre "adcp==10.0.0b15"`; for Reliable Reporting storage, use `adcp-reporting-storage` 0.2.0b3. |
+| Go, Java | — | No 3.3 prerelease | — | Not supported for 3.3. Test from these languages through raw-wire calls against the signed bundle. |
+
+No published SDK bundles `3.3.0-rc.0` yet. New TypeScript and Python prereleases follow the release candidate; until then, test rc.0 from its signed bundle and keep SDK-backed testing on beta.5.
 
 ```bash
-npm install @adcp/sdk@17.0.0-beta.21
+npm install @adcp/sdk@17.0.0-beta.22
 node -p "require('@adcp/sdk').ADCP_VERSION"   # 3.3.0-beta.5
 ```
 

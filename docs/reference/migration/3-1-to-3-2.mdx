@@ -330,12 +330,14 @@ idempotency key does not create replay identity across old and new task names.
 these tasks' request and response schemas closed, with
 `additionalProperties: false`. They also closed `canonical-proposal`,
 `canonical-product`, `product-discovery-criteria`, `proposal-refinement`,
-`package-control`, and `opportunity-context`.
-[DR-0019](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md)
-keeps roots and containers open, so later 3.2 patches reopen them. This is a
-correction recorded in
+`package-control`, and `opportunity-context`. 3.2.8 reopens them. On
+2026-11-09 the working group decided that 3.x opens every schema that was
+closed without a structural reason, so 3.2.10 opens the rest of the 3.2
+schemas that were closed by accident, the same locations 3.3 opens. Opening a
+schema is a correction under
 [DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)
-([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). Every payload
+([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)), not a protocol
+break. {/* depends on #8864 (the 3.2.10 backport) */} Every payload
 that was valid stays valid. A field that only the legacy Product defines,
 such as `format_ids`, `is_custom`, or `installments`, is still rejected on a
 canonical product. A root `feed_version` or `pricing_version` on a
