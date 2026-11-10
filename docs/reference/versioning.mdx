@@ -183,13 +183,13 @@ AdCP 3.2 contains a bounded, recorded set of exceptions to these limits: one rat
 
 To replace a field, add the new one and deprecate the old one. Senders emit both until the next major. For example, 3.3 adds `platform_id` and deprecates `seller_id`, and a seller reporting that identifier emits both names with identical values through 3.x.
 
-Deprecation notices are published at least **6 months** before any feature is removed. Deprecated features remain functional for at least one full release cycle after deprecation, and are never removed within the same major version — a feature deprecated in 3.x will not be removed until 4.0 at the earliest.
+A deprecated feature is never removed within the major that deprecated it, so a feature deprecated in 3.x is removed in 4.0 at the earliest. A major may remove anything deprecated in an earlier release, with no minimum notice period: removals are what a major is for. Implementers are protected by the support window instead. The previous major's last minor stays supported for at least 12 months after the successor's GA ([Support window for previous major](#support-window-for-previous-major)).
 
 Every release with schema changes is called out in the changelog, release notes, and inline documentation. Every release with schema changes ships with a migration guide.
 
-[Experimental surfaces](/docs/reference/experimental-status) operate under a separate, faster notice window of 6 weeks. The deprecation policy above applies only to stable surfaces.
+[Experimental surfaces](/docs/reference/experimental-status) may change within a major, with at least 6 weeks' notice in the release notes. The deprecation policy above applies only to stable surfaces.
 
-Stable and experimental surfaces have different notice periods, but this naming rule applies to both: once AdCP has defined or published a property name at a wire location — including a deprecated alias or legacy protocol property — it is permanently reserved for its existing semantics at that same object location, including locations that serialize to the same flattened root. It MUST NOT later be assigned different semantics after deprecation, rename, or removal; a replacement MUST use a distinct name. Vendor-defined properties do not trigger this reservation.
+This naming rule applies to stable and experimental surfaces alike: once AdCP has defined or published a property name at a wire location — including a deprecated alias or legacy protocol property — it is permanently reserved for its existing semantics at that same object location, including locations that serialize to the same flattened root. It MUST NOT later be assigned different semantics after deprecation, rename, or removal; a replacement MUST use a distinct name. Vendor-defined properties do not trigger this reservation.
 
 For example, 3.1 introduced [`media_buy_status`](/docs/reference/migration/media-buy-status) as the canonical replacement for the body-level media-buy lifecycle while the deprecated `status` alias remained temporarily permitted. Under MCP's flattened response serialization, body and envelope properties occupy the same root: envelope `status` carries `TaskStatus`, so a body-level `status` carrying `MediaBuyStatus` collided with it and could be overwritten.
 
@@ -338,21 +338,17 @@ AdCP publishes the following named policy so implementers can plan:
 | **Major releases after 4.0 (breaking)** | minimum 18 months apart |
 | **Next major (4.0)** | target early 2027 |
 | **Support for previous major after successor GA** | minimum 12 months |
-| **Deprecation notice before removal** | minimum 6 months |
 
 Within a version, releases land every 6–8 weeks early in the cycle and stretch toward quarterly as the version stabilizes. Release count within a version is not fixed.
 
 The 18-month major-release spacing commitment applies from 4.0 onward. It does
 not govern the 3.x-to-4.0 transition or delay the established early-2027 target.
 The proposed development sequence is to finish 3.3, then develop 4.0 as the next
-feature release. Deprecation notice and prior-major support commitments remain
-applicable.
+feature release. The prior-major support commitment remains applicable.
 
 ### Support window for previous major
 
 When a new major ships, the prior major receives security patches for at least 12 months after successor GA. Security patches (CVE fixes and security advisories) are backported for the full window; feature work is not. The exact end-of-life date for each version is published on a per-version sunset page and linked from the transition note that accompanies the successor's GA release.
-
-Deprecation windows do not reset when a deprecated feature is modified — the original removal date holds.
 
 The v2 sunset is the documented exception to this commitment: v2 predates this policy and lacks account and governance protections that cannot be backported. Its security-only window ended August 1, 2026 — see the [v2 sunset page](/docs/reference/v2-sunset). Future majors will not invoke this exception.
 
