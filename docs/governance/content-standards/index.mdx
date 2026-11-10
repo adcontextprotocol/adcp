@@ -225,7 +225,7 @@ Content Standards uses **addressable policies** — an array of policy entries, 
 | `exemplars` | No | Structured `pass` and `fail` scenarios used to calibrate policy interpretation. |
 | `ext` | No | Vendor-namespaced extension data for partner-specific metadata. |
 
-Policy entries are closed objects: fields outside this table fail schema validation rather than being silently ignored. Put partner-specific, buyer-visible metadata under a vendor key in `ext` (for example, `ext.acme`) instead of adding sibling fields or encoding structured metadata inside the natural-language `policy` value.
+Policy entries are open objects: a field outside this table passes schema validation but has no defined meaning, so receivers ignore it. Put partner-specific, buyer-visible metadata under a vendor key in `ext` (for example, `ext.acme`) instead of adding sibling fields or encoding structured metadata inside the natural-language `policy` value.
 
 ```json
 {
