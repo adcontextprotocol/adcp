@@ -150,6 +150,7 @@
       "required": ["status"],
       "oneOf": [
         {
+      "description": "Every unknown or unauthorized identifier returns this one shape: its message and error are constants, and the branch and its error objects are closed, so it carries nothing that tells an unknown identifier from an unauthorized one.",
       "title": "Unavailable lookup",
       "type": "object",
       "properties": {

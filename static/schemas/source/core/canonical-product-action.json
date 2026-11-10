@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-product-action.json",
   "title": "Canonical Product Action",
-  "description": "Fine-grained action template advertised on a compact product. The resulting MediaBuy exposes the authoritative routed task in available_actions.",
+  "description": "Fine-grained action template advertised on a compact product. The resulting MediaBuy exposes the authoritative routed task in available_actions. Rejects `review_sla`: a product's review commitment is creative_policy.review_sla.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "constraint_action_compatibility": "The constraints.kind is compatible with action under change-term-constraints.json. Product constraints are advisory and a proposal must restate binding bounds."

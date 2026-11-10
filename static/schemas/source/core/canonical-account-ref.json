@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-account-ref.json",
   "title": "Canonical Account Reference",
-  "description": "Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront account_id returned by list_accounts or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox. brand.countries qualifies the commercial advertiser identity without targeting delivery; operator_unit identifies the operator-owned buying context. operator_unit.name is display metadata and is excluded from identity.",
+  "description": "Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront account_id returned by list_accounts or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox. brand.countries qualifies the commercial advertiser identity without targeting delivery; operator_unit identifies the operator-owned buying context. operator_unit.name is display metadata and is excluded from identity. The two forms exclude each other: the account_id form rejects the natural-key fields (`brand`, `operator`, `operator_unit`, `currency`, `timezone`, `sandbox`), and the natural-key form rejects `account_id`.",
   "type": "object",
   "anyOf": [
     {
@@ -14,7 +14,7 @@
         }
       },
       "required": ["account_id"],
-      "not": { "anyOf": [{ "required": ["brand"] }, { "required": ["operator"] }] },
+      "not": { "anyOf": [{ "required": ["brand"] }, { "required": ["operator"] }, { "required": ["operator_unit"] }, { "required": ["currency"] }, { "required": ["timezone"] }, { "required": ["sandbox"] }] },
       "additionalProperties": true
     },
     {

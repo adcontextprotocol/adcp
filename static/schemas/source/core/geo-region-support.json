@@ -12,6 +12,7 @@
         "pattern": "^[A-Z]{2}$"
       },
       "additionalProperties": {
+        "description": "`all_values` and `values` exclude each other.",
         "anyOf": [
           {
             "type": "object",

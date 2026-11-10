@@ -43,6 +43,7 @@
       "additionalProperties": true
     },
     {
+      "description": "Rejects `placement_refs`: the default mode names no placements.",
       "title": "Product default placements",
       "type": "object",
       "properties": {

@@ -20,7 +20,7 @@
   "definitions": {
     "scope_capability": {
       "type": "object",
-      "description": "Support at one authored scope, partitioned by the media buy's resulting allocation mode. Omitted contexts are unsupported; claims in one context make no claim about the other.",
+      "description": "Support at one authored scope, partitioned by the media buy's resulting allocation mode. Omitted contexts are unsupported; claims in one context make no claim about the other. Rejects `modes`, `cost_per_strengths`, `roas_strengths` and `supported_combinations`, which belong to policy_profile one level down.",
       "properties": {
         "fixed": {
           "$ref": "#/definitions/policy_profile",

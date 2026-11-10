@@ -30,7 +30,6 @@
       "not": { "required": ["allowed_values"] }
     }
   ],
-  "not": { "required": ["step"] },
   "additionalProperties": true,
   "x-adcp-validation": {
     "ordered_bounds": "minimum MUST be less than or equal to maximum."

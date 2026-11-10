@@ -80,7 +80,7 @@
     },
     "setup": {
       "type": "object",
-      "description": "Reduced setup hint when the new status requires human action. This block intentionally omits setup.url; receivers fetch the current setup URL from list_accounts if the caller is authorized to see it.",
+      "description": "Reduced setup hint when the new status requires human action. This block intentionally omits setup.url; receivers fetch the current setup URL from list_accounts if the caller is authorized to see it. Rejects `url`, so a setup link is never fanned out to every subscriber of this webhook.",
       "properties": {
         "message": {
           "type": "string",

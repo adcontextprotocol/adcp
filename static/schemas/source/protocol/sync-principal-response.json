@@ -61,9 +61,10 @@
             }
           },
           "required": ["kind", "action", "dry_run", "principal_id", "principal_kind", "configuration_version", "configuration"],
-          "additionalProperties": false
+          "additionalProperties": true
         },
         {
+          "description": "Rejects `destination_ref` and `configuration_version`: a dry run issues no durable identifier.",
           "title": "Validated principal dry run",
           "type": "object",
           "properties": {
@@ -88,7 +89,8 @@
             }
           },
           "required": ["kind", "action", "dry_run"],
-          "additionalProperties": false
+          "not": { "anyOf": [{ "required": ["destination_ref"] }, { "required": ["configuration_version"] }] },
+          "additionalProperties": true
         },
         {
           "title": "Failed principal sync",

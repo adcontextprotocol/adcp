@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/inventory-list-application.json",
   "title": "Inventory List Application",
-  "description": "Seller-issued, product-scoped receipt showing how one effective property- or collection-list targeting reference intersected the inventory represented by a returned product. Each receipt compares its resolved entries independently against the same product inventory before any effective list is applied; product pricing and forecasts reflect the eligible inventory after all effective lists are composed. Sellers MUST NOT echo auth_token or other separately supplied fetch credentials; the receipt shape defines no credential field.",
+  "description": "Seller-issued, product-scoped receipt showing how one effective property- or collection-list targeting reference intersected the inventory represented by a returned product. Each receipt compares its resolved entries independently against the same product inventory before any effective list is applied; product pricing and forecasts reflect the eligible inventory after all effective lists are composed. Sellers MUST NOT echo auth_token or other separately supplied fetch credentials; the receipt shape defines no credential field. Both receipt branches reject `auth_token`.",
   "type": "object",
   "x-adcp-validation": {
     "verifier_constraints": {
@@ -82,7 +82,7 @@
         "summary"
       ],
       "additionalProperties": true,
-      "not": { "anyOf": [{ "required": ["auth_token"] }, { "required": ["mode"] }] }
+      "not": { "required": ["auth_token"] }
     },
     {
       "title": "Collection list application",
@@ -148,7 +148,7 @@
         "summary"
       ],
       "additionalProperties": true,
-      "not": { "anyOf": [{ "required": ["auth_token"] }, { "required": ["mode"] }] }
+      "not": { "required": ["auth_token"] }
     }
   ]
 }

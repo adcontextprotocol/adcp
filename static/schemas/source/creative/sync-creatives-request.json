@@ -248,6 +248,7 @@
       "minItems": 1,
       "maxItems": 500,
       "items": {
+        "description": "`trackers` and `landing_page_url` belong only to assign: unassign and replace reject them.",
         "type": "object",
         "discriminator": {
           "propertyName": "operation"
