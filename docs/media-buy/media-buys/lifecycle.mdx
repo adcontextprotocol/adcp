@@ -250,10 +250,12 @@ but it cannot undo the preceding purchase. Later policy review is different
 from either validation case: a review rejection does not roll back a valid
 facade mutation or compact purchase.
 
-When required formats lack creative coverage, the buy enters
-`pending_creatives`. After assignments cover the package's effective
-`format_options[]`, it moves to `pending_start` when the flight is in the future
-or `active` when delivery can begin. A direct `buy_products` call may set
+When a package has no creative assigned, the buy enters `pending_creatives`.
+Once every package has an assignment, it moves to `pending_start` when the
+flight is in the future or `active` when delivery can begin. A package's
+`formats_pending` lists the `formats_to_provide` entries that still lack
+creative coverage; it reports readiness and does not change the status. A
+direct `buy_products` call may set
 `paused: true`; resume it later with `control_media_buy` and the latest
 revision.
 
