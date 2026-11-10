@@ -61,6 +61,24 @@ approved for the schemas 3.3 keeps closed, grouped as eight.
 | No key material or markup | An open-ended class of content stays out of a sensitive document: key material, credentials, markup, or free text put in front of an agent. No list of forbidden names could be complete. |
 | ID-keyed map | `patternProperties` validates a map's keys. |
 
+PR #8866 states eleven reasons for the 115 locations 3.3 keeps closed. They
+map onto the eight as follows. Grouping changes no location's status, so the
+WG can split the eight back into the eleven.
+
+| #8866 reason | Locations | Reason here |
+|---|---|---|
+| oneOf disjointness | 9 | Key-presence disjointness |
+| Signed commercial terms | 25 | Signed or digest-bound terms |
+| Hard constraint (must-understand) | 1 | Signed or digest-bound terms |
+| Closed key set (join key) | 21 | Join key |
+| Closed key set (canonical identity) | 2 | Canonical identity |
+| Signature envelope | 1 | JWS envelope |
+| Closed key set (privacy boundary) | 22 | Privacy boundary |
+| Closed key set (no key material or markup) | 18 | No key material or markup |
+| Closed key set (credential-free configuration) | 10 | No key material or markup |
+| Closed key set (no free text to agents) | 1 | No key material or markup |
+| Map keyed by identifier | 5 | ID-keyed map |
+
 - Each closed node names its reason in `x-closed-reason`, and CI fails a closed
   node without one. A new reason needs a new decision record.
 - Catching a misnamed field is not a reason to close a schema (DR-0036). When
@@ -104,8 +122,9 @@ the breaking-change notice the versioning page requires.
 major's GA, the last minor of the previous major stays supported for at least
 **[6 or 12 — pending Brian]** months. For 4.0 that minor is 3.3. Supported
 means security fixes and corrections in patches of that line, and no new
-features. The end-of-support date is published on a sunset page at the
-successor's GA.
+features. This widens the versioning page, which today promises the previous
+major security patches only. The end-of-support date is published on a sunset
+page at the successor's GA.
 
 **N is open.** Brian's ruling of 2026-11-10 says six months. These sources say
 twelve:
@@ -190,9 +209,8 @@ nodes with no removal decision. "Removed in the next major" (`bid_price`,
 `max_bid`) slips past the test that matches "removed in 4.0". With the
 dispositions in fields, the removal list is a query.
 
-A minimum notice period ties a major's date to its newest deprecation.
-RFC #8756 put 4.0 GA on Apr 29–30, 2027 so that the 3.3 deprecations of HMAC
-webhook auth (#8662) and identity rekey (#8474) reach six months' notice. What
+A minimum notice period ties a major's date to its newest deprecation: the
+major either waits, or the deprecation is carried to the next one. What
 protects an implementer is time on a supported line. A removal reaches it only
 when it moves to the new major, and the support window lets it choose when.
 The window covers every removal in the major at once.
@@ -208,7 +226,7 @@ served the release that defines it. Nothing in 4.x weakens it.
 
 | Alternative | Why not |
 |---|---|
-| Keep 6 months' notice before a removal | It ties the major's date to its newest deprecation, and it protects no one the support window doesn't already protect. It forces a choice between a later 4.0 GA and carrying the 3.3 deprecations to 5.0. |
+| Keep 6 months' notice before a removal | It ties the major's date to its newest deprecation, and it protects no one the support window doesn't already protect. |
 | Allow removals in a minor after notice | It breaks rule 3 and the minor promise that the check enforces. |
 | Close schemas by default, so validators catch misnamed fields | Every addition becomes a break, which is the 3.x failure. The `undefined_properties` conformance check catches misnamed fields without that cost. |
 | Judge each closure's structural reason per PR | Reviewers can't apply "structural" consistently. A fixed list with an annotation is something CI can check. |
@@ -223,7 +241,8 @@ served the release that defines it. Nothing in 4.x weakens it.
 
 - **On ratification**, before `4.0.0-beta.1`:
   - `docs/reference/versioning.mdx`: deprecation policy, release-cadence
-    table, and support window, with N.
+    table, and support window, with N and with corrections added to the
+    security-only promise.
   - `docs/reference/specification-lifecycle.mdx`: the Deprecated stage and the
     6-month countdown.
   - `docs/reference/experimental-status.mdx`: add the clock, and drop "a
@@ -235,8 +254,6 @@ served the release that defines it. Nothing in 4.x weakens it.
   - New checks for `x-closed-reason` and the experimental clock.
   - The additive-minor baseline and corrections register are reset at 4.0.0
     GA.
-- **4.0 GA date.** The 3.3 deprecations can go in 4.0 whatever its GA date, so
-  the date in RFC #8756 is a schedule decision only.
 - **3.x minors and patches don't change.** They never remove. This record
   governs the removals that 4.0 makes of 3.x deprecations.
 - **Not settled here:**
