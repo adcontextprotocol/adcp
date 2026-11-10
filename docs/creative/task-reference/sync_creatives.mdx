@@ -1296,10 +1296,45 @@ If the seller needs a person to confirm a match, it returns the [`submitted` env
 
 - The buyer's assignment inherits `merged_creative_id`'s approval on the package. Sellers MUST NOT review it again unless `creative_id`'s content differs from `merged_creative_id`'s.
 - `merged_creative_id` no longer has an assignment on the package. It is not purged. It stays in `list_creatives` while it still exists in the seller's source of truth, and otherwise moves to `archived` like any creative the seller's source of truth no longer holds.
-- Delivery for that object is reported under `creative_id` from the time of the merge. Delivery before the merge stays under `merged_creative_id`; sellers MUST NOT restate it.
+- Delivery for that object is reported under `creative_id` from the time of the merge. Delivery before the merge stays under `merged_creative_id`; sellers MUST NOT restate it. Buyers join the two IDs themselves; see [delivery before and after a merge](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-before-and-after-a-merge).
 - A seller that emits `creative.assignment_changed` sends `unassigned` for `merged_creative_id` and `assigned` for `creative_id` (or `approval_changed` if it was already assigned), with the same `observed_at`. A seller with the experimental [account change feed](/docs/accounts/tasks/list_account_changes) records two `creative_assignment` changes sharing one `batch_id`, `unlinked` and `linked`, with `origin.kind: "adcp"`.
 
 `merged_creative_id` MUST be a creative that entered the library outside `sync_creatives`. Merging a duplicate that a buyer synced is out of scope, because one principal must not take over another principal's creatives.
+
+### Adopting a creative made outside AdCP
+
+`merge` also covers the reverse case: a creative that started outside AdCP and that the buyer now wants as its own. On platforms where an advertiser can add ads in the platform's own tools, typically self-serve social and search platforms, a buyer's agent can find such a creative delivering in its packages. Adopting it lets the buyer manage and report it under its own `creative_id`, for example to build variants from a creative that is winning.
+
+1. **Find it.** [`list_creatives`](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp) returns the creative under a seller-assigned `creative_id`, with the platform's own identifier in `platform_id`. With `include_assignments: true`, it also lists the packages the creative is assigned to. Confirm that the seller declares `creative.stable_creative_ids` and `creative.supports_assignment_merge`.
+2. **Sync the buyer's copy.** Build a creative under the buyer's own `creative_id` from the same assets (media, text, click-through) in the same format, and sync it. A copy whose content differs is rejected at merge time with `content_mismatch`, and one in a different format with `format_mismatch`.
+3. **Merge each assignment.** Send one `merge` per package the seller-assigned creative is assigned to. The seller keeps the running serving object, its approval and its delivery, and reports it under the buyer's `creative_id` from then on.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "account": { "account_id": "acct_acme_2026" },
+  "idempotency_key": "c2b8e5d1-6f4a-4e7b-9a13-5d0f7e2c8b46",
+  "assignment_operations": [
+    {
+      "operation": "merge",
+      "creative_id": "acme_spring_carousel",
+      "package_id": "pkg_spring_social",
+      "merged_creative_id": "slr_7f3c2a91"
+    },
+    {
+      "operation": "merge",
+      "creative_id": "acme_spring_carousel",
+      "package_id": "pkg_spring_retargeting",
+      "merged_creative_id": "slr_7f3c2a91"
+    }
+  ]
+}
+```
+
+Two limits apply in AdCP 3.3:
+
+- **Merge is per package.** Each assignment needs its own `merge`. If the seller-assigned creative is assigned to another package later, for example because the advertiser adds the same creative to a new ad in the platform's tools, that assignment is reported under the seller-assigned ID until the buyer merges it too. Buyers that adopt creatives watch for new assignments through `creative.assignment_changed` notifications or by rereading `list_creatives`.
+- **History stays split.** Delivery before each merge stays under the seller-assigned ID. To report the creative's whole life, the buyer joins the two IDs; see [delivery before and after a merge](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-before-and-after-a-merge).
 
 ### Dry run
 

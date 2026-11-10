@@ -311,7 +311,7 @@ This row tracks a staged update. To learn what a seller does with a change, read
 
 ### Creatives created outside AdCP
 
-A creative can enter the seller's library without `sync_creatives`: through a seller UI or API, seller automation, or another system. That happens, for example, when a buyer connects to an advertiser that already has live buys and creatives. Those creatives have no buyer-assigned ID, so the seller assigns their `creative_id`, and the buyer uses it to reference them in later requests.
+A creative can enter the seller's library without `sync_creatives`: through a seller UI or API, seller automation, or another system. That happens, for example, when a buyer connects to an advertiser that already has live buys and creatives, or when an advertiser adds an ad in a self-serve platform's own tools to a campaign that the buyer's agent also manages. Those creatives have no buyer-assigned ID, so the seller assigns their `creative_id`, and the buyer uses it to reference them in later requests.
 
 - Sellers SHOULD keep that ID stable for the creative's lifetime and unique within the account, and SHOULD use UUIDs or a stable prefix (for example, `slr_`) so it does not collide with buyer-chosen IDs. It MAY equal `platform_id`.
 - A seller that declares [`creative.stable_creative_ids`](/docs/protocol/get_adcp_capabilities#creative) MUST keep it stable and unique, and MUST NOT reuse a `creative_id` a buyer has used on the account. Buyers MUST NOT rely on a seller-assigned ID staying the same unless the seller declares it.
@@ -320,6 +320,8 @@ A creative can enter the seller's library without `sync_creatives`: through a se
 To manage one of these creatives, a buyer uses its `creative_id` as-is. See [seller-assigned creative IDs](/docs/creative/task-reference/sync_creatives#seller-assigned-creative-ids). A buyer tells its own creatives apart by the IDs it synced.
 
 `platform_id` is the seller's identifier for the creative in its source of truth, the same value `sync_creatives` returns. It lets operators match a creative to the seller's own UI and reports without keeping the sync response. Buyers address creatives by `creative_id`, never by `platform_id`.
+
+Delivery reporting uses the same seller-assigned `creative_id`. When such a creative delivers in a buyer's package, [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery#creatives-the-buyer-didnt-sync) reports it in `by_package[].by_creative[]` under that ID, and [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) does too. To take one over as the buyer's own creative, see [Adopting a creative made outside AdCP](/docs/creative/task-reference/sync_creatives#adopting-a-creative-made-outside-adcp).
 
 ### Assignment indicators
 
