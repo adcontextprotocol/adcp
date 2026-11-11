@@ -51,6 +51,7 @@
         },
         "accepted_formats": {
           "type": "array",
+          "maxItems": 32,
           "items": {
             "type": "string",
             "enum": [

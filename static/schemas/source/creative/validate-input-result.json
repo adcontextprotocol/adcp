@@ -79,6 +79,7 @@
           "rule": { "type": "string" },
           "field": {
             "type": "string",
+            "maxLength": 500,
             "description": "Path to the field the warning concerns, in the same form as `violations[].field` (e.g., 'assets.video_main.duration_ms').",
             "x-added-in": "3.3.0"
           },

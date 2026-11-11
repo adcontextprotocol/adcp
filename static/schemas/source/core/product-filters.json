@@ -255,6 +255,7 @@
     },
     "audience_activation_methods": {
       "type": "array",
+      "maxItems": 32,
       "x-status": "experimental",
       "description": "Filter to products whose audience_activation.methods matches at least one requested entry (OR across entries). Within an entry every specified field must match (AND); omitted optional fields are wildcards; directions matches on non-empty intersection, and a method that omits directions matches any requested directions; vendor matches on domain, plus brand_id when specified. Fields inapplicable to the requested pattern (e.g. transport on a clean_room entry) make that entry unsatisfiable. Sellers MUST exclude products with no audience_activation declaration when this filter is present; exclusions MAY be reported via filter_diagnostics.excluded_by. Experimental: part of the media_buy.audience_activation surface — buyers SHOULD check the seller's experimental_features before filtering on it; sellers that do not list the feature ignore this filter.",
       "items": {
@@ -297,6 +298,7 @@
               },
               "directions": {
                 "type": "array",
+                "maxItems": 32,
                 "description": "Require a non-empty intersection with the method's declared directions (file_transfer only).",
                 "items": {
                   "type": "string",

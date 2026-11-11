@@ -55,6 +55,7 @@
     },
     "age_determination_bases": {
       "type": "array",
+      "maxItems": 32,
       "x-added-in": "3.3.0",
       "description": "User-level bases by which the ages of this signal's members were established: verified, declared, and/or inferred. Sibling of demographic_predicate, not nested in it; only valid when demographic_predicate.age is present. Population estimates are out of scope (aggregate composition cannot establish an individual's age; use audience_evidence). Absent means the signal makes no basis claim (for a listing that projects a data_provider or signal_source definition, resolve the value from that definition; only the resolved value counts), and a buyer whose request names accepted_bases MUST NOT treat a signal with no resolved basis as satisfying the age predicate. A signal satisfies a requested age predicate with accepted_bases only when its demographic_predicate.age is within the request AND every value in age_determination_bases is in accepted_bases. The bases describe how known ages were established; unknown-age membership is governed only by include_unknown. Forward note: when gender targeting (#7925, experimental) graduates, gender will need an equivalent disclosure; this field is age-specific and the enum is not generalized. This definition is authoritative; listings that project it for data_provider and signal_source refs MUST match it exactly, the same rule demographic_predicate follows.",
       "items": {

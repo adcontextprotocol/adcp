@@ -25,6 +25,7 @@
     },
     "supported_delivery_types": {
       "type": "array",
+      "maxItems": 32,
       "minItems": 1,
       "uniqueItems": true,
       "items": {

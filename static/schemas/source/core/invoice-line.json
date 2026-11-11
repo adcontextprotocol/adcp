@@ -9,18 +9,21 @@
   "properties": {
     "media_buy_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Seller's identifier of the media buy this line bills.",
       "x-entity": "media_buy"
     },
     "package_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Package within the media buy this line bills. Omit when the line covers the media buy as a whole.",
       "x-entity": "package"
     },
     "reporting_revision_ids": {
       "type": "array",
+      "maxItems": 1000,
       "description": "Official reporting revisions this line bills from. Each MUST belong to this line's media_buy_id (and package_id when present) and MUST be an official revision (enums/reporting-finality.json); a snapshot revision is provisional and is not invoice-addressable. A line MAY carry both revisions and adjustments; reporting_revision_ids and reporting_adjustment_ids are opaque references from the media_buy.reporting_delivery surface, and the seller's billing system, not this schema, defines how they net into billed_quantity and amount.",
       "items": {
         "type": "string",
@@ -34,6 +37,7 @@
     },
     "reporting_adjustment_ids": {
       "type": "array",
+      "maxItems": 1000,
       "description": "Reporting adjustments this line applies (each MUST belong to this line's media_buy_id and package_id when present), for post-official corrections billed in a later period than the revision they adjust.",
       "items": {
         "type": "string",

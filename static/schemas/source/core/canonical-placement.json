@@ -21,10 +21,10 @@
       "type": "object",
       "description": "Structured street address for a DOOH/OOH placement, for display and geocoding fallback when coordinates are absent or imprecise.",
       "properties": {
-        "line1": { "type": "string", "description": "Street address line (e.g., '89 E 42nd St')." },
-        "city": { "type": "string", "description": "City name." },
-        "region": { "type": "string", "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
-        "postal_code": { "type": "string", "description": "Postal or ZIP code." },
+        "line1": { "type": "string", "maxLength": 200, "description": "Street address line (e.g., '89 E 42nd St')." },
+        "city": { "type": "string", "maxLength": 100, "description": "City name." },
+        "region": { "type": "string", "maxLength": 64, "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
+        "postal_code": { "type": "string", "maxLength": 64, "description": "Postal or ZIP code." },
         "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
       },
       "additionalProperties": false

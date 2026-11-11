@@ -11,7 +11,7 @@
     "notification_type": { "type": "string", "const": "reporting.ledger_changed" },
     "fired_at": { "type": "string", "format": "date-time" },
     "subscriber_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$" },
-    "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
+    "account_id": { "type": "string", "maxLength": 255, "minLength": 1, "x-entity": "account" },
     "change_kind": { "type": "string", "enum": ["revision_published", "adjustment_published"] },
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision" },
     "supersedes_reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision" },

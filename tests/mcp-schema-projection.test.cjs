@@ -201,7 +201,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_376_000.
 // Experimental match keys (#8375) reach the seeded Product through
 // Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
-const PARITY_COMPILE_LIMIT = 1_384_000;
+// The 3.3 bounds slice (#8512) adds maxItems/maxLength to the new and
+// experimental fields in the controller closure: 1_383_804 -> 1_385_040 bytes
+// measured against main, bound at 1_386_000.
+const PARITY_COMPILE_LIMIT = 1_386_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

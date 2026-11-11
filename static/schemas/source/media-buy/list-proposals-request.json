@@ -21,6 +21,7 @@
     },
     "context_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "MCP compatibility field: servers ignore this value; A2A uses transport-native Message/Task contextId."
     },
@@ -55,7 +56,7 @@
     "media_buy_ids": {
       "type": "array",
       "description": "Return only proposals whose snapshot media_buy_id is one of these buys: seller offers and other amendments against those buys, plus the accepted snapshots that created them. Proposals with no media_buy_id are returned only when no media_buy_ids filter is supplied. Unknown or inaccessible IDs are omitted, not errors. Combines with the other filters as an AND.",
-      "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
+      "items": { "type": "string", "maxLength": 255, "minLength": 1, "x-entity": "media_buy" },
       "minItems": 1,
       "maxItems": 50,
       "uniqueItems": true
@@ -70,12 +71,13 @@
     },
     "dispositions": {
       "type": "array",
+      "maxItems": 32,
       "description": "Return only proposals in these dispositions. Defaults to every disposition. Terminal snapshots are retained for at least 30 days after their disposition changed.",
       "items": { "$ref": "/schemas/enums/proposal-disposition.json" },
       "minItems": 1,
       "uniqueItems": true
     },
-    "cursor": { "type": "string", "minLength": 1 },
+    "cursor": { "type": "string", "maxLength": 4096, "minLength": 1 },
     "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

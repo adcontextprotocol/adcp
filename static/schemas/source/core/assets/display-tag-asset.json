@@ -31,6 +31,7 @@
     "sizes": {
       "x-added-in": "3.3.0",
       "type": "array",
+      "maxItems": 32,
       "minItems": 1,
       "items": {
         "type": "object",

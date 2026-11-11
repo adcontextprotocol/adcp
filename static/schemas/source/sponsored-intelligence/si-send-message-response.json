@@ -13,6 +13,7 @@
   "properties": {
     "session_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Session identifier",
       "x-entity": "si_session"
     },
@@ -22,6 +23,7 @@
       "properties": {
         "message": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Conversational message from brand agent"
         },
         "surface": {
@@ -30,6 +32,7 @@
         },
         "ui_elements": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "$ref": "/schemas/sponsored-intelligence/si-ui-element.json"
           },
@@ -41,6 +44,7 @@
     },
     "mcp_resource_uri": {
       "type": "string",
+      "maxLength": 2048,
       "description": "MCP resource URI for hosts with MCP Apps support (e.g., ui://si/session-abc123)"
     },
     "sponsored_context": {
@@ -69,6 +73,7 @@
           "properties": {
             "action": {
               "type": "string",
+              "maxLength": 255,
               "description": "The commerce action (e.g., 'purchase')"
             },
             "product": {
@@ -83,7 +88,8 @@
                   "type": "number"
                 },
                 "currency": {
-                  "type": "string"
+                  "type": "string",
+                  "maxLength": 64
                 }
               }
             }
@@ -96,12 +102,15 @@
           "properties": {
             "conversation_summary": {
               "type": "string",
+              "maxLength": 2000,
               "description": "Summary of the conversation leading to purchase"
             },
             "applied_offers": {
               "type": "array",
+              "maxItems": 100,
               "items": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               "description": "Offer IDs that were applied during the conversation"
             }
@@ -113,6 +122,7 @@
     },
     "errors": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "$ref": "/schemas/core/error.json"
       }

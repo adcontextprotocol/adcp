@@ -12,6 +12,7 @@
     },
     "custom_event_name": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Required when event is custom; MUST be absent otherwise. The seller must recognize and fire this event or reject the assignment."
     },
