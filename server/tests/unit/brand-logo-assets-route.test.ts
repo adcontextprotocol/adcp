@@ -33,7 +33,7 @@ vi.mock('../../src/services/logo-rendition.js', async (importOriginal) => {
 });
 
 import { createBrandLogoAssetRouter, type BrandLogoAssetRouterOptions } from '../../src/routes/brand-logo-assets.js';
-import { renderLogoPng } from '../../src/services/logo-rendition.js';
+import { LOGO_RENDER_CONCURRENCY, renderLogoPng } from '../../src/services/logo-rendition.js';
 
 const DOMAIN = 'acme.example';
 const ID = '11111111-1111-1111-1111-111111111111';
@@ -302,10 +302,146 @@ describe('cache', () => {
     await request(app).get(url);
     expect(mocks.getLogo).toHaveBeenCalledTimes(2);
   });
+
+  it('caches a 422 for the rendition key: the logo is not re-read or re-rendered', async () => {
+    mocks.getLogo.mockResolvedValue({ content_type: 'image/png', data: Buffer.from('not a png') });
+    const app = makeApp();
+    const url = `/assets/brands/${DOMAIN}/${ID}.png?format=png&w=64`;
+    const first = await request(app).get(url);
+    const second = await request(app).get(url);
+    expect([first.status, second.status]).toEqual([422, 422]);
+    expect(second.body).toEqual(first.body);
+    expect(mocks.getLogo).toHaveBeenCalledTimes(1);
+    expect(renderLogoPng).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches a 415 for the rendition key', async () => {
+    const app = makeApp();
+    const url = `/assets/brands/${DOMAIN}/${ID2}.ico?format=png&w=64`;
+    expect((await request(app).get(url)).status).toBe(415);
+    expect((await request(app).get(url)).status).toBe(415);
+    expect(mocks.getLogo).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failure per rendition key: other widths and the original still load', async () => {
+    mocks.getLogo.mockResolvedValue({ content_type: 'image/png', data: Buffer.from('not a png') });
+    const app = makeApp();
+    await request(app).get(`/assets/brands/${DOMAIN}/${ID}.png?format=png&w=64`);
+    expect((await request(app).get(`/assets/brands/${DOMAIN}/${ID}.png?format=png&w=128`)).status).toBe(422);
+    expect((await request(app).get(`/assets/brands/${DOMAIN}/${ID}.png`)).status).toBe(200);
+    expect(mocks.getLogo).toHaveBeenCalledTimes(3);
+  });
+
+  it('expires a cached failure after the TTL', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    mocks.getLogo.mockResolvedValue({ content_type: 'image/png', data: Buffer.from('not a png') });
+    const app = makeApp({ cacheTtlMs: 1000 });
+    const url = `/assets/brands/${DOMAIN}/${ID}.png?format=png&w=64`;
+    await request(app).get(url);
+    vi.setSystemTime(new Date('2026-01-01T00:00:02Z'));
+    await request(app).get(url);
+    expect(mocks.getLogo).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache a 503 shed', async () => {
+    mocks.renderDelayMs = 300;
+    const app = makeApp({ renderConcurrency: 1, renderMaxQueued: 0 });
+    const slow = get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=64`).then((r) => r);
+    // Let the first request take the only slot.
+    await new Promise((r) => setTimeout(r, 100));
+    const url = `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=128`;
+    expect((await request(app).get(url)).status).toBe(503);
+    await slow;
+    mocks.renderDelayMs = 0;
+    expect((await get(app, url)).status).toBe(200);
+  });
+});
+
+describe('single flight', () => {
+  it('shares one read and one render between concurrent misses for a key', async () => {
+    mocks.renderDelayMs = 100;
+    const app = makeApp();
+    const url = `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=256`;
+    const responses = await Promise.all([get(app, url), get(app, url), get(app, url)]);
+    expect(responses.map((r) => r.status)).toEqual([200, 200, 200]);
+    expect(binary(responses[1]).equals(binary(responses[0]))).toBe(true);
+    expect(mocks.getLogo).toHaveBeenCalledTimes(1);
+    expect(renderLogoPng).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares a failure too', async () => {
+    mocks.getLogo.mockResolvedValue({ content_type: 'image/png', data: Buffer.from('not a png') });
+    const app = makeApp();
+    const url = `/assets/brands/${DOMAIN}/${ID}.png?format=png&w=64`;
+    const responses = await Promise.all([request(app).get(url), request(app).get(url)]);
+    expect(responses.map((r) => r.status)).toEqual([422, 422]);
+    expect(renderLogoPng).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not share between different widths', async () => {
+    const app = makeApp();
+    await Promise.all([
+      get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=64`),
+      get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=128`),
+    ]);
+    expect(renderLogoPng).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('error responses are not cacheable', () => {
+  it.each([
+    ['400 invalid query', `/assets/brands/${DOMAIN}/${ID}.svg?format=webp`, 400],
+    ['400 invalid domain', `/assets/brands/-bad_domain/${ID}.svg`, 400],
+    ['400 malformed asset', `/assets/brands/${DOMAIN}/not-a-uuid.svg`, 400],
+    ['400 legacy invalid id', `/logos/brands/${DOMAIN}/not-a-uuid`, 400],
+    ['404 unknown logo', `/assets/brands/${DOMAIN}/33333333-3333-3333-3333-333333333333.svg`, 404],
+    ['415 unrasterisable', `/assets/brands/${DOMAIN}/${ID2}.ico?format=png&w=64`, 415],
+  ])('%s → Cache-Control: no-store', async (_label, url, status) => {
+    const res = await request(makeApp()).get(url);
+    expect(res.status).toBe(status);
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('422 → no-store, including from the cache', async () => {
+    mocks.getLogo.mockResolvedValue({ content_type: 'image/png', data: Buffer.from('not a png') });
+    const app = makeApp();
+    const url = `/assets/brands/${DOMAIN}/${ID}.png?format=png&w=64`;
+    for (let i = 0; i < 2; i++) {
+      const res = await request(app).get(url);
+      expect(res.status).toBe(422);
+      expect(res.headers['cache-control']).toBe('no-store');
+    }
+  });
+
+  it('500 → no-store', async () => {
+    mocks.getLogo.mockResolvedValueOnce({ content_type: 'text/html', data: Buffer.from('<script>') });
+    const res = await request(makeApp()).get(`/logos/brands/${DOMAIN}/${ID}`);
+    expect(res.status).toBe(500);
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('500 on a database error → no-store', async () => {
+    mocks.getLogo.mockRejectedValueOnce(new Error('db down'));
+    const res = await request(makeApp()).get(`/assets/brands/${DOMAIN}/${ID}.svg`);
+    expect(res.status).toBe(500);
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('legacy 404 and database error → no-store', async () => {
+    mocks.getLogoRedirect.mockResolvedValueOnce(null);
+    const notFound = await request(makeApp()).get(`/logos/brands/${DOMAIN}/7`);
+    expect(notFound.status).toBe(404);
+    expect(notFound.headers['cache-control']).toBe('no-store');
+    mocks.getLogoRedirect.mockRejectedValueOnce(new Error('db down'));
+    const failed = await request(makeApp()).get(`/logos/brands/${DOMAIN}/7`);
+    expect(failed.status).toBe(500);
+    expect(failed.headers['cache-control']).toBe('no-store');
+  });
 });
 
 describe('render overload', () => {
-  it('sheds load with 503 and Retry-After when the render queue is full', async () => {
+  it('sheds load with 503, Retry-After and no-store when the render queue is full', async () => {
     mocks.renderDelayMs = 300;
     const app = makeApp({ renderConcurrency: 1, renderMaxQueued: 0 });
     const slow = get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=64`).then((r) => r);
@@ -314,13 +450,42 @@ describe('render overload', () => {
     const shed = await request(app).get(`/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=128`);
     expect(shed.status).toBe(503);
     expect(shed.headers['retry-after']).toBeDefined();
+    expect(shed.headers['cache-control']).toBe('no-store');
     expect((await slow).status).toBe(200);
+  });
+
+  it('renders at most two at once by default, sharing the process-wide limiter', async () => {
+    expect(LOGO_RENDER_CONCURRENCY).toBe(2);
+    let active = 0;
+    let peak = 0;
+    const real = vi.mocked(renderLogoPng).getMockImplementation()!;
+    vi.mocked(renderLogoPng).mockImplementation(async (...args) => {
+      active++;
+      peak = Math.max(peak, active);
+      try {
+        await new Promise((r) => setTimeout(r, 50));
+        return await real(...args);
+      } finally {
+        active--;
+      }
+    });
+    try {
+      const app = makeApp();
+      const widths = [64, 128, 256, 512];
+      const responses = await Promise.all(
+        widths.map((w) => get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=${w}`)),
+      );
+      expect(responses.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+      expect(peak).toBe(2);
+    } finally {
+      vi.mocked(renderLogoPng).mockImplementation(real);
+    }
   });
 
   it('does not shed original-bytes requests while renders are saturated', async () => {
     mocks.renderDelayMs = 300;
     const app = makeApp({ renderConcurrency: 1, renderMaxQueued: 0 });
-    const slow = get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=64`);
+    const slow = get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=64`).then((r) => r);
     await new Promise((r) => setTimeout(r, 100));
     const original = await request(app).get(`/assets/brands/${DOMAIN}/${ID}.svg`);
     expect(original.status).toBe(200);
@@ -331,7 +496,7 @@ describe('render overload', () => {
     const app = makeApp({ renderConcurrency: 1, renderMaxQueued: 0 });
     await get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=64`);
     mocks.renderDelayMs = 300;
-    const slow = get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=128`);
+    const slow = get(app, `/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=128`).then((r) => r);
     await new Promise((r) => setTimeout(r, 100));
     const cached = await request(app).get(`/assets/brands/${DOMAIN}/${ID}.svg?format=png&w=64`);
     expect(cached.status).toBe(200);

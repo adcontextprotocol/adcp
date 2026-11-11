@@ -52,12 +52,37 @@ export interface BrandLogoAssetRouterOptions {
   renderMaxQueued?: number;
 }
 
-interface CachedLogoEntry {
-  content_type: string;
-  /** Content type of the stored logo; differs from content_type for renditions. */
-  source_content_type: string;
-  data: Buffer;
-  cachedAt: number;
+type CachedLogoEntry =
+  | {
+    kind: 'logo';
+    content_type: string;
+    /** Content type of the stored logo; differs from content_type for renditions. */
+    source_content_type: string;
+    data: Buffer;
+    cachedAt: number;
+  }
+  | {
+    /** A rendition that cannot be produced (415/422), cached so it is not retried per request. */
+    kind: 'failure';
+    status: 415 | 422;
+    error: string;
+    source_content_type: string;
+    cachedAt: number;
+  };
+
+/** What a cached failure counts against the byte budget. */
+const FAILURE_ENTRY_BYTES = 256;
+
+function entryBytes(entry: CachedLogoEntry): number {
+  return entry.kind === 'logo' ? entry.data.length : FAILURE_ENTRY_BYTES;
+}
+
+class DisallowedLogoContentTypeError extends Error {}
+
+/** Errors are never cached: by us, by browsers, or by the CDN in front. */
+function sendError(res: Response, status: number, error: string) {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(status).json({ error });
 }
 
 export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions = {}): Router {
@@ -73,16 +98,20 @@ export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions 
       )
       : logoRenderLimiter;
 
-  // LRU cache of originals and renditions, keyed by domain, id, format and width.
+  // LRU cache of originals, renditions and rendition failures, keyed by
+  // domain, id, format and width.
   const logoCache = new Map<string, CachedLogoEntry>();
   let logoCacheTotalBytes = 0;
+  // Loads in progress, by cache key, so concurrent misses share one read and
+  // one render.
+  const inflight = new Map<string, Promise<CachedLogoEntry | null>>();
 
   function evictLogoCache(): void {
     const now = Date.now();
     // Evict expired entries first
     for (const [key, entry] of logoCache) {
       if (now - entry.cachedAt > cacheTtlMs) {
-        logoCacheTotalBytes -= entry.data.length;
+        logoCacheTotalBytes -= entryBytes(entry);
         logoCache.delete(key);
       }
     }
@@ -90,7 +119,7 @@ export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions 
     while (logoCacheTotalBytes > cacheMaxBytes && logoCache.size > 0) {
       const firstKey = logoCache.keys().next().value!;
       const entry = logoCache.get(firstKey)!;
-      logoCacheTotalBytes -= entry.data.length;
+      logoCacheTotalBytes -= entryBytes(entry);
       logoCache.delete(firstKey);
     }
   }
@@ -98,10 +127,10 @@ export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions 
   function cacheLogo(key: string, entry: CachedLogoEntry): void {
     const previous = logoCache.get(key);
     if (previous) {
-      logoCacheTotalBytes -= previous.data.length;
+      logoCacheTotalBytes -= entryBytes(previous);
       logoCache.delete(key);
     }
-    logoCacheTotalBytes += entry.data.length;
+    logoCacheTotalBytes += entryBytes(entry);
     logoCache.set(key, entry);
     evictLogoCache();
   }
@@ -115,6 +144,59 @@ export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions 
     return res.send(data);
   }
 
+  /** The cache entry for a stored logo, or a rendition of it. */
+  async function buildEntry(
+    domain: string,
+    id: string,
+    logo: { content_type: string; data: Buffer },
+    rendition: { width: LogoRenditionWidth } | null,
+  ): Promise<CachedLogoEntry> {
+    const base = { source_content_type: logo.content_type, cachedAt: Date.now() };
+    if (!rendition) {
+      return { kind: 'logo', ...base, content_type: logo.content_type, data: logo.data };
+    }
+    if (!canRasterizeLogo(logo.content_type)) {
+      return { kind: 'failure', ...base, status: 415, error: `A ${logo.content_type} logo has no PNG rendition` };
+    }
+    try {
+      const png = await renderSemaphore.run(() => renderLogoPng(logo.data, logo.content_type, rendition.width));
+      return { kind: 'logo', ...base, cachedAt: Date.now(), content_type: 'image/png', data: png };
+    } catch (error) {
+      if (!(error instanceof LogoRenditionError)) throw error;
+      logger.warn({ err: error, domain, id }, 'Logo rendition failed');
+      return error.reason === 'unsupported'
+        ? { kind: 'failure', ...base, status: 415, error: 'This logo has no PNG rendition' }
+        : { kind: 'failure', ...base, status: 422, error: 'This logo could not be rendered as PNG' };
+    }
+  }
+
+  /**
+   * Read (and render) the entry for a cache key, caching the outcome.
+   * Concurrent calls for one key share a single load. Null: not found.
+   */
+  function loadEntry(
+    domain: string,
+    id: string,
+    rendition: { width: LogoRenditionWidth } | null,
+    cacheKey: string,
+  ): Promise<CachedLogoEntry | null> {
+    const pending = inflight.get(cacheKey);
+    if (pending) return pending;
+    const load = (async () => {
+      const logo = await getLogo(domain, id);
+      if (!logo) return null;
+      if (!isAllowedLogoContentType(logo.content_type)) {
+        logger.error({ domain, id, contentType: logo.content_type }, 'Logo has disallowed content-type');
+        throw new DisallowedLogoContentTypeError();
+      }
+      const entry = await buildEntry(domain, id, logo, rendition);
+      cacheLogo(cacheKey, entry);
+      return entry;
+    })().finally(() => inflight.delete(cacheKey));
+    inflight.set(cacheKey, load);
+    return load;
+  }
+
   const serveApprovedLogoAsset = async (
     domain: string,
     id: string,
@@ -123,85 +205,50 @@ export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions 
     requestedExt?: string,
   ) => {
     if (!logoDomainPattern.test(domain)) {
-      return res.status(400).json({ error: 'Invalid domain' });
+      return sendError(res, 400, 'Invalid domain');
     }
     if (!isUuid(id)) {
-      return res.status(400).json({ error: 'Invalid logo ID' });
+      return sendError(res, 400, 'Invalid logo ID');
     }
     const parsed = parseLogoRenditionQuery(query);
     if (!parsed.ok) {
-      return res.status(400).json({ error: parsed.error });
+      return sendError(res, 400, parsed.error);
     }
     const rendition = parsed.rendition;
     const renditionQuery = rendition ? `?format=png&w=${rendition.width}` : '';
-    const redirectToCanonicalAsset = (contentType: string) =>
-      res.redirect(301, `${getBrandAssetUrl(domain, id, contentType)}${renditionQuery}`);
+    const cacheKey = `${domain}/${id}${renditionQuery}`;
 
     try {
-      // Check LRU cache (with TTL)
-      const cacheKey = `${domain}/${id}${renditionQuery}`;
-      const cached = logoCache.get(cacheKey);
-      if (cached && (Date.now() - cached.cachedAt) < cacheTtlMs) {
+      let entry: CachedLogoEntry | null | undefined = logoCache.get(cacheKey);
+      if (entry && (Date.now() - entry.cachedAt) < cacheTtlMs) {
         // Move to end (most recently used)
         logoCache.delete(cacheKey);
-        logoCache.set(cacheKey, cached);
-
-        const expectedExt = extensionForLogoContentType(cached.source_content_type);
-        if (requestedExt && requestedExt.toLowerCase() !== expectedExt) {
-          return redirectToCanonicalAsset(cached.source_content_type);
-        }
-        return sendLogo(res, cached.content_type, cached.data);
+        logoCache.set(cacheKey, entry);
+      } else {
+        entry = await loadEntry(domain, id, rendition, cacheKey);
+      }
+      if (!entry) {
+        return sendError(res, 404, 'Logo not found');
       }
 
-      const logo = await getLogo(domain, id);
-      if (!logo) {
-        return res.status(404).json({ error: 'Logo not found' });
-      }
-      if (!isAllowedLogoContentType(logo.content_type)) {
-        logger.error({ domain, id, contentType: logo.content_type }, 'Logo has disallowed content-type');
-        return res.status(500).json({ error: 'Failed to retrieve logo' });
-      }
-      const expectedExt = extensionForLogoContentType(logo.content_type);
+      const expectedExt = extensionForLogoContentType(entry.source_content_type);
       if (requestedExt && requestedExt.toLowerCase() !== expectedExt) {
-        return redirectToCanonicalAsset(logo.content_type);
+        return res.redirect(301, `${getBrandAssetUrl(domain, id, entry.source_content_type)}${renditionQuery}`);
       }
-
-      if (!rendition) {
-        cacheLogo(cacheKey, {
-          content_type: logo.content_type,
-          source_content_type: logo.content_type,
-          data: logo.data,
-          cachedAt: Date.now(),
-        });
-        return sendLogo(res, logo.content_type, logo.data);
+      if (entry.kind === 'failure') {
+        return sendError(res, entry.status, entry.error);
       }
-
-      if (!canRasterizeLogo(logo.content_type)) {
-        return res.status(415).json({ error: `A ${logo.content_type} logo has no PNG rendition` });
-      }
-      const width: LogoRenditionWidth = rendition.width;
-      const png = await renderSemaphore.run(() => renderLogoPng(logo.data, logo.content_type, width));
-      cacheLogo(cacheKey, {
-        content_type: 'image/png',
-        source_content_type: logo.content_type,
-        data: png,
-        cachedAt: Date.now(),
-      });
-      return sendLogo(res, 'image/png', png);
+      return sendLogo(res, entry.content_type, entry.data);
     } catch (error) {
       if (error instanceof SemaphoreOverloadedError) {
         logger.warn({ domain, id }, 'Logo rendition shed load');
         res.setHeader('Retry-After', '5');
-        return res.status(503).json({ error: 'Logo rendering is busy. Retry shortly.' });
+        return sendError(res, 503, 'Logo rendering is busy. Retry shortly.');
       }
-      if (error instanceof LogoRenditionError) {
-        logger.warn({ err: error, domain, id }, 'Logo rendition failed');
-        return error.reason === 'unsupported'
-          ? res.status(415).json({ error: 'This logo has no PNG rendition' })
-          : res.status(422).json({ error: 'This logo could not be rendered as PNG' });
+      if (!(error instanceof DisallowedLogoContentTypeError)) {
+        logger.error({ err: error, domain, id }, 'Failed to serve logo');
       }
-      logger.error({ err: error, domain, id }, 'Failed to serve logo');
-      return res.status(500).json({ error: 'Failed to retrieve logo' });
+      return sendError(res, 500, 'Failed to retrieve logo');
     }
   };
 
@@ -209,7 +256,7 @@ export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions 
     const domain = req.params.domain.toLowerCase();
     const match = assetPattern.exec(req.params.asset);
     if (!match) {
-      return res.status(400).json({ error: 'Invalid asset ID' });
+      return sendError(res, 400, 'Invalid asset ID');
     }
     return serveApprovedLogoAsset(domain, match[1], req.query, res, match[2]);
   });
@@ -221,9 +268,15 @@ export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions 
     // Integer fallback: old /:idx URLs redirect to UUID.
     if (/^\d+$/.test(id)) {
       const oldIdx = parseInt(id, 10);
-      const newId = await brandLogoDb.getLogoRedirect(domain, oldIdx);
+      let newId: string | null;
+      try {
+        newId = await brandLogoDb.getLogoRedirect(domain, oldIdx);
+      } catch (error) {
+        logger.error({ err: error, domain, oldIdx }, 'Failed to resolve legacy logo id');
+        return sendError(res, 500, 'Failed to retrieve logo');
+      }
       if (!newId) {
-        return res.status(404).json({ error: 'Logo not found' });
+        return sendError(res, 404, 'Logo not found');
       }
       const parsed = parseLogoRenditionQuery(req.query);
       const renditionQuery = parsed.ok && parsed.rendition ? `?format=png&w=${parsed.rendition.width}` : '';
