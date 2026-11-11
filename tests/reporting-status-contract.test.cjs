@@ -8,12 +8,13 @@ const assert = require('node:assert/strict');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 ensureBuiltSchemas();
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {
@@ -288,10 +289,11 @@ describe('managed reporting status contract', () => {
     [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal, validateAdjustment, validateAdjustmentReceipt, validateReliabilityStatistics, validateLedgerWebhook, validateStatusWebhook, validateConsumerStatus, validateStatusSyncRequest, validateStatusSyncResponse, validateStatusIssue] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
+      // The task response covers completed reads and failed lookups.
       compile('/schemas/media-buy/get-reporting-status-response.json'),
       compile('/schemas/core/reporting-delivery-ready-webhook.json'),
       compile('/schemas/core/notification-config.json'),
-      compile('/schemas/protocol/get-adcp-capabilities-response.json'),
+      compile('/schemas/protocol/get-adcp-capabilities-completed.json'),
       compile('/schemas/account/sync-accounts-request.json'),
       compile('/schemas/core/reporting-delivery-config-state.json'),
       compile('/schemas/core/reporting-obligation.json'),
@@ -302,7 +304,7 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-file-manifest.json'),
       compile('/schemas/core/reporting-resource.json'),
       compile('/schemas/media-buy/sync-reporting-receipts-request.json'),
-      compile('/schemas/media-buy/sync-reporting-receipts-response.json'),
+      compile('/schemas/media-buy/sync-reporting-receipts-completed.json'),
       compile('/schemas/core/reporting-canonicalization-contract.json'),
       compile('/schemas/core/reporting-schedule-offering.json'),
       compile('/schemas/core/reporting-report-definition.json'),
@@ -316,7 +318,7 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-status-changed-webhook.json'),
       compile('/schemas/core/reporting-consumer-status.json'),
       compile('/schemas/media-buy/sync-reporting-status-request.json'),
-      compile('/schemas/media-buy/sync-reporting-status-response.json'),
+      compile('/schemas/media-buy/sync-reporting-status-completed.json'),
       compile('/schemas/core/reporting-status-issue.json'),
     ]);
     canonicalize = (await import('canonicalize')).default;
@@ -956,7 +958,7 @@ describe('managed reporting status contract', () => {
     response.obligation_counts.consumer_status_overdue = 4;
     assert.equal(validateResponse(response), false, 'obligation_counts stays a closed object');
     assert.match(
-      readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].incremental_repair,
+      readSchema('/schemas/media-buy/get-reporting-status-completed.json')['x-adcp-validation'].incremental_repair,
       /requires obligation_counts.consumer_status_pending on the summary view/,
     );
   });
@@ -1001,7 +1003,7 @@ describe('managed reporting status contract', () => {
     };
     assert.equal(validateResponse(response), true, JSON.stringify(validateResponse.errors));
     assert.match(
-      readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].empty_scope,
+      readSchema('/schemas/media-buy/get-reporting-status-completed.json')['x-adcp-validation'].empty_scope,
       /reporting_delivery_configs: \[\]/,
     );
   });
@@ -1221,7 +1223,7 @@ describe('managed reporting status contract', () => {
     assert.match(issueSchema['x-adcp-validation'].consumer_mismatch_escalation, /recommended_action in the contact_ family/);
     assert.match(issueSchema['x-adcp-validation'].consumer_mismatch_escalation, /wait_for_retry MUST NOT survive the escalation boundary/);
     assert.match(issueSchema.properties.external_ref.description, /never dereference, resolve, or execute it/);
-    const statusResponseSchema = readSchema('/schemas/media-buy/get-reporting-status-response.json');
+    const statusResponseSchema = readSchema('/schemas/media-buy/get-reporting-status-completed.json');
     assert.match(
       statusResponseSchema['x-adcp-validation'].consumer_status_projection,
       /only this caller\/account view delayed or action_required/,

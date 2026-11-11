@@ -104,7 +104,7 @@ test('pathResolves descends oneOf variants — captures from a discriminated arm
   // acquire-rights-response.json is a 4-arm oneOf. `rights_id` is on three
   // of the four arms (Acquired, PendingApproval, Rejected). The path
   // resolver should accept it because at least one variant defines it.
-  const schema = loadSchema('brand/acquire-rights-response.json');
+  const schema = loadSchema('brand/acquire-rights-completed.json');
   assert.ok(schema, 'fixture schema loads');
   assert.equal(pathResolves(schema, parsePath('rights_id')), true);
   assert.equal(pathResolves(schema, parsePath('rights_status')), true);
@@ -132,13 +132,13 @@ test('task_completion prefix validates against the terminal artifact schema', ()
 });
 
 test('pathResolves rejects paths that no oneOf variant defines', () => {
-  const schema = loadSchema('brand/acquire-rights-response.json');
+  const schema = loadSchema('brand/acquire-rights-completed.json');
   assert.equal(pathResolves(schema, parsePath('does_not_exist')), false);
   assert.equal(pathResolves(schema, parsePath('rights_id.subfield')), false);
 });
 
 test('pathResolves treats bracket and dotted notation as equivalent for array indexing', () => {
-  const schema = loadSchema('brand/acquire-rights-response.json');
+  const schema = loadSchema('brand/acquire-rights-completed.json');
   // `errors[0].code` and `errors.0.code` both descend through items into
   // the error.json $ref's `code` property.
   assert.equal(pathResolves(schema, parsePath('errors[0].code')), true);
@@ -150,7 +150,7 @@ test('pure extension points (error.details, context.*) accept any further segmen
   // whose `details` is `additionalProperties: true` with no defined properties —
   // a pure extension point because per-error-code structured details live in
   // sibling `error-details/<code>.json` schemas, not on `core/error.json` itself.
-  const schema = loadSchema('account/sync-accounts-response.json');
+  const schema = loadSchema('account/sync-accounts-completed.json');
   assert.equal(
     pathResolves(schema, parsePath('accounts[0].errors[0].details.suggested_billing')),
     true,
@@ -163,14 +163,14 @@ test('mixed schemas (declared properties + additionalProperties: true) stay stri
   // AND additionalProperties: true at the root. The additionalProperties is
   // forward-compat extension, NOT an open container — the offering_id typo
   // from #3937 was caught precisely because the lint stays strict here.
-  const schema = loadSchema('sponsored-intelligence/si-get-offering-response.json');
+  const schema = loadSchema('sponsored-intelligence/si-get-offering-completed.json');
   assert.equal(pathResolves(schema, parsePath('offering.offering_id')), true);
   assert.equal(pathResolves(schema, parsePath('offering_id')), false);
   assert.equal(pathResolves(schema, parsePath('not_a_real_field')), false);
 });
 
 test('schema-valued additionalProperties resolves typed dynamic map keys', () => {
-  const schema = loadSchema('protocol/get-adcp-capabilities-response.json');
+  const schema = loadSchema('protocol/get-adcp-capabilities-completed.json');
   assert.equal(
     pathResolves(
       schema,
@@ -350,7 +350,7 @@ test('unknown_expected_arm fires for context_outputs steps too', () => {
 });
 
 test('findArmByDiscriminator and findErrorArm are exported and consistent across lints', () => {
-  const schema = loadSchema('brand/acquire-rights-response.json');
+  const schema = loadSchema('brand/acquire-rights-completed.json');
   assert.ok(findArmByDiscriminator(schema, 'acquired'));
   assert.ok(findArmByDiscriminator(schema, 'rejected'));
   assert.equal(findArmByDiscriminator(schema, 'no_match'), null);

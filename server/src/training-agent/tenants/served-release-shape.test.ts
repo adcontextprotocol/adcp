@@ -43,34 +43,34 @@ const VERSIONS = ['3.2', '3.1', '3.0', TRAINING_AGENT_HOSTED_PREVIEW.wireVersion
 
 /** The source response schema each tool is graded against for `x-added-in`. */
 const RESPONSE_SCHEMAS: Record<string, string> = {
-  get_adcp_capabilities: 'protocol/get-adcp-capabilities-response.json',
-  list_accounts: 'account/list-accounts-response.json',
-  get_products: 'media-buy/get-products-response.json',
-  list_products: 'media-buy/list-products-response.json',
-  request_proposals: 'media-buy/request-proposals-response.json',
-  refine_proposals: 'media-buy/refine-proposals-response.json',
-  create_media_buy: 'media-buy/create-media-buy-response.json',
-  get_media_buys: 'media-buy/get-media-buys-response.json',
-  update_media_buy: 'media-buy/update-media-buy-response.json',
-  get_media_buy_delivery: 'media-buy/get-media-buy-delivery-response.json',
-  list_creative_formats: 'media-buy/list-creative-formats-response.json',
-  sync_creatives: 'creative/sync-creatives-response.json',
-  list_creatives: 'creative/list-creatives-response.json',
-  preview_creative: 'creative/preview-creative-response.json',
-  list_transformers: 'creative/list-transformers-response.json',
-  get_signals: 'signals/get-signals-response.json',
-  list_property_lists: 'property/list-property-lists-response.json',
-  create_property_list: 'property/create-property-list-response.json',
-  get_property_list: 'property/get-property-list-response.json',
-  list_collection_lists: 'collection/list-collection-lists-response.json',
-  list_content_standards: 'content-standards/list-content-standards-response.json',
-  get_brand_identity: 'brand/get-brand-identity-response.json',
-  get_rights: 'brand/get-rights-response.json',
-  acquire_rights: 'brand/acquire-rights-response.json',
-  search_brands: 'brand/search-brands-response.json',
+  get_adcp_capabilities: 'protocol/get-adcp-capabilities-completed.json',
+  list_accounts: 'account/list-accounts-completed.json',
+  get_products: 'media-buy/get-products-completed.json',
+  list_products: 'media-buy/list-products-completed.json',
+  request_proposals: 'media-buy/request-proposals-completed.json',
+  refine_proposals: 'media-buy/refine-proposals-completed.json',
+  create_media_buy: 'media-buy/create-media-buy-completed.json',
+  get_media_buys: 'media-buy/get-media-buys-completed.json',
+  update_media_buy: 'media-buy/update-media-buy-completed.json',
+  get_media_buy_delivery: 'media-buy/get-media-buy-delivery-completed.json',
+  list_creative_formats: 'media-buy/list-creative-formats-completed.json',
+  sync_creatives: 'creative/sync-creatives-completed.json',
+  list_creatives: 'creative/list-creatives-completed.json',
+  preview_creative: 'creative/preview-creative-completed.json',
+  list_transformers: 'creative/list-transformers-completed.json',
+  get_signals: 'signals/get-signals-completed.json',
+  list_property_lists: 'property/list-property-lists-completed.json',
+  create_property_list: 'property/create-property-list-completed.json',
+  get_property_list: 'property/get-property-list-completed.json',
+  list_collection_lists: 'collection/list-collection-lists-completed.json',
+  list_content_standards: 'content-standards/list-content-standards-completed.json',
+  get_brand_identity: 'brand/get-brand-identity-completed.json',
+  get_rights: 'brand/get-rights-completed.json',
+  acquire_rights: 'brand/acquire-rights-completed.json',
+  search_brands: 'brand/search-brands-completed.json',
   list_tasks: 'core/tasks-list-response.json',
-  sync_audiences: 'media-buy/sync-audiences-response.json',
-  sync_event_sources: 'media-buy/sync-event-sources-response.json',
+  sync_audiences: 'media-buy/sync-audiences-completed.json',
+  sync_event_sources: 'media-buy/sync-event-sources-completed.json',
 };
 
 // list_creatives runs before sync_creatives so it lists the seeded canonical
@@ -388,7 +388,7 @@ describe('served-release response shape below 3.3 (#8487)', () => {
           }
 
           const schemaFile = tool === 'list_creative_formats' && route.startsWith('creative')
-            ? 'creative/list-creative-formats-response.json'
+            ? 'creative/list-creative-formats-completed.json'
             : RESPONSE_SCHEMAS[tool];
           const newer = fieldsAddedAfterRelease(structured, schemaFile, served)
             .filter(pointer => pointer !== '/adcp_version');

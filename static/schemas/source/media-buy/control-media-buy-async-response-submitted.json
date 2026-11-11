@@ -5,5 +5,11 @@
   "description": "Bounded submitted task envelope for control_media_buy.",
   "allOf": [
     { "$ref": "/schemas/core/compact-task-submitted.json" }
-  ]
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["media_buy_id"] },
+      { "required": ["warnings"] }
+    ]
+  }
 }

@@ -46,7 +46,7 @@ function loadScenario(name) {
 }
 
 test('seller declarations of a package-control sub-capability require the core feature', async () => {
-  const capabilities = readJson('static/schemas/source/protocol/get-adcp-capabilities-response.json');
+  const capabilities = readJson('static/schemas/source/protocol/get-adcp-capabilities-completed.json');
   const sellerFeatures = await compileSchema(capabilities.properties.media_buy.properties.features);
 
   assert.equal(sellerFeatures({ seller_optimized_budget: true }), true, 'core-only declaration is valid');

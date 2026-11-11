@@ -12,7 +12,7 @@ function read(relativePath) {
 
 test("portfolio routing scope is authoritative when present and advisory in 3.2", () => {
   const capabilities = JSON.parse(
-    read("static/schemas/source/protocol/get-adcp-capabilities-response.json")
+    read("static/schemas/source/protocol/get-adcp-capabilities-completed.json")
   );
   const portfolio = capabilities.properties.media_buy.properties.portfolio;
   for (const field of ["primary_channels", "primary_countries"]) {

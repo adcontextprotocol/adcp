@@ -42,17 +42,17 @@ const ENUM_DIR = path.join(SCHEMA_DIR, 'enums');
 // from a different concept. Key: "relFile|jsonPathPrefix". Use * for any path.
 const ALLOWED = new Set([
   // Capabilities response: snake_case wire format vs kebab-case canonical
-  'protocol/get-adcp-capabilities-response.json|/properties/supported_protocols',
+  'protocol/get-adcp-capabilities-completed.json|/properties/supported_protocols',
   // Capabilities: co-branding excludes "none" intentionally
-  'protocol/get-adcp-capabilities-response.json|/properties/creative',
-  'protocol/get-adcp-capabilities-response.json|/properties/media_buy/properties/execution/properties/co_branding',
+  'protocol/get-adcp-capabilities-completed.json|/properties/creative',
+  'protocol/get-adcp-capabilities-completed.json|/properties/media_buy/properties/execution/properties/co_branding',
   // Capabilities: quantitative vs numeric — established SI term
-  'protocol/get-adcp-capabilities-response.json|/properties/sponsored_intelligence',
+  'protocol/get-adcp-capabilities-completed.json|/properties/sponsored_intelligence',
   // State-machine transition constraints
   'creative/creative-status-changed-webhook.json|*',
   // Governance conditional restrictions
   'governance/check-governance-request.json|*',
-  'governance/check-governance-response.json|*',
+  'governance/check-governance-completed.json|*',
   // Notification config: account-anchored event types only
   'core/notification-config.json|*',
   // Creative approval scope: allOf+$ref intentional narrowing
@@ -71,11 +71,11 @@ const ALLOWED = new Set([
   // Property feature type: quantitative is the established term (not numeric)
   'property/property-feature-definition.json|*',
   // Package-level indicators intentionally exclude assignment-only types
-  'media-buy/get-media-buys-response.json|*',
+  'media-buy/get-media-buys-completed.json|*',
   // Sync response managed_by: buyer/seller overlaps canceled-by but distinct concept
-  'media-buy/sync-event-sources-response.json|/oneOf/0/properties/event_sources/items/properties/managed_by',
+  'media-buy/sync-event-sources-completed.json|/oneOf/0/properties/event_sources/items/properties/managed_by',
   // Sync response action: accounts only use created/failed/unchanged/updated (no deleted)
-  'account/sync-accounts-response.json|/oneOf/0/properties/accounts/items/properties/action',
+  'account/sync-accounts-completed.json|/oneOf/0/properties/accounts/items/properties/action',
   // canonical-media-buy-action oneOf branch intentionally lists a subset of actions
   'core/canonical-media-buy-action.json|*',
   // Event surface category has owned_property not in action-source (broader concept)
@@ -89,7 +89,7 @@ const ALLOWED = new Set([
   // Sponsored placement supported_id_types includes asin (broader than content-id-type)
   'formats/canonical/sponsored_placement.json|/properties/supported_id_types',
   // Delivery status is a superset of media-buy-status (includes failed, pending, etc.)
-  'media-buy/get-media-buy-delivery-response.json|*',
+  'media-buy/get-media-buy-delivery-completed.json|*',
   'media-buy/media-buy-delivery-webhook-result.json|*',
   // Installment lifecycle: the publication conditional intentionally names the not-yet-published statuses
   'core/installment-delivery-metrics.json|/allOf/1/if',

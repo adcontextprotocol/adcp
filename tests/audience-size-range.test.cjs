@@ -4,12 +4,13 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 
 function readSchema(uri) {
   assert.ok(uri.startsWith('/schemas/'), `Unexpected schema URI: ${uri}`);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {
@@ -28,7 +29,7 @@ const size = {
 const response = (audience) => ({ status: 'completed', audiences: [{ audience_id: 'crm_customers', action: 'updated', ...audience }] });
 
 function audienceResultSchema() {
-  const success = readSchema('/schemas/media-buy/sync-audiences-response.json').oneOf[0];
+  const success = readSchema('/schemas/media-buy/sync-audiences-completed.json').oneOf[0];
   return success.properties.audiences.items;
 }
 
@@ -67,7 +68,7 @@ test('the audience size object is registered in the schema index', () => {
 });
 
 test('sync_audiences results accept the size fields', async () => {
-  const validate = await compile('/schemas/media-buy/sync-audiences-response.json');
+  const validate = await compile('/schemas/media-buy/sync-audiences-completed.json');
   const full = response({
     status: 'ready',
     audience_size: size,
@@ -87,14 +88,14 @@ test('sync_audiences results accept the size fields', async () => {
 });
 
 test('a result that reports size without a matched count or match rate is valid', async () => {
-  const validate = await compile('/schemas/media-buy/sync-audiences-response.json');
+  const validate = await compile('/schemas/media-buy/sync-audiences-completed.json');
   const body = response({ status: 'ready', audience_size: size });
   assert.equal('matched_count' in body.audiences[0], false);
   assert.equal(validate(body), true, JSON.stringify(validate.errors));
 });
 
 test('results with only the pre-3.3 fields stay valid', async () => {
-  const validate = await compile('/schemas/media-buy/sync-audiences-response.json');
+  const validate = await compile('/schemas/media-buy/sync-audiences-completed.json');
   const body = response({
     status: 'ready',
     uploaded_count: 25000,
@@ -107,7 +108,7 @@ test('results with only the pre-3.3 fields stay valid', async () => {
 });
 
 test('malformed size objects are rejected', async () => {
-  const validate = await compile('/schemas/media-buy/sync-audiences-response.json');
+  const validate = await compile('/schemas/media-buy/sync-audiences-completed.json');
   const { lower_bound, ...noLower } = size;
   const { upper_bound, ...noUpper } = size;
   const { precision, ...noPrecision } = size;

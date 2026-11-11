@@ -4,14 +4,13 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
 function readSchema(uri) {
   assert.match(uri, /^\/schemas\//);
-  return JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)), "utf8")
-  );
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)));
 }
 
 async function compile(schema) {
@@ -76,8 +75,8 @@ describe("seller offers (media_buy.seller_offers)", () => {
     [validateProposal, validateWebhook, validateMediaBuys, validateListed] = await Promise.all([
       compile(readSchema("/schemas/core/canonical-proposal.json")),
       compile(readSchema("/schemas/core/proposal-offered-webhook.json")),
-      compile(readSchema("/schemas/media-buy/get-media-buys-response.json")),
-      compile(readSchema("/schemas/media-buy/list-proposals-response.json")),
+      compile(readSchema("/schemas/media-buy/get-media-buys-completed.json")),
+      compile(readSchema("/schemas/media-buy/list-proposals-completed.json")),
     ]);
   });
 
@@ -177,7 +176,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
       });
 
       it("keeps offer_reason experimental and out of the proposal", () => {
-        const schema = readSchema("/schemas/media-buy/list-proposals-response.json");
+        const schema = readSchema("/schemas/media-buy/list-proposals-completed.json");
         const field = schema.properties.proposals.items.properties.offer_reason;
         assert.equal(field["x-status"], "experimental");
         assert.equal(field["x-added-in"], "3.3.0");

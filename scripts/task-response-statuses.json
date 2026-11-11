@@ -1,0 +1,3385 @@
+{
+  "account/get-account-financials": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "account/list-account-changes": {
+    "admitted": [
+      "completed",
+      "failed"
+    ],
+    "open": {}
+  },
+  "account/list-accounts": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "account/report-usage": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "account/request-account": {
+    "admitted": [
+      "completed",
+      "failed"
+    ],
+    "open": {}
+  },
+  "account/sync-accounts": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "account/sync-governance": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "brand/acquire-rights": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "brand/get-brand-identity": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "brand/get-rights": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "brand/search-brands": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "brand/update-rights": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "brand/verify-brand-claim": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "brand/verify-brand-claims": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "collection/create-collection-list": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "collection/delete-collection-list": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "collection/get-collection-list": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "collection/list-collection-lists": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "collection/update-collection-list": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "compliance/comply-test-controller": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "content-standards/calibrate-content": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "content-standards/create-content-standards": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "content-standards/get-content-standards": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "content-standards/get-media-buy-artifacts": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "content-standards/list-content-standards": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "content-standards/update-content-standards": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "content-standards/validate-content-delivery": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "creative/get-creative-delivery": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "creative/get-creative-features": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "creative/list-creative-formats": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "creative/list-creatives": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "creative/list-transformers": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "creative/preview-creative": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "creative/sync-creatives": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "creative/validate-input": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "governance/check-governance": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "governance/get-plan-audit-logs": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "governance/report-plan-adjustment": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "governance/report-plan-outcome": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "governance/sync-plans": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "media-buy/accept-proposal": {
+    "admitted": [
+      "submitted",
+      "completed",
+      "failed"
+    ],
+    "open": {}
+  },
+  "media-buy/build-creative": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "media-buy/buy-products": {
+    "admitted": [
+      "submitted",
+      "completed",
+      "failed"
+    ],
+    "open": {}
+  },
+  "media-buy/control-media-buy": {
+    "admitted": [
+      "submitted",
+      "completed",
+      "failed"
+    ],
+    "open": {}
+  },
+  "media-buy/create-media-buy": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "media-buy/decline-proposals": {
+    "admitted": [
+      "submitted",
+      "completed"
+    ],
+    "open": {}
+  },
+  "media-buy/get-media-buy-delivery": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "media-buy/get-media-buy-issue": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "media-buy/get-media-buys": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "media-buy/get-products": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "media-buy/get-reporting-status": {
+    "admitted": [
+      "completed",
+      "failed"
+    ],
+    "open": {}
+  },
+  "media-buy/list-collections": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "media-buy/list-creative-formats": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "media-buy/list-products": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "media-buy/list-proposals": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "media-buy/log-event": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "media-buy/media-buy-commitment": {
+    "admitted": [
+      "submitted",
+      "completed",
+      "failed"
+    ],
+    "open": {}
+  },
+  "media-buy/provide-performance-feedback": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "media-buy/refine-proposals": {
+    "admitted": [
+      "submitted",
+      "completed"
+    ],
+    "open": {}
+  },
+  "media-buy/report-media-buy-issue": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "media-buy/request-proposals": {
+    "admitted": [
+      "submitted",
+      "completed"
+    ],
+    "open": {}
+  },
+  "media-buy/sync-audiences": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "media-buy/sync-catalogs": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "working": [
+        "failed"
+      ],
+      "input-required": [
+        "failed"
+      ],
+      "completed": [
+        "failed"
+      ],
+      "canceled": [
+        "failed"
+      ],
+      "failed": [
+        "failed"
+      ],
+      "rejected": [
+        "failed"
+      ],
+      "auth-required": [
+        "failed"
+      ],
+      "unknown": [
+        "failed"
+      ]
+    }
+  },
+  "media-buy/sync-event-sources": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "media-buy/sync-reporting-receipts": {
+    "admitted": [
+      "completed"
+    ],
+    "open": {}
+  },
+  "media-buy/sync-reporting-status": {
+    "admitted": [
+      "completed"
+    ],
+    "open": {}
+  },
+  "media-buy/update-media-buy": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "property/create-property-list": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "property/delete-property-list": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "property/get-property-list": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "property/list-property-lists": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "property/update-property-list": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "property/validate-property-delivery": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "protocol/get-adcp-capabilities": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "protocol/get-principal": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "protocol/get-task-status": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "protocol/list-tasks": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "protocol/sync-agent-notification-configs": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "protocol/sync-principal": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "signals/activate-signal": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed",
+        "failed"
+      ],
+      "working": [
+        "completed",
+        "failed"
+      ],
+      "input-required": [
+        "completed",
+        "failed"
+      ],
+      "completed": [
+        "completed",
+        "failed"
+      ],
+      "canceled": [
+        "completed",
+        "failed"
+      ],
+      "failed": [
+        "completed",
+        "failed"
+      ],
+      "rejected": [
+        "completed",
+        "failed"
+      ],
+      "auth-required": [
+        "completed",
+        "failed"
+      ],
+      "unknown": [
+        "completed",
+        "failed"
+      ]
+    }
+  },
+  "signals/get-signals": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "sponsored-intelligence/si-get-offering": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "sponsored-intelligence/si-initiate-session": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "sponsored-intelligence/si-send-message": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  },
+  "sponsored-intelligence/si-terminate-session": {
+    "admitted": [
+      "submitted",
+      "working",
+      "input-required",
+      "completed",
+      "canceled",
+      "failed",
+      "rejected",
+      "auth-required",
+      "unknown"
+    ],
+    "open": {
+      "submitted": [
+        "completed"
+      ],
+      "working": [
+        "completed"
+      ],
+      "input-required": [
+        "completed"
+      ],
+      "completed": [
+        "completed"
+      ],
+      "canceled": [
+        "completed"
+      ],
+      "failed": [
+        "completed"
+      ],
+      "rejected": [
+        "completed"
+      ],
+      "auth-required": [
+        "completed"
+      ],
+      "unknown": [
+        "completed"
+      ]
+    }
+  }
+}

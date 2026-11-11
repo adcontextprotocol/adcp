@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/create-content-standards-completed.json",
+  "title": "Create Content Standards - Completed",
+  "description": "Response payload for creating a content standards configuration",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response - returns the created standards identifier",
+      "properties": {
+        "standards_id": {
+          "type": "string",
+          "description": "Unique identifier for the created standards configuration"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "standards_id"
+      ]
+    },
+    { "$ref": "/schemas/content-standards/create-content-standards-failed.json" }
+  ]
+}

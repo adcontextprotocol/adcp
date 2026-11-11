@@ -5,6 +5,7 @@ const test = require("node:test");
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const yaml = require("js-yaml");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const ROOT = path.join(__dirname, "..");
 const SCHEMA_ROOT = path.join(ROOT, "static", "schemas", "source");
@@ -20,9 +21,7 @@ const STORYBOARD_ROOT = path.join(
 
 async function loadSchema(uri) {
   if (!uri.startsWith("/schemas/")) throw new Error(`Unexpected schema URI: ${uri}`);
-  return JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)), "utf8")
-  );
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)));
 }
 
 async function compile(uri) {

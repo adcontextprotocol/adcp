@@ -42,6 +42,7 @@ import { reportingSummaryCases } from '../../../tests/helpers/reporting-summary-
  * projection once the SDK is regenerated from RC.3 schemas.
  */
 function expectReliableReportingWireShape(response: unknown): void {
+  // The task response covers completed reads and failed lookups.
   const validation = validateSourceSchema('media-buy/get-reporting-status-response.json', response);
   expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
   expect(validation.valid).toBe(true);
@@ -57,7 +58,9 @@ describe('complete reporting summaries through public runtime validators', () =>
     const original = structuredClone(response);
     const sourceResult = validateSourceSchema('media-buy/get-reporting-status-response.json', response);
     expect(sourceResult.valid, JSON.stringify(sourceResult.errors)).toBe(valid);
-    const protocolResult = await validateProtocolSchema('/schemas/media-buy/get-reporting-status-response.json', response);
+    // The protocol validator reads the source tree, which holds the completed
+    // body; the schema build generates the task response from it.
+    const protocolResult = await validateProtocolSchema('/schemas/media-buy/get-reporting-status-completed.json', response);
     expect(protocolResult.valid, JSON.stringify(protocolResult.errors)).toBe(valid);
     if (valid) expect(validateReliableReportingResponse(response)).toBe(response);
     else expect(() => validateReliableReportingResponse(response)).toThrow('Invalid Reliable Reporting response');

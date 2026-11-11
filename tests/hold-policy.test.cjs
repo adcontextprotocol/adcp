@@ -223,7 +223,7 @@ test('hold_policy surfaces are experimental 3.3 additions', () => {
   assert.equal(placedAt['x-added-in'], '3.3.0');
   assert.match(placedAt.description, /media_buy\.hold_policy/);
 
-  const capabilities = readSchema('protocol/get-adcp-capabilities-response.json');
+  const capabilities = readSchema('protocol/get-adcp-capabilities-completed.json');
   const holdSemantics = JSON.stringify(capabilities).match(/"hold_semantics":\{[^}]*\}/);
   assert.ok(holdSemantics, 'hold_semantics capability exists');
   assert.match(holdSemantics[0], /products and drafts that do not declare hold_policy/, 'hold_semantics is the per-product default');
@@ -269,7 +269,7 @@ test('comply_test_controller reports a registered hold failure as the unable arm
   assert.equal(validate({ ...forced, forced: { arm: 'submitted', task_id: 't' } }), true, 'the existing arm directives are unchanged');
   assert.equal(validate({ ...forced, previous_state: 'draft' }), false, 'not a state transition');
 
-  const directive = readSchema('compliance/comply-test-controller-response.json').oneOf.find(
+  const directive = readSchema('compliance/comply-test-controller-completed.json').oneOf.find(
     branch => branch.title === 'ForcedDirectiveSuccess',
   );
   const proposalId = directive.properties.forced.properties.proposal_id;

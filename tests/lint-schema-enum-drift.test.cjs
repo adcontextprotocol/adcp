@@ -77,7 +77,7 @@ test('capabilities trusted_match.surfaces uses $ref to property-type.json', () =
     'schemas',
     'source',
     'protocol',
-    'get-adcp-capabilities-response.json',
+    'get-adcp-capabilities-completed.json',
   );
   const doc = JSON.parse(fs.readFileSync(capFile, 'utf8'));
   const surfaces =

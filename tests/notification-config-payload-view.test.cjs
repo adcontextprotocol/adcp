@@ -14,10 +14,11 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMAS = path.resolve(__dirname, '../static/schemas/source');
 const loadSchema = async uri =>
-  JSON.parse(fs.readFileSync(path.join(SCHEMAS, uri.replace('/schemas/', '')), 'utf8'));
+  readSchemaFile(path.join(SCHEMAS, uri.replace('/schemas/', '')));
 
 async function compile(uri, options = {}) {
   const ajv = new Ajv({ allErrors: true, strict: false, loadSchema, ...options });

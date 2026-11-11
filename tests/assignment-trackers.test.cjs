@@ -50,7 +50,7 @@ const cases = [
     row: data => data.assignment_operations[0]
   },
   {
-    schema: 'creative/list-creatives-response.json', write: false,
+    schema: 'creative/list-creatives-completed.json', write: false,
     data: { status: 'completed', query_summary: { total_matching: 1, returned: 1 }, pagination: { has_more: false },
       creatives: [{ creative_id: 'hero', name: 'Hero', format_kind: 'image', status: 'approved',
         created_date: '2026-10-15T12:00:00Z', updated_date: '2026-10-15T12:00:00Z',
@@ -59,7 +59,7 @@ const cases = [
     row: data => data.creatives[0].assignments.assigned_packages[0]
   },
   {
-    schema: 'media-buy/get-media-buys-response.json', write: false,
+    schema: 'media-buy/get-media-buys-completed.json', write: false,
     data: { status: 'completed', media_buys: [{ media_buy_id: 'mb_display', status: 'active', currency: 'USD',
       total_budget: 1000, confirmed_at: '2026-10-15T12:00:00Z', revision: 1,
       packages: [{ package_id: 'pkg_display', creative_approvals: [{ creative_id: 'hero', approval_status: 'approved' }] }] }] },
@@ -144,7 +144,7 @@ test('unreleased assignment tracker documentation request validates against the 
 });
 
 test('assignment tracker capability defaults off, requires a library, and is independent of landing-page support', async () => {
-  const creative = readSchema('protocol/get-adcp-capabilities-response.json').properties.creative;
+  const creative = readSchema('protocol/get-adcp-capabilities-completed.json').properties.creative;
   assert.equal(creative.properties.supports_assignment_trackers.default, false);
   assert.equal(creative.properties.supports_assignment_trackers['x-added-in'], '3.3.0');
   const validate = await ajv.compileAsync(creative);

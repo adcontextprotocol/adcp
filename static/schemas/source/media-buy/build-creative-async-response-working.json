@@ -29,9 +29,6 @@
       "minimum": 1,
       "description": "Current step number"
     },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

@@ -12,6 +12,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { generatedSchemaDocuments } = require('../scripts/task-responses.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
@@ -29,6 +30,8 @@ addFormats(ajv);
     }
   }
 })(SCHEMAS);
+// The schema build generates each task's response from its status bodies.
+for (const schema of generatedSchemaDocuments(SCHEMAS).values()) ajv.addSchema(structuredClone(schema));
 const request = ajv.getSchema('/schemas/compliance/comply-test-controller-request.json');
 const response = ajv.getSchema('/schemas/compliance/comply-test-controller-response.json');
 const call = params => ({ scenario: 'reporting_subscription_probe', account: { sandbox: true }, params });
@@ -96,7 +99,7 @@ test('set_account_timezone returns SetAccountTimezoneResult', () => {
   ];
   for (const [name, simulated] of bad) assert.equal(response(result(simulated)), false, name);
 
-  const res = read('compliance/comply-test-controller-response.json');
+  const res = read('compliance/comply-test-controller-completed.json');
   const def = res.definitions.SetAccountTimezoneResult;
   assert.equal(def['x-added-in'], '3.3.0');
   assert.equal(def['x-status'], 'experimental');

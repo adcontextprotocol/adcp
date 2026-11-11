@@ -4,13 +4,14 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 const REASONS = ['renewal', 'terms_change', 'migration', 'sunset', 'replacement'];
 
 function readSchema(uri) {
   assert.ok(uri.startsWith('/schemas/'), `Unexpected schema URI: ${uri}`);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(schema) {
@@ -110,7 +111,7 @@ test('get_media_buys filters by predecessor_media_buy_id', async () => {
 });
 
 test('get_media_buys items and the core media buy echo the lineage fields', async () => {
-  const response = readSchema('/schemas/media-buy/get-media-buys-response.json');
+  const response = readSchema('/schemas/media-buy/get-media-buys-completed.json');
   const item = response.properties.media_buys.items;
   const core = readSchema('/schemas/core/media-buy.json');
   for (const schema of [item, core]) {
@@ -141,7 +142,7 @@ test('every new lineage property is experimental, marked 3.3.0, and listed in th
     ['/schemas/media-buy/create-media-buy-request.json', (d) => d.properties],
     ['/schemas/media-buy/buy-products-request.json', (d) => d.properties],
     ['/schemas/media-buy/accept-proposal-request.json', (d) => d.properties],
-    ['/schemas/media-buy/get-media-buys-response.json', (d) => d.properties.media_buys.items.properties],
+    ['/schemas/media-buy/get-media-buys-completed.json', (d) => d.properties.media_buys.items.properties],
     ['/schemas/core/media-buy.json', (d) => d.properties],
   ];
   for (const [uri, pick] of SCHEMAS) {

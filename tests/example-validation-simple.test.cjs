@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -54,7 +55,7 @@ async function validateExample(data, schemaId, description) {
 
     // Load the specific schema
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const schema = readSchemaFile(schemaPath);
 
     // Compile and validate
     const validate = await ajv.compileAsync(schema);
@@ -82,7 +83,7 @@ async function expectInvalid(data, schemaId, description, errorPatterns) {
     const ajv = new Ajv({ allErrors: true, verbose: false, strict: false, discriminator: true, loadSchema: loadExternalSchema });
     addFormats(ajv);
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const schema = readSchemaFile(schemaPath);
     const validate = await ajv.compileAsync(schema);
     const isValid = validate(data);
     if (isValid) {
@@ -236,7 +237,7 @@ async function runTests() {
       ],
       sponsored_context: sponsoredContext
     },
-    '/schemas/sponsored-intelligence/si-get-offering-response.json',
+    '/schemas/sponsored-intelligence/si-get-offering-completed.json',
     'SI get offering response with sponsored context'
   );
 
@@ -265,7 +266,7 @@ async function runTests() {
       },
       sponsored_context: sponsoredContext
     },
-    '/schemas/sponsored-intelligence/si-initiate-session-response.json',
+    '/schemas/sponsored-intelligence/si-initiate-session-completed.json',
     'SI initiate session response with sponsored context'
   );
 
@@ -290,7 +291,7 @@ async function runTests() {
       },
       sponsored_context: sponsoredContext
     },
-    '/schemas/sponsored-intelligence/si-send-message-response.json',
+    '/schemas/sponsored-intelligence/si-send-message-completed.json',
     'SI send message response with sponsored context'
   );
 
@@ -624,7 +625,7 @@ async function runTests() {
         }
       ]
     },
-    '/schemas/media-buy/sync-event-sources-response.json',
+    '/schemas/media-buy/sync-event-sources-completed.json',
     'sync_event_sources response (success)'
   );
 
@@ -635,7 +636,7 @@ async function runTests() {
         { "code": "AUTHENTICATION_FAILED", "message": "Invalid or expired credentials" }
       ]
     },
-    '/schemas/media-buy/sync-event-sources-response.json',
+    '/schemas/media-buy/sync-event-sources-completed.json',
     'sync_event_sources response (error)'
   );
 
@@ -769,7 +770,7 @@ async function runTests() {
       "warnings": ["Low match quality on 1 event — consider adding hashed_email or UIDs"],
       "match_quality": 0.67
     },
-    '/schemas/media-buy/log-event-response.json',
+    '/schemas/media-buy/log-event-completed.json',
     'log_event response (success with partial failure)'
   );
 
@@ -780,7 +781,7 @@ async function runTests() {
         { "code": "EVENT_SOURCE_NOT_FOUND", "message": "Event source 'unknown_pixel' not found on this account" }
       ]
     },
-    '/schemas/media-buy/log-event-response.json',
+    '/schemas/media-buy/log-event-completed.json',
     'log_event response (error)'
   );
 
@@ -1602,7 +1603,7 @@ async function runTests() {
         ]
       }
     },
-    '/schemas/protocol/get-adcp-capabilities-response.json',
+    '/schemas/protocol/get-adcp-capabilities-completed.json',
     'get_adcp_capabilities response with measurement capability block (#3612)'
   );
 
@@ -1627,7 +1628,7 @@ async function runTests() {
         ]
       }
     },
-    '/schemas/protocol/get-adcp-capabilities-response.json',
+    '/schemas/protocol/get-adcp-capabilities-completed.json',
     'measurement.metrics[] rejects duplicate entries (uniqueItems)',
     [/uniqueItems|duplicate/i]
   );

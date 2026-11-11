@@ -132,7 +132,7 @@ checks:
         storyboard: version_negotiation
         steps: [get_capabilities_with_version]
     schema_sites:
-      - "protocol/get-adcp-capabilities-response.json#/properties/adcp/properties/major_versions"
+      - "protocol/get-adcp-capabilities-completed.json#/properties/adcp/properties/major_versions"
 
   - id: adcp_version_echo_required_in_4_0
     issue: 3572
@@ -186,7 +186,7 @@ checks:
         storyboard: capability_discovery
         steps: [get_capabilities]
     schema_sites:
-      - "protocol/get-adcp-capabilities-response.json#/properties/webhook_signing/properties/legacy_hmac_fallback"
+      - "protocol/get-adcp-capabilities-completed.json#/properties/webhook_signing/properties/legacy_hmac_fallback"
 
   - id: capabilities_structural_bounds_required_in_4_0
     issue: 8198
@@ -352,7 +352,7 @@ schema_removals_not_checked:
       - "core/placement.json#/properties/format_ids"
       - "core/registry-event.json#/$defs/agentProfilePayload/properties/format_ids"
       - "media-buy/acceptance-policy-requirement.json#/oneOf/13/properties/format_ids"
-      - "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/format_ids"
+      - "media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/format_ids"
       - "trusted-match/available-package.json#/properties/format_ids"
 
   - change: "Format-level build and pricing surface, replaced by list_transformers and v1_format_ref"
@@ -401,9 +401,9 @@ schema_removals_not_checked:
       Seller-emitted and observable on create, update, and get_media_buys
       responses, but not graded yet.
     sites:
-      - "media-buy/create-media-buy-response.json#/oneOf/0/properties/valid_actions"
-      - "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/valid_actions"
-      - "media-buy/update-media-buy-response.json#/oneOf/0/properties/valid_actions"
+      - "media-buy/create-media-buy-completed.json#/oneOf/0/properties/valid_actions"
+      - "media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/valid_actions"
+      - "media-buy/update-media-buy-completed.json#/oneOf/0/properties/valid_actions"
 
   - change: "Response-wide delivery currency and aggregated_totals"
     issue: 8379
@@ -411,8 +411,8 @@ schema_removals_not_checked:
       Seller-emitted legacy rollups that 4.0 buyers stop reading. Observable on
       get_media_buy_delivery but not graded yet.
     sites:
-      - "media-buy/get-media-buy-delivery-response.json#/properties/currency"
-      - "media-buy/get-media-buy-delivery-response.json#/properties/aggregated_totals"
+      - "media-buy/get-media-buy-delivery-completed.json#/properties/currency"
+      - "media-buy/get-media-buy-delivery-completed.json#/properties/aggregated_totals"
       - "media-buy/media-buy-delivery-webhook-result.json#/properties/currency"
 
   - change: "Inline creatives in create_media_buy and update_media_buy"
@@ -441,7 +441,7 @@ schema_removals_not_checked:
       3.x already requires total_count alongside it, so dropping the alias
       needs no agent change.
     sites:
-      - "creative/get-creative-delivery-response.json#/properties/pagination/properties/total"
+      - "creative/get-creative-delivery-completed.json#/properties/pagination/properties/total"
 
   - change: "property_list_changed signature marker"
     issue: 8384
@@ -464,4 +464,4 @@ schema_removals_not_checked:
       must not emit purchase_continuation). Not graded.
     sites:
       - "core/media-buy-legacy-terms-ref.json#"
-      - "media-buy/request-proposals-response.json#/properties/purchase_continuation"
+      - "media-buy/request-proposals-completed.json#/properties/purchase_continuation"

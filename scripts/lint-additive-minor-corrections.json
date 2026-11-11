@@ -419,6 +419,17 @@
       "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
+      "file": "creative/get-creative-features-terminal-success.json",
+      "pointer": "",
+      "required": "status",
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
+        "quote": "The `status` field is REQUIRED on every task response envelope"
+      },
+      "reason": "Correction (b) of DR-0036: the completed get_creative_features body composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
       "file": "media-buy/accept-proposal-async-response-input-required.json",
       "pointer": "",
       "required": "status",

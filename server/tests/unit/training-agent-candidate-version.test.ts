@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+
+const { generatedSchemaDocuments } = createRequire(import.meta.url)('../../../scripts/task-responses.cjs');
 import { loadStoryboardFile, registerExternalSchemaRoot, runStoryboardStep, unregisterExternalSchemaRoot } from '@adcp/sdk/testing';
 import { storyboardStepStatus } from '../manual/storyboard-report-format.js';
 
@@ -28,6 +31,13 @@ describe('local candidate wire contract', () => {
     // no generated development output or immutable release files are changed.
     schemaRoot = mkdtempSync(path.join(tmpdir(), 'adcp-candidate-version-'));
     cpSync(path.resolve('static/schemas/source'), schemaRoot, { recursive: true });
+    // Plus the documents the schema build generates from the source: every
+    // task's <task>-response.json.
+    for (const [rel, schema] of generatedSchemaDocuments(path.resolve('static/schemas/source')) as Map<string, unknown>) {
+      const filename = path.join(schemaRoot, ...rel.split('/'));
+      mkdirSync(path.dirname(filename), { recursive: true });
+      writeFileSync(filename, JSON.stringify(schema, null, 2));
+    }
     for (const file of readdirSync(schemaRoot, { recursive: true }) as string[]) {
       if (!file.endsWith('.json')) continue;
       const filename = path.join(schemaRoot, file);

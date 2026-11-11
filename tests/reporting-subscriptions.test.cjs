@@ -135,7 +135,7 @@ test('sync_principal accepts the section and get_principal reads it back', () =>
   assert.equal(state({ reporting_subscriptions: [{ ...current, state: 'inactive' }] }), false, 'inactive needs deactivated_at');
   assert.equal(state({ reporting_subscriptions: [{ ...current, deactivated_at: '2026-11-02T00:00:00Z' }] }), false, 'active with deactivated_at');
 
-  const enumValues = read('protocol/get-adcp-capabilities-response.json').properties.adcp.properties.principal.properties.supported_sections.items.enum;
+  const enumValues = read('protocol/get-adcp-capabilities-completed.json').properties.adcp.properties.principal.properties.supported_sections.items.enum;
   assert.ok(enumValues.includes('reporting_subscriptions'));
 });
 
@@ -283,7 +283,7 @@ test('a buy stops being owed at the earliest of end_time, canceled_at, and compl
   assert.match(rule, /an elapsed period never becomes owed retroactively/);
   assert.match(rule, /so is the period containing the stop time/);
   assert.match(rule, /overlaps no period and owes nothing/);
-  for (const [file, keys] of [['core/media-buy.json', ['properties', 'completed_at']], ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']]]) {
+  for (const [file, keys] of [['core/media-buy.json', ['properties', 'completed_at']], ['media-buy/get-media-buys-completed.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']]]) {
     const field = keys.reduce((o, k) => o[k], read(file));
     assert.equal(field['x-added-in'], '3.3.0', file);
     assert.match(field.description, /MUST populate it for completed buys/, file);
@@ -421,7 +421,7 @@ test('principal.changed announces reporting subscription changes', () => {
 });
 
 test('get_reporting_status carries subscription_coverage in summary but not revision view', () => {
-  const v = validate('/schemas/media-buy/get-reporting-status-response.json');
+  const v = validate('/schemas/media-buy/get-reporting-status-completed.json');
   const summary = {
     status: 'completed',
     view: 'summary',
@@ -460,8 +460,9 @@ test('get_reporting_status carries subscription_coverage in summary but not revi
     subscription_coverage: [{ ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', from, overridden_by: { delivery_config_id: 'acct-analytics' } }] }],
   };
   assert.ok(v(summary), JSON.stringify(v.errors));
-  const schema = read('media-buy/get-reporting-status-response.json');
-  const revisionView = schema.oneOf[0].oneOf.find(s => s.title === 'Revision view');
+  const schema = read('media-buy/get-reporting-status-completed.json');
+  // get-reporting-status-completed.json is the completed body: its oneOf holds the views.
+  const revisionView = schema.oneOf.find(s => s.title === 'Revision view');
   assert.ok(JSON.stringify(revisionView.not).includes('subscription_coverage'), 'revision view excludes subscription_coverage');
   assert.equal(schema['x-adcp-validation'].revoked_account_reads, undefined, 'no read carve-out for former principals');
   assert.match(schema['x-adcp-validation'].caller_isolation, /identical lookup_unavailable shape/);
@@ -522,7 +523,7 @@ function capabilities({ subscriptions = true, section = true, feature = true, ta
 }
 
 test('advertising subscriptions requires the feature id, the section, and sync_principal in configuration_tasks', () => {
-  const v = validate('/schemas/protocol/get-adcp-capabilities-response.json');
+  const v = validate('/schemas/protocol/get-adcp-capabilities-completed.json');
   assert.ok(v(capabilities()), JSON.stringify(v.errors));
   assert.ok(v(capabilities({ subscriptions: false, section: false, feature: false, tasks: null })), `pre-3.3 shape still validates: ${JSON.stringify(v.errors)}`);
   assert.ok(v(capabilities({ subscriptions: false, section: false, feature: false, tasks: ['sync_accounts'] })), JSON.stringify(v.errors));
@@ -724,7 +725,7 @@ test('obligations flag a billing stub, and only billing obligations can be stubs
 test('the stop time is the cancellation delivery stop, not when the cancellation was recorded', () => {
   for (const [file, keys] of [
     ['core/media-buy.json', ['properties', 'cancellation_effective_at']],
-    ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'cancellation_effective_at']],
+    ['media-buy/get-media-buys-completed.json', ['properties', 'media_buys', 'items', 'properties', 'cancellation_effective_at']],
   ]) {
     const field = keys.reduce((o, k) => o[k], read(file));
     assert.equal(field.format, 'date-time', file);
@@ -831,7 +832,7 @@ test('membership edits apply in place as excluded_by_buyer intervals', () => {
   assert.match(schema['x-adcp-validation'].membership, /never as a new version/);
   assert.match(schema['x-adcp-validation'].membership, /from the first boundary at or after accepted_at until the first boundary at or after T/);
   assert.match(read('core/reporting-subscription-coverage.json').definitions.ReportingSubscriptionExclusionReason.description, /removing it from account_ids/);
-  assert.match(read('media-buy/get-reporting-status-response.json').properties.subscription_coverage.description, /removed from in place/);
+  assert.match(read('media-buy/get-reporting-status-completed.json').properties.subscription_coverage.description, /removed from in place/);
   const v = validate('/schemas/core/reporting-subscription-coverage.json');
   // Removed at T = Nov 10 12:00Z on a UTC-5 daily feed: the entry opens at E = Nov 11 05:00Z.
   assert.ok(v({ subscription_id: 's', subscription_version: 3, status: 'excluded', excluded: [{ reason: 'excluded_by_buyer', from: '2026-11-11T05:00:00Z' }] }), JSON.stringify(v.errors));
@@ -857,7 +858,7 @@ test('per-account state is bounded inline and paged through get_principal', () =
   const schema = read('protocol/get-principal-request.json');
   for (const keyword of ['oneOf', 'anyOf', 'if', 'not']) assert.equal(schema.properties[keyword], undefined);
 
-  const res = validate('/schemas/protocol/get-principal-response.json');
+  const res = validate('/schemas/protocol/get-principal-completed.json');
   const current = { kind: 'current', principal_id: 'pr_1', principal_kind: 'buyer_agent', configuration_version: 'v1', configuration: { reporting_subscriptions: [] } };
   const page = { subscription_id: 'analytics-daily', list: 'accounts_unauthorized', accounts_unauthorized: [{ account_id: 'acc_7', unauthorized_at: '2026-11-20T09:00:00Z', withheld_period_count: 0 }], pagination: { has_more: false } };
   assert.ok(res({ status: 'completed', result: { ...current, reporting_subscription_page: page } }), JSON.stringify(res.errors));
@@ -896,7 +897,7 @@ function flightAt(current, history, when) {
 test('flight_history lets a buyer recompute past periods after a retroactive edit', () => {
   for (const [file, keys] of [
     ['core/media-buy.json', ['properties', 'flight_history']],
-    ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'flight_history']],
+    ['media-buy/get-media-buys-completed.json', ['properties', 'media_buys', 'items', 'properties', 'flight_history']],
   ]) {
     const field = keys.reduce((o, k) => o[k], read(file));
     assert.equal(field['x-status'], 'experimental', file);
@@ -928,7 +929,7 @@ test('regranted_at, per-package offering snapshots, and offering availability ar
   assert.match(auth.description, /MUST populate it whenever the current chain has a re-grant/);
   assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].coverage, /due at authorization\.regranted_at plus the offering's delivery_sla/);
 
-  const pkg = read('media-buy/get-media-buys-response.json').properties.media_buys.items.properties.packages.items.properties.reporting_delivery_offering_ids;
+  const pkg = read('media-buy/get-media-buys-completed.json').properties.media_buys.items.properties.packages.items.properties.reporting_delivery_offering_ids;
   assert.equal(pkg.items.$ref, '/schemas/core/reporting-delivery-offering-id.json');
   assert.equal(pkg['x-added-in'], '3.3.0');
   assert.match(pkg.description, /fixed when the package is confirmed/);
@@ -946,7 +947,7 @@ test('regranted_at, per-package offering snapshots, and offering availability ar
 });
 
 test('several offerings per version: generations and consumer-status chains carry offering_id', () => {
-  const gen = read('media-buy/get-reporting-status-response.json').properties.scope.properties.delivery_config_generations;
+  const gen = read('media-buy/get-reporting-status-completed.json').properties.scope.properties.delivery_config_generations;
   assert.ok(gen.items.properties.offering_id, 'delivery_config_generations[].offering_id');
   assert.deepEqual(gen.items.required, ['delivery_config_id', 'delivery_config_version', 'feed_purpose'], 'offering_id stays optional');
   assert.match(gen.description, /listed once per resolved offering/);
@@ -961,7 +962,7 @@ test('several offerings per version: generations and consumer-status chains carr
 });
 
 test('next_expected_at and frozen periods are defined for owed sets', () => {
-  const response = read('media-buy/get-reporting-status-response.json');
+  const response = read('media-buy/get-reporting-status-completed.json');
   assert.match(response.properties.next_expected_at.description, /a scheduled period counts only when the subscription coverage rule, less open exceptions, owes it/);
   assert.match(response['x-adcp-validation'].subscription_coverage, /final in a snapshot whose ledger_as_of is later than period\.end/);
   assert.match(response['x-adcp-validation'].subscription_coverage, /a period ending at or after ledger_as_of is not frozen/);
@@ -1043,7 +1044,7 @@ test('the schema refuses exactly the mixed durations the period rule refuses und
 });
 
 test('a package added after confirmation carries added_at, its own confirmed_at for coverage', () => {
-  const field = read('media-buy/get-media-buys-response.json').properties.media_buys.items.properties.packages.items.properties.added_at;
+  const field = read('media-buy/get-media-buys-completed.json').properties.media_buys.items.properties.packages.items.properties.added_at;
   assert.equal(field.format, 'date-time');
   assert.equal(field['x-status'], 'experimental');
   assert.equal(field['x-added-in'], '3.3.0');

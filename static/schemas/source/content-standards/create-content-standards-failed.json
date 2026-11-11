@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/content-standards/create-content-standards-failed.json",
+  "title": "Create Content Standards - Failed",
+  "description": "Body of a failed create_content_standards response: errors, and the conflicting standards when the new standards conflict. The completed body also admits this body.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
+  "properties": {
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "conflicting_standards_id": {
+      "type": "string",
+      "description": "If the error is a scope conflict, the ID of the existing standards that conflict"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "errors"
+  ]
+}

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { before, describe, test } = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA_ROOT = path.join(ROOT, 'static', 'schemas', 'source');
@@ -17,7 +18,7 @@ const VECTOR_PATH = path.join(
 
 function readSchema(uri) {
   const relative = uri.replace(/^\/schemas\//, '').split('#', 1)[0];
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, relative), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, relative));
 }
 
 async function loadExternalSchema(uri) {
@@ -178,7 +179,7 @@ describe('request-only targeting null-clear semantics', () => {
     assert.equal(readSchema('/schemas/media-buy/product-discovery-criteria.json').properties.targeting_overlay.$ref, strictRef);
     assert.equal(readSchema('/schemas/media-buy/get-products-request.json').properties.targeting_overlay.$ref, strictRef);
     assert.equal(
-      readSchema('/schemas/media-buy/get-media-buys-response.json')
+      readSchema('/schemas/media-buy/get-media-buys-completed.json')
         .properties.media_buys.items.properties.packages.items.properties.targeting_overlay.$ref,
       strictRef
     );
@@ -248,10 +249,7 @@ describe('request-only targeting null-clear semantics', () => {
   test('older-version projections fail closed when a clear is not exactly representable', () => {
     const dimensions = ['geo_regions', 'audience_include', 'audience_exclude'];
     for (const version of ['3.0.0', '3.1.0']) {
-      const legacy = JSON.parse(fs.readFileSync(
-        path.join(ROOT, 'dist', 'schemas', version, 'core', 'targeting.json'),
-        'utf8'
-      ));
+      const legacy = readSchemaFile(path.join(ROOT, 'dist', 'schemas', version, 'core', 'targeting.json'));
       const ajv = new Ajv({ strict: false });
       for (const dimension of dimensions) {
         assert.ok(legacy.properties[dimension], `${version} lacks ${dimension}`);
@@ -262,10 +260,7 @@ describe('request-only targeting null-clear semantics', () => {
       }
     }
 
-    const legacy25 = JSON.parse(fs.readFileSync(
-      path.join(ROOT, 'dist', 'schemas', '2.5.3', 'core', 'targeting.json'),
-      'utf8'
-    ));
+    const legacy25 = readSchemaFile(path.join(ROOT, 'dist', 'schemas', '2.5.3', 'core', 'targeting.json'));
     assert.equal(
       new Ajv({ strict: false }).validate(legacy25.properties.geo_region_any_of, []),
       true,

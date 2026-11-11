@@ -414,7 +414,7 @@ test("frequency cap scope is determined by request location", async () => {
   );
 
   const getMediaBuys = JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "get-media-buys-response.json"), "utf8")
+    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "get-media-buys-completed.json"), "utf8")
   );
   assert.equal(
     getMediaBuys.properties.media_buys.items.properties.frequency_cap.$ref,
@@ -423,7 +423,7 @@ test("frequency cap scope is determined by request location", async () => {
   );
 
   const capabilities = JSON.parse(
-    fs.readFileSync(path.join(SCHEMA_ROOT, "protocol", "get-adcp-capabilities-response.json"), "utf8")
+    fs.readFileSync(path.join(SCHEMA_ROOT, "protocol", "get-adcp-capabilities-completed.json"), "utf8")
   );
   const mediaBuyCapabilities = capabilities.properties.media_buy.properties;
   assert.equal(
@@ -587,13 +587,13 @@ test("split proposal responses expose brief targeting resolution", async () => {
 
   const requestSchema = JSON.parse(
     fs.readFileSync(
-      path.join(SCHEMA_ROOT, "media-buy", "request-proposals-response.json"),
+      path.join(SCHEMA_ROOT, "media-buy", "request-proposals-completed.json"),
       "utf8"
     )
   );
   const refineSchema = JSON.parse(
     fs.readFileSync(
-      path.join(SCHEMA_ROOT, "media-buy", "refine-proposals-response.json"),
+      path.join(SCHEMA_ROOT, "media-buy", "refine-proposals-completed.json"),
       "utf8"
     )
   );
@@ -1039,7 +1039,7 @@ test("seller targeting rollups are explicit true-valued routing hints", async ()
       path.join(
         SCHEMA_ROOT,
         "protocol",
-        "get-adcp-capabilities-response.json"
+        "get-adcp-capabilities-completed.json"
       ),
       "utf8"
     )
@@ -1095,7 +1095,7 @@ test("3.2 targeting discovery is release-gated without a redundant feature flag"
       path.join(
         SCHEMA_ROOT,
         "protocol",
-        "get-adcp-capabilities-response.json"
+        "get-adcp-capabilities-completed.json"
       ),
       "utf8"
     )
@@ -1148,7 +1148,7 @@ test("wholesale cache scope includes targeting-aware discovery inputs everywhere
     "utf8"
   );
   const responseSchema = fs.readFileSync(
-    path.join(SCHEMA_ROOT, "media-buy", "get-products-response.json"),
+    path.join(SCHEMA_ROOT, "media-buy", "get-products-completed.json"),
     "utf8"
   );
   const taskReference = fs.readFileSync(

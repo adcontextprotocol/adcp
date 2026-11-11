@@ -10,6 +10,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const VECTORS_PATH = path.join(
   __dirname,
@@ -29,7 +30,7 @@ async function loadExternalSchema(uri) {
   if (schemaPath !== SCHEMA_BASE_DIR && !schemaPath.startsWith(SCHEMA_BASE_DIR + path.sep)) {
     throw new Error(`Schema ref escapes base directory: ${uri}`);
   }
-  return JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  return readSchemaFile(schemaPath);
 }
 
 function resolvePath(obj, dottedPath) {
@@ -51,8 +52,10 @@ describe('get_media_buys status_as_of and creative state freshness vectors', () 
   before(async () => {
     const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
     addFormats(ajv);
-    rootSchema = await loadExternalSchema(data.schema);
-    validate = await ajv.compileAsync(rootSchema);
+    // Payloads validate against the task response; the media buy fields are
+    // declared in the completed body it is generated from.
+    validate = await ajv.compileAsync(await loadExternalSchema(data.schema));
+    rootSchema = await loadExternalSchema('/schemas/media-buy/get-media-buys-completed.json');
   });
 
   it('has a valid file structure', () => {
@@ -84,7 +87,7 @@ describe('get_media_buys status_as_of and creative state freshness vectors', () 
   });
 
   it('creative state freshness fields are optional, non-nullable date-time', async () => {
-    const listCreatives = await loadExternalSchema('/schemas/creative/list-creatives-response.json');
+    const listCreatives = await loadExternalSchema('/schemas/creative/list-creatives-completed.json');
     const packageSchema = rootSchema.properties.media_buys.items.properties.packages.items;
     const approvalSchema = packageSchema.properties.creative_approvals.items;
     const creativeSchema = listCreatives.properties.creatives.items;

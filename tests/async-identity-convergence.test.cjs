@@ -86,7 +86,7 @@ test('the four 3.x request fields are documented compatibility no-ops', () => {
 });
 
 test('webhook retry horizon is bounded, additive, and normative for 3.2 emitters', () => {
-  const schema = readJson('static/schemas/source/protocol/get-adcp-capabilities-response.json');
+  const schema = readJson('static/schemas/source/protocol/get-adcp-capabilities-completed.json');
   const signing = schema.properties.webhook_signing;
   const horizon = signing.properties.delivery_retry_horizon_seconds;
 

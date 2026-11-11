@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA_ROOT = path.join(ROOT, 'static/schemas/source');
@@ -12,7 +13,7 @@ const PROFILE_ID = 'adcp-prod-security-3.3';
 
 async function loadSchema(uri) {
   assert.ok(uri.startsWith('/schemas/'), `Unexpected schema URI: ${uri}`);
-  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+  return readSchemaFile(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)));
 }
 
 async function compile(uri) {
@@ -33,7 +34,7 @@ function capabilities(extra) {
 }
 
 test('security_profiles is optional, an open string array, and rejects malformed ids', async () => {
-  const validate = await compile('/schemas/protocol/get-adcp-capabilities-response.json');
+  const validate = await compile('/schemas/protocol/get-adcp-capabilities-completed.json');
   for (const extra of [{}, { security_profiles: [] }, { security_profiles: [PROFILE_ID] }, { security_profiles: [PROFILE_ID, 'adcp-prod-security-3.4'] }]) {
     assert.equal(validate(capabilities(extra)), true, JSON.stringify(validate.errors));
   }
@@ -43,15 +44,15 @@ test('security_profiles is optional, an open string array, and rejects malformed
 });
 
 test('advertising a profile requires the security.profiles experimental feature', async () => {
-  const validate = await compile('/schemas/protocol/get-adcp-capabilities-response.json');
-  const schema = await loadSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+  const validate = await compile('/schemas/protocol/get-adcp-capabilities-completed.json');
+  const schema = await loadSchema('/schemas/protocol/get-adcp-capabilities-completed.json');
   assert.equal(schema.properties.security_profiles['x-status'], 'experimental');
   assert.equal(validate(capabilities({ security_profiles: [PROFILE_ID], experimental_features: [] })), false);
   assert.equal(validate(capabilities({ security_profiles: [], experimental_features: [] })), true, JSON.stringify(validate.errors));
 });
 
 test('the profile page names the registered id and the schema description agrees', async () => {
-  const schema = await loadSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+  const schema = await loadSchema('/schemas/protocol/get-adcp-capabilities-completed.json');
   const description = schema.properties.security_profiles.description;
   assert.ok(description.includes(PROFILE_ID));
   assert.ok(DOC.includes(PROFILE_ID));
@@ -79,8 +80,8 @@ test('every spend-committing operation in the closed list has a request schema',
 });
 
 test('error codes the profile page cites exist in the published enums', () => {
-  const errorCodes = JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, 'enums/error-code.json'), 'utf8')).enum;
-  const signingCodes = JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, 'enums/request-signing-error-code.json'), 'utf8')).enum;
+  const errorCodes = readSchemaFile(path.join(SCHEMA_ROOT, 'enums/error-code.json')).enum;
+  const signingCodes = readSchemaFile(path.join(SCHEMA_ROOT, 'enums/request-signing-error-code.json')).enum;
   const cited = [...DOC.matchAll(/`([A-Za-z_]+)`/g)].map((m) => m[1]);
   const adcpCodes = cited.filter((c) => /^[A-Z][A-Z_]+$/.test(c) && c.includes('_'));
   const signing = cited.filter((c) => c.startsWith('request_signature_'));
@@ -90,7 +91,7 @@ test('error codes the profile page cites exist in the published enums', () => {
 });
 
 test('admission requires the A2A operation-source marker the capabilities schema defines', async () => {
-  const schema = await loadSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+  const schema = await loadSchema('/schemas/protocol/get-adcp-capabilities-completed.json');
   const sources = schema.properties.request_signing.properties.operation_sources.items.enum;
   for (const source of ['a2a_invocation_skill', 'mcp_tools_call']) {
     assert.ok(sources.includes(source), `${source} is not an operation source`);

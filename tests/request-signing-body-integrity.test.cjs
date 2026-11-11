@@ -22,7 +22,7 @@ const protocolMethodFixturePath = path.join(
 const protocolMethodFixture = JSON.parse(fs.readFileSync(protocolMethodFixturePath, 'utf8'));
 const capabilitiesSchemaPath = path.join(
   __dirname,
-  '../static/schemas/source/protocol/get-adcp-capabilities-response.json'
+  '../static/schemas/source/protocol/get-adcp-capabilities-completed.json'
 );
 const capabilitiesSchema = JSON.parse(fs.readFileSync(capabilitiesSchemaPath, 'utf8'));
 const schemaRoot = path.join(__dirname, '../static/schemas/source');

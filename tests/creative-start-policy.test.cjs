@@ -20,7 +20,7 @@ const surfaces = [
   ['media-buy/package-update.json', schema => schema, { package_id: 'pkg_launch' }],
   ['media-buy/package-control.json', schema => schema, { package_id: 'pkg_launch', paused: false }],
   ['core/package.json', schema => schema, { package_id: 'pkg_launch' }],
-  ['media-buy/get-media-buys-response.json',
+  ['media-buy/get-media-buys-completed.json',
     schema => schema.properties.media_buys.items.properties.packages.items,
     { package_id: 'pkg_launch' }],
 ];
@@ -72,9 +72,9 @@ test('compound create and update use the package schemas that define the gate', 
   assert.equal(create.properties.packages.items.$ref, '/schemas/media-buy/package-request.json');
   assert.equal(update.properties.new_packages.items.$ref, '/schemas/media-buy/package-request.json');
   assert.equal(update.properties.packages.items.$ref, '/schemas/media-buy/package-update.json');
-  const success = readSchema('media-buy/create-media-buy-response.json').oneOf[0];
+  const success = readSchema('media-buy/create-media-buy-completed.json').oneOf[0];
   assert.equal(success.properties.packages.items.$ref, '/schemas/core/package.json');
-  const updated = readSchema('media-buy/update-media-buy-response.json').oneOf[0];
+  const updated = readSchema('media-buy/update-media-buy-completed.json').oneOf[0];
   assert.equal(updated.properties.affected_packages.items.$ref, '/schemas/core/package.json');
   const control = readSchema('media-buy/control-media-buy-request.json');
   assert.equal(control.properties.packages.items.$ref, '/schemas/media-buy/package-control.json');
@@ -101,7 +101,7 @@ test('initial creative gating is discoverable through the shared media-buy featu
   assert.equal(validate({ creative_start_policy: 'true' }), false);
   assert.equal(features.properties.creative_start_policy['x-added-in'], '3.3.0');
   assert.equal(features.properties.creative_start_policy.default, false);
-  const capabilities = readSchema('protocol/get-adcp-capabilities-response.json');
+  const capabilities = readSchema('protocol/get-adcp-capabilities-completed.json');
   assert.equal(capabilities.properties.media_buy.properties.features.allOf[0].$ref,
     '/schemas/core/media-buy-features.json');
 });

@@ -37,6 +37,13 @@ const {
   MCP_PROTOCOL_VERSION,
   generateMcpSchemaProjection,
 } = require('./mcp-schema-projection.cjs');
+const {
+  taskStatusSchemas,
+  taskResponseRel,
+  completedBodyRel,
+  generatedSchemaDocuments,
+  readSourceSchemaDocument,
+} = require('./task-responses.cjs');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
@@ -1021,8 +1028,9 @@ function buildExtensions(sourceDir, targetDir, version) {
 // metadata each SDK currently hand-rolls and drifts on.
 //
 // Tool name derivation: the basename `<name>-request.json` → tool name
-// `<name>` with hyphens converted to underscores. The matching response
-// is `<name>-response.json`; async variants follow the same prefix.
+// `<name>` with hyphens converted to underscores. The matching completed
+// body is `<name>-completed.json`, and the build generates the task's
+// response, `<name>-response.json`; async variants follow the same prefix.
 //
 // Protocol derivation: the source directory name. Tools at the source
 // root (none today, but reserved) are intentionally excluded — every tool
@@ -1291,8 +1299,10 @@ function discoverTools(sourceDir) {
       const toolName = toolBase.replace(/-/g, '_');
       const requestPath = path.join(protoDir, f.name);
       const requestSchema = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
-      const responseName = `${toolBase}-response.json`;
-      const responseSchema = `${protocol}/${responseName}`;
+      // The completed body is the file on disk; the build generates the
+      // task's response, <task>-response.json, from the status bodies.
+      const completedSchema = completedBodyRel(protocol, toolBase);
+      const responseName = completedSchema.slice(protocol.length + 1);
       const summary = requestSchema['x-tool-summary'];
       if (summary !== undefined && (
         typeof summary !== 'string'
@@ -1333,8 +1343,8 @@ function discoverTools(sourceDir) {
       if (!fs.existsSync(responsePath)) {
         // A request with no matching response is a bug, not a tool — surface it.
         throw new Error(
-          `Manifest generation: ${protocol}/${f.name} has no matching response schema (${responseName}). ` +
-          `Either add the response file or move the request out of the protocol directory.`
+          `Manifest generation: ${protocol}/${f.name} has no matching completed body (${responseName}). ` +
+          `Either add the completed body or move the request out of the protocol directory.`
         );
       }
       const mutating = classifyRequestMutating(requestPath);
@@ -1343,6 +1353,10 @@ function discoverTools(sourceDir) {
         .filter(g => g.isFile() && g.name.startsWith(`${toolBase}-async-response-`) && g.name.endsWith('.json'))
         .map(g => `${protocol}/${g.name}`)
         .sort();
+      // One body per envelope status; the build composes them into the
+      // tool's response (scripts/task-responses.cjs), the schema a tool
+      // response validates against.
+      const statusSchemas = taskStatusSchemas(sourceDir, protocol, toolBase);
 
       tools.push({
         name: toolName,
@@ -1360,7 +1374,9 @@ function discoverTools(sourceDir) {
         ...(legacyFallback ? { legacy_fallback: legacyFallback } : {}),
         ...(supersededBy ? { superseded_by: supersededBy } : {}),
         request_schema: `${protocol}/${f.name}`,
-        response_schema: responseSchema,
+        response_schema: taskResponseRel(protocol, toolBase),
+        completed_response_schema: completedSchema,
+        status_schemas: statusSchemas,
         async_response_schemas: asyncVariants
       });
     }
@@ -1541,6 +1557,16 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       fs.writeFileSync(targetPath, content);
     }
   }
+
+  // At the tree root, publish the documents the build generates from the
+  // source: every task's response (scripts/task-responses.cjs).
+  if (fs.existsSync(path.join(sourceDir, 'enums', 'task-status.json'))) {
+    for (const [rel, schema] of generatedSchemaDocuments(sourceDir)) {
+      const targetPath = path.join(targetDir, ...rel.split('/'));
+      ensureDir(path.dirname(targetPath));
+      fs.writeFileSync(targetPath, transformPublishedSchemaText(JSON.stringify(schema), version));
+    }
+  }
 }
 
 function copyAsyncResponseRefsToCore(targetDir) {
@@ -1643,7 +1669,15 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
   const result = {};
 
   for (const [key, value] of Object.entries(schema)) {
-    if (key === '$ref' && typeof value === 'string' && options.hoistRefs && options.hoistRefs.has(value)) {
+    const hashAt = typeof value === 'string' ? value.indexOf('#') : -1;
+    const hoistedDocument = key === '$ref' && hashAt > 0 && options.alwaysHoist && options.alwaysHoist.has(value.slice(0, hashAt))
+      ? options.hoistRefs.get(value.slice(0, hashAt))
+      : null;
+    if (hoistedDocument) {
+      // A pointer into a document kept once in root $defs points into that
+      // entry instead of copying the node it names.
+      result[key] = `#/$defs/${hoistedDocument.defName}${value.slice(hashAt + 1)}`;
+    } else if (key === '$ref' && typeof value === 'string' && options.hoistRefs && options.hoistRefs.has(value)) {
       // Source-identity hoist (see `hoistBySourceIdentity`): point at the
       // root `$defs` entry instead of inlining. Sibling keys (notably the
       // per-call-site `description`) are visited as ordinary keys of this
@@ -1667,7 +1701,7 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
       }
 
       try {
-        let refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        let refContent = readSourceSchemaDocument(refPath, sourceDir);
         if (fragment) {
           if (!fragment.startsWith('/')) throw new Error(`Unsupported schema fragment: ${value}`);
           refContent = fragment
@@ -1730,9 +1764,11 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
  * `refPaths` are `/schemas/...` refs without a fragment, e.g.
  * `/schemas/core/provenance.json`. A listed ref is hoisted only when it
  * appears 2+ times in the resolved schema; otherwise it is inlined as
- * before and no `$defs` entry is added.
+ * before and no `$defs` entry is added. A ref in `alwaysHoist` is hoisted
+ * however often it appears, and a ref with a fragment into its document
+ * points into the `$defs` entry.
  */
-function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new Set()) {
+function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new Set(), { alwaysHoist = new Set() } = {}) {
   const hoistRefs = new Map();
   const bodies = new Map();
   for (const refPath of refPaths) {
@@ -1752,8 +1788,15 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
     bodies.set(refPath, source);
   }
 
-  let options = { hoistRefs };
+  let options = { hoistRefs, alwaysHoist };
   let result = resolveRefs(schema, sourceDir, ancestorRefs, options);
+  // An always-hoisted document is written once, below; count the call-sites
+  // inside it too, since the schema itself only points at it.
+  for (const refPath of alwaysHoist) {
+    if (!bodies.has(refPath)) continue;
+    const refFile = path.join(sourceDir, refPath.replace('/schemas/', ''));
+    resolveRefs(bodies.get(refPath), sourceDir, new Set([...ancestorRefs, refFile]), options);
+  }
 
   // Like `hoistDuplicateInlineEnums`, only hoist what repeats. A single
   // call-site gains nothing from a `$defs` indirection, and the local
@@ -1762,13 +1805,14 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
   // singletons so those bundles stay byte-identical to before.
   let hasSingleton = false;
   for (const [refPath, entry] of [...hoistRefs]) {
+    if (alwaysHoist.has(refPath)) continue;
     if (entry.count === 1) hasSingleton = true;
     if (entry.count < 2) hoistRefs.delete(refPath);
   }
   if (hasSingleton) {
     for (const refPath of [...bodies.keys()]) if (!hoistRefs.has(refPath)) bodies.delete(refPath);
     for (const entry of hoistRefs.values()) entry.count = 0;
-    options = { hoistRefs };
+    options = { hoistRefs, alwaysHoist };
     result = resolveRefs(schema, sourceDir, ancestorRefs, options);
   }
   if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
@@ -1907,7 +1951,7 @@ function hoistNestedDefsToRoot(schema) {
  * Complex object schemas ($defs hoisting for objects) is intentionally out of
  * scope — see issue #3145 for the RFC on opt-in x-hoist markers.
  */
-function hoistDuplicateInlineEnums(schema) {
+function hoistDuplicateInlineEnums(schema, scanDefs = []) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
     return schema;
   }
@@ -1955,6 +1999,9 @@ function hoistDuplicateInlineEnums(schema) {
   }
 
   collect(schema);
+  // Root $defs entries named in scanDefs (the status bodies of a task
+  // response) are part of the tree, not hoisted definitions.
+  for (const name of scanDefs) collect(schema.$defs[name]);
 
   // Build fingerprint → defName map for titled enums that appear 2+ times.
   // Untitled enums are left inline — we can't derive a meaningful type name
@@ -2007,6 +2054,7 @@ function hoistDuplicateInlineEnums(schema) {
   }
 
   replace(schema);
+  for (const name of scanDefs) replace(schema.$defs[name]);
   schema.$defs = rootDefs;
   return schema;
 }
@@ -2041,7 +2089,7 @@ function hoistDuplicateInlineEnums(schema) {
  */
 const HOIST_MARKER = 'x-adcp-hoist';
 
-function hoistMarkedSchemas(schema) {
+function hoistMarkedSchemas(schema, scanDefs = []) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
     return schema;
   }
@@ -2096,6 +2144,9 @@ function hoistMarkedSchemas(schema) {
   }
 
   collect(schema);
+  // Root $defs entries named in scanDefs (the status bodies of a task
+  // response) are part of the tree, not hoisted definitions.
+  for (const name of scanDefs) collect(schema.$defs[name]);
 
   if (seen.size === 0) {
     // No markers found at hoist-eligible sites. Still strip any stray
@@ -2183,6 +2234,7 @@ function hoistMarkedSchemas(schema) {
   }
 
   replace(schema);
+  for (const name of scanDefs) replace(schema.$defs[name]);
 
   // Final sweep: delete any stray `x-adcp-hoist` keys that survived (e.g.
   // markers authored inside a pre-existing $defs entry that Pass 1
@@ -2327,13 +2379,58 @@ function dedupBundledSchemaIds(schema) {
 const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
 
 /**
+ * The whole documents that a task response's status bodies name directly
+ * (core/product.json from both the completed and the input-required
+ * get_products bodies, say). Each is kept once in root $defs when two or more
+ * call-sites use it, instead of inlined into every body. A document whose
+ * title is missing or shared with another candidate is left inline, and so is
+ * a document the response's own root composes (the protocol envelope): the
+ * root keeps the composition it publishes.
+ */
+function sharedBodyDocumentRefs(schema, sourceDir, bodyRefs) {
+  const rootComposes = new Set((Array.isArray(schema.allOf) ? schema.allOf : []).map((member) => member && member.$ref));
+  const refs = new Set();
+  (function walk(node) {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.$ref === 'string' && node.$ref.startsWith('/schemas/') && !node.$ref.includes('#')) refs.add(node.$ref);
+    Object.values(node).forEach(walk);
+  })(bodyRefs.map((ref) => readSourceSchemaDocument(path.join(sourceDir, ref.replace('/schemas/', '')), sourceDir)));
+  const byName = new Map();
+  for (const ref of refs) {
+    if (bodyRefs.includes(ref) || IDENTITY_HOISTED_REFS.includes(ref) || rootComposes.has(ref)) continue;
+    const file = path.join(sourceDir, ref.replace('/schemas/', ''));
+    if (!fs.existsSync(file)) continue;
+    const title = JSON.parse(fs.readFileSync(file, 'utf8')).title;
+    const name = typeof title === 'string' ? title.replace(/[^A-Za-z0-9_]/g, '') : '';
+    if (!name) continue;
+    byName.set(name, byName.has(name) ? null : ref);
+  }
+  return [...byName.values()].filter(Boolean);
+}
+
+/** The status bodies a generated task response's branches name, once each. */
+function statusBodyRefs(schema) {
+  if (!schema || !schema['x-generated'] || !Array.isArray(schema.oneOf)) return [];
+  const refs = schema.oneOf.flatMap((branch) => [...(branch.allOf || []), ...(branch.anyOf || [])])
+    .map((member) => member && member.$ref)
+    .filter((ref) => typeof ref === 'string');
+  return [...new Set(refs)];
+}
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
 async function generateBundledSchemas(sourceDir, bundledDir, version) {
   ensureDir(bundledDir);
 
-  const schemaFiles = findSchemaFiles(sourceDir);
+  // Source documents plus the documents the build generates from them
+  // (every task's response).
+  const schemaFiles = [
+    ...findSchemaFiles(sourceDir),
+    ...[...generatedSchemaDocuments(sourceDir).keys()].map(rel => path.join(sourceDir, ...rel.split('/'))),
+  ];
   let successCount = 0;
   let errorCount = 0;
 
@@ -2367,13 +2464,26 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
     if (!shouldBundle) continue;
 
     try {
-      // Read the schema
-      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+      // Read the schema (a task response is generated, not on disk)
+      const schema = readSourceSchemaDocument(schemaPath, sourceDir);
 
       // Resolve all $refs. Schemas listed in IDENTITY_HOISTED_REFS are
       // written once to root $defs instead of being inlined at every
       // call-site, keeping per-call-site `description` siblings. See #4875.
-      const dereferenced = hoistBySourceIdentity(schema, sourceDir, IDENTITY_HOISTED_REFS, new Set([schemaPath]));
+      // A task response keeps each status body once in root $defs: its
+      // branches name the bodies by reference, so a validator compiles each
+      // body on its own (inlined, the get_products bodies compile into one
+      // function whose call stack overflows), and a body's pointers into
+      // another body (the failed body's completed fields) point into that
+      // entry instead of copying it.
+      const statusBodies = statusBodyRefs(schema);
+      const dereferenced = hoistBySourceIdentity(
+        schema, sourceDir,
+        [...IDENTITY_HOISTED_REFS, ...statusBodies, ...sharedBodyDocumentRefs(schema, sourceDir, statusBodies)],
+        new Set([schemaPath]),
+        { alwaysHoist: new Set(statusBodies) },
+      );
+
 
       // After inlining, referenced schemas that carried local `#/$defs/...`
       // pointers leave their `$defs` nested wherever they were inlined —
@@ -2385,13 +2495,17 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // Hoist pure-enum schemas that were inlined 2+ times to $defs and
       // replace duplicates with $ref pointers. Eliminates the Foo / Foo1
       // numbered-suffix codegen artifact. See #3145.
-      hoistDuplicateInlineEnums(dereferenced);
+      // The status bodies kept in root $defs are scanned like the rest.
+      const statusBodyDefs = Object.keys(dereferenced.$defs || {})
+        .filter((name) => statusBodies.includes(dereferenced.$defs[name] && dereferenced.$defs[name].$id));
+      hoistDuplicateInlineEnums(dereferenced, statusBodyDefs);
 
       // Hoist complex schemas explicitly marked with `x-adcp-hoist: true`
       // to $defs and replace inline occurrences with $ref. Opt-in companion
       // to the pure-enum auto-hoist for spec-author-declared canonical
       // shared types. See #4557.
-      hoistMarkedSchemas(dereferenced);
+      hoistMarkedSchemas(dereferenced, statusBodyDefs);
+
 
       // Stamp inlined sub-schema `$id`s with the version (#3868). Source
       // schemas declare `$id` as `/schemas/core/foo.json` (unversioned);

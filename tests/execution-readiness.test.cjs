@@ -4,12 +4,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
+const { readSchemaFile } = require('../scripts/task-responses.cjs');
 
 const ROOT = path.resolve(__dirname, "..");
 const SOURCE = path.join(ROOT, "static", "schemas", "source");
 
 function readJson(relativePath) {
-  return JSON.parse(fs.readFileSync(path.join(SOURCE, relativePath), "utf8"));
+  return readSchemaFile(path.join(SOURCE, relativePath));
 }
 
 async function loadSchema(uri) {
@@ -442,13 +443,19 @@ test("the readiness map rides on a public-scope response", async () => {
     "a map entry needs requirements",
   );
 
-  const schema = readJson("media-buy/get-products-response.json");
+  const schema = readJson("media-buy/get-products-completed.json");
   assert.ok(
     !schema.required?.includes("execution_readiness"),
     "the map is optional",
   );
+  // The completed and rejected bodies declare the map by reference to the
+  // shared get_products declarations.
   assert.equal(
-    schema.properties.execution_readiness["x-status"],
+    schema.properties.execution_readiness.$ref,
+    "/schemas/media-buy/get-products-shared-properties.json#/definitions/execution_readiness",
+  );
+  assert.equal(
+    readJson("media-buy/get-products-shared-properties.json").definitions.execution_readiness["x-status"],
     "experimental",
   );
 });

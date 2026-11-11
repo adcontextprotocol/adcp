@@ -96,8 +96,8 @@ test('codegen-facing schema titles remain stable', () => {
     ['core/creative-asset.json', ['oneOf', 1, 'title'], 'v2 creative (canonical format kind)'],
     ['core/creative-manifest.json', ['oneOf', 0, 'title'], 'Named-format manifest'],
     ['core/creative-manifest.json', ['oneOf', 1, 'title'], 'Canonical-format manifest'],
-    ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'oneOf', 0, 'title'], 'Listed creative (named-format reference)'],
-    ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'oneOf', 1, 'title'], 'Listed creative (canonical format kind)'],
+    ['creative/list-creatives-completed.json', ['properties', 'creatives', 'items', 'oneOf', 0, 'title'], 'Listed creative (named-format reference)'],
+    ['creative/list-creatives-completed.json', ['properties', 'creatives', 'items', 'oneOf', 1, 'title'], 'Listed creative (canonical format kind)'],
   ];
 
   for (const [relativePath, segments, expected] of expectations) {
@@ -152,7 +152,7 @@ test('format_ids is deprecated in 3.2 and removed in 4.0 everywhere', () => {
 
 test('delivery reporting deprecates cross-buy totals and report-wide currency', () => {
   const response = JSON.parse(fs.readFileSync(
-    path.join(SOURCE_DIR, 'media-buy/get-media-buy-delivery-response.json'),
+    path.join(SOURCE_DIR, 'media-buy/get-media-buy-delivery-completed.json'),
     'utf8',
   ));
   const webhook = JSON.parse(fs.readFileSync(

@@ -16947,7 +16947,7 @@
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/selection",
-        "static/schemas/source/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
+        "static/schemas/source/media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
       "timezones": [],
@@ -17219,7 +17219,7 @@
       "rule": "A package is owed from the later of the buy's confirmed_at and its added_at. pkg_2 was added at 11-03T09 while the buy awaited confirmation; the buy was confirmed at 11-04T15, so pkg_2 is owed from the 11-04 period, which contains confirmed_at, exactly like pkg_1. Taking added_at alone would wrongly owe off_b_pkg the 11-03 period.",
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
-        "static/schemas/source/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
+        "static/schemas/source/media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
       "timezones": [],
@@ -17407,7 +17407,7 @@
       "rule": "pkg_2 was added at 11-05T00:00Z, a boundary of off_b_pkg's daily UTC schedule. The 11-04 period ends at added_at, not after it, so it is not owed for pkg_2; the 11-05 period is the first owed, as for a buy confirmed exactly on a boundary.",
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
-        "static/schemas/source/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
+        "static/schemas/source/media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
       "timezones": [],
@@ -17596,7 +17596,7 @@
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
         "static/schemas/source/core/reporting-subscription-coverage.json#/properties/excluded",
-        "static/schemas/source/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
+        "static/schemas/source/media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
         "docs/media-buy/task-reference/get_reporting_status.mdx#exceptions"
       ],
       "timezones": [],
@@ -17739,7 +17739,7 @@
       "rule": "Australia/Sydney leaves DST at 03:00 AEDT on Sunday 2026-04-05, so that local day runs from 04-04T13:00Z (midnight at +11:00) to 04-05T14:00Z (midnight at +10:00), 25 hours. pkg_2 was added at 04-05T13:30Z, 23:30 local on April 5: inside that day, an hour after a 24-hour day would have ended. The April 5 period contains added_at and is owed in full for off_b_acct_tz; off_a_acct_tz, resolved since confirmation, is owed from April 3.",
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
-        "static/schemas/source/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
+        "static/schemas/source/media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
         "static/schemas/source/core/reporting-schedule.json#/x-adcp-validation/period_generation",
         "docs/media-buy/task-reference/get_reporting_status.mdx#which-periods-are-owed"
       ],
@@ -17957,7 +17957,7 @@
       "spec_refs": [
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/selection",
         "static/schemas/source/core/reporting-subscription.json#/x-adcp-validation/coverage",
-        "static/schemas/source/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
+        "static/schemas/source/media-buy/get-media-buys-completed.json#/properties/media_buys/items/properties/packages/items/properties/added_at",
         "static/schemas/source/core/reporting-delivery-offering.json#/properties/available_from"
       ],
       "timezones": [],

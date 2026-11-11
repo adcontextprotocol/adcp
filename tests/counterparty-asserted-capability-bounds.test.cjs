@@ -60,7 +60,7 @@ const read = (relative) => fs.readFileSync(path.join(DOCS, relative), 'utf8');
 
 const schema = JSON.parse(
   fs.readFileSync(
-    path.join(ROOT, 'static/schemas/source/protocol/get-adcp-capabilities-response.json'),
+    path.join(ROOT, 'static/schemas/source/protocol/get-adcp-capabilities-completed.json'),
     'utf8',
   ),
 );

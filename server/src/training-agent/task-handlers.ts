@@ -21132,7 +21132,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   // property-breakdown feature flags on a 3.2 response.
   return omitFieldsAddedAfterRelease(
     capabilities,
-    'protocol/get-adcp-capabilities-response.json',
+    'protocol/get-adcp-capabilities-completed.json',
     isThreeZeroResponse ? '3.0' : servedAdcpVersion,
   );
 }

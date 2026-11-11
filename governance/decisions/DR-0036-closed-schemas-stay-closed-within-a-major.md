@@ -199,6 +199,7 @@ accepts `status` at these locations:
 |---|---|---|---|
 | `core/compact-task-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
 | `core/compact-task-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
+| `creative/get-creative-features-terminal-success.json` | root | `required: status` | Composes the envelope, which requires `status`. |
 | `creative/sync-creatives-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |
 | `creative/sync-creatives-async-response-working.json` | root | `required: status` | Composes the envelope, which requires `status`. |
 | `media-buy/accept-proposal-async-response-input-required.json` | root | `required: status` | Composes the envelope, which requires `status`. |

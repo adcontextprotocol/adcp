@@ -8,6 +8,7 @@ const YAML = require('yaml');
 const Ajv = require('ajv').default;
 const addFormats = require('ajv-formats').default;
 const { loadStoryboardFile, runStoryboard } = require('@adcp/sdk/testing');
+const { generatedSchemaDocuments } = require('../scripts/task-responses.cjs');
 
 const SCENARIOS = path.join(__dirname, '../static/compliance/source/protocols/media-buy/scenarios');
 const ajv = new Ajv({ strict: false, allErrors: true });
@@ -27,6 +28,11 @@ addFormats(ajv);
     }
   }
 })(path.join(__dirname, '../static/schemas/source'));
+// The schema build generates each task's response, <task>-response.json, from
+// its status bodies; each payload below is validated against it.
+for (const schema of generatedSchemaDocuments(path.join(__dirname, '../static/schemas/source')).values()) {
+  ajv.addSchema(structuredClone(schema));
+}
 
 for (const name of ['provenance_enforcement', 'provenance_audit_observation', 'provenance_truth_of_claim']) {
   test(`${name} seeds schema-valid products whose declarations cover every creative probe`, () => {
