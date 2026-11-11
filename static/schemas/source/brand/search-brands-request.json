@@ -7,15 +7,12 @@
   "type": "object",
   "properties": {
     "adcp_major_version": {
-      "type": "integer",
-      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
-      "minimum": 1,
-      "maximum": 99
+      "$ref": "/schemas/core/adcp-major-version.json",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version."
     },
     "query": {
-      "type": "string",
-      "description": "Natural language description of the brands to find. The agent interprets intent, category, and roster coverage from this text.",
-      "maxLength": 2000
+      "$ref": "/schemas/core/brand-agent-query.json",
+      "description": "Natural language description of the brands to find. The agent interprets intent, category, and roster coverage from this text."
     },
     "industries": {
       "type": "array",
@@ -29,8 +26,7 @@
       "type": "array",
       "description": "Optional market filter. Returns brands with rights availability in at least one of the specified countries (ISO 3166-1 alpha-2).",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1
     },

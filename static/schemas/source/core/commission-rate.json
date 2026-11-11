@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/commission-rate.json",
+  "title": "Commission Rate",
+  "description": "Decimal proportion of commissionable value that a revenue-share price charges, greater than 0 and at most 1.",
+  "type": "number",
+  "maximum": 1,
+  "exclusiveMinimum": 0
+}

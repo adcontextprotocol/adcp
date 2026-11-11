@@ -42,8 +42,7 @@
             "description": "Amount owed to the vendor for this record, denominated in currency."
           },
           "currency": {
-            "type": "string",
-            "pattern": "^[A-Z]{3}$",
+            "$ref": "/schemas/core/currency-code.json",
             "description": "ISO 4217 currency code."
           },
           "pricing_option_id": {
@@ -116,8 +115,7 @@
             "description": "ISO 8601 timestamp at which the reporter considered these numbers final. Present only when `final: true`. Anchors any deadline declared in the buy's `measurement_terms.billing_measurement.finalization_deadline_hours`."
           },
           "measurement_window": {
-            "type": "string",
-            "maxLength": 50,
+            "$ref": "/schemas/core/measurement-window-id.json",
             "description": "Which measurement window this record represents, referencing a window_id from the product's reporting_capabilities.measurement_windows or from `measurement_terms.billing_measurement.measurement_window`. Examples: 'c7' for broadcast TV, 'post_sivt' for digital post-IVT, 'downloads_30d' for podcast. When absent, the record is not windowed (standard digital reporting). When the buy's `measurement_terms.billing_measurement.measurement_window` is set, reporters SHOULD include `measurement_window` so the receiver can reconcile against the correct stage.",
             "examples": [
               "live",

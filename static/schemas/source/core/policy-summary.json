@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/policy-summary.json",
+  "title": "Policy Summary",
+  "description": "Brief summary of what one governance policy covers.",
+  "type": "string",
+  "maxLength": 500
+}

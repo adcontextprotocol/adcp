@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "metric": { "$ref": "/schemas/enums/performance-standard-metric.json" },
-    "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+    "threshold": { "$ref": "/schemas/core/fraction.json" },
     "standard": { "$ref": "/schemas/enums/viewability-standard.json" },
     "vendor": { "$ref": "/schemas/core/brand-key.json" },
     "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json", "x-added-in": "3.3.0" }

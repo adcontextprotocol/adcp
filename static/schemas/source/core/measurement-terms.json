@@ -26,9 +26,7 @@
           "examples": [["server_logs"], ["server_logs", "sdk"]]
         },
         "max_variance_percent": {
-          "type": "number",
-          "minimum": 0,
-          "exclusiveMaximum": 100,
+          "$ref": "/schemas/core/billing-variance-percent.json",
           "description": "Maximum acceptable variance between the billing vendor's count and the other party's count before resolution is triggered (e.g., 10 means a 10% divergence triggers review)."
         },
         "measurement_window": {

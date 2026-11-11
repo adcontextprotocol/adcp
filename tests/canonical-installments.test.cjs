@@ -105,7 +105,8 @@ test('a canonical installment is identified by the (collection_ref, installment_
   assert.equal(schema.additionalProperties, false);
   assert.deepEqual(schema.required, ['installment_id', 'collection_ref']);
   assert.equal(schema.properties.collection_id, undefined, 'no deprecated shorthand is declared');
-  assert.equal(schema.properties.installment_id['x-entity'], 'installment');
+  assert.equal(schema.properties.installment_id.$ref, '/schemas/core/installment-id.json');
+  assert.equal(readSchema('core/installment-id.json')['x-entity'], 'installment');
 });
 
 test('a derivative names its source canonically, not by a response-local installment_id', async () => {

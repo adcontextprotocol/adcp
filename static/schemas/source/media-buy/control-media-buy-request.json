@@ -23,18 +23,13 @@
       "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version"
     },
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json"
     },
     "account": {
       "$ref": "/schemas/core/canonical-account-ref.json"
     },
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "revision": {
       "type": "integer",
@@ -42,10 +37,7 @@
       "description": "Required optimistic-concurrency revision from the latest MediaBuy snapshot."
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Replace the human-readable MediaBuy name as revision-checked operational metadata. This display label is not an identifier, financial reference, or change to the accepted commercial terms."
     },
     "paused": {
@@ -57,15 +49,13 @@
       "description": "Exercise an already-accepted unilateral cancellation right. A cancellation requiring seller agreement is requested by refining the accepted proposal."
     },
     "cancellation_reason": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 500
+      "$ref": "/schemas/core/cancellation-reason.json"
     },
     "total_budget": {
       "type": "object",
       "properties": {
         "amount": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        "currency": { "$ref": "/schemas/core/currency-code.json" }
       },
       "required": ["amount", "currency"],
       "additionalProperties": false
@@ -83,8 +73,10 @@
       ]
     },
     "budget_cap_timezone": {
-      "type": ["string", "null"],
-      "minLength": 1,
+      "anyOf": [
+        { "$ref": "/schemas/core/iana-timezone.json" },
+        { "type": "null" }
+      ],
       "description": "Replace the shared IANA cap-day timezone override; null restores the default selected by budget_capping.timezone_basis (Account.timezone or fixed_timezone). A timezone change begins at the next boundary under the previously effective timezone."
     },
     "budget_allocation": {
@@ -118,9 +110,7 @@
       "$ref": "/schemas/core/reporting-webhook.json"
     },
     "governance_context": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4096
+      "$ref": "/schemas/core/governance-context.json"
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json"

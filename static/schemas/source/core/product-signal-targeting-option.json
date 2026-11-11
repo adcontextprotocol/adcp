@@ -43,11 +43,7 @@
       "type": "array",
       "description": "How this signal may be used when composing package-level signal targeting groups. 'include' means the signal may appear in an 'any' child group. 'exclude' means the signal may appear in a 'none' child group. Omit when the signal is include-only. This field declares the allowed buy-time group operator; binary package signal entries still use value=true in both include and exclude groups.",
       "items": {
-        "type": "string",
-        "enum": [
-          "include",
-          "exclude"
-        ]
+        "$ref": "/schemas/enums/signal-targeting-mode.json"
       },
       "uniqueItems": true,
       "minItems": 1,

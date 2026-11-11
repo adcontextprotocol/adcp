@@ -32,7 +32,10 @@ for (const [name, select, legacy] of surfaces) {
       return readSchema(uri.slice('/schemas/'.length));
     } });
     addFormats(ajv);
-    const validate = await ajv.compileAsync(select(readSchema(name)));
+    // A selected subschema keeps its document's definitions for local references.
+    const document = readSchema(name);
+    const selected = select(document);
+    const validate = await ajv.compileAsync(selected === document ? document : { ...selected, definitions: { ...(document.definitions || {}), ...(selected.definitions || {}) } });
     for (const payload of [legacy, { ...legacy, [FIELD]: false }, { ...legacy, [FIELD]: true }]) {
       assert.equal(validate(payload), true, JSON.stringify(validate.errors));
     }

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-lookback-window.json",
+  "title": "Signal Lookback Window",
+  "description": "Time window in which a qualifying event can occur for inclusion in a signal.",
+  "type": "string",
+  "enum": [
+    "intra_day",
+    "daily",
+    "weekly",
+    "monthly",
+    "bi_monthly",
+    "quarterly",
+    "bi_annually",
+    "annually"
+  ]
+}

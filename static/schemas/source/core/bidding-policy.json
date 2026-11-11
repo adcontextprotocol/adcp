@@ -30,8 +30,7 @@
           "description": "Average cost amount per scope-bound primary-goal result, denominated in the media-buy currency."
         },
         "strength": {
-          "type": "string",
-          "enum": ["cap", "target"],
+          "$ref": "/schemas/enums/outcome-target-cost-strength.json",
           "description": "`cap` optimizes for an average at or below the amount and accepts underdelivery when necessary; `target` optimizes around the amount while balancing volume and spend. Neither is a per-result or per-auction guarantee."
         }
       },
@@ -48,8 +47,7 @@
           "description": "Return per unit of ad spend; 4 means 4 units of value per 1 unit spent."
         },
         "strength": {
-          "type": "string",
-          "enum": ["floor", "target"],
+          "$ref": "/schemas/enums/roas-strength.json",
           "description": "`floor` prefers underdelivery to knowingly optimizing below the requested return; `target` optimizes around the requested return. Neither guarantees realized return."
         }
       },

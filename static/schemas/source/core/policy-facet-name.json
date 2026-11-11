@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/policy-facet-name.json",
+  "title": "Policy Facet Name",
+  "description": "Display name of one facet within a governance policy category.",
+  "type": "string",
+  "minLength": 1
+}

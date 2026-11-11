@@ -10,21 +10,12 @@
       "description": "ProductSignalTargetingOption.selection_group value this rule applies to."
     },
     "targeting_mode": {
-      "type": "string",
-      "description": "How options in this selection_group are intended to be used in signal_targeting_groups. 'include' maps to child groups with operator 'any'. 'exclude' maps to child groups with operator 'none'. Omit when options in the group may be used according to each option's allowed_targeting_modes.",
-      "enum": [
-        "include",
-        "exclude"
-      ]
+      "$ref": "/schemas/enums/signal-targeting-mode.json",
+      "description": "How options in this selection_group are intended to be used in signal_targeting_groups. 'include' maps to child groups with operator 'any'. 'exclude' maps to child groups with operator 'none'. Omit when options in the group may be used according to each option's allowed_targeting_modes."
     },
     "selection_mode": {
-      "type": "string",
-      "description": "Selection behavior for this selection_group. 'required' means at least min_selected_signals, or 1 when omitted. 'fixed' means default_selected options in this group are seller-applied and read-only.",
-      "enum": [
-        "optional",
-        "required",
-        "fixed"
-      ]
+      "$ref": "/schemas/enums/signal-selection-mode.json",
+      "description": "Selection behavior for this selection_group. 'required' means at least min_selected_signals, or 1 when omitted. 'fixed' means default_selected options in this group are seller-applied and read-only."
     },
     "min_selected_signals": {
       "type": "integer",

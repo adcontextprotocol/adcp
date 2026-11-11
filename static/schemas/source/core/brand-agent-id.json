@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-agent-id.json",
+  "title": "Brand Agent ID",
+  "description": "Identifier of an agent entry in a brand.json.",
+  "type": "string",
+  "pattern": "^[a-z0-9_]+$"
+}

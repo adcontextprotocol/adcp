@@ -9,7 +9,7 @@
       "type": "object",
       "properties": {
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
-        "max_variance_percent": { "type": "number", "minimum": 0, "exclusiveMaximum": 100 },
+        "max_variance_percent": { "$ref": "/schemas/core/billing-variance-percent.json" },
         "measurement_window": { "type": "string", "minLength": 1 },
         "finalization_deadline_hours": { "type": "integer", "minimum": 0 }
       },

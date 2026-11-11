@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/numeric-place-id.json",
+  "title": "Numeric Place ID",
+  "description": "Numeric place identifier in the geonames, google_ads, or microsoft_ads system.",
+  "type": "string",
+  "pattern": "^[0-9]+$"
+}

@@ -48,11 +48,8 @@
           }
         },
         "locale_variant_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Buyer-assigned locale variant that supplied the served assets. Required for every delivered variant of a localized creative, including default fallback delivery. Omitted for unlocalized creatives.",
-          "x-entity": "creative_locale_variant"
+          "$ref": "/schemas/core/creative-locale-variant-id.json",
+          "description": "Buyer-assigned locale variant that supplied the served assets. Required for every delivered variant of a localized creative, including default fallback delivery. Omitted for unlocalized creatives."
         },
         "manifest": {
           "$ref": "/schemas/core/creative-manifest.json",

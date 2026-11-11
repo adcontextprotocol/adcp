@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/reporting-subscription-page-list.json",
+  "title": "Reporting Subscription Page List",
+  "description": "List that a reporting subscription page reads.",
+  "type": "string",
+  "enum": [
+    "accounts_with_exceptions",
+    "accounts_unauthorized",
+    "prior_versions"
+  ]
+}

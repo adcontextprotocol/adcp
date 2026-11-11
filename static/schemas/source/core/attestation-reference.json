@@ -31,9 +31,7 @@
               "const": "credential_uri"
             },
             "credential_uri": {
-              "type": "string",
-              "format": "uri",
-              "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+              "$ref": "/schemas/core/canonical-https-url.json",
               "description": "HTTPS URI of the credential. Before any fetch, evaluators MUST match its canonical origin to credential_origins on the accepted issuer capability and then apply the attestation fetch contract."
             },
             "ext": {
@@ -59,10 +57,7 @@
               "x-entity": "attestation_credential"
             },
             "resolver_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
-              "pattern": "^[A-Za-z0-9._:-]+$",
+              "$ref": "/schemas/core/attestation-resolver-id.json",
               "description": "Identifier of a resolver already published in the matched accepted_issuers[].resolvers[] capability. A presenter cannot supply or override its URL."
             },
             "ext": {
@@ -96,8 +91,7 @@
       "additionalProperties": false
     },
     "content_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Optional SHA-256 digest pin for the exact credential bytes, formatted as sha256:<lowercase hex>. The credential format defines its canonical byte representation. A mismatch is invalid and MUST NOT fall back to the unpinned credential. REQUIRED when both locator and embedded_credential are present; both byte representations MUST match this digest."
     },
     "credential_version": {
@@ -127,9 +121,7 @@
       "description": "Optional presenter nomination of a verifier already published by the evaluator. This is a representation, not routing authority: agent_url MUST match an accepted_verifiers[] entry after canonicalization, and the evaluator may choose another accepted verifier or verify locally.",
       "properties": {
         "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+          "$ref": "/schemas/core/canonical-https-url.json"
         }
       },
       "required": ["agent_url"],

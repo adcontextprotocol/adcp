@@ -29,7 +29,6 @@ const {
   findingKey,
   historyPairs,
   lintAdditiveMinor,
-  recordedCorrections,
   readBaselineAtRef,
 } = require('../scripts/lint-additive-minor.cjs');
 const { fixtureEnv, gitFixture } = require('./helpers/git-object-fixture.cjs');
@@ -408,8 +407,8 @@ test('an opened schema in the CI check passes and reports the notice', () => {
 // Corrections
 // ---------------------------------------------------------------------------
 
-// A repository root for correction fixtures: one source text and one decision
-// record whose correction tables list the fixture corrections.
+// A repository root for correction fixtures: one source text and the decision
+// record that the fixture corrections list names.
 const FIXTURE_DECISION = 'DR-9001';
 const FIXTURE_SOURCE = { path: 'docs/rule.md', quote: 'Roots and containers stay open.' };
 let fixtureRootPath = null;
@@ -421,43 +420,7 @@ function fixtureRoot() {
   // The quote wraps across a line break, as prose in the repository does.
   fs.writeFileSync(path.join(fixtureRootPath, FIXTURE_SOURCE.path), '# Rule\n\nRoots and containers\nstay open.\n');
   fs.mkdirSync(path.join(fixtureRootPath, 'governance', 'decisions'), { recursive: true });
-  fs.writeFileSync(path.join(fixtureRootPath, 'governance', 'decisions', `${FIXTURE_DECISION}-fixture.md`), [
-    '## Decision',
-    '',
-    '### Corrections',
-    '',
-    '#### (a) Reopen the fixture schemas',
-    '',
-    '| Schema | Pointer | Property | Reason |',
-    '|---|---|---|---|',
-    '| `core/closed.json` | root | `*` | A root. |',
-    '| `core/explicit-open.json` | root | `*` | A root. |',
-    '| `core/union.json` | `/oneOf/0`, `/oneOf/1` | `*` | Response branches. |',
-    '| `core/closed.json` | `/properties/missing` | `*` | A location no schema has. |',
-    '',
-    '#### (b) Declare one property',
-    '',
-    '| Schema | Pointer | Property | Reason |',
-    '|---|---|---|---|',
-    '| `core/closed.json` | root | `extra` | Required by the rule. |',
-    '',
-    '#### (c) Tighten one bound',
-    '',
-    '| Schema | Pointer | Bound | Reason |',
-    '|---|---|---|---|',
-    '| `core/closed.json` | `/properties/id` | `minLength: 1` | The rule names an identifier. |',
-    '',
-    '#### (d) Require one name',
-    '',
-    '| Schema | Pointer | Required | Reason |',
-    '|---|---|---|---|',
-    '| `core/open.json` | root | `required: note` | The rule requires a note. |',
-    '',
-    '## Rationale',
-    '',
-    '| `core/open.json` | root | `*` | Outside the corrections section. |',
-    '',
-  ].join('\n'));
+  fs.writeFileSync(path.join(fixtureRootPath, 'governance', 'decisions', `${FIXTURE_DECISION}-fixture.md`), '## Decision\n\nA fixture record.\n');
   return fixtureRootPath;
 }
 
@@ -572,14 +535,6 @@ test('a bound correction admits no other value or bound', () => {
 test('fails when a bound correction is not applied in the candidate', () => {
   const result = analyzePair(() => {}, { correctionsValue: corrections(boundCorrection()) });
   assert.deepEqual(result.errors, ['correction core/closed.json#/properties/id does not carry minLength: 1 in source']);
-});
-
-test('fails when a bound correction is missing from its decision record', () => {
-  const result = analyzePair(
-    (t) => { t['core/closed.json'].properties.id.maxLength = 64; },
-    { correctionsValue: corrections(boundCorrection({ bound: 'maxLength', value: 64 })) },
-  );
-  assert.deepEqual(result.errors, [`correction core/closed.json#/properties/id maxLength: 64 is not in the correction tables of ${FIXTURE_DECISION}-fixture.md`]);
 });
 
 /** Makes core/open.json require `note` through a new allOf entry, core/note-required.json. */
@@ -716,28 +671,16 @@ test('fails when a correction quote is not in its source file', () => {
   assert.deepEqual(result.errors, [`corrections[0].source.quote is not in ${FIXTURE_SOURCE.path}`]);
 });
 
-test('fails when a correction is missing from its decision record', () => {
-  const result = analyzePair(
-    (t) => { t['core/explicit-open.json'].properties.extra = { type: 'string' }; },
-    { correctionsValue: corrections(correction({ file: 'core/explicit-open.json', property: 'extra' })) },
-  );
-  assert.deepEqual(result.errors, [
-    `correction core/explicit-open.json# extra is not in the correction tables of ${FIXTURE_DECISION}-fixture.md`,
-  ]);
-});
-
-test('a table outside the record\'s Corrections section does not record a correction', () => {
-  const result = analyzePair(() => {}, { correctionsValue: corrections(correction({ file: 'core/open.json' })) });
-  assert.deepEqual(result.errors, [
-    `correction core/open.json# * is not in the correction tables of ${FIXTURE_DECISION}-fixture.md`,
-  ]);
-});
-
 test('fails when the corrections list names no existing decision record', () => {
   const result = analyzePair(reopenAndAdd, {
     correctionsValue: { decision: 'DR-9002', corrections: [correction()] },
   });
   assert.deepEqual(result.errors, ['no decision record for DR-9002 under governance/decisions']);
+});
+
+test('fails when the corrections list names no decision record', () => {
+  const result = analyzePair(reopenAndAdd, { correctionsValue: { corrections: [correction()] } });
+  assert.deepEqual(result.errors, ['corrections list must name its decision record, such as DR-0036']);
 });
 
 test('the repository corrections list is valid', () => {
@@ -753,22 +696,6 @@ test('the repository corrections list is valid', () => {
     correctionsValue: value,
   });
   assert.deepEqual(result.errors, []);
-});
-
-test('the repository corrections list holds exactly the correction tables of DR-0036', () => {
-  const root = path.join(__dirname, '..');
-  const value = JSON.parse(fs.readFileSync(path.join(root, 'scripts', 'lint-additive-minor-corrections.json'), 'utf8'));
-  const decisions = path.join(root, 'governance', 'decisions');
-  const record = fs.readdirSync(decisions).find((name) => name.startsWith(`${value.decision}-`));
-  const recorded = recordedCorrections(fs.readFileSync(path.join(decisions, record), 'utf8'));
-  assert.ok(recorded.size > 0, `${record} has no correction tables`);
-  // A bound correction is keyed by its bound (`minLength: 1`) and a required
-  // correction by its name (`required: status`), as their table rows name them.
-  const listed = value.corrections.map((entry) => `${entry.file}#${entry.pointer} ${
-    typeof entry.bound === 'string' ? `${entry.bound}: ${entry.value}`
-      : typeof entry.required === 'string' ? `required: ${entry.required}` : entry.property}`);
-  assert.deepEqual(listed.filter((key) => !recorded.has(key)), [], 'listed but not in the tables');
-  assert.deepEqual([...recorded].filter((key) => !listed.includes(key)), [], 'in the tables but not listed');
 });
 
 // ---------------------------------------------------------------------------

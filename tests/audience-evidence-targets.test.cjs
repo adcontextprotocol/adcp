@@ -209,12 +209,12 @@ describe('audience evidence target audiences (#8125)', () => {
 
     it('keeps the target relationship enum equal to the published evidence enum', () => {
       const relationship = readSchema('/schemas/enums/audience-evidence-relationship.json');
-      assert.equal(relationship['x-added-in'], '3.3.0');
+      // 3.2 fields reference it, so it states no x-added-in, like core/iana-timezone.json.
+      assert.equal(relationship['x-added-in'], undefined);
       assert.deepEqual(relationship.enum, ['composition', 'index', 'reach_estimate']);
       assert.deepEqual(Object.keys(relationship.enumDescriptions).sort(), [...relationship.enum].sort());
-      // The stable 3.2 fields keep their inline enum; the target reuses the shared file.
-      assert.deepEqual(readSchema('/schemas/core/audience-evidence.json').properties.relationship.enum, relationship.enum);
-      assert.deepEqual(readSchema('/schemas/core/canonical-audience-evidence.json').properties.relationship.enum, relationship.enum);
+      assert.equal(readSchema('/schemas/core/audience-evidence.json').properties.relationship.$ref, '/schemas/enums/audience-evidence-relationship.json');
+      assert.equal(readSchema('/schemas/core/canonical-audience-evidence.json').properties.relationship.$ref, '/schemas/enums/audience-evidence-relationship.json');
       assert.equal(readSchema('/schemas/core/audience-evidence-target.json').properties.relationship.$ref, '/schemas/enums/audience-evidence-relationship.json');
     });
 

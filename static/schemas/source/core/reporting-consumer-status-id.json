@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-consumer-status-id.json",
+  "title": "Reporting Consumer Status ID",
+  "description": "Identifier of one immutable consumer status statement about reporting. Exact retries reuse it; a changed status uses a new one.",
+  "type": "string",
+  "minLength": 16,
+  "maxLength": 255,
+  "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+  "x-entity": "reporting_consumer_status"
+}

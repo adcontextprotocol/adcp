@@ -8,7 +8,7 @@
     "available_reporting_frequencies": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-frequency.json" }, "minItems": 1, "uniqueItems": true },
     "expected_delay_minutes": { "type": "integer", "minimum": 0 },
     "timezone": {
-      "type": "string",
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Explicit reporting-period timezone for this product. It may equal Account.timezone or differ when the upstream platform reports on a separate boundary."
     },
     "supports_webhooks": { "type": "boolean" },
@@ -47,7 +47,7 @@
     "supports_installment_property_breakdown": { "type": "boolean" },
     "supports_placement_property_breakdown": { "type": "boolean" },
     "supports_spot_breakdown": { "$ref": "/schemas/core/spot-reporting-capability.json" },
-    "date_range_support": { "type": "string", "enum": ["date_range", "lifetime_only"] },
+    "date_range_support": { "$ref": "/schemas/enums/date-range-support.json" },
     "windowed_pull_granularities": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-frequency.json" }, "uniqueItems": true },
     "measurement_windows": { "type": "array", "items": { "$ref": "/schemas/core/measurement-window.json" }, "minItems": 1, "uniqueItems": true }
   },

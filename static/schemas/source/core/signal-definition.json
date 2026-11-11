@@ -6,20 +6,16 @@
   "type": "object",
   "properties": {
     "id": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_-]+$",
+      "$ref": "/schemas/core/signal-local-id.json",
       "description": "Signal identifier within the publishing domain's adagents.json signals[]"
     },
     "name": {
-      "type": "string",
-      "description": "Human-readable signal name",
-      "minLength": 1,
-      "maxLength": 255
+      "$ref": "/schemas/core/signal-name.json",
+      "description": "Human-readable signal name"
     },
     "description": {
-      "type": "string",
-      "description": "Detailed description of what this signal represents and how it's derived",
-      "maxLength": 2000
+      "$ref": "/schemas/core/signal-description.json",
+      "description": "Detailed description of what this signal represents and how it's derived"
     },
     "value_type": {
       "$ref": "/schemas/enums/signal-value-type.json",
@@ -29,8 +25,7 @@
       "type": "array",
       "description": "Tags for grouping and filtering this domain's published signal definitions",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9_-]+$"
+        "$ref": "/schemas/core/signal-tag.json"
       }
     },
     "allowed_values": {
@@ -119,8 +114,7 @@
             "type": "object",
             "properties": {
               "id": {
-                "type": "string",
-                "minLength": 1,
+                "$ref": "/schemas/core/signal-taxonomy-node-id.json",
                 "description": "Taxonomy node identifier."
               },
               "path": {
@@ -171,21 +165,15 @@
           }
         },
         "parent_match_behavior": {
-          "type": "string",
-          "description": "Whether this signal definition supports treating a parent taxonomy node as matching descendant nodes for discovery/filtering or seller-side expansion. 'exact_only' means only explicitly listed node ids match. 'descendants_supported' means the seller can expand known, version-pinned parent nodes to descendants internally, typically by ORing the children in its execution system. 'unknown' means the provider has not declared parent-node behavior. This field is metadata about discovery/translation behavior, not a package targeting operator.",
-          "enum": [
-            "exact_only",
-            "descendants_supported",
-            "unknown"
-          ]
+          "$ref": "/schemas/enums/signal-parent-match-behavior.json",
+          "description": "Whether this signal definition supports treating a parent taxonomy node as matching descendant nodes for discovery/filtering or seller-side expansion. 'exact_only' means only explicitly listed node ids match. 'descendants_supported' means the seller can expand known, version-pinned parent nodes to descendants internally, typically by ORing the children in its execution system. 'unknown' means the provider has not declared parent-node behavior. This field is metadata about discovery/translation behavior, not a package targeting operator."
         }
       },
       "required": ["ref", "values"],
       "additionalProperties": false
     },
     "segmentation_criteria": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/signal-segmentation-criteria.json",
       "description": "Rules governing inclusion of identifiers in the segment. Aligns with IAB Data Transparency Standard audience criteria disclosure."
     },
     "criteria_url": {
@@ -197,32 +185,12 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "enum": [
-          "app_behavior",
-          "app_usage",
-          "web_usage",
-          "geo_location",
-          "email",
-          "tv_ott_or_stb_device",
-          "panel",
-          "online_ecommerce",
-          "credit_data",
-          "loyalty_card",
-          "transaction",
-          "online_survey",
-          "offline_survey",
-          "public_record_census",
-          "public_record_voter_file",
-          "public_record_other",
-          "offline_transaction"
-        ]
+        "$ref": "/schemas/enums/signal-data-source.json"
       },
       "description": "Origin categories of the raw data used to compile the signal, aligned with IAB Data Transparency Standard source disclosure. Use 'panel' for respondent-panel or JIC-style audience sources. Offline and public-record sources require onboarder disclosure. Co-viewing projection and reconciliation of seller claims against a JIC or measurement vendor belong in measurement reporting/vendor metrics rather than package signal targeting."
     },
     "methodology": {
-      "type": "string",
-      "enum": ["observed", "declared", "derived", "inferred", "modeled"],
+      "$ref": "/schemas/enums/signal-methodology.json",
       "description": "How the signal's audience membership or attribute was determined. 'modeled' requires the modeling block."
     },
     "audience_expansion": {
@@ -234,13 +202,11 @@
       "description": "Whether the signal was expanded deterministically across devices of the same user, household, or business. Probabilistic cross-device expansion is modeling and should use methodology 'modeled' or the modeling block."
     },
     "refresh_cadence": {
-      "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"],
+      "$ref": "/schemas/enums/signal-refresh-cadence.json",
       "description": "Cadence at which the signal definition's underlying segment membership is refreshed."
     },
     "lookback_window": {
-      "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"],
+      "$ref": "/schemas/enums/signal-lookback-window.json",
       "description": "Time window in which a qualifying event can occur for inclusion."
     },
     "onboarder": {
@@ -251,8 +217,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string",
-            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone"]
+            "$ref": "/schemas/enums/signal-match-key.json"
           }
         },
         "pre_onboarding_audience_expansion": {
@@ -262,8 +227,7 @@
           "type": "boolean"
         },
         "pre_onboarding_precision_level": {
-          "type": "string",
-          "enum": ["individual", "household", "business", "geography"]
+          "$ref": "/schemas/enums/signal-pre-onboarding-precision.json"
         }
       },
       "required": ["match_keys"],
@@ -300,8 +264,7 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "description": "ISO 3166-1 alpha-2 country codes where the signal is applicable. Sellers must not expose a signal for media buys in countries outside this list. Federating agents that surface a peer's signal MUST treat the peer-published list as an upper bound, re-check it against the buyer's intended deployment countries, and may apply only narrower local policy."
     },
@@ -314,8 +277,7 @@
       "description": "Declared GDPR Article 6 lawful basis or consent basis under which this signal's data is processed. For non-GDPR regimes, use countries, policy_categories, and disclosure fields to describe jurisdiction-specific obligations unless a future enum value applies."
     },
     "art9_basis": {
-      "type": "string",
-      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"],
+      "$ref": "/schemas/enums/gdpr-article-9-basis.json",
       "description": "GDPR Article 9 basis when restricted_attributes is non-empty and the signal is used in jurisdictions where Article 9 applies. Required by policy for applicable use cases rather than universally required at schema level because sensitivity and lawful basis are jurisdiction-relative."
     },
     "modeling": {
@@ -323,15 +285,13 @@
       "description": "Modeling disclosure for modeled data signals. Required when methodology is 'modeled' or audience_expansion is true. This describes data modeling and intentionally does not reuse creative provenance, which is content/render oriented.",
       "properties": {
         "method": {
-          "type": "string",
-          "enum": ["lookalike", "supervised", "embedding", "rules"]
+          "$ref": "/schemas/enums/signal-modeling-method.json"
         },
         "seed_source": {
           "type": "object",
           "properties": {
             "type": {
-              "type": "string",
-              "enum": ["first_party_crm", "panel", "declared_survey", "transactional", "behavioral"]
+              "$ref": "/schemas/enums/signal-training-data-type.json"
             },
             "provider_signed": {
               "type": "boolean",
@@ -345,14 +305,12 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           },
           "description": "ISO 3166-1 alpha-2 country codes where the model's training data was collected."
         },
         "ai_act_risk_class": {
-          "type": "string",
-          "enum": ["minimal", "limited", "high_risk"],
+          "$ref": "/schemas/enums/ai-act-risk-class.json",
           "description": "EU AI Act risk classification self-declared by the provider. Prohibited-risk modeled signals must not be published as AdCP signal definitions."
         },
         "disclosure": {
@@ -368,9 +326,7 @@
       "description": "Per-signal data-subject-rights routing. Inline on the signal because upstream source, rights routing, and response commitments can differ by segment or may be unavailable from a public provider document for custom/private signals. This is a contact/routing reference, not a machine-callable AdCP API.",
       "properties": {
         "upstream_source_domain": {
-          "type": "string",
-          "format": "hostname",
-          "maxLength": 253,
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Domain of the upstream data source whose rights process these channels reach, when different from the publishing domain."
         },
         "channels": {
@@ -383,7 +339,7 @@
               "rights": {
                 "type": "array",
                 "contains": {
-                  "enum": ["access", "erasure", "objection"]
+                  "$ref": "/schemas/enums/required-data-subject-right.json"
                 }
               }
             },
@@ -396,16 +352,13 @@
                 "type": "array",
                 "description": "Rights supported by this channel.",
                 "items": {
-                  "type": "string",
-                  "enum": ["access", "rectification", "erasure", "portability", "objection"]
+                  "$ref": "/schemas/enums/data-subject-right.json"
                 },
                 "minItems": 1,
                 "uniqueItems": true
               },
               "url": {
-                "type": "string",
-                "format": "uri",
-                "pattern": "^https://",
+                "$ref": "/schemas/core/https-url.json",
                 "description": "HTTPS URL for submitting the rights request."
               },
               "email": {
@@ -424,8 +377,7 @@
                 "type": "array",
                 "description": "ISO 3166-1 alpha-2 countries this channel serves, when the provider routes rights by country.",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{2}$"
+                  "$ref": "/schemas/core/country-code.json"
                 }
               }
             },
@@ -438,15 +390,11 @@
           }
         },
         "response_sla_days": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 90,
+          "$ref": "/schemas/core/rights-response-sla-days.json",
           "description": "Maximum response time in days for rights requests handled through the declared rights channels. For provider-published signals, providers SHOULD avoid duplicating this field across every signal unless the value varies by signal or upstream source; consumers MAY also consult the provider's public privacy policy or registry disclosures when present."
         },
         "ccpa_opt_out_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "US-specific 'Do Not Sell or Share' opt-out URL where required."
         }
       },

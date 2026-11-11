@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/ai-act-risk-class.json",
+  "title": "AI Act Risk Class",
+  "description": "EU AI Act risk classification that a provider declares.",
+  "type": "string",
+  "enum": [
+    "minimal",
+    "limited",
+    "high_risk"
+  ]
+}

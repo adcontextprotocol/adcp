@@ -29,18 +29,12 @@
   ],
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated delivery key stable across RFC 8785 JCS-equivalent retries of the complete authenticated webhook payload. Publishers MUST generate a cryptographically random value (UUID v4 recommended), bind it immutably to the first canonical payload for the advertised delivery retry horizon, and use a fresh key for a changed payload or distinct delivery. Receivers scope the binding to the authenticated sender identity. Same key plus identical payload while active returns retryable 503; after durable acknowledgement it returns 2xx; same key plus a different canonical payload returns non-retryable 409. This is the transport delivery identity, not request idempotency or stable logical notification identity.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated delivery key stable across RFC 8785 JCS-equivalent retries of the complete authenticated webhook payload. Publishers MUST generate a cryptographically random value (UUID v4 recommended), bind it immutably to the first canonical payload for the advertised delivery retry horizon, and use a fresh key for a changed payload or distinct delivery. Receivers scope the binding to the authenticated sender identity. Same key plus identical payload while active returns retryable 503; after durable acknowledgement it returns 2xx; same key plus a different canonical payload returns non-retryable 409. This is the transport delivery identity, not request idempotency or stable logical notification identity."
     },
     "notification_id": {
-      "type": "string",
-      "description": "Optional event-layer identifier for one logical notification. Stable across re-emissions of the same logical event and distinct from the per-delivery `idempotency_key`. For terminal task webhooks, the authoritative terminal identity remains the authenticated seller plus the bound task_id; when notification_id is present, different delivery keys carrying the same value are re-emissions and MUST NOT republish terminal effects. For other event families, population and repair identity remain event-shape-dependent (see notification-type.json enumDescriptions): impairment aliases impairment_id, creative and account notifications use transition identifiers, wholesale events alias event.event_id, and capability changes use a revision-event identifier. Point-in-time delivery events (scheduled, final, delayed, adjusted, window_update) omit this field and dedupe by idempotency_key plus their delivery-report identity. Charset is constrained to `[A-Za-z0-9_.:-]`.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/notification-id.json",
+      "description": "Optional event-layer identifier for one logical notification. Stable across re-emissions of the same logical event and distinct from the per-delivery `idempotency_key`. For terminal task webhooks, the authoritative terminal identity remains the authenticated seller plus the bound task_id; when notification_id is present, different delivery keys carrying the same value are re-emissions and MUST NOT republish terminal effects. For other event families, population and repair identity depend on the notification type (see notification-type.json enumDescriptions): impairment aliases impairment_id, creative and account notifications use transition identifiers, wholesale events alias event.event_id, and capability changes use a revision-event identifier. Point-in-time delivery events (scheduled, final, delayed, adjusted, window_update) omit this field and dedupe by idempotency_key plus their delivery-report identity. Charset is constrained to `[A-Za-z0-9_.:-]`."
     },
     "operation_id": {
       "type": "string",
@@ -76,10 +70,8 @@
       "description": "Compatibility metadata copied from the originating response when present. This value alone is not continuation authority and MUST NOT be used to resume input-required or auth-required work or to select session state."
     },
     "token": {
-      "type": "string",
-      "description": "Authentication token echoed verbatim from [`PushNotificationConfig.token`](/schemas/core/push-notification-config.json). Receivers that configured a token MUST compare it to this value to validate request authenticity, and SHOULD use a constant-time equality check to mitigate timing attacks. Absent when no token was configured at registration. Length bounds mirror the config-side field — receivers MAY reject payloads whose token length falls outside the configured range as a defensive check, provided the length check is performed only after the configured token is known to exist for this subscription, and the length comparison is not used as a fast-path to short-circuit the constant-time compare on equal-length inputs. Receivers MUST NOT treat absence as an authenticity failure when no token was configured.",
-      "minLength": 16,
-      "maxLength": 4096
+      "$ref": "/schemas/core/webhook-token.json",
+      "description": "Authentication token echoed verbatim from [`PushNotificationConfig.token`](/schemas/core/push-notification-config.json). Receivers that configured a token MUST compare it to this value to validate request authenticity, and SHOULD use a constant-time equality check to mitigate timing attacks. Absent when no token was configured at registration. Length bounds mirror the config-side field — receivers MAY reject payloads whose token length falls outside the configured range as a defensive check, provided the length check is performed only after the configured token is known to exist for this subscription, and the length comparison is not used as a fast-path to short-circuit the constant-time compare on equal-length inputs. Receivers MUST NOT treat absence as an authenticity failure when no token was configured."
     },
     "result": {
       "$ref": "/schemas/core/async-response-data.json",

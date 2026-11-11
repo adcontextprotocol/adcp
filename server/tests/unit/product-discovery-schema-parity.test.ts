@@ -25,6 +25,10 @@ function resolveLocalRef(root: JsonSchema, value: JsonSchema): JsonSchema {
 describe('product discovery MCP schema parity', () => {
   it('keeps runtime discovery constraints aligned with source schemas', () => {
     const tools = new Map(productDiscoveryAliasToolDefinitions().map(tool => [tool.name, tool.inputSchema as JsonSchema]));
+    const idempotencyKey = JSON.parse(readFileSync(
+      join(process.cwd(), 'static/schemas/source/core/idempotency-key.json'),
+      'utf8',
+    )) as JsonSchema;
     for (const [toolName, fileName] of [
       ['list_products', 'list-products-request'],
       ['request_proposals', 'request-proposals-request'],
@@ -38,10 +42,12 @@ describe('product discovery MCP schema parity', () => {
       expect(runtime.additionalProperties).toBe(source.additionalProperties);
       expect(Object.keys(runtime.properties).sort()).toEqual(Object.keys(source.properties).sort());
       if (source.properties.idempotency_key) {
-        expect(runtime.properties.idempotency_key).toMatchObject({
-          minLength: source.properties.idempotency_key.minLength,
-          maxLength: source.properties.idempotency_key.maxLength,
-          pattern: source.properties.idempotency_key.pattern,
+        expect(source.properties.idempotency_key.$ref).toBe('/schemas/core/idempotency-key.json');
+        const key = runtime.properties.idempotency_key as JsonSchema;
+        expect(resolveLocalRef(runtime, key.allOf?.[0] ?? key)).toMatchObject({
+          minLength: idempotencyKey.minLength,
+          maxLength: idempotencyKey.maxLength,
+          pattern: idempotencyKey.pattern,
         });
       }
     }
@@ -147,8 +153,12 @@ describe('product discovery MCP schema parity', () => {
     // measured, bounded at 160 KiB.
     // Core gender adds its shared predicate and overlay support; merged
     // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
-    // without relaxing standalone-schema parity.
-    expect(totalBytes).toBeLessThanOrEqual(162 * 1024);
+    // without relaxing standalone-schema parity. Naming repeated scalar
+    // constraints (#8525) makes them shared definitions in the bundled tools;
+    // 169,806 bytes / 165.83 KiB measured. Naming every remaining repeat
+    // brings it to 172,361 bytes / 168.32 KiB, and pointing every site at one
+    // definition to 173,355 bytes / 169.29 KiB, bounded at 170 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(170 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

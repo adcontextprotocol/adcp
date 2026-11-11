@@ -14,11 +14,10 @@
       "type": "object",
       "required": ["width", "height"],
       "properties": {
-        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
-        "height": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "width": { "$ref": "#/definitions/pixel_extent" },
+        "height": { "$ref": "#/definitions/pixel_extent" },
         "background_color": {
-          "type": "string",
-          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "$ref": "/schemas/core/hex-color.json",
           "default": "#ffffff"
         }
       },
@@ -29,13 +28,12 @@
       "description": "Rectangle into which the selected creative render is fitted and clipped without changing its manifest or renderer.",
       "required": ["x", "y", "width", "height", "fit", "clip"],
       "properties": {
-        "x": { "type": "integer", "minimum": 0, "maximum": 8192 },
-        "y": { "type": "integer", "minimum": 0, "maximum": 8192 },
-        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
-        "height": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "x": { "$ref": "#/definitions/pixel_offset" },
+        "y": { "$ref": "#/definitions/pixel_offset" },
+        "width": { "$ref": "#/definitions/pixel_extent" },
+        "height": { "$ref": "#/definitions/pixel_extent" },
         "fit": {
-          "type": "string",
-          "enum": ["contain", "cover", "stretch"],
+          "$ref": "#/definitions/fit",
           "description": "How the creative render is scaled into the slot. contain preserves the whole render, cover fills and crops, and stretch fills without preserving aspect ratio."
         },
         "clip": {
@@ -63,10 +61,10 @@
       "type": "object",
       "required": ["x", "y", "width", "height"],
       "properties": {
-        "x": { "type": "integer", "minimum": 0, "maximum": 8192 },
-        "y": { "type": "integer", "minimum": 0, "maximum": 8192 },
-        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
-        "height": { "type": "integer", "minimum": 1, "maximum": 8192 }
+        "x": { "$ref": "#/definitions/pixel_offset" },
+        "y": { "$ref": "#/definitions/pixel_offset" },
+        "width": { "$ref": "#/definitions/pixel_extent" },
+        "height": { "$ref": "#/definitions/pixel_extent" }
       },
       "additionalProperties": false
     },
@@ -106,20 +104,17 @@
           "required": ["uri", "digest"],
           "properties": {
             "uri": {
-              "type": "string",
-              "format": "uri",
-              "pattern": "^https://",
+              "$ref": "/schemas/core/https-url.json",
               "description": "Untrusted image asset. Fetch with public-address-only SSRF protection, no redirects, DNS pinning, and body/time limits; do not attach ambient credentials."
             },
             "digest": {
-              "type": "string",
-              "pattern": "^sha256:[a-f0-9]{64}$",
+              "$ref": "/schemas/core/sha256-digest.json",
               "description": "SHA-256 digest of the exact image bytes. Consumers MUST fail closed on mismatch."
             }
           },
           "additionalProperties": false
         },
-        "fit": { "type": "string", "enum": ["contain", "cover", "stretch"] }
+        "fit": { "$ref": "#/definitions/fit" }
       },
       "additionalProperties": false
     },
@@ -128,8 +123,31 @@
       "enum": ["behind_creative", "in_front_of_creative"]
     },
     "color": {
+      "$ref": "/schemas/core/hex-color.json"
+    },
+    "fit": {
+      "title": "Fit Mode",
+      "description": "How a render is scaled into its slot: contain, cover, or stretch.",
       "type": "string",
-      "pattern": "^#[0-9A-Fa-f]{6}$"
+      "enum": [
+        "contain",
+        "cover",
+        "stretch"
+      ]
+    },
+    "pixel_extent": {
+      "title": "Pixel Extent",
+      "description": "Width or height of a placement canvas or rectangle, in pixels.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8192
+    },
+    "pixel_offset": {
+      "title": "Pixel Offset",
+      "description": "Horizontal or vertical position of a rectangle from the canvas origin, in pixels.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8192
     }
   },
   "additionalProperties": false,

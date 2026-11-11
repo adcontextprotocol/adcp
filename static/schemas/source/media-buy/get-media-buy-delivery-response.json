@@ -45,14 +45,7 @@
   ],
   "properties": {
     "notification_type": {
-      "type": "string",
-      "enum": [
-        "scheduled",
-        "final",
-        "delayed",
-        "adjusted",
-        "window_update"
-      ],
+      "$ref": "/schemas/enums/delivery-notification-type.json",
       "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = resending period with corrected data (same window), window_update = resending period with a wider measurement window (e.g., C3 superseding live, C7 superseding C3)"
     },
     "partial_data": {
@@ -89,8 +82,7 @@
           "description": "Exclusive RFC 3339 end instant. For a date-bounded request, the start of end_date in the reporting timezone (e.g., 2026-04-16T00:00:00-04:00 for a report covering 2026-04-15 in America/New_York)."
         },
         "timezone": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Reporting timezone applied to this report, as 'UTC' or an IANA timezone identifier. It equals the in-scope products' reporting_capabilities.timezone. start_date, end_date, the reporting_period boundaries, daily_breakdown[].date, and daily, weekly, or monthly windows[] all use it, so a stored report stays interpretable if the product's capability later changes. Sellers SHOULD return it on reads without reporting_revision_id whenever every in-scope media buy shares one reporting timezone. Exact reporting_revision_id reads return the revision period, which carries source_timezone instead.",
           "examples": [
             "UTC",
@@ -111,7 +103,7 @@
         "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_revision" },
         "row_count": { "type": "integer", "minimum": 0 },
         "control_totals": { "type": "array", "items": { "$ref": "/schemas/core/reporting-control-total.json" } },
-        "content_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "SHA-256 of RFC 8785 JCS of {reporting_revision_id,row_count,control_totals,reporting_rows}, where reporting_rows is the complete ordered sequence concatenated across every cursor page; identical to reporting_revision.revision_content_sha256." }
+        "content_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "SHA-256 of RFC 8785 JCS of {reporting_revision_id,row_count,control_totals,reporting_rows}, where reporting_rows is the complete ordered sequence concatenated across every cursor page; identical to reporting_revision.revision_content_sha256." }
       },
       "required": ["reporting_revision_id", "row_count", "control_totals", "content_sha256"],
       "additionalProperties": false
@@ -120,11 +112,10 @@
     "reporting_rows": { "type": "array", "items": { "type": "object" }, "description": "One page of authoritative logical rows for an exact reporting_revision_id read. Validate every row against the revision's digest-pinned schema; concatenate pages in cursor order before verifying the binding digest." },
     "pagination": { "$ref": "/schemas/core/pagination-response.json", "description": "Exact revision pages are frozen for the cursor walk. total_count is mandatory for reporting_revision_id and equals reporting_revision.row_count and reporting_revision_binding.row_count; it counts the complete ordered row sequence, not this page." },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy response-wide ISO 4217 currency code. It may be used only when every monetary value in the response has that denomination. A delivery response can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",
       "deprecated": true,
-      "x-removed-in": "4.0.0",
-      "pattern": "^[A-Z]{3}$"
+      "x-removed-in": "4.0.0"
     },
     "attribution_window": {
       "$ref": "/schemas/core/attribution-window.json",
@@ -203,10 +194,8 @@
           "minimum": 0
         },
         "new_to_brand_rate": {
-          "type": "number",
-          "description": "Fraction of total conversions across all media buys from first-time brand buyers (weighted by conversion volume, not a simple average of per-buy rates)",
-          "minimum": 0,
-          "maximum": 1
+          "$ref": "/schemas/core/fraction.json",
+          "description": "Fraction of total conversions across all media buys from first-time brand buyers (weighted by conversion volume, not a simple average of per-buy rates)"
         },
         "cost_per_acquisition": {
           "type": "number",
@@ -311,25 +300,12 @@
             "x-entity": "media_buy"
           },
           "currency": {
-            "type": "string",
-            "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field, daily_breakdown, and all monetary or money-derived values from row and window totals; report those values only at package grain with each package's own currency. AdCP does not perform currency conversion.",
-            "pattern": "^[A-Z]{3}$"
+            "$ref": "/schemas/core/currency-code.json",
+            "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field, daily_breakdown, and all monetary or money-derived values from row and window totals; report those values only at package grain with each package's own currency. AdCP does not perform currency conversion."
           },
           "status": {
-            "type": "string",
-            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_start.",
-            "enum": [
-              "pending_creatives",
-              "pending_start",
-              "pending",
-              "active",
-              "paused",
-              "completed",
-              "rejected",
-              "canceled",
-              "failed",
-              "reporting_delayed"
-            ]
+            "$ref": "/schemas/enums/media-buy-delivery-status.json",
+            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_start."
           },
           "expected_availability": {
             "type": "string",
@@ -414,9 +390,8 @@
                       "minimum": 0
                     },
                     "currency": {
-                      "type": "string",
-                      "description": "ISO 4217 currency code for this package's spend and currency-denominated pricing rate. The rate for revenue_share is a dimensionless commission fraction, but attributed monetary values still use this currency. When the enclosing media_buy_deliveries[].currency is present, this value MUST equal it. For AdCP-authored buys both values MUST equal the media-buy currency. A different package currency is permitted only for a legacy or externally created mixed-currency buy whose row currency, daily_breakdown, and row/window monetary totals are omitted. AdCP does not perform currency conversion.",
-                      "pattern": "^[A-Z]{3}$"
+                      "$ref": "/schemas/core/currency-code.json",
+                      "description": "ISO 4217 currency code for this package's spend and currency-denominated pricing rate. The rate for revenue_share is a dimensionless commission fraction, but attributed monetary values still use this currency. When the enclosing media_buy_deliveries[].currency is present, this value MUST equal it. For AdCP-authored buys both values MUST equal the media-buy currency. A different package currency is permitted only for a legacy or externally created mixed-currency buy whose row currency, daily_breakdown, and row/window monetary totals are omitted. AdCP does not perform currency conversion."
                     },
                     "delivery_status": {
                       "$ref": "/schemas/enums/delivery-status.json",
@@ -436,8 +411,7 @@
                       "description": "ISO 8601 timestamp at which this package's data became final. Present only when `is_final: true`. Anchors reconciliation and (when later defined) dispute-window clocks against the buy's `measurement_terms.billing_measurement.measurement_window`."
                     },
                     "measurement_window": {
-                      "type": "string",
-                      "maxLength": 50,
+                      "$ref": "/schemas/core/measurement-window-id.json",
                       "description": "Which measurement window this data represents, referencing a window_id from the product's reporting_capabilities.measurement_windows. For broadcast: 'live', 'c3', 'c7'. When absent, the data is not windowed (standard digital reporting). When present with is_final: false, a later report for the same period will provide a wider window or more complete data.",
                       "examples": [
                         "live",
@@ -446,8 +420,7 @@
                       ]
                     },
                     "supersedes_window": {
-                      "type": "string",
-                      "maxLength": 50,
+                      "$ref": "/schemas/core/measurement-window-id.json",
                       "description": "Which measurement window this data replaces. Present on window_update notifications to indicate progression (e.g., 'live' when reporting C3 data that supersedes live-only numbers). Absent on the first report for a period. Buyers should replace stored data for the superseded window with this report's data.",
                       "examples": [
                         "live",
@@ -744,9 +717,7 @@
                             "type": "object",
                             "properties": {
                               "demographic": {
-                                "type": "string",
-                                "minLength": 1,
-                                "pattern": "\\S",
+                                "$ref": "/schemas/core/demographic-label.json",
                                 "description": "Demographic code in the declared system's notation (for example, P25-54 for Nielsen)."
                               },
                               "demographic_system": {
@@ -942,10 +913,8 @@
                                 "x-entity": "spot_airing"
                               },
                               "creative_id": {
-                                "type": "string",
-                                "minLength": 1,
-                                "description": "Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment. For library-backed sellers this is the sync_creatives identifier; inline-only sellers use the packages[].creatives creative_id.",
-                                "x-entity": "creative"
+                                "$ref": "/schemas/core/creative-id.json",
+                                "description": "Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment. For library-backed sellers this is the sync_creatives identifier; inline-only sellers use the packages[].creatives creative_id."
                               },
                               "spot_status": {
                                 "x-added-in": "3.3.0",
@@ -1083,8 +1052,7 @@
                         "type": "object",
                         "properties": {
                           "date": {
-                            "type": "string",
-                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                            "$ref": "/schemas/core/calendar-date.json",
                             "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this package's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
                           },
                           "impressions": {
@@ -1118,10 +1086,8 @@
                             "minimum": 0
                           },
                           "new_to_brand_rate": {
-                            "type": "number",
-                            "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
-                            "minimum": 0,
-                            "maximum": 1
+                            "$ref": "/schemas/core/fraction.json",
+                            "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)"
                           }
                         },
                         "required": [
@@ -1184,9 +1150,8 @@
                             "x-entity": "package"
                           },
                           "currency": {
-                            "type": "string",
-                            "description": "ISO 4217 denomination for this package window's monetary values. Required by the runtime currency-coherence rule when neither the parent media-buy row nor deprecated response-wide field supplies a currency and this package window contains monetary values; otherwise it MUST match the row or response currency when present.",
-                            "pattern": "^[A-Z]{3}$"
+                            "$ref": "/schemas/core/currency-code.json",
+                            "description": "ISO 4217 denomination for this package window's monetary values. Required by the runtime currency-coherence rule when neither the parent media-buy row nor deprecated response-wide field supplies a currency and this package window contains monetary values; otherwise it MUST match the row or response currency when present."
                           }
                         },
                         "required": [
@@ -1201,8 +1166,7 @@
                   "description": "Whether the slice data is final for this window. Same semantics as the per-package is_final flag — when false, a later read may return revised numbers for the same window as measurement matures (broadcast C3 → C7, post-IVT filtering, etc.)."
                 },
                 "measurement_window": {
-                  "type": "string",
-                  "maxLength": 50,
+                  "$ref": "/schemas/core/measurement-window-id.json",
                   "description": "Which measurement-window stage this slice represents (e.g., 'live', 'c3', 'c7'), referencing a window_id from the product's reporting_capabilities.measurement_windows. Absent when the data is not phased."
                 }
               },
@@ -1220,8 +1184,7 @@
               "type": "object",
               "properties": {
                 "date": {
-                  "type": "string",
-                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "$ref": "/schemas/core/calendar-date.json",
                   "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this media buy's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
                 },
                 "impressions": {
@@ -1255,10 +1218,8 @@
                   "minimum": 0
                 },
                 "new_to_brand_rate": {
-                  "type": "number",
-                  "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
-                  "minimum": 0,
-                  "maximum": 1
+                  "$ref": "/schemas/core/fraction.json",
+                  "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)"
                 }
               },
               "required": [

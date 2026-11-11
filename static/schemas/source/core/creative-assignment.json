@@ -23,10 +23,8 @@
       "x-added-in": "3.3.0"
     },
     "weight": {
-      "type": "number",
-      "description": "Relative delivery weight for this creative (0–100). Valid when the package's effective rotation_mode is weighted, including the backward-compatible default when rotation_mode is omitted. Weights determine impression distribution proportionally — a creative with weight 2 gets twice the delivery of weight 1. When omitted, the creative receives equal weight with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
-      "minimum": 0,
-      "maximum": 100
+      "$ref": "/schemas/core/creative-rotation-weight.json",
+      "description": "Relative delivery weight for this creative (0–100). Valid when the package's effective rotation_mode is weighted, including the backward-compatible default when rotation_mode is omitted. Weights determine impression distribution proportionally — a creative with weight 2 gets twice the delivery of weight 1. When omitted, the creative receives equal weight with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery)."
     },
     "rotation_mode": {
       "type": "string",

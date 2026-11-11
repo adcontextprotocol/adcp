@@ -19,7 +19,7 @@
         "applied": {
           "description": "Complete replacement value. It MUST validate against targeting.json at path; the seller then validates the complete effective overlay. This operation may narrow or broaden only as an explicit buyer-visible proposal."
         },
-        "reason": { "type": "string", "minLength": 1 },
+        "reason": { "$ref": "#/definitions/modification_reason" },
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["operation", "path", "applied", "reason"],
@@ -55,8 +55,8 @@
           "type": "object",
           "description": "Stable identity of exactly one postal-area group in the requested array. Required only for postal-area paths. Zero or multiple matches make the modification invalid.",
           "properties": {
-            "country": { "type": "string", "pattern": "^[A-Z]{2}$" },
-            "system": { "type": "string", "minLength": 1 }
+            "country": { "$ref": "/schemas/core/country-code.json" },
+            "system": { "$ref": "/schemas/enums/postal-system.json" }
           },
           "required": ["country", "system"],
           "additionalProperties": false
@@ -68,7 +68,7 @@
           "uniqueItems": true,
           "description": "Values removed from the requested set. Values absent from that set are invalid rather than no-ops."
         },
-        "reason": { "type": "string", "minLength": 1 },
+        "reason": { "$ref": "#/definitions/modification_reason" },
         "ext": { "$ref": "/schemas/core/ext.json" }
       },
       "required": ["operation", "path", "values", "reason"],
@@ -88,5 +88,13 @@
       ],
       "additionalProperties": false
     }
-  ]
+  ],
+  "definitions": {
+    "modification_reason": {
+      "title": "Modification Reason",
+      "description": "Seller explanation of why it changed the requested targeting value.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
 }

@@ -186,12 +186,12 @@ describe('counterparty-asserted capability arrays are bounded', () => {
     // arrays are the shape the vector takes: an open-valued list of
     // counterparty identifiers, as opposed to a closed enum vocabulary.
     //
-    // Two known limits, neither live today: the walk is ref-local, so a
-    // domain-valued array arriving through a `$ref` into core/ or governance/
-    // is invisible to it; and the heuristic is shape-based, so a
-    // counterparty-asserted list of URLs or opaque IDs would not match. Both
-    // were checked by hand when this landed. Widen the heuristic rather than
-    // trusting it if a future field is counterparty-asserted but not
+    // Two known limits, neither live today: the walk follows an item's `$ref`
+    // but not an array's, so a domain-valued array arriving through a `$ref`
+    // into core/ or governance/ is invisible to it; and the heuristic is
+    // shape-based, so a counterparty-asserted list of URLs or opaque IDs would
+    // not match. Both were checked by hand when this landed. Widen the heuristic
+    // rather than trusting it if a future field is counterparty-asserted but not
     // domain-shaped.
     const found = [];
     const walk = (node, pointer) => {
@@ -201,7 +201,10 @@ describe('counterparty-asserted capability arrays are bounded', () => {
       }
       if (!node || typeof node !== 'object') return;
       if (node.type === 'array' && node.items && typeof node.items === 'object') {
-        const pattern = node.items.pattern || '';
+        const items = typeof node.items.$ref === 'string' && !node.items.$ref.includes('#')
+          ? JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'static', 'schemas', 'source', node.items.$ref.replace('/schemas/', '')), 'utf8'))
+          : node.items;
+        const pattern = items.pattern || '';
         // The domain pattern shared by both known instances.
         if (pattern.includes('[a-z0-9-]*[a-z0-9]') && pattern.includes('\\.')) {
           found.push(pointer);

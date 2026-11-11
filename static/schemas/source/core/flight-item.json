@@ -14,8 +14,7 @@
       "description": "Departure airport or city.",
       "properties": {
         "airport_code": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/airport-code.json",
           "description": "IATA airport code (e.g., 'AMS', 'JFK', 'LHR')."
         },
         "city": {
@@ -31,8 +30,7 @@
       "description": "Arrival airport or city.",
       "properties": {
         "airport_code": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/airport-code.json",
           "description": "IATA airport code."
         },
         "city": {

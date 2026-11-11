@@ -8,8 +8,7 @@
     "methods": {
       "type": "array",
       "items": {
-        "type": "string",
-        "enum": ["GET", "POST"]
+        "$ref": "/schemas/enums/http-method.json"
       },
       "description": "Allowed HTTP methods"
     }

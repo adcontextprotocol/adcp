@@ -23,13 +23,11 @@
       "description": "Description of what this extension provides"
     },
     "valid_from": {
-      "type": "string",
-      "pattern": "^\\d+\\.\\d+$",
+      "$ref": "/schemas/core/adcp-minor-version.json",
       "description": "Minimum AdCP version this extension is compatible with (e.g., '2.5'). Extension will be included in all versioned schema builds >= this version."
     },
     "valid_until": {
-      "type": "string",
-      "pattern": "^\\d+\\.\\d+$",
+      "$ref": "/schemas/core/adcp-minor-version.json",
       "description": "Last AdCP version this extension is compatible with (e.g., '3.0'). Omit if extension is still valid for current and future versions."
     },
     "docs_url": {

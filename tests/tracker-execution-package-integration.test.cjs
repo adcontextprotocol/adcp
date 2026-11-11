@@ -55,16 +55,12 @@ const contractSnapshot = {
   product_snapshot_digest: DIGEST_B
 };
 
-test('compact format-kind enum remains inline for SDK codegen and matches the canonical vocabulary', () => {
+test('compact format-kind references the canonical vocabulary', () => {
   const compact = JSON.parse(fs.readFileSync(
     path.join(SCHEMA_BASE_DIR, 'core/canonical-format-option.json'), 'utf8'
   )).properties.format_kind;
-  const canonical = JSON.parse(fs.readFileSync(
-    path.join(SCHEMA_BASE_DIR, 'core/canonical-format-kind.json'), 'utf8'
-  ));
-  assert.equal(compact.type, 'string');
-  assert.equal(compact.$ref, undefined, 'SDK compact-format postprocessing requires an inline literal union');
-  assert.deepEqual(compact.enum, canonical.enum, 'compact discovery must preserve every canonical format kind');
+  assert.equal(compact.$ref, '/schemas/core/canonical-format-kind.json', 'compact discovery must preserve every canonical format kind');
+  assert.equal(compact.enum, undefined, 'a compact format kind must not state its own copy of the values');
 });
 
 test('compact lifecycle responses accept every canonical format kind', async () => {

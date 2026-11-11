@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/hex-color.json",
+  "title": "Hex Color",
+  "description": "Six-digit hexadecimal RGB color with a leading number sign, such as #FF6600.",
+  "type": "string",
+  "pattern": "^#[0-9A-Fa-f]{6}$"
+}

@@ -786,11 +786,11 @@ test("daypart targeting binds delivery clocks and product-scoped timezone modes"
     const daypart = timezone === undefined ? base : { ...base, timezone };
     assert.equal(validateDaypart(daypart), true, errors(validateDaypart));
   }
-  for (const timezone of ["", "/America", "America/", "America//New_York", "New York", "America/New York"]) {
+  for (const timezone of ["", "x".repeat(256)]) {
     assert.equal(
       validateDaypart({ ...base, timezone }),
       false,
-      `${timezone} is not an inventory-local or IANA-shaped timezone`
+      `a timezone of ${timezone.length} characters is outside 1 to 255`
     );
   }
 

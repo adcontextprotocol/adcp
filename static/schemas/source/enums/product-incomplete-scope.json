@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/product-incomplete-scope.json",
+  "title": "Product Incomplete Scope",
+  "description": "Part of a product discovery response that a seller could not complete. A product list never contains proposals.",
+  "type": "string",
+  "enum": [
+    "products",
+    "pricing",
+    "forecast",
+    "wholesale_feed"
+  ],
+  "enumDescriptions": {
+    "products": "Not all inventory sources were searched.",
+    "pricing": "Products were returned, but pricing is absent or unconfirmed.",
+    "forecast": "Products were returned, but forecast data is absent.",
+    "wholesale_feed": "In wholesale mode, full feed enumeration could not complete in the time budget."
+  }
+}

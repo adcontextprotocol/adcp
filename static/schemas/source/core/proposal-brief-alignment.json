@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/proposal-brief-alignment.json",
+  "title": "Proposal Brief Alignment",
+  "description": "Explanation of how a proposal meets the campaign brief.",
+  "type": "string",
+  "maxLength": 2000
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-grain.json",
+  "title": "Reporting Grain",
+  "description": "Stable description of what one logical report row represents.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 128
+}

@@ -127,10 +127,8 @@
           "description": "Discriminator for description-based selectors"
         },
         "description": {
-          "type": "string",
-          "description": "Natural language description of the audience (e.g., 'likely EV buyers', 'high net worth individuals', 'vulnerable communities')",
-          "minLength": 1,
-          "maxLength": 2000
+          "$ref": "/schemas/core/audience-description.json",
+          "description": "Natural language description of the audience (e.g., 'likely EV buyers', 'high net worth individuals', 'vulnerable communities')"
         },
         "category": {
           "type": "string",

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/font-family-name.json",
+  "title": "Font Family Name",
+  "description": "CSS font-family name, such as Noto Sans Arabic or sans-serif.",
+  "type": "string",
+  "maxLength": 100
+}

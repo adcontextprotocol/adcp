@@ -12,8 +12,7 @@
       "description": "Stable identifier for this declaration within its namespace. REQUIRED when a product contains multiple declarations with the same format_kind and SHOULD be set on every entry. Publisher-backed options pair it with publisher_domain; product-local options omit publisher_domain. When a single declaration has a unique format_kind and no ID, buyers author canonically with format_kind plus params; they MUST NOT fall back to deprecated format_ids merely because this optional ID is absent. Examples: 'display_image_300x250', 'responsive_search', 'daily_pulse_homepage_image'."
     },
     "publisher_domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Namespace for `format_option_id` when this declaration references or narrows a publisher-declared format option from that publisher's adagents.json top-level `formats[]`. Product-local options omit this field and are selected by `format_option_id` within the target product."
     },
     "tracker_execution_contract": {
@@ -40,9 +39,7 @@
       "description": "Optional seller-controlled human-readable label for this format declaration. Used by buyer dashboards, catalog UIs, and reporting surfaces to show a seller's own naming ('Homepage Takeover', 'Branded Canvas', 'Reels Premium Video') rather than the raw `format_kind` or `format_option_id`. Has no machine semantics — buyer agents route on `format_kind` and `format_option_id`; `display_name` is purely for human presentation. Freeform; no enumeration. Sellers SHOULD keep it stable once published to avoid dashboard churn."
     },
     "sample_render_url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Optional public HTTPS page where a human can inspect a sample render of this declaration using assets chosen by the party publishing the enclosing declaration. Consumers MUST identify that source correctly: publisher or community mirror for `adagents.json` `formats[]`, seller for product or inline-placement declarations, and creative agent for `creative.supported_formats`. Informational only: this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, proof of publisher acceptance, or guarantee of live delivery. Declaring parties SHOULD keep the URL stable while the declaration is active."
     },
     "applies_to_channels": {
@@ -52,8 +49,7 @@
       "description": "Optional subset of the parent product's `channels` to which this declaration applies. When omitted, the declaration applies to ALL channels declared on the product. Lets a multi-channel product (e.g., `channels: ['display', 'video']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['video']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
     },
     "seller_preference": {
-      "type": "string",
-      "enum": ["preferred", "accepted", "discouraged"],
+      "$ref": "/schemas/enums/format-seller-preference.json",
       "description": "Optional soft routing hint *within* a product's accepted set of formats — NOT an enforcement axis. `preferred` — seller actively recommends this format (often because of measurement, viewability, or render-quality differences); `accepted` — supported on equal footing with other format_options (default when omitted); `discouraged` — supported but suboptimal (e.g., legacy 3p-tag where the seller would prefer html5 for OM-SDK coverage). Buyer agents picking between format_options SHOULD respect seller preferences when their own constraints don't override.\n\n**Not an enforcement axis (normative).** `seller_preference` does NOT carry the meaning of 'this format won't work / required-only'. That case is structural: `format_options[]` IS the closed set of accepted formats; anything outside the list is rejected at `create_media_buy` regardless of preference. A seller that accepts only one format lists exactly that one entry — the structural fact does the enforcement work, no enum value needed. There is intentionally no `required` value; preference is bounded to *ranking within the already-accepted set*, not gating into it."
     },
     "locale_policy": {

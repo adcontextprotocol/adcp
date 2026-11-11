@@ -16,11 +16,8 @@
   },
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated key stable across retries of the same webhook fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated key stable across retries of the same webhook fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity."
     },
     "notification_id": {
       "type": "string",
@@ -28,21 +25,7 @@
       "description": "Stable identifier for this logical wholesale feed event. MUST equal event.event_id. Re-emissions of the same logical event reuse this value under a new idempotency_key."
     },
     "notification_type": {
-      "type": "string",
-      "enum": [
-        "product.created",
-        "product.updated",
-        "product.priced",
-        "product.removed",
-        "signal.created",
-        "signal.updated",
-        "signal.priced",
-        "signal.removed",
-        "wholesale_feed.bulk_change",
-        "collection_card.updated",
-        "collection_card.removed",
-        "collection_catalog.bulk_change"
-      ],
+      "$ref": "/schemas/enums/wholesale-feed-event-type.json",
       "description": "Wholesale feed notification type discriminator. MUST match event.event_type."
     },
     "fired_at": {
@@ -51,11 +34,8 @@
       "description": "ISO 8601 timestamp when the seller initiated this webhook fire. Distinct from event.created_at, which is when the seller observed or recorded the feed change."
     },
     "subscriber_id": {
-      "type": "string",
-      "description": "Identifies which notification_configs[] entry is receiving this fire. Echoed from the registered subscriber_id.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Identifies which notification_configs[] entry is receiving this fire. Echoed from the registered subscriber_id."
     },
     "account_id": {
       "type": "string",
@@ -67,8 +47,7 @@
       "description": "Opaque post-change version token for the affected wholesale feed. For collection_card.* and collection_catalog.bulk_change it carries the post-change list_collections collections_version of the unfiltered catalog (no selectors, no filters) for this cache_scope, so only a mirror bootstrapped from an unfiltered list_collections read can compare it. Store it only after applying the event. A stale mirror repairs with its last applied version; uncertain or bulk repair omits the conditional token."
     },
     "product_payload_view": {
-      "type": "string",
-      "enum": ["canonical", "legacy"],
+      "$ref": "/schemas/enums/product-payload-view.json",
       "description": "Product representation selected by the receiving notification config. Present on product.* fires; canonical uses canonical_product/canonical_pricing_options and legacy uses product/pricing_options."
     },
     "previous_wholesale_feed_version": {
@@ -76,11 +55,7 @@
       "description": "Opaque version token for the affected wholesale feed (for collection events, the unfiltered collections_version) before this change, when the seller can cheaply provide it. Receivers MAY use this to detect obvious gaps, but MUST NOT require it."
     },
     "cache_scope": {
-      "type": "string",
-      "enum": [
-        "public",
-        "account"
-      ],
+      "$ref": "/schemas/enums/cache-scope.json",
       "description": "Cache layer affected by this change. MUST equal event.payload.applies_to.scope. Mirrors the cache_scope returned by list_products / get_signals / list_collections for the affected feed."
     },
     "event": {

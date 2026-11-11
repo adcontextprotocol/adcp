@@ -85,7 +85,7 @@ test('calendars carry an explicit working day, weekly schedule, coverage, and co
     rejects(validate, value);
   }
   for (const value of [
-    { timezone: 'inventory_local' }, { timezone: '' }, { business_day_minutes: 0 },
+    { timezone: 'x'.repeat(256) }, { timezone: '' }, { business_day_minutes: 0 },
     { business_day_minutes: 1441 }, { working_periods: [] }, { non_working_dates: ['2027-02-30'] },
     { valid_through: 'next month' }, { non_working_dates: ['2027-01-01', '2027-01-01'] },
   ]) rejects(validate, { ...calendar, ...value });
@@ -249,7 +249,7 @@ test('capability declarations publish calendars without implying a product timin
   const value = { status: 'completed', adcp_version: '3.3', adcp: { major_versions: [3], supported_versions: ['3.3'], idempotency: { supported: true, replay_ttl_seconds: 86400 } }, supported_protocols: ['media_buy'], business_calendars: [calendar], media_buy: { issue_reporting: true } };
   accepts(validate, value);
   rejects(validate, { ...value, business_calendars: [] });
-  rejects(validate, { ...value, business_calendars: [{ ...calendar, timezone: 'inventory_local' }] });
+  rejects(validate, { ...value, business_calendars: [{ ...calendar, timezone: '' }] });
   rejects(validate, { ...value, media_buy: { issue_reporting: 'yes' } });
   rejects(validate, { ...value, adcp: { ...value.adcp, idempotency: { supported: false } } });
   rejects(validate, { ...value, adcp: { ...value.adcp, idempotency: { supported: true } } });

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/keyword.json",
+  "title": "Keyword",
+  "description": "Keyword text for targeting or exclusion.",
+  "type": "string",
+  "minLength": 1
+}

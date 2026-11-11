@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/task-sort-field.json",
+  "title": "Task Sort Field",
+  "description": "Field that a task list is sorted by.",
+  "type": "string",
+  "enum": [
+    "created_at",
+    "updated_at",
+    "status",
+    "task_type",
+    "protocol"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/variant-keep-mode.json",
+  "title": "Variant Keep Mode",
+  "description": "How a buyer intends to use generated creative variants: keep_one, keep_some, or keep_all.",
+  "type": "string",
+  "enum": [
+    "keep_all",
+    "keep_one",
+    "keep_some"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/conversion-optimization-target.json",
+  "title": "Conversion Optimization Target",
+  "description": "Kind of conversion goal a seller supports: cost_per, per_ad_spend, or maximize_value.",
+  "type": "string",
+  "enum": [
+    "cost_per",
+    "per_ad_spend",
+    "maximize_value"
+  ]
+}

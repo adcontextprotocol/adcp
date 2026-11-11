@@ -25,7 +25,7 @@
       "type": "object",
       "description": "Every tool the AdCP spec defines, keyed by tool name (the snake_case name used in MCP/A2A invocations).",
       "minProperties": 1,
-      "propertyNames": { "$ref": "#/definitions/tool_name" },
+      "propertyNames": { "$ref": "/schemas/core/tool-name.json" },
       "additionalProperties": {
         "type": "object",
         "required": ["protocol", "mutating", "request_schema", "response_schema", "async_response_schemas"],
@@ -66,8 +66,7 @@
             "description": "Stable logical operation identity used for authorization, idempotency equivalence, task recovery, and webhook identity. Aliases in the same family share this value."
           },
           "idempotency_requirement": {
-            "type": "string",
-            "enum": ["required", "optional", "none"],
+            "$ref": "/schemas/enums/idempotency-requirement.json",
             "description": "Whether callers must, may, or cannot supply idempotency_key for this tool. Optional keys, when supplied, receive the same replay guarantees as required keys."
           },
           "request_schema": {
@@ -87,7 +86,7 @@
             "additionalProperties": false,
             "properties": {
               "tool": {
-                "$ref": "#/definitions/tool_name",
+                "$ref": "/schemas/core/tool-name.json",
                 "description": "Legacy peer tool targeted by the adapter."
               },
               "mode": {
@@ -117,7 +116,7 @@
           "superseded_by": {
             "type": "array",
             "description": "Current tool names that replace this deprecated facade. This does not imply that each replacement is a one-call alias.",
-            "items": { "$ref": "#/definitions/tool_name" },
+            "items": { "$ref": "/schemas/core/tool-name.json" },
             "minItems": 1,
             "uniqueItems": true
           },
@@ -154,7 +153,7 @@
         "terminal_schema_overrides": {
           "type": "object",
           "description": "Result schemas for retained 3.x task_type values that do not name manifest tools, such as media_buy_delivery.",
-          "propertyNames": { "$ref": "#/definitions/tool_name" },
+          "propertyNames": { "$ref": "/schemas/core/tool-name.json" },
           "additionalProperties": { "$ref": "#/definitions/schema_path" }
         }
       }
@@ -166,8 +165,7 @@
       "additionalProperties": false,
       "properties": {
         "default_unknown_recovery": {
-          "type": "string",
-          "enum": ["correctable", "transient", "terminal"],
+          "$ref": "/schemas/enums/error-recovery.json",
           "description": "The recovery classification an agent MUST apply to a code that is not present in this manifest's `error_codes` block. `transient` is the safe default — unknown codes from a non-conforming seller should be retried with backoff, not classified as fatal."
         },
         "note": {
@@ -186,8 +184,7 @@
         "additionalProperties": false,
         "properties": {
           "recovery": {
-            "type": "string",
-            "enum": ["correctable", "transient", "terminal"],
+            "$ref": "/schemas/enums/error-recovery.json",
             "description": "How the caller should respond. correctable: fix the request and retry. transient: retry with backoff. terminal: no autonomous recovery — operator intervention required."
           },
           "description": {
@@ -236,11 +233,6 @@
     }
   },
   "definitions": {
-    "tool_name": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
-      "description": "Canonical snake_case tool name safe for use as a manifest JSON Pointer segment."
-    },
     "schema_path": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\\.json$",

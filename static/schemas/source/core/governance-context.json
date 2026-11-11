@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/governance-context.json",
+  "title": "Governance Context",
+  "description": "Opaque authorization context issued by an approved check_governance decision. Services pass it verbatim.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 4096,
+  "pattern": "^[\\x20-\\x7E]+$"
+}

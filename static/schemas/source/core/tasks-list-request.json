@@ -99,14 +99,7 @@
       "description": "Sorting parameters",
       "properties": {
         "field": {
-          "type": "string",
-          "enum": [
-            "created_at",
-            "updated_at",
-            "status",
-            "task_type",
-            "protocol"
-          ],
+          "$ref": "/schemas/enums/task-sort-field.json",
           "default": "created_at",
           "description": "Field to sort by"
         },

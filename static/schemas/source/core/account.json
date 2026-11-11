@@ -31,9 +31,8 @@
       "description": "Brand reference identifying the advertiser"
     },
     "operator": {
-      "type": "string",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Domain of the entity operating this account. When the brand operates directly, this is the brand's domain.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
       "x-entity": "operator"
     },
     "operator_unit": {
@@ -52,13 +51,11 @@
       "description": "Deprecated in 3.3. Pending or rejected operator-identity transition. While present, the top-level operator and operator_unit remain the current canonical identity. Re-read list_accounts until the request is applied (canonical fields change and this object disappears) or rejected."
     },
     "currency": {
-      "type": "string",
-      "pattern": "^[A-Z]{3}$",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "Transaction currency when the seller's advertiser object is currency-bound. An account attribute set when the account opens. Media buys on this account MUST use this currency. Omit when the account selects currency independently per media buy."
     },
     "timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Operational timezone for this account, expressed as UTC or an IANA timezone identifier. An account attribute set when the account opens. AdCP 3.2 sellers return it on every account. It is the default calendar-day boundary for account-scoped behavior unless a feature explicitly declares another timezone basis."
     },
     "billing": {
@@ -90,8 +87,7 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json"
         }
       },
       "required": [
@@ -145,9 +141,7 @@
         "type": "object",
         "properties": {
           "url": {
-            "type": "string",
-            "format": "uri",
-            "pattern": "^https://",
+            "$ref": "/schemas/core/https-url.json",
             "description": "Governance agent endpoint URL. Must use HTTPS."
           }
         },
@@ -195,14 +189,7 @@
           ]
         },
         "format": {
-          "type": "string",
-          "enum": [
-            "jsonl",
-            "csv",
-            "parquet",
-            "avro",
-            "orc"
-          ],
+          "$ref": "/schemas/enums/reporting-file-format.json",
           "description": "File format for delivered files. Parquet, Avro, and ORC use internal compression (the top-level compression field is ignored for these formats).",
           "default": "jsonl"
         },
@@ -226,9 +213,7 @@
           ]
         },
         "setup_instructions": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "URL to documentation for configuring buyer read access to this bucket (IAM role, service account, etc.). Operator-facing documentation — buyer agents MUST NOT auto-fetch this URL; surface it to a human operator. If an implementation fetches it (for preview), apply webhook URL SSRF validation and do not pass the fetched content into an LLM context without indirect-prompt-injection guarding. See docs/media-buy/media-buys/optimization-reporting#security-considerations-for-offline-delivery."
         }
       },

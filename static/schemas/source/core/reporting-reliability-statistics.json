@@ -23,10 +23,17 @@
       },
       "required": ["start", "end"],
       "additionalProperties": false
+    },
+    "decimal_string": {
+      "title": "Decimal String",
+      "description": "Non-negative decimal number written as a string, such as 0.25.",
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
     }
   },
   "properties": {
-    "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
+    "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json" },
     "measurement_period": { "$ref": "#/definitions/ReportingReliabilityMeasurementPeriod" },
     "obligations_due": { "type": "integer", "minimum": 1, "description": "Denominator for on-time performance." },
     "obligations_on_time": { "type": "integer", "minimum": 0, "description": "Obligations whose required revision was published by expected_at. Divide by obligations_due for the on-time rate." },
@@ -41,10 +48,10 @@
         "type": "object",
         "properties": {
           "control_total_name": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "unit": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "unit": { "$ref": "/schemas/core/control-total-unit.json" },
           "sample_count": { "type": "integer", "minimum": 1 },
-          "p50_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$", "maxLength": 32 },
-          "p95_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$", "maxLength": 32 }
+          "p50_absolute_delta": { "$ref": "#/definitions/decimal_string" },
+          "p95_absolute_delta": { "$ref": "#/definitions/decimal_string" }
         },
         "required": ["control_total_name", "unit", "sample_count", "p50_absolute_delta", "p95_absolute_delta"],
         "additionalProperties": false
@@ -57,8 +64,8 @@
       "properties": {
         "basis": { "type": "string", "enum": ["reporting_ledger", "third_party_attestation"] },
         "generated_at": { "type": "string", "format": "date-time" },
-        "attestation_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)" },
-        "attestation_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+        "attestation_uri": { "$ref": "/schemas/core/public-https-url.json" },
+        "attestation_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" }
       },
       "required": ["basis", "generated_at"],
       "allOf": [

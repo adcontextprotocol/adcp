@@ -69,8 +69,8 @@
                 "proposal": {
                   "properties": {
                     "proposal_initiator": { "const": "seller" },
-                    "proposal_kind": { "enum": ["media_buy_update", "media_buy_cancellation"] },
-                    "proposal_status": { "enum": ["committed", "accepted"] }
+                    "proposal_kind": { "$ref": "/schemas/enums/seller-proposal-kind.json" },
+                    "proposal_status": { "$ref": "/schemas/enums/seller-proposal-status.json" }
                   },
                   "required": ["proposal_initiator"]
                 }
@@ -96,24 +96,11 @@
         "type": "object",
         "properties": {
           "opportunity_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
-            "x-entity": "opportunity"
+            "$ref": "/schemas/core/opportunity-id.json"
           },
-          "status": { "type": "string", "enum": ["open", "closed"] },
+          "status": { "$ref": "/schemas/enums/opportunity-status.json" },
           "close_reason": {
-            "type": "string",
-            "enum": [
-              "accepted_with_seller",
-              "purchased_elsewhere",
-              "selected_alternative",
-              "not_pursued",
-              "budget_changed",
-              "timing_changed",
-              "other"
-            ]
+            "$ref": "/schemas/enums/opportunity-close-reason.json"
           },
           "later_proposals": { "$ref": "/schemas/core/later-proposals-state.json" }
         },
@@ -127,7 +114,7 @@
         "additionalProperties": false
       }
     },
-    "next_cursor": { "type": "string", "minLength": 1 },
+    "next_cursor": { "$ref": "/schemas/core/page-cursor.json" },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

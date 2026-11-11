@@ -19,7 +19,7 @@
         "other"
       ]
     },
-    "message": { "type": "string", "minLength": 1 },
+    "message": { "$ref": "/schemas/core/representation-rejection-message.json" },
     "details": { "type": "object", "additionalProperties": true }
   },
   "required": ["representation_id", "code", "message"],

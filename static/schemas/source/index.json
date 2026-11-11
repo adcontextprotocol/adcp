@@ -1267,6 +1267,1042 @@
           "description": "Canonical gender value set with explicit unknown-gender membership Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
           "x-status": "experimental",
           "x-added-in": "3.3.0"
+        },
+        "currency-code": {
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 alphabetic currency code, such as USD or EUR."
+        },
+        "country-code": {
+          "$ref": "/schemas/core/country-code.json",
+          "description": "ISO 3166-1 alpha-2 country code, such as US or DE."
+        },
+        "idempotency-key": {
+          "$ref": "/schemas/core/idempotency-key.json",
+          "description": "Key that a client or webhook sender generates for at-most-once processing. Retries of one logical operation reuse it. A fresh UUID v4 is recommended."
+        },
+        "domain-name": {
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Lowercase DNS domain name without a scheme, path, or trailing dot, such as example.com."
+        },
+        "https-url": {
+          "$ref": "/schemas/core/https-url.json",
+          "description": "Absolute URL that uses the https scheme."
+        },
+        "country-subdivision-code": {
+          "$ref": "/schemas/core/country-subdivision-code.json",
+          "description": "ISO 3166-2 country subdivision code, such as US-CA or GB-SCT."
+        },
+        "latitude": {
+          "$ref": "/schemas/core/latitude.json",
+          "description": "Latitude in decimal degrees."
+        },
+        "longitude": {
+          "$ref": "/schemas/core/longitude.json",
+          "description": "Longitude in decimal degrees."
+        },
+        "calendar-date": {
+          "$ref": "/schemas/core/calendar-date.json",
+          "description": "Calendar date in YYYY-MM-DD form, without a timezone."
+        },
+        "hex-color": {
+          "$ref": "/schemas/core/hex-color.json",
+          "description": "Six-digit hexadecimal RGB color with a leading number sign, such as #FF6600."
+        },
+        "aspect-ratio": {
+          "$ref": "/schemas/core/aspect-ratio.json",
+          "description": "Aspect ratio as width:height, such as 16:9 or 1.91:1."
+        },
+        "gtin": {
+          "$ref": "/schemas/core/gtin.json",
+          "description": "Global Trade Item Number of 8 to 14 digits."
+        },
+        "opentype-feature-tag": {
+          "$ref": "/schemas/core/opentype-feature-tag.json",
+          "description": "Four-character OpenType feature tag, such as liga or smcp."
+        },
+        "tracker-offset": {
+          "$ref": "/schemas/core/tracker-offset.json",
+          "description": "VAST or DAAST tracking event offset, as a timecode in HH:MM:SS or HH:MM:SS.mmm form or a percentage of 0 to 100."
+        },
+        "iso8601-duration": {
+          "$ref": "/schemas/core/iso8601-duration.json",
+          "description": "ISO 8601 duration with at least one component, such as PT15M or P1D. PT0S is allowed."
+        },
+        "reporting-period-duration": {
+          "$ref": "/schemas/core/reporting-period-duration.json",
+          "description": "Strictly positive ISO 8601 duration of one reporting period, such as PT15M, P1D, or P1M."
+        },
+        "sha256-digest": {
+          "$ref": "/schemas/core/sha256-digest.json",
+          "description": "SHA-256 digest as the sha256: prefix followed by 64 lowercase hexadecimal characters."
+        },
+        "sha256-hex-digest": {
+          "$ref": "/schemas/core/sha256-hex-digest.json",
+          "description": "SHA-256 digest as 64 hexadecimal characters of either case, with no prefix."
+        },
+        "proposal-terms-digest": {
+          "$ref": "/schemas/core/proposal-terms-digest.json",
+          "description": "Digest of a proposal's commercial_terms: the sha256: prefix followed by the unpadded base64url SHA-256 of their RFC 8785 JCS serialization."
+        },
+        "hashed-email": {
+          "$ref": "/schemas/core/hashed-email.json",
+          "description": "Lowercase hexadecimal SHA-256 hash of a lowercase, trimmed email address. Pseudonymous personal data, not anonymous data."
+        },
+        "hashed-phone": {
+          "$ref": "/schemas/core/hashed-phone.json",
+          "description": "Lowercase hexadecimal SHA-256 hash of a phone number in E.164 form. Pseudonymous personal data, not anonymous data."
+        },
+        "credential-fingerprint": {
+          "$ref": "/schemas/core/credential-fingerprint.json",
+          "description": "Lowercase hexadecimal SHA-256 fingerprint of a legacy webhook credential string."
+        },
+        "identifier-value-digest": {
+          "$ref": "/schemas/core/identifier-value-digest.json",
+          "description": "Lowercase hexadecimal SHA-256 digest of an identifier value that a compliance runner asks a controller to verify."
+        },
+        "public-https-url": {
+          "$ref": "/schemas/core/public-https-url.json",
+          "description": "HTTPS URL on a public, dotted host name: no userinfo, localhost, or IP literal."
+        },
+        "canonical-https-url": {
+          "$ref": "/schemas/core/canonical-https-url.json",
+          "description": "HTTPS URL with no userinfo or fragment. A path and query are allowed."
+        },
+        "https-origin": {
+          "$ref": "/schemas/core/https-origin.json",
+          "description": "HTTPS origin with no path, query, fragment, or userinfo."
+        },
+        "adcp-release-version": {
+          "$ref": "/schemas/core/adcp-release-version.json",
+          "description": "Release-precision AdCP version in VERSION.RELEASE form, with an optional prerelease suffix, such as 3.1 or 3.1-beta."
+        },
+        "adcp-minor-version": {
+          "$ref": "/schemas/core/adcp-minor-version.json",
+          "description": "AdCP version in MAJOR.MINOR form, such as 3.2."
+        },
+        "canonical-adcp-minor-version": {
+          "$ref": "/schemas/core/canonical-adcp-minor-version.json",
+          "description": "AdCP version in MAJOR.MINOR form with no leading zeros, such as 3.2."
+        },
+        "sla-duration": {
+          "$ref": "/schemas/core/sla-duration.json",
+          "description": "ISO 8601 duration of an SLA bound that is not zero."
+        },
+        "adcp-major-version": {
+          "$ref": "/schemas/core/adcp-major-version.json",
+          "description": "AdCP major version number."
+        },
+        "adcp-build-version": {
+          "$ref": "/schemas/core/adcp-build-version.json",
+          "description": "Full semantic version of a seller deployment: MAJOR.MINOR.PATCH with optional prerelease and build metadata."
+        },
+        "format-revision": {
+          "$ref": "/schemas/core/format-revision.json",
+          "description": "Semantic version of a community format entry's input contract in MAJOR.MINOR.PATCH form."
+        },
+        "reporting-revision-id": {
+          "$ref": "/schemas/core/reporting-revision-id.json",
+          "description": "Identifier of one immutable report publication. Distinct from a package delivery revision and from provider-native versions."
+        },
+        "reporting-obligation-id": {
+          "$ref": "/schemas/core/reporting-obligation-id.json",
+          "description": "Seller-issued identifier of one reporting obligation."
+        },
+        "report-definition-id": {
+          "$ref": "/schemas/core/report-definition-id.json",
+          "description": "Identifier of one immutable report definition: its metric, grain, attribution, timezone, and finality semantics."
+        },
+        "reporting-materialization-id": {
+          "$ref": "/schemas/core/reporting-materialization-id.json",
+          "description": "Identifier of one materialization of a reporting revision at a destination."
+        },
+        "reporting-adjustment-id": {
+          "$ref": "/schemas/core/reporting-adjustment-id.json",
+          "description": "Identifier of one correction to the billing-purpose totals of an official reporting revision."
+        },
+        "finality-policy-id": {
+          "$ref": "/schemas/core/finality-policy-id.json",
+          "description": "Identifier of an immutable finality policy, bound by a report definition."
+        },
+        "reporting-issue-id": {
+          "$ref": "/schemas/core/reporting-issue-id.json",
+          "description": "Seller-issued identifier of one logical reporting issue. Re-emissions and later polls of the same unresolved condition reuse it."
+        },
+        "reporting-receipt-id": {
+          "$ref": "/schemas/core/reporting-receipt-id.json",
+          "description": "Identifier of one immutable reporting receipt."
+        },
+        "reporting-consumer-status-id": {
+          "$ref": "/schemas/core/reporting-consumer-status-id.json",
+          "description": "Identifier of one immutable consumer status statement about reporting. Exact retries reuse it; a changed status uses a new one."
+        },
+        "reporting-delivery-config-id": {
+          "$ref": "/schemas/core/reporting-delivery-config-id.json",
+          "description": "Caller-selected identifier of a reporting delivery configuration, unique within the authenticated caller and account."
+        },
+        "reporting-subscription-id": {
+          "$ref": "/schemas/core/reporting-subscription-id.json",
+          "description": "Identifier of a reporting subscription."
+        },
+        "reporting-destination-id": {
+          "$ref": "/schemas/core/reporting-destination-id.json",
+          "description": "Caller-selected logical key of a destination in a principal's reporting_destinations."
+        },
+        "reporting-destination-ref": {
+          "$ref": "/schemas/core/reporting-destination-ref.json",
+          "description": "Seller-issued opaque reference to one immutable generation of a reporting destination."
+        },
+        "reporting-profile-id": {
+          "$ref": "/schemas/core/reporting-profile-id.json",
+          "description": "Versioned semantic profile of an aggregate report, such as media_buy_delivery_v1."
+        },
+        "reporting-transport": {
+          "$ref": "/schemas/core/reporting-transport.json",
+          "description": "Open name of a reporting delivery transport, such as s3, bigquery, or delta_sharing."
+        },
+        "reporting-access-mode": {
+          "$ref": "/schemas/core/reporting-access-mode.json",
+          "description": "Open name of a dataset-share access family, such as databricks_to_databricks or open_sharing."
+        },
+        "reporting-canonicalization-id": {
+          "$ref": "/schemas/core/reporting-canonicalization-id.json",
+          "description": "Identifier of the rules for stable logical row ordering, value encoding, nulls, and schema used by a reporting content digest."
+        },
+        "reporting-grain": {
+          "$ref": "/schemas/core/reporting-grain.json",
+          "description": "Stable description of what one logical report row represents."
+        },
+        "notification-id": {
+          "$ref": "/schemas/core/notification-id.json",
+          "description": "Identifier of one logical notification. Re-emissions of the same event reuse it, and it is distinct from the per-delivery idempotency key."
+        },
+        "subscriber-id": {
+          "$ref": "/schemas/core/subscriber-id.json",
+          "description": "Identifier of a subscription endpoint within a caller's notification configurations. Webhook fires echo it verbatim."
+        },
+        "webhook-operation-id": {
+          "$ref": "/schemas/core/webhook-operation-id.json",
+          "description": "Buyer-supplied correlation identifier of a webhook registration. The seller echoes it verbatim in every payload."
+        },
+        "webhook-challenge-value": {
+          "$ref": "/schemas/core/webhook-challenge-value.json",
+          "description": "Opaque, cryptographically random value that a webhook receiver echoes to prove control of its endpoint."
+        },
+        "webhook-token": {
+          "$ref": "/schemas/core/webhook-token.json",
+          "description": "Client-provided token that the seller echoes verbatim so the receiver can validate a webhook."
+        },
+        "auth-credential": {
+          "$ref": "/schemas/core/auth-credential.json",
+          "description": "Credential for Bearer or HMAC-SHA256 authentication: a token or shared secret of at least 32 characters."
+        },
+        "account-change-id": {
+          "$ref": "/schemas/core/account-change-id.json",
+          "description": "Stable seller-generated identifier of one logical account change."
+        },
+        "account-change-resource-type": {
+          "$ref": "/schemas/core/account-change-resource-type.json",
+          "description": "Open name of a resource type in the account change feed, such as account, media_buy, or package."
+        },
+        "account-change-cursor": {
+          "$ref": "/schemas/core/account-change-cursor.json",
+          "description": "Opaque checkpoint in the account change feed."
+        },
+        "account-request-id": {
+          "$ref": "/schemas/core/account-request-id.json",
+          "description": "Seller-assigned identifier of an account request. It is not an account_id."
+        },
+        "principal-id": {
+          "$ref": "/schemas/core/principal-id.json",
+          "description": "Seller-issued opaque identifier of a principal record."
+        },
+        "capabilities-version": {
+          "$ref": "/schemas/core/capabilities-version.json",
+          "description": "Opaque revision token of a seller's full capability document."
+        },
+        "governance-context": {
+          "$ref": "/schemas/core/governance-context.json",
+          "description": "Opaque authorization context issued by an approved check_governance decision. Services pass it verbatim."
+        },
+        "governance-budget-period-id": {
+          "$ref": "/schemas/core/governance-budget-period-id.json",
+          "description": "Identifier of one budget period, unique within a plan and stable across syncs."
+        },
+        "consultation-context": {
+          "$ref": "/schemas/core/consultation-context.json",
+          "description": "Opaque, non-authorizing handle that correlates a re-check with an earlier check_governance conditions verdict."
+        },
+        "policy-category-id": {
+          "$ref": "/schemas/core/policy-category-id.json",
+          "description": "Identifier of a registry policy category definition."
+        },
+        "policy-category-facet-id": {
+          "$ref": "/schemas/core/policy-category-facet-id.json",
+          "description": "Identifier of a facet of a registry policy category."
+        },
+        "governance-policy-id": {
+          "$ref": "/schemas/core/governance-policy-id.json",
+          "description": "Identifier of a policy in the governance registry."
+        },
+        "delivery-observation-id": {
+          "$ref": "/schemas/core/delivery-observation-id.json",
+          "description": "Identifier of one governance delivery observation."
+        },
+        "acceptance-policy-profile-id": {
+          "$ref": "/schemas/core/acceptance-policy-profile-id.json",
+          "description": "Identifier of an acceptance policy profile."
+        },
+        "advertiser-role": {
+          "$ref": "/schemas/core/advertiser-role.json",
+          "description": "Registry-extensible advertiser role, such as political_actor or commercial_advertiser."
+        },
+        "media-buy-id": {
+          "$ref": "/schemas/core/media-buy-id.json",
+          "description": "Seller-issued identifier of a media buy."
+        },
+        "creative-id": {
+          "$ref": "/schemas/core/creative-id.json",
+          "description": "Identifier of a creative."
+        },
+        "package-id": {
+          "$ref": "/schemas/core/package-id.json",
+          "description": "Identifier of a package within a media buy."
+        },
+        "account-id": {
+          "$ref": "/schemas/core/account-id.json",
+          "description": "Seller-issued identifier of an account."
+        },
+        "product-id": {
+          "$ref": "/schemas/core/product-id.json",
+          "description": "Identifier of a product in a seller's catalog."
+        },
+        "proposal-id": {
+          "$ref": "/schemas/core/proposal-id.json",
+          "description": "Identifier of a proposal."
+        },
+        "catalog-id": {
+          "$ref": "/schemas/core/catalog-id.json",
+          "description": "Identifier of a catalog."
+        },
+        "catalog-item-id": {
+          "$ref": "/schemas/core/catalog-item-id.json",
+          "description": "Identifier of an item in a catalog."
+        },
+        "catalog-generation": {
+          "$ref": "/schemas/core/catalog-generation.json",
+          "description": "Opaque identifier of one generation of a catalog."
+        },
+        "creative-evaluation-id": {
+          "$ref": "/schemas/core/creative-evaluation-id.json",
+          "description": "Identifier of a creative evaluation."
+        },
+        "creative-locale-variant-id": {
+          "$ref": "/schemas/core/creative-locale-variant-id.json",
+          "description": "Identifier of a locale variant of a creative."
+        },
+        "audience-evidence-id": {
+          "$ref": "/schemas/core/audience-evidence-id.json",
+          "description": "Identifier of an audience evidence item."
+        },
+        "audience-evidence-snapshot-id": {
+          "$ref": "/schemas/core/audience-evidence-snapshot-id.json",
+          "description": "Identifier of an immutable audience evidence snapshot."
+        },
+        "placement-id": {
+          "$ref": "/schemas/core/placement-id.json",
+          "description": "Identifier of a placement."
+        },
+        "event-source-id": {
+          "$ref": "/schemas/core/event-source-id.json",
+          "description": "Identifier of an event source configured on an account."
+        },
+        "pricing-option-id": {
+          "$ref": "/schemas/core/pricing-option-id.json",
+          "description": "Identifier of a pricing option within a product."
+        },
+        "collection-list-id": {
+          "$ref": "/schemas/core/collection-list-id.json",
+          "description": "Identifier of a collection list."
+        },
+        "property-list-id": {
+          "$ref": "/schemas/core/property-list-id.json",
+          "description": "Identifier of a property list."
+        },
+        "media-buy-issue-id": {
+          "$ref": "/schemas/core/media-buy-issue-id.json",
+          "description": "Identifier of a media buy issue."
+        },
+        "installment-id": {
+          "$ref": "/schemas/core/installment-id.json",
+          "description": "Identifier of an installment of a collection."
+        },
+        "opportunity-id": {
+          "$ref": "/schemas/core/opportunity-id.json",
+          "description": "Opaque buyer-assigned identifier of a planning cycle, scoped to the seller and account."
+        },
+        "signal-local-id": {
+          "$ref": "/schemas/core/signal-local-id.json",
+          "description": "Identifier of a signal within its publisher's signal set or a data provider's catalog. Pair it with the namespace that issued it."
+        },
+        "creative-capability-id": {
+          "$ref": "/schemas/core/creative-capability-id.json",
+          "description": "Identifier of a format capability within a creative agent, from get_adcp_capabilities creative.supported_formats[].capability_id."
+        },
+        "trusted-match-provider-id": {
+          "$ref": "/schemas/core/trusted-match-provider-id.json",
+          "description": "Publisher-assigned identifier of a provider registration in Trusted Match."
+        },
+        "signal-tag": {
+          "$ref": "/schemas/core/signal-tag.json",
+          "description": "Tag that groups signals in a data provider's or publisher's signal set."
+        },
+        "attestation-resolver-id": {
+          "$ref": "/schemas/core/attestation-resolver-id.json",
+          "description": "Identifier of an attestation resolver accepted by an evaluator."
+        },
+        "reporting-rejection-code": {
+          "$ref": "/schemas/core/reporting-rejection-code.json",
+          "description": "Uppercase machine-readable code for why a reporting receipt or adjustment was rejected."
+        },
+        "jurisdiction-group": {
+          "$ref": "/schemas/core/jurisdiction-group.json",
+          "description": "Profile-local name of a group of jurisdictions, declared in an acceptance policy profile's region_aliases."
+        },
+        "tmpx-slot-id": {
+          "$ref": "/schemas/core/tmpx-slot-id.json",
+          "description": "Identifier of a TMPX slot that a Trusted Match provider registers."
+        },
+        "brand-id-or-wildcard": {
+          "$ref": "/schemas/core/brand-id-or-wildcard.json",
+          "description": "Brand identifier within a parent organization's portfolio, or * for every brand."
+        },
+        "renderer-version": {
+          "$ref": "/schemas/core/renderer-version.json",
+          "description": "Semantic version of a renderer package."
+        },
+        "adcp-task-name": {
+          "$ref": "/schemas/core/adcp-task-name.json",
+          "description": "Canonical snake_case AdCP task name, such as create_media_buy."
+        },
+        "media-buy-name": {
+          "$ref": "/schemas/core/media-buy-name.json",
+          "description": "Human-readable media buy name for trafficking UI display and operational communication. It contains at least one non-whitespace character."
+        },
+        "measurement-source": {
+          "$ref": "/schemas/core/measurement-source.json",
+          "description": "Third-party measurement provider whose data produced audience numbers."
+        },
+        "canvas-state-id": {
+          "$ref": "/schemas/core/canvas-state-id.json",
+          "description": "Identifier of one state of a seller-rendered stateful display unit."
+        },
+        "canvas-breakpoint-id": {
+          "$ref": "/schemas/core/canvas-breakpoint-id.json",
+          "description": "Identifier of one breakpoint of a seller-rendered stateful display state."
+        },
+        "custom-event-name": {
+          "$ref": "/schemas/core/custom-event-name.json",
+          "description": "Platform-specific name of a custom event."
+        },
+        "keyword": {
+          "$ref": "/schemas/core/keyword.json",
+          "description": "Keyword text for targeting or exclusion."
+        },
+        "agency-estimate-number": {
+          "$ref": "/schemas/core/agency-estimate-number.json",
+          "description": "Agency estimate or authorization number."
+        },
+        "purchase-order-ref": {
+          "$ref": "/schemas/core/purchase-order-ref.json",
+          "description": "Buyer purchase order reference."
+        },
+        "measurement-window-id": {
+          "$ref": "/schemas/core/measurement-window-id.json",
+          "description": "Identifier of a measurement window from a product's reporting capabilities, such as live, c3, or c7."
+        },
+        "macro-dialect-revision": {
+          "$ref": "/schemas/core/macro-dialect-revision.json",
+          "description": "Immutable registry or mapping revision, release, commit, or digest of a macro dialect."
+        },
+        "macro-dialect-semantic": {
+          "$ref": "/schemas/core/macro-dialect-semantic.json",
+          "description": "Exact semantic identifier of a macro in its dialect, such as CACHEBUSTING."
+        },
+        "macro-token": {
+          "$ref": "/schemas/core/macro-token.json",
+          "description": "Exact byte-preserved macro token expression, including delimiters."
+        },
+        "page-cursor": {
+          "$ref": "/schemas/core/page-cursor.json",
+          "description": "Opaque pagination cursor returned by a prior page of results."
+        },
+        "products-feed-version": {
+          "$ref": "/schemas/core/products-feed-version.json",
+          "description": "Account-scoped feed fence issued by list_products."
+        },
+        "products-pricing-version": {
+          "$ref": "/schemas/core/products-pricing-version.json",
+          "description": "Account-scoped pricing fence issued by list_products."
+        },
+        "purchase-continuation-token": {
+          "$ref": "/schemas/core/purchase-continuation-token.json",
+          "description": "Opaque, short-lived coordinator token from products_available.purchase_continuation."
+        },
+        "geo-place-system-version": {
+          "$ref": "/schemas/core/geo-place-system-version.json",
+          "description": "Exact version of a geographic place catalog from the seller's supported versions."
+        },
+        "format-option-id": {
+          "$ref": "/schemas/core/format-option-id.json",
+          "description": "Identifier of a format option within its publisher namespace."
+        },
+        "mcp-compatibility-context-id": {
+          "$ref": "/schemas/core/mcp-compatibility-context-id.json",
+          "description": "MCP compatibility field for a conversation context. Servers ignore the value."
+        },
+        "asset-group-id": {
+          "$ref": "/schemas/core/asset-group-id.json",
+          "description": "Identifier of an asset group in a format's asset manifest, in lowercase letters, digits, and underscores."
+        },
+        "day-time-duration": {
+          "$ref": "/schemas/core/day-time-duration.json",
+          "description": "ISO 8601 duration that uses only days, hours, minutes, and seconds, such as P2D or PT36H. It applies to a string that the enclosing schema declares."
+        },
+        "time-duration": {
+          "$ref": "/schemas/core/time-duration.json",
+          "description": "ISO 8601 duration made only of hours, minutes, and seconds, with any date components zero, such as PT15M or P0DT1H. It applies to a duration that the enclosing schema declares."
+        },
+        "date-duration": {
+          "$ref": "/schemas/core/date-duration.json",
+          "description": "ISO 8601 duration made only of years, months, and days, with any time components zero, such as P1D, P1M, or P1DT0H. It applies to a duration that the enclosing schema declares."
+        },
+        "demographic-label": {
+          "$ref": "/schemas/core/demographic-label.json",
+          "description": "Demographic bucket label in the declared demographic system's notation, such as P25-54. It contains at least one non-whitespace character."
+        },
+        "fraction": {
+          "$ref": "/schemas/core/fraction.json",
+          "description": "Unitless proportion or probability from 0 to 1, where 0 means none and 1 means all or certain. Rates, shares, thresholds, and confidence scores use this scale."
+        },
+        "percentage": {
+          "$ref": "/schemas/core/percentage.json",
+          "description": "Proportion of a whole on a 0 to 100 scale, where 100 means the whole. Budget shares, coverage, progress, and share of voice use this scale."
+        },
+        "creative-rotation-weight": {
+          "$ref": "/schemas/core/creative-rotation-weight.json",
+          "description": "Relative delivery weight of one creative among the creatives assigned to a package. Delivery splits in proportion to the weights, and a weight of 0 pauses the creative."
+        },
+        "page-size": {
+          "$ref": "/schemas/core/page-size.json",
+          "description": "Maximum number of items a list or search operation returns in one response."
+        },
+        "age-in-years": {
+          "$ref": "/schemas/core/age-in-years.json",
+          "description": "Person age in completed years. Demographic age predicates and age capability bounds use this value."
+        },
+        "webhook-activity-limit": {
+          "$ref": "/schemas/core/webhook-activity-limit.json",
+          "description": "Maximum number of webhook delivery records a read returns for each parent resource when it includes webhook activity."
+        },
+        "font-weight": {
+          "$ref": "/schemas/core/font-weight.json",
+          "description": "CSS numeric font weight from 100 to 900."
+        },
+        "later-proposal-limit": {
+          "$ref": "/schemas/core/later-proposal-limit.json",
+          "description": "Maximum number of later proposals a seller may send for one opportunity under the buyer's consent."
+        },
+        "billing-variance-percent": {
+          "$ref": "/schemas/core/billing-variance-percent.json",
+          "description": "Largest acceptable difference between the billing vendor's count and the other party's count before resolution starts, as a percentage below 100."
+        },
+        "commission-rate": {
+          "$ref": "/schemas/core/commission-rate.json",
+          "description": "Decimal proportion of commissionable value that a revenue-share price charges, greater than 0 and at most 1."
+        },
+        "rights-response-sla-days": {
+          "$ref": "/schemas/core/rights-response-sla-days.json",
+          "description": "Maximum number of days a signal provider takes to answer a data-subject rights request."
+        },
+        "proposal-alternative-count": {
+          "$ref": "/schemas/core/proposal-alternative-count.json",
+          "description": "Number of draft alternatives in one proposal refinement, from 2 to the protocol maximum of 10."
+        },
+        "identity-match-serve-window": {
+          "$ref": "/schemas/core/identity-match-serve-window.json",
+          "description": "Per-package single-impression frequency window in seconds. After one impression on each eligible package in the window, the publisher queries Identity Match again."
+        },
+        "incomplete-scope-description": {
+          "$ref": "/schemas/core/incomplete-scope-description.json",
+          "description": "Human-readable explanation of what an incomplete response scope is missing and why."
+        },
+        "audience-evidence-version": {
+          "$ref": "/schemas/core/audience-evidence-version.json",
+          "description": "Provider version of one immutable audience-evidence snapshot. Pins and selection readbacks match it exactly."
+        },
+        "reference-population-version": {
+          "$ref": "/schemas/core/reference-population-version.json",
+          "description": "Version of the reference population against which an audience estimate is calculated."
+        },
+        "refinement-ask": {
+          "$ref": "/schemas/core/refinement-ask.json",
+          "description": "Free-text statement of what the buyer asks the seller to change in a product or proposal refinement."
+        },
+        "cancellation-reason": {
+          "$ref": "/schemas/core/cancellation-reason.json",
+          "description": "Free-text reason recorded when a media buy or package is canceled. Sellers store it and return it on later reads."
+        },
+        "reason-detail": {
+          "$ref": "/schemas/core/reason-detail.json",
+          "description": "Untrusted seller free text that supplements a reason code with operational detail."
+        },
+        "brief-rejection-reason": {
+          "$ref": "/schemas/core/brief-rejection-reason.json",
+          "description": "Buyer-facing plain-text explanation a seller gives when it declines a brief or refinement request. It does not name confidential rules or inventory."
+        },
+        "seller-suggestion": {
+          "$ref": "/schemas/core/seller-suggestion.json",
+          "description": "Actionable alternative a seller offers the buyer, such as a change to budget, dates, or channel."
+        },
+        "brand-claim-use-case": {
+          "$ref": "/schemas/core/brand-claim-use-case.json",
+          "description": "Caller-declared use case for a brand claim verification. The brand agent may scope its answer to it."
+        },
+        "contact-name": {
+          "$ref": "/schemas/core/contact-name.json",
+          "description": "Name of the person or organization in a contact record."
+        },
+        "brand-claim-context-note": {
+          "$ref": "/schemas/core/brand-claim-context-note.json",
+          "description": "Public free text a brand chooses to show with a claim verification result, such as the rationale for a disputed status."
+        },
+        "change-summary": {
+          "$ref": "/schemas/core/change-summary.json",
+          "description": "Short, untrusted human-readable summary of one recorded change to a resource."
+        },
+        "proposal-description": {
+          "$ref": "/schemas/core/proposal-description.json",
+          "description": "Explanation of a proposal's media-plan strategy and what it achieves."
+        },
+        "sharing-principal-identity": {
+          "$ref": "/schemas/core/sharing-principal-identity.json",
+          "description": "Provider-interpreted identity of a principal in a data-sharing platform, such as a sharing identifier or an organization and account pair. It is an identifier, never a credential."
+        },
+        "cloud-region": {
+          "$ref": "/schemas/core/cloud-region.json",
+          "description": "Cloud provider region of a data-sharing principal or destination, such as us-east-1."
+        },
+        "open-error-code": {
+          "$ref": "/schemas/core/open-error-code.json",
+          "description": "Error code from the standard codes in enums/error-code.json or a vendor extension. Receivers accept codes they do not recognize."
+        },
+        "control-total-unit": {
+          "$ref": "/schemas/core/control-total-unit.json",
+          "description": "Profile-defined unit of a reporting control total, such as impressions or an ISO 4217 currency code."
+        },
+        "price-adjustment-name": {
+          "$ref": "/schemas/core/price-adjustment-name.json",
+          "description": "Name of one fee, discount, or commission adjustment in a price table or price breakdown."
+        },
+        "font-family-name": {
+          "$ref": "/schemas/core/font-family-name.json",
+          "description": "CSS font-family name, such as Noto Sans Arabic or sans-serif."
+        },
+        "brand-agent-query": {
+          "$ref": "/schemas/core/brand-agent-query.json",
+          "description": "Natural-language discovery query that a brand agent interprets against its roster."
+        },
+        "trademark-mark": {
+          "$ref": "/schemas/core/trademark-mark.json",
+          "description": "Registered trademark text as the registry publishes it."
+        },
+        "trademark-registry": {
+          "$ref": "/schemas/core/trademark-registry.json",
+          "description": "Name of the trademark registry, such as USPTO or EUIPO."
+        },
+        "trademark-registration-number": {
+          "$ref": "/schemas/core/trademark-registration-number.json",
+          "description": "Registration number the trademark registry issued."
+        },
+        "account-change-resource-id": {
+          "$ref": "/schemas/core/account-change-resource-id.json",
+          "description": "Identifier of the resource an account change affects, unique within its resource type."
+        },
+        "attestation-action-id": {
+          "$ref": "/schemas/core/attestation-action-id.json",
+          "description": "Identifier of the consuming action that an attestation evaluation binds to, in the domain consumer's namespace."
+        },
+        "reference-population-id": {
+          "$ref": "/schemas/core/reference-population-id.json",
+          "description": "Identifier of the reference population against which an audience estimate is calculated."
+        },
+        "email-address": {
+          "$ref": "/schemas/core/email-address.json",
+          "description": "Email address of at most 254 characters."
+        },
+        "forecast-point-label": {
+          "$ref": "/schemas/core/forecast-point-label.json",
+          "description": "Human-readable name of one forecast point, such as Primetime."
+        },
+        "commission-basis-description": {
+          "$ref": "/schemas/core/commission-basis-description.json",
+          "description": "Human-readable definition of the inclusions, exclusions, and return treatment used to calculate commissionable value."
+        },
+        "proposal-brief-alignment": {
+          "$ref": "/schemas/core/proposal-brief-alignment.json",
+          "description": "Explanation of how a proposal meets the campaign brief."
+        },
+        "geo-place-id": {
+          "$ref": "/schemas/core/geo-place-id.json",
+          "description": "Stable identifier of a place in a geographic place catalog system."
+        },
+        "media-buy-issue-description": {
+          "$ref": "/schemas/core/media-buy-issue-description.json",
+          "description": "Buyer-written description of a problem reported against a media buy."
+        },
+        "renderer-export-name": {
+          "$ref": "/schemas/core/renderer-export-name.json",
+          "description": "Named package export or entry point that implements a renderer contract."
+        },
+        "provider-storage-locator": {
+          "$ref": "/schemas/core/provider-storage-locator.json",
+          "description": "Non-secret provider-native locator for stored reporting data, such as a bucket and prefix, dataset, table, or share. It never contains a credential or signed URL."
+        },
+        "signal-taxonomy-node-id": {
+          "$ref": "/schemas/core/signal-taxonomy-node-id.json",
+          "description": "Identifier of one node in an external taxonomy that describes a signal."
+        },
+        "signal-segmentation-criteria": {
+          "$ref": "/schemas/core/signal-segmentation-criteria.json",
+          "description": "Rules that decide which identifiers a signal segment includes, as disclosed under the IAB Data Transparency Standard."
+        },
+        "signal-pricing-group": {
+          "$ref": "/schemas/core/signal-pricing-group.json",
+          "description": "Seller-defined key that names a set of signals whose fees combine under one pricing group rule."
+        },
+        "io-signatory": {
+          "$ref": "/schemas/core/io-signatory.json",
+          "description": "Agent identifier or human name of the party that accepted an insertion order."
+        },
+        "principal-configuration-version": {
+          "$ref": "/schemas/core/principal-configuration-version.json",
+          "description": "Opaque version of a principal's persisted configuration. Compare it only for equality."
+        },
+        "webhook-url": {
+          "$ref": "/schemas/core/webhook-url.json",
+          "description": "URL of an endpoint that receives webhook deliveries. The wire contract is any URI; the sender applies the protocol's SSRF checks before it delivers."
+        },
+        "custom-acceptance-requirement-id": {
+          "$ref": "/schemas/core/custom-acceptance-requirement-id.json",
+          "description": "Identifier of a custom acceptance requirement, as opposed to a stable acceptance criterion."
+        },
+        "attestation-reason-code": {
+          "$ref": "/schemas/core/attestation-reason-code.json",
+          "description": "Machine-readable reason code of an attestation evaluation."
+        },
+        "account-change-batch-id": {
+          "$ref": "/schemas/core/account-change-batch-id.json",
+          "description": "Groups account change records from one committed operation or one ingestion batch."
+        },
+        "reporting-resource-ref": {
+          "$ref": "/schemas/core/reporting-resource-ref.json",
+          "description": "Opaque reference to one reporting resource descriptor."
+        },
+        "account-change-action": {
+          "$ref": "/schemas/core/account-change-action.json",
+          "description": "A material change to an account resource, such as created or linked."
+        },
+        "impairment-prior-status": {
+          "$ref": "/schemas/core/impairment-prior-status.json",
+          "description": "Status a resource held before an impairment, such as ready or approved."
+        },
+        "coordinated-component-id": {
+          "$ref": "/schemas/core/coordinated-component-id.json",
+          "description": "Component identifier unique within the components of one coordinated placement."
+        },
+        "display-transition-id": {
+          "$ref": "/schemas/core/display-transition-id.json",
+          "description": "Identifier of a state transition in a stateful display."
+        },
+        "governance-attribute-id": {
+          "$ref": "/schemas/core/governance-attribute-id.json",
+          "description": "Identifier of a governance attribute definition."
+        },
+        "extension-namespace": {
+          "$ref": "/schemas/core/extension-namespace.json",
+          "description": "Namespace of a protocol extension, such as iab_tcf."
+        },
+        "brand-agent-id": {
+          "$ref": "/schemas/core/brand-agent-id.json",
+          "description": "Identifier of an agent entry in a brand.json."
+        },
+        "audience-taxonomy-version": {
+          "$ref": "/schemas/core/audience-taxonomy-version.json",
+          "description": "Version of the external taxonomy that defines an audience characteristic dimension or value."
+        },
+        "registry-policy-version": {
+          "$ref": "/schemas/core/registry-policy-version.json",
+          "description": "Version of a governance registry policy."
+        },
+        "acceptance-policy-profile-version": {
+          "$ref": "/schemas/core/acceptance-policy-profile-version.json",
+          "description": "Version of a published acceptance-policy profile."
+        },
+        "execution-readiness-version": {
+          "$ref": "/schemas/core/execution-readiness-version.json",
+          "description": "Opaque equality token for an account's execution-readiness state."
+        },
+        "context-summary": {
+          "$ref": "/schemas/core/context-summary.json",
+          "description": "Publisher-written natural-language summary of page or app content for contextual relevance matching."
+        },
+        "signal-name": {
+          "$ref": "/schemas/core/signal-name.json",
+          "description": "Human-readable name of a signal."
+        },
+        "signal-description": {
+          "$ref": "/schemas/core/signal-description.json",
+          "description": "What a signal represents and how it is derived."
+        },
+        "format-local-id": {
+          "$ref": "/schemas/core/format-local-id.json",
+          "description": "Format identifier within an agent namespace."
+        },
+        "base64url": {
+          "$ref": "/schemas/core/base64url.json",
+          "description": "Value encoded with the URL-safe base64 alphabet and no padding."
+        },
+        "recorded-payload-digest": {
+          "$ref": "/schemas/core/recorded-payload-digest.json",
+          "description": "SHA-256 digest of a recorded outbound request body, in lowercase hexadecimal."
+        },
+        "airport-code": {
+          "$ref": "/schemas/core/airport-code.json",
+          "description": "IATA three-letter airport code."
+        },
+        "rights-match-score": {
+          "$ref": "/schemas/core/rights-match-score.json",
+          "description": "Relevance ranking score a brand agent assigns to one rights search result. It orders results and is not a proportion or a probability."
+        },
+        "normalized-image-coordinate": {
+          "$ref": "/schemas/core/normalized-image-coordinate.json",
+          "description": "One axis of a normalized image coordinate, measured from the top-left corner."
+        },
+        "duration-unit": {
+          "$ref": "/schemas/core/duration-unit.json",
+          "description": "General duration unit, including campaign for the length of a campaign."
+        },
+        "custom-pricing-description": {
+          "$ref": "/schemas/core/custom-pricing-description.json",
+          "description": "Human-readable description of a custom vendor pricing model that the buyer shows an operator for approval."
+        },
+        "policy-facet-description": {
+          "$ref": "/schemas/core/policy-facet-description.json",
+          "description": "Human-readable description of one registry-defined facet within a policy category."
+        },
+        "acceptance-policy-profile-description": {
+          "$ref": "/schemas/core/acceptance-policy-profile-description.json",
+          "description": "Human-readable summary of a versioned acceptance-policy profile."
+        },
+        "offering-product-limit": {
+          "$ref": "/schemas/core/offering-product-limit.json",
+          "description": "Maximum number of matching products a sponsored-intelligence offering lookup returns."
+        },
+        "cpu-load-percent": {
+          "$ref": "/schemas/core/cpu-load-percent.json",
+          "description": "Ceiling on the CPU load an HTML5 creative may cause while it renders, as an integer percentage."
+        },
+        "request-binding-digest": {
+          "$ref": "/schemas/core/request-binding-digest.json",
+          "description": "Digest of a request-binding object."
+        },
+        "agent-operator-id": {
+          "$ref": "/schemas/core/agent-operator-id.json",
+          "description": "Agent-scoped operator label."
+        },
+        "golden-vector-name": {
+          "$ref": "/schemas/core/golden-vector-name.json",
+          "description": "Name of a golden test vector."
+        },
+        "external-issue-ref": {
+          "$ref": "/schemas/core/external-issue-ref.json",
+          "description": "Opaque reference to a third party's own tracker, such as a ticket key."
+        },
+        "materialization-failure-code": {
+          "$ref": "/schemas/core/materialization-failure-code.json",
+          "description": "Classification of a reporting materialization failure."
+        },
+        "assignment-limit": {
+          "$ref": "/schemas/core/assignment-limit.json",
+          "description": "Maximum number of assigned-package rows list_creatives returns for each creative before it sets assignments_truncated."
+        },
+        "coalescence-window-seconds": {
+          "$ref": "/schemas/core/coalescence-window-seconds.json",
+          "description": "Longest time in seconds a seller waits to coalesce related capability edits before it fires one capabilities.changed webhook."
+        },
+        "context-match-cache-ttl": {
+          "$ref": "/schemas/core/context-match-cache-ttl.json",
+          "description": "Time in seconds a trusted-match router caches a context-match response. A value of 0 disables caching."
+        },
+        "confidence-level": {
+          "$ref": "/schemas/core/confidence-level.json",
+          "description": "Confidence level of a confidence interval, such as 0.95, strictly between 0 and 1."
+        },
+        "price-adjustment-rate": {
+          "$ref": "/schemas/core/price-adjustment-rate.json",
+          "description": "Proportion of the running price that one fee, discount, or commission adjustment applies."
+        },
+        "avatar-provider": {
+          "$ref": "/schemas/core/avatar-provider.json",
+          "description": "Avatar video vendor that renders a brand avatar, such as heygen."
+        },
+        "voice-provider": {
+          "$ref": "/schemas/core/voice-provider.json",
+          "description": "Text-to-speech vendor that renders a brand voice, such as elevenlabs."
+        },
+        "brand-capability-description": {
+          "$ref": "/schemas/core/brand-capability-description.json",
+          "description": "Description of a brand agent's brand protocol capabilities."
+        },
+        "portfolio-description": {
+          "$ref": "/schemas/core/portfolio-description.json",
+          "description": "Markdown description of a seller's media inventory portfolio."
+        },
+        "brand-agent-description": {
+          "$ref": "/schemas/core/brand-agent-description.json",
+          "description": "Description of the capabilities or scope of one agent a brand declares in brand.json."
+        },
+        "measurement-window-description": {
+          "$ref": "/schemas/core/measurement-window-description.json",
+          "description": "Description of what one measurement maturation window counts."
+        },
+        "policy-summary": {
+          "$ref": "/schemas/core/policy-summary.json",
+          "description": "Brief summary of what one governance policy covers."
+        },
+        "acceptance-rule-description": {
+          "$ref": "/schemas/core/acceptance-rule-description.json",
+          "description": "Display-only explanation of one seller acceptance-policy rule."
+        },
+        "change-term-description": {
+          "$ref": "/schemas/core/change-term-description.json",
+          "description": "Display-only summary of a proposal-bound buyer change right."
+        },
+        "identity-change-impact-reason": {
+          "$ref": "/schemas/core/identity-change-impact-reason.json",
+          "description": "Explanation of how a previewed operator-identity change affects one area such as billing or reporting."
+        },
+        "identity-change-rejection-reason": {
+          "$ref": "/schemas/core/identity-change-rejection-reason.json",
+          "description": "Seller reason for rejecting a requested operator-identity change."
+        },
+        "plan-adjustment-reason": {
+          "$ref": "/schemas/core/plan-adjustment-reason.json",
+          "description": "Seller reason for a reported governance plan adjustment, kept in the audit trail."
+        },
+        "reporting-setup-message": {
+          "$ref": "/schemas/core/reporting-setup-message.json",
+          "description": "Untrusted display text describing the manual next step to finish reporting delivery setup."
+        },
+        "warning-message": {
+          "$ref": "/schemas/core/warning-message.json",
+          "description": "Short human-readable explanation of a non-blocking warning on a successful operation."
+        },
+        "representation-id": {
+          "$ref": "/schemas/core/representation-id.json",
+          "description": "Representation identifier unique within one representation set."
+        },
+        "seller-agent-id": {
+          "$ref": "/schemas/core/seller-agent-id.json",
+          "description": "Reserved registry-assigned seller identifier."
+        },
+        "geo-region-catalog-version": {
+          "$ref": "/schemas/core/geo-region-catalog-version.json",
+          "description": "Opaque version of the ISO subdivision catalog or seller mapping behind a region support snapshot."
+        },
+        "acceptance-policy-catalog-version": {
+          "$ref": "/schemas/core/acceptance-policy-catalog-version.json",
+          "description": "Version of a seller-hosted acceptance-policy catalog."
+        },
+        "buyer-reason-message": {
+          "$ref": "/schemas/core/buyer-reason-message.json",
+          "description": "Buyer-safe explanation of an actionable failure in an error buyer_reason."
+        },
+        "macro-resolution-message": {
+          "$ref": "/schemas/core/macro-resolution-message.json",
+          "description": "Diagnostic text for one macro resolution preflight result."
+        },
+        "representation-rejection-message": {
+          "$ref": "/schemas/core/representation-rejection-message.json",
+          "description": "Explanation of why one creative representation candidate is incompatible."
+        },
+        "parent-organization-name": {
+          "$ref": "/schemas/core/parent-organization-name.json",
+          "description": "Primary display name of the parent organization that owns brands in brand.json."
+        },
+        "placement-name": {
+          "$ref": "/schemas/core/placement-name.json",
+          "description": "Display name of a product placement."
+        },
+        "product-name": {
+          "$ref": "/schemas/core/product-name.json",
+          "description": "Display name of a product."
+        },
+        "representation-set-name": {
+          "$ref": "/schemas/core/representation-set-name.json",
+          "description": "Buyer-authored name of a creative representation set revision."
+        },
+        "policy-facet-name": {
+          "$ref": "/schemas/core/policy-facet-name.json",
+          "description": "Display name of one facet within a governance policy category."
+        },
+        "policy-issuer-name": {
+          "$ref": "/schemas/core/policy-issuer-name.json",
+          "description": "Name of the regulator, standards body, or platform operator that issued a policy."
+        },
+        "decline-failure-reason": {
+          "$ref": "/schemas/core/decline-failure-reason.json",
+          "description": "Seller explanation of why it could not apply a requested proposal decline."
+        },
+        "refinement-result-reason": {
+          "$ref": "/schemas/core/refinement-result-reason.json",
+          "description": "Seller free text that accompanies the reason code of one proposal refinement result."
+        },
+        "apple-app-id": {
+          "$ref": "/schemas/core/apple-app-id.json",
+          "description": "Numeric Apple App Store identifier."
+        },
+        "numeric-place-id": {
+          "$ref": "/schemas/core/numeric-place-id.json",
+          "description": "Numeric place identifier in the geonames, google_ads, or microsoft_ads system."
+        },
+        "bulk-page-size": {
+          "$ref": "/schemas/core/bulk-page-size.json",
+          "description": "Maximum number of items one page of a bulk list read returns. Bulk reads default to 1000 items per page, which core/page-size.json does not allow."
+        },
+        "acceptance-rule-id": {
+          "$ref": "/schemas/core/acceptance-rule-id.json",
+          "description": "Identifier of one seller acceptance-policy rule."
+        },
+        "acceptance-criterion-id": {
+          "$ref": "/schemas/core/acceptance-criterion-id.json",
+          "description": "Stable identifier of an acceptance criterion, such as domestic_entity or eligible_agency."
+        },
+        "macro-declaration-id": {
+          "$ref": "/schemas/core/macro-declaration-id.json",
+          "description": "Identifier of a macro declaration, unique within the containing asset."
+        },
+        "audience-description": {
+          "$ref": "/schemas/core/audience-description.json",
+          "description": "Natural language description of an audience."
+        },
+        "control-total-name": {
+          "$ref": "/schemas/core/control-total-name.json",
+          "description": "Name of a reporting control total."
+        },
+        "tool-name": {
+          "$ref": "/schemas/core/tool-name.json",
+          "description": "Name of a tool in the protocol manifest, including tools that are not AdCP tasks."
         }
       },
       "requirements": {
@@ -1902,6 +2938,558 @@
         "exclusivity": {
           "$ref": "/schemas/enums/exclusivity.json",
           "description": "Whether a product offers exclusive access to its inventory (none, category, exclusive)"
+        },
+        "brand-architecture-type": {
+          "$ref": "/schemas/enums/brand-architecture-type.json",
+          "description": "Brand architecture type from Keller's theory: master, sub_brand, endorsed, or independent."
+        },
+        "logo-orientation": {
+          "$ref": "/schemas/enums/logo-orientation.json",
+          "description": "Aspect ratio orientation of a logo."
+        },
+        "logo-background": {
+          "$ref": "/schemas/enums/logo-background.json",
+          "description": "Background a logo is compatible with."
+        },
+        "logo-variant": {
+          "$ref": "/schemas/enums/logo-variant.json",
+          "description": "Variant of a logo: primary, secondary, icon, wordmark, or full-lockup."
+        },
+        "font-style": {
+          "$ref": "/schemas/enums/font-style.json",
+          "description": "CSS font-style value."
+        },
+        "brand-claim-type": {
+          "$ref": "/schemas/enums/brand-claim-type.json",
+          "description": "Kind of brand claim being verified."
+        },
+        "delegation-type": {
+          "$ref": "/schemas/enums/delegation-type.json",
+          "description": "Commercial relationship of an inventory path: direct, delegated, or ad_network."
+        },
+        "cache-scope": {
+          "$ref": "/schemas/enums/cache-scope.json",
+          "description": "Cache layer that a wholesale feed version or change applies to."
+        },
+        "product-payload-view": {
+          "$ref": "/schemas/enums/product-payload-view.json",
+          "description": "Product representation that a notification subscriber selects."
+        },
+        "feed-listing-outcome": {
+          "$ref": "/schemas/enums/feed-listing-outcome.json",
+          "description": "Whether a response carries a page or confirms that the selected feed is unchanged."
+        },
+        "buyer-asset-acceptance": {
+          "$ref": "/schemas/enums/buyer-asset-acceptance.json",
+          "description": "Whether a product accepts buyer-uploaded assets."
+        },
+        "format-seller-preference": {
+          "$ref": "/schemas/enums/format-seller-preference.json",
+          "description": "Soft routing hint within a product's accepted set of formats."
+        },
+        "video-orientation": {
+          "$ref": "/schemas/enums/video-orientation.json",
+          "description": "Orientation of a video: vertical, horizontal, or square."
+        },
+        "display-tag-delivery-type": {
+          "$ref": "/schemas/enums/display-tag-delivery-type.json",
+          "description": "How a display tag is delivered."
+        },
+        "creative-change-initiator": {
+          "$ref": "/schemas/enums/creative-change-initiator.json",
+          "description": "Who made a creative decision: seller or system."
+        },
+        "creative-purge-kind": {
+          "$ref": "/schemas/enums/creative-purge-kind.json",
+          "description": "Whether a creative purge retains a tombstone (soft) or not (hard)."
+        },
+        "transformer-variant-dimension": {
+          "$ref": "/schemas/enums/transformer-variant-dimension.json",
+          "description": "Dimension along which a transformer produces variants."
+        },
+        "rendering-origin": {
+          "$ref": "/schemas/enums/rendering-origin.json",
+          "description": "Informational implementation origin of a preview route."
+        },
+        "unmatched-locale-action": {
+          "$ref": "/schemas/enums/unmatched-locale-action.json",
+          "description": "Seller behavior when no locale variant matches."
+        },
+        "macro-unavailable-behavior": {
+          "$ref": "/schemas/enums/macro-unavailable-behavior.json",
+          "description": "Action when the responsible actor has no value for a macro."
+        },
+        "catalog-item-availability": {
+          "$ref": "/schemas/enums/catalog-item-availability.json",
+          "description": "Buyer-authored availability overlay state of a catalog item."
+        },
+        "catalog-item-availability-action": {
+          "$ref": "/schemas/enums/catalog-item-availability-action.json",
+          "description": "Action that changes a catalog item's availability overlay."
+        },
+        "placement-authority": {
+          "$ref": "/schemas/enums/placement-authority.json",
+          "description": "Who declares a placement's identity: a publisher catalog or the seller inline."
+        },
+        "product-placement-mode": {
+          "$ref": "/schemas/enums/product-placement-mode.json",
+          "description": "Product-level relationship to a placement: targetable or included."
+        },
+        "geojson-geometry-type": {
+          "$ref": "/schemas/enums/geojson-geometry-type.json",
+          "description": "GeoJSON geometry type of an area."
+        },
+        "date-range-support": {
+          "$ref": "/schemas/enums/date-range-support.json",
+          "description": "Whether delivery data can be filtered to arbitrary date ranges."
+        },
+        "audience-evidence-requirement-mode": {
+          "$ref": "/schemas/enums/audience-evidence-requirement-mode.json",
+          "description": "Whether an audience evidence constraint excludes products or only ranks them."
+        },
+        "audience-evidence-presence": {
+          "$ref": "/schemas/enums/audience-evidence-presence.json",
+          "description": "Whether a requirement mode applies to the presence of evidence."
+        },
+        "audience-evidence-type": {
+          "$ref": "/schemas/enums/audience-evidence-type.json",
+          "description": "Nature of audience evidence: measured, forecast, or seller_declared."
+        },
+        "audience-evidence-decision-use": {
+          "$ref": "/schemas/enums/audience-evidence-decision-use.json",
+          "description": "How audience evidence affected a seller's decision."
+        },
+        "audience-evidence-unit": {
+          "$ref": "/schemas/enums/audience-evidence-unit.json",
+          "description": "Unit of an audience evidence value."
+        },
+        "signal-targeting-mode": {
+          "$ref": "/schemas/enums/signal-targeting-mode.json",
+          "description": "Whether a signal is used to include or exclude."
+        },
+        "signal-selection-mode": {
+          "$ref": "/schemas/enums/signal-selection-mode.json",
+          "description": "Selection behavior of selectable signals on a product."
+        },
+        "signal-parent-match-behavior": {
+          "$ref": "/schemas/enums/signal-parent-match-behavior.json",
+          "description": "Whether a signal definition supports treating a parent taxonomy node as a match."
+        },
+        "signal-methodology": {
+          "$ref": "/schemas/enums/signal-methodology.json",
+          "description": "How a signal's audience membership or attribute was determined."
+        },
+        "signal-refresh-cadence": {
+          "$ref": "/schemas/enums/signal-refresh-cadence.json",
+          "description": "Cadence at which a signal's underlying segment membership is refreshed."
+        },
+        "signal-lookback-window": {
+          "$ref": "/schemas/enums/signal-lookback-window.json",
+          "description": "Time window in which a qualifying event can occur for inclusion in a signal."
+        },
+        "signal-pre-onboarding-precision": {
+          "$ref": "/schemas/enums/signal-pre-onboarding-precision.json",
+          "description": "Precision level of a signal's data before onboarding."
+        },
+        "signal-modeling-method": {
+          "$ref": "/schemas/enums/signal-modeling-method.json",
+          "description": "Method used to model a signal."
+        },
+        "signal-training-data-type": {
+          "$ref": "/schemas/enums/signal-training-data-type.json",
+          "description": "Type of data used to train a modeled signal."
+        },
+        "gdpr-article-9-basis": {
+          "$ref": "/schemas/enums/gdpr-article-9-basis.json",
+          "description": "Declared GDPR Article 9 basis for processing special category data."
+        },
+        "ai-act-risk-class": {
+          "$ref": "/schemas/enums/ai-act-risk-class.json",
+          "description": "EU AI Act risk classification that a provider declares."
+        },
+        "data-subject-right": {
+          "$ref": "/schemas/enums/data-subject-right.json",
+          "description": "Data subject right that a rights channel serves."
+        },
+        "task-sort-field": {
+          "$ref": "/schemas/enums/task-sort-field.json",
+          "description": "Field that a task list is sorted by."
+        },
+        "task-domain": {
+          "$ref": "/schemas/enums/task-domain.json",
+          "description": "AdCP domain that a task belongs to."
+        },
+        "media-buy-action-task": {
+          "$ref": "/schemas/enums/media-buy-action-task.json",
+          "description": "Task that performs a resolved media buy action."
+        },
+        "media-buy-issue-severity": {
+          "$ref": "/schemas/enums/media-buy-issue-severity.json",
+          "description": "Severity of a media buy issue."
+        },
+        "media-buy-issue-category": {
+          "$ref": "/schemas/enums/media-buy-issue-category.json",
+          "description": "Category of a media buy issue."
+        },
+        "delivery-notification-type": {
+          "$ref": "/schemas/enums/delivery-notification-type.json",
+          "description": "Type of a delivery report notification."
+        },
+        "delivery-report-window-kind": {
+          "$ref": "/schemas/enums/delivery-report-window-kind.json",
+          "description": "Semantics of a reach reporting window: cumulative, period, or rolling."
+        },
+        "opportunity-status": {
+          "$ref": "/schemas/enums/opportunity-status.json",
+          "description": "Whether a planning cycle remains open."
+        },
+        "opportunity-close-reason": {
+          "$ref": "/schemas/enums/opportunity-close-reason.json",
+          "description": "Why an opportunity closed."
+        },
+        "product-refinement-action": {
+          "$ref": "/schemas/enums/product-refinement-action.json",
+          "description": "Requested product-level refinement action."
+        },
+        "proposal-refinement-action": {
+          "$ref": "/schemas/enums/proposal-refinement-action.json",
+          "description": "Requested proposal-level refinement action."
+        },
+        "reporting-file-format": {
+          "$ref": "/schemas/enums/reporting-file-format.json",
+          "description": "Physical file format of delivered report files."
+        },
+        "reporting-receipt-status": {
+          "$ref": "/schemas/enums/reporting-receipt-status.json",
+          "description": "Whether a reporting consumer accepted or rejected a publication."
+        },
+        "governance-accounting-mode": {
+          "$ref": "/schemas/enums/governance-accounting-mode.json",
+          "description": "Controls which verified adjustments restore reusable plan headroom."
+        },
+        "plan-adjustment-type": {
+          "$ref": "/schemas/enums/plan-adjustment-type.json",
+          "description": "Commercial meaning of a plan adjustment."
+        },
+        "plan-adjustment-state": {
+          "$ref": "/schemas/enums/plan-adjustment-state.json",
+          "description": "Whether a buyer has verified or disputed a reported plan adjustment."
+        },
+        "plan-adjustment-evidence-type": {
+          "$ref": "/schemas/enums/plan-adjustment-evidence-type.json",
+          "description": "Type of evidence for a plan adjustment."
+        },
+        "delivery-reconciliation-status": {
+          "$ref": "/schemas/enums/delivery-reconciliation-status.json",
+          "description": "Comparison state between a buyer-attributed observation and a canonical seller statement."
+        },
+        "delivery-period-state": {
+          "$ref": "/schemas/enums/delivery-period-state.json",
+          "description": "Whether a governance reporting period remains actionable."
+        },
+        "governance-check-type": {
+          "$ref": "/schemas/enums/governance-check-type.json",
+          "description": "Whether a check was an intent check or an execution check."
+        },
+        "governance-delivery-source": {
+          "$ref": "/schemas/enums/governance-delivery-source.json",
+          "description": "Whether a buyer forwards the seller statement or reports its own measurement."
+        },
+        "acceptance-policy-subject": {
+          "$ref": "/schemas/enums/acceptance-policy-subject.json",
+          "description": "What an acceptance policy rule applies to."
+        },
+        "compliance-attestation-mode": {
+          "$ref": "/schemas/enums/compliance-attestation-mode.json",
+          "description": "Whether a recorded call attestation returns raw payloads or digests."
+        },
+        "property-feature-type": {
+          "$ref": "/schemas/enums/property-feature-type.json",
+          "description": "Type of values that a property feature produces."
+        },
+        "agent-protocol": {
+          "$ref": "/schemas/enums/agent-protocol.json",
+          "description": "Agent protocol that an endpoint or integration speaks: mcp or a2a."
+        },
+        "error-recovery": {
+          "$ref": "/schemas/enums/error-recovery.json",
+          "description": "How a caller responds to an error: correctable means fix the request and retry, transient means retry later, and terminal means don't retry."
+        },
+        "asset-source": {
+          "$ref": "/schemas/enums/asset-source.json",
+          "description": "Where the rendered asset bytes of a canonical format come from."
+        },
+        "creative-indicator-type": {
+          "$ref": "/schemas/enums/creative-indicator-type.json",
+          "description": "Indicator type that applies to a creative assignment: creative_fatigue or creative_quality_opportunity."
+        },
+        "reporting-status-severity": {
+          "$ref": "/schemas/enums/reporting-status-severity.json",
+          "description": "Severity of a reporting health issue: delayed or action_required."
+        },
+        "roas-strength": {
+          "$ref": "/schemas/enums/roas-strength.json",
+          "description": "How a bidding strategy treats a return-on-ad-spend goal: floor avoids optimizing below it, and target optimizes around it."
+        },
+        "resolved-macro-mapping-status": {
+          "$ref": "/schemas/enums/resolved-macro-mapping-status.json",
+          "description": "Mapping status of a macro that resolves to a value: verified_universal or dialect_defined."
+        },
+        "metric-optimization-target-kind": {
+          "$ref": "/schemas/enums/metric-optimization-target-kind.json",
+          "description": "Kind of target a metric optimization goal sets: cost_per or threshold_rate."
+        },
+        "verification-grading-profile": {
+          "$ref": "/schemas/enums/verification-grading-profile.json",
+          "description": "Grading profile that produced a verification badge: legacy or spec."
+        },
+        "reporting-delivery-pattern": {
+          "$ref": "/schemas/enums/reporting-delivery-pattern.json",
+          "description": "How reporting data reaches a destination: file_transfer, dataset_share, or warehouse_materialization."
+        },
+        "wholesale-feed-event-type": {
+          "$ref": "/schemas/enums/wholesale-feed-event-type.json",
+          "description": "Type of a wholesale feed event, such as product.priced or collection_card.updated."
+        },
+        "creative-review-decision": {
+          "$ref": "/schemas/enums/creative-review-decision.json",
+          "description": "Decided review status of a creative: approved or rejected."
+        },
+        "creative-unapproved-status": {
+          "$ref": "/schemas/enums/creative-unapproved-status.json",
+          "description": "Approval status of a creative that is not approved: pending_review or rejected."
+        },
+        "reporting-status-view": {
+          "$ref": "/schemas/enums/reporting-status-view.json",
+          "description": "View that a reporting status request selects: summary, periods, or revision."
+        },
+        "brand-identity-field": {
+          "$ref": "/schemas/enums/brand-identity-field.json",
+          "description": "Field of a brand identity that a caller can request."
+        },
+        "app-store": {
+          "$ref": "/schemas/enums/app-store.json",
+          "description": "Application store that lists an app."
+        },
+        "webhook-delivery-auth-mode": {
+          "$ref": "/schemas/enums/webhook-delivery-auth-mode.json",
+          "description": "How a seller authenticates webhook deliveries: rfc9421, Bearer, or HMAC-SHA256."
+        },
+        "capability-change-event-type": {
+          "$ref": "/schemas/enums/capability-change-event-type.json",
+          "description": "Event type of a capability change notification."
+        },
+        "audio-bit-depth": {
+          "$ref": "/schemas/enums/audio-bit-depth.json",
+          "description": "Audio sample bit depth: 16, 24, or 32."
+        },
+        "daast-tracker-target": {
+          "$ref": "/schemas/enums/daast-tracker-target.json",
+          "description": "DAAST creative element that a tracker scopes to: linear or companion."
+        },
+        "vast-tracker-target": {
+          "$ref": "/schemas/enums/vast-tracker-target.json",
+          "description": "VAST creative element that a tracker scopes to: linear, non_linear, or companion."
+        },
+        "audience-activation-direction": {
+          "$ref": "/schemas/enums/audience-activation-direction.json",
+          "description": "Direction in which audience data moves during activation: buyer_to_seller or seller_to_buyer."
+        },
+        "evidence-age-unit": {
+          "$ref": "/schemas/enums/evidence-age-unit.json",
+          "description": "Time unit of a maximum audience evidence age: seconds, minutes, hours, or days."
+        },
+        "seller-proposal-kind": {
+          "$ref": "/schemas/enums/seller-proposal-kind.json",
+          "description": "Kind of proposal that a seller can initiate: media_buy_update or media_buy_cancellation."
+        },
+        "seller-proposal-status": {
+          "$ref": "/schemas/enums/seller-proposal-status.json",
+          "description": "Status that a seller-initiated proposal can have: accepted or committed."
+        },
+        "gender": {
+          "$ref": "/schemas/enums/gender.json",
+          "description": "Gender category: female, male, or non_binary."
+        },
+        "url-macro-context": {
+          "$ref": "/schemas/enums/url-macro-context.json",
+          "description": "Part of a URL where a macro occurs: a path segment or a query value."
+        },
+        "card-media-type": {
+          "$ref": "/schemas/enums/card-media-type.json",
+          "description": "Media type that an image carousel card can carry: image or video."
+        },
+        "transition-mode": {
+          "$ref": "/schemas/enums/transition-mode.json",
+          "description": "How a stateful display moves between states: instant or animated."
+        },
+        "mraid-version": {
+          "$ref": "/schemas/enums/mraid-version.json",
+          "description": "IAB MRAID version of a rich media creative or a seller's support: 2.0 or 3.0."
+        },
+        "vast-fullscreen-version": {
+          "$ref": "/schemas/enums/vast-fullscreen-version.json",
+          "description": "VAST versions that define the fullscreen tracking event: 2.0 or 3.0."
+        },
+        "us-postal-system": {
+          "$ref": "/schemas/enums/us-postal-system.json",
+          "description": "Postal code system for the United States: zip or zip_plus_four."
+        },
+        "gb-postal-system": {
+          "$ref": "/schemas/enums/gb-postal-system.json",
+          "description": "Postal code system for the United Kingdom: outward or full."
+        },
+        "ca-postal-system": {
+          "$ref": "/schemas/enums/ca-postal-system.json",
+          "description": "Postal code system for Canada: fsa or full."
+        },
+        "other-postal-system": {
+          "$ref": "/schemas/enums/other-postal-system.json",
+          "description": "Postal code system for a country without a system of its own: postal_code or custom."
+        },
+        "webhook-signing-algorithm": {
+          "$ref": "/schemas/enums/webhook-signing-algorithm.json",
+          "description": "Algorithm that signs webhooks: ed25519 or ecdsa-p256-sha256."
+        },
+        "conversion-optimization-target": {
+          "$ref": "/schemas/enums/conversion-optimization-target.json",
+          "description": "Kind of conversion goal a seller supports: cost_per, per_ad_spend, or maximize_value."
+        },
+        "reporting-feed-purpose": {
+          "$ref": "/schemas/enums/reporting-feed-purpose.json",
+          "description": "Operational use of a reporting feed: pacing, analytics, or billing."
+        },
+        "reporting-schedule-alignment": {
+          "$ref": "/schemas/enums/reporting-schedule-alignment.json",
+          "description": "Calendar that sets reporting period boundaries."
+        },
+        "reporting-subscription-exclusion-reason": {
+          "$ref": "/schemas/enums/reporting-subscription-exclusion-reason.json",
+          "description": "Why a reporting subscription excludes an account or a media buy."
+        },
+        "audio-channel-mode": {
+          "$ref": "/schemas/enums/audio-channel-mode.json",
+          "description": "Audio channel mode: mono or stereo."
+        },
+        "signal-data-source": {
+          "$ref": "/schemas/enums/signal-data-source.json",
+          "description": "Kind of data source behind a signal."
+        },
+        "signal-match-key": {
+          "$ref": "/schemas/enums/signal-match-key.json",
+          "description": "Key that an onboarder matches records on, such as email or mobile_id."
+        },
+        "required-data-subject-right": {
+          "$ref": "/schemas/enums/required-data-subject-right.json",
+          "description": "Data subject right that at least one rights channel must offer: access, erasure, or objection."
+        },
+        "verification-token-mode": {
+          "$ref": "/schemas/enums/verification-token-mode.json",
+          "description": "Mode of a verification token: spec or live."
+        },
+        "variant-keep-mode": {
+          "$ref": "/schemas/enums/variant-keep-mode.json",
+          "description": "How a buyer intends to use generated creative variants: keep_one, keep_some, or keep_all."
+        },
+        "media-buy-delivery-status": {
+          "$ref": "/schemas/enums/media-buy-delivery-status.json",
+          "description": "Media buy lifecycle or reporting status in a delivery report."
+        },
+        "buying-mode": {
+          "$ref": "/schemas/enums/buying-mode.json",
+          "description": "Buyer intent for a product discovery request: brief, wholesale, or refine."
+        },
+        "purchase-continuation-loss": {
+          "$ref": "/schemas/enums/purchase-continuation-loss.json",
+          "description": "Guarantee that a legacy purchase continuation gives up."
+        },
+        "signal-discovery-mode": {
+          "$ref": "/schemas/enums/signal-discovery-mode.json",
+          "description": "Caller intent for a signals discovery request: brief or wholesale."
+        },
+        "reporting-subscription-page-list": {
+          "$ref": "/schemas/enums/reporting-subscription-page-list.json",
+          "description": "List that a reporting subscription page reads."
+        },
+        "task-failure-status": {
+          "$ref": "/schemas/enums/task-failure-status.json",
+          "description": "Status of a task that did not succeed: failed or rejected."
+        },
+        "compatibility-resolver": {
+          "$ref": "/schemas/enums/compatibility-resolver.json",
+          "description": "Party that performed creative compatibility resolution."
+        },
+        "event-source-manager": {
+          "$ref": "/schemas/enums/event-source-manager.json",
+          "description": "Party that manages an event source."
+        },
+        "audience-sync-action": {
+          "$ref": "/schemas/enums/audience-sync-action.json",
+          "description": "Outcome of an audience sync."
+        },
+        "clickthrough-policy": {
+          "$ref": "/schemas/enums/clickthrough-policy.json",
+          "description": "Clickthrough destination policy of a stateful display."
+        },
+        "idempotency-requirement": {
+          "$ref": "/schemas/enums/idempotency-requirement.json",
+          "description": "Whether a tool accepts an idempotency key."
+        },
+        "canonicalization-contract-version": {
+          "$ref": "/schemas/enums/canonicalization-contract-version.json",
+          "description": "Version of a reporting canonicalization contract."
+        },
+        "host-receipt-status": {
+          "$ref": "/schemas/enums/host-receipt-status.json",
+          "description": "Whether a host accepted declared sponsored context."
+        },
+        "uncovered-property-action": {
+          "$ref": "/schemas/enums/uncovered-property-action.json",
+          "description": "What to do with a property whose feature is not covered."
+        },
+        "inventory-list-effect": {
+          "$ref": "/schemas/enums/inventory-list-effect.json",
+          "description": "Whether an inventory list is an allowlist or a blocklist."
+        },
+        "budget-warning-resource-type": {
+          "$ref": "/schemas/enums/budget-warning-resource-type.json",
+          "description": "Type of the resource a budget warning applies to."
+        },
+        "budget-cap-scope": {
+          "$ref": "/schemas/enums/budget-cap-scope.json",
+          "description": "Scope at which a seller supports budget caps."
+        },
+        "governed-action-status": {
+          "$ref": "/schemas/enums/governed-action-status.json",
+          "description": "Lifecycle status of a governed action."
+        },
+        "governance-plan-status": {
+          "$ref": "/schemas/enums/governance-plan-status.json",
+          "description": "Lifecycle status of a governance plan."
+        },
+        "forecast-bucket-completeness": {
+          "$ref": "/schemas/enums/forecast-bucket-completeness.json",
+          "description": "Whether forecast buckets cover the declared denominator."
+        },
+        "acceptance-policy-coverage": {
+          "$ref": "/schemas/enums/acceptance-policy-coverage.json",
+          "description": "Whether an acceptance policy profile lists every rule."
+        },
+        "optimization-metric": {
+          "$ref": "/schemas/enums/optimization-metric.json",
+          "description": "Seller-native metric a legacy optimization goal can target, including unbound attention metrics."
+        },
+        "canonical-optimization-metric": {
+          "$ref": "/schemas/enums/canonical-optimization-metric.json",
+          "description": "Metric a canonical optimization goal can target. Unbound attention metrics are excluded on purpose."
+        },
+        "incomplete-scope": {
+          "$ref": "/schemas/enums/incomplete-scope.json",
+          "description": "Part of a discovery response that a seller could not complete, for discovery responses that can also return proposals. It is the product incomplete scope plus proposals."
+        },
+        "product-incomplete-scope": {
+          "$ref": "/schemas/enums/product-incomplete-scope.json",
+          "description": "Part of a product discovery response that a seller could not complete. A product list never contains proposals."
         }
       }
     },

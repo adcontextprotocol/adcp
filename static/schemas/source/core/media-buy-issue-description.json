@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/media-buy-issue-description.json",
+  "title": "Media Buy Issue Description",
+  "description": "Buyer-written description of a problem reported against a media buy.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 4000
+}

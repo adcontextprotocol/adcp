@@ -23,8 +23,7 @@
       "description": "Reverse-domain bundle identifier (e.g., 'com.acmegames.puzzlequest'). The universal store identifier: required for Android (Google Play), also used for iOS MMP attribution, SKAN matching, and app-ads.txt verification. Distinct from app_id, which is a buyer-assigned catalog key."
     },
     "apple_id": {
-      "type": "string",
-      "pattern": "^[0-9]+$",
+      "$ref": "/schemas/core/apple-app-id.json",
       "description": "Numeric Apple App Store ID (e.g., '389801252'). Required for Apple Search Ads and iOS platforms that use the numeric ID rather than bundle_id."
     },
     "description": {

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/format-option-id.json",
+  "title": "Format Option ID",
+  "description": "Identifier of a format option within its publisher namespace.",
+  "type": "string",
+  "minLength": 1
+}

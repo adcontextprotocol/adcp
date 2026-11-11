@@ -25,8 +25,7 @@
       "description": "Human-readable name (e.g., \"UK HFSS Restrictions\"). Optional for inline bespoke policies — servers MAY default to policy_id."
     },
     "description": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/policy-summary.json",
       "description": "Brief summary of what this policy covers."
     },
     "category": {
@@ -98,7 +97,7 @@
           "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
           "description": "Lowercase registrable or organizational domain used as the stable issuer identifier."
         },
-        "name": { "type": "string", "minLength": 1 }
+        "name": { "$ref": "/schemas/core/policy-issuer-name.json" }
       },
       "required": ["domain"],
       "additionalProperties": false

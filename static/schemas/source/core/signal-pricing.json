@@ -23,9 +23,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -44,10 +43,8 @@
           "const": "percent_of_media"
         },
         "percent": {
-          "type": "number",
-          "description": "Percentage of media spend, e.g. 15 = 15%",
-          "minimum": 0,
-          "maximum": 100
+          "$ref": "/schemas/core/percentage.json",
+          "description": "Percentage of media spend, e.g. 15 = 15%"
         },
         "max_cpm": {
           "type": "number",
@@ -55,9 +52,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code for the resulting charge",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code for the resulting charge"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -86,9 +82,8 @@
           "description": "Billing period for the flat fee."
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -116,9 +111,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -137,9 +131,8 @@
           "const": "custom"
         },
         "description": {
-          "type": "string",
-          "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval.",
-          "minLength": 1
+          "$ref": "/schemas/core/custom-pricing-description.json",
+          "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval."
         },
         "metadata": {
           "type": "object",
@@ -155,9 +148,8 @@
           }
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency.",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"

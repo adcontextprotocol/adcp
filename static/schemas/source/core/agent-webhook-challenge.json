@@ -16,18 +16,12 @@
       "description": "Discriminator for agent-level endpoint proof challenges."
     },
     "challenge": {
-      "type": "string",
-      "description": "Opaque, cryptographically random value that the receiver must echo in the response body. Recommended encoding: base64url without padding.",
-      "minLength": 32,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{32,255}$"
+      "$ref": "/schemas/core/webhook-challenge-value.json",
+      "description": "Opaque, cryptographically random value that the receiver must echo in the response body. Recommended encoding: base64url without padding."
     },
     "subscriber_id": {
-      "type": "string",
-      "description": "Buyer-supplied subscriber identifier from the caller-scoped notification_configs[] entry being challenged.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Buyer-supplied subscriber identifier from the caller-scoped notification_configs[] entry being challenged."
     },
     "seller_agent_url": {
       "type": "string",
@@ -39,18 +33,12 @@
       "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config.",
       "properties": {
         "mode": {
-          "type": "string",
-          "enum": [
-            "rfc9421",
-            "Bearer",
-            "HMAC-SHA256"
-          ],
+          "$ref": "/schemas/enums/webhook-delivery-auth-mode.json",
           "description": "Future webhook delivery authentication mode. `rfc9421` is used when notification_configs[].authentication is absent; Bearer and HMAC-SHA256 are the deprecated legacy modes selected by notification_configs[].authentication."
         },
         "credential_fingerprint": {
-          "type": "string",
-          "description": "SHA-256 hex fingerprint of the exact legacy credential string supplied in notification_configs[].authentication.credentials. Required when mode is Bearer or HMAC-SHA256; absent for rfc9421.",
-          "pattern": "^[a-f0-9]{64}$"
+          "$ref": "/schemas/core/credential-fingerprint.json",
+          "description": "SHA-256 hex fingerprint of the exact legacy credential string supplied in notification_configs[].authentication.credentials. Required when mode is Bearer or HMAC-SHA256; absent for rfc9421."
         }
       },
       "required": [
@@ -105,10 +93,7 @@
       "type": "array",
       "description": "Normalized agent-level notification types requested by the subscriber at the time of the challenge. Part of the endpoint proof scope; changing event_types[] requires a fresh challenge before the new set can become active. Currently only `capabilities.changed` is valid.",
       "items": {
-        "type": "string",
-        "enum": [
-          "capabilities.changed"
-        ]
+        "$ref": "/schemas/enums/capability-change-event-type.json"
       },
       "minItems": 1,
       "uniqueItems": true

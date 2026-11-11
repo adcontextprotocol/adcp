@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reference-population-id.json",
+  "title": "Reference Population ID",
+  "description": "Identifier of the reference population against which an audience estimate is calculated.",
+  "type": "string",
+  "minLength": 1
+}

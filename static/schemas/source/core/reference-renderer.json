@@ -17,18 +17,15 @@
       "description": "npm package name, scoped or unscoped. The package is resolved from the npm registry; the AdCP registry does not proxy its executable contents."
     },
     "version": {
-      "type": "string",
-      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "$ref": "/schemas/core/renderer-version.json",
       "description": "Exact semantic version. Ranges and tags such as latest are forbidden so the registry entry is reproducible. Package semantic versioning identifies the pinned distribution artifact; it is independent of any one format revision because one package may expose renderers for multiple formats."
     },
     "export": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/renderer-export-name.json",
       "description": "Named package export that implements the renderer contract for this enclosing format entry. Compatibility is bound at the export-to-entry edge, not to matching version labels: registry review and contract fixtures verify that the export implements the entry's input contract. When that input contract changes, the registry MUST rerun those fixtures and MAY retain the existing export and package pin when they still pass. One package version MAY expose different named exports for different formats or input contracts."
     },
     "format_revision": {
-      "type": "string",
-      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)$",
+      "$ref": "/schemas/core/format-revision.json",
       "deprecated": true,
       "description": "Deprecated compatibility annotation retained for previously published registry entries. Renderer package versions and community format revisions have independent lifecycles, so consumers MUST NOT require this value to equal the enclosing entry's format_revision or use matching values as evidence of compatibility. Registry review and contract fixtures bind the named export to the enclosing format's input contract. New entries SHOULD omit this field."
     },

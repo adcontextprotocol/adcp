@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "product_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/product-id.json",
       "x-entity": "product",
       "description": "Product whose effective selected format was snapshotted. Required whenever tracker_execution_contract is present."
     },
@@ -32,13 +31,11 @@
       "description": "Exact DAAST execution version selected for first-class DAAST tracker matching when no sibling delivery document supplies one. The value is immutable for the package."
     },
     "tracker_execution_contract_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "SHA-256 of RFC 8785 canonical JSON for tracker_execution_contract alone. Required if and only if the snapshot contains that contract."
     },
     "product_snapshot_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Immutable SHA-256 digest of the package format snapshot's closed product-binding preimage. Required for every contract-bearing snapshot and paired with product_id whenever present."
     }
   },

@@ -30,8 +30,7 @@
               "description": "Domain of the leaf brand whose `house_domain` claim is being verified."
             },
             "subsidiary_brand_id": {
-              "type": "string",
-              "pattern": "^[a-z0-9_]+$",
+              "$ref": "/schemas/core/brand-id.json",
               "description": "Stable brand identifier the leaf uses for itself. Optional but recommended."
             },
             "observed_at": {
@@ -99,8 +98,7 @@
                 },
                 "identifier": { "type": "string" },
                 "store": {
-                  "type": "string",
-                  "enum": ["apple", "google", "amazon", "roku", "fire_tv", "samsung", "lg", "vizio", "other"]
+                  "$ref": "/schemas/enums/app-store.json"
                 },
                 "region": { "type": "string" }
               },
@@ -108,8 +106,7 @@
               "additionalProperties": true
             },
             "use_case": {
-              "type": "string",
-              "maxLength": 100,
+              "$ref": "/schemas/core/brand-claim-use-case.json",
               "description": "Optional caller-declared use case. The agent MAY scope its answer."
             }
           },
@@ -132,25 +129,20 @@
           "type": "object",
           "properties": {
             "mark": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 200
+              "$ref": "/schemas/core/trademark-mark.json"
             },
             "registry": {
-              "type": "string",
-              "maxLength": 50
+              "$ref": "/schemas/core/trademark-registry.json"
             },
             "number": {
-              "type": "string",
-              "maxLength": 100
+              "$ref": "/schemas/core/trademark-registration-number.json"
             },
             "countries": {
               "type": "array",
-              "items": { "type": "string", "minLength": 2, "maxLength": 2 }
+              "items": { "$ref": "/schemas/core/country-code.json" }
             },
             "use_case": {
-              "type": "string",
-              "maxLength": 100
+              "$ref": "/schemas/core/brand-claim-use-case.json"
             }
           },
           "required": ["mark"],

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/page-cursor.json",
+  "title": "Page Cursor",
+  "description": "Opaque pagination cursor returned by a prior page of results.",
+  "type": "string",
+  "minLength": 1
+}

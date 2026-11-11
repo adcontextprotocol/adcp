@@ -41,21 +41,12 @@
       "type": "object",
       "properties": {
         "account_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "account"
+          "$ref": "/schemas/core/account-id.json"
         },
         "reasons": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "offering_unsupported",
-              "capacity",
-              "overridden",
-              "excluded_by_buyer",
-              "action_required"
-            ]
+            "$ref": "/schemas/enums/reporting-subscription-exclusion-reason.json"
           },
           "minItems": 1,
           "uniqueItems": true,
@@ -73,9 +64,7 @@
       "type": "object",
       "properties": {
         "account_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "account"
+          "$ref": "/schemas/core/account-id.json"
         },
         "unauthorized_at": {
           "type": "string",
@@ -95,10 +84,7 @@
         "withheld_reporting_obligation_ids": {
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+            "$ref": "/schemas/core/reporting-obligation-id.json",
             "x-entity": "reporting_obligation"
           },
           "maxItems": 1000,
@@ -116,11 +102,7 @@
   },
   "properties": {
     "subscription_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "x-entity": "reporting_subscription"
+      "$ref": "/schemas/core/reporting-subscription-id.json"
     },
     "subscription_version": { "type": "integer", "minimum": 1 },
     "state": {
@@ -160,9 +142,7 @@
       }
     },
     "destination_ref": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
+      "$ref": "/schemas/core/reporting-destination-ref.json",
       "x-entity": "reporting_destination",
       "description": "Destination generation currently bound. Present when and only when the configuration names a destination."
     },
@@ -192,8 +172,8 @@
       "items": {
         "type": "object",
         "properties": {
-          "destination_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$" },
-          "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination" }
+          "destination_id": { "$ref": "/schemas/core/reporting-destination-id.json" },
+          "destination_ref": { "$ref": "/schemas/core/reporting-destination-ref.json", "x-entity": "reporting_destination" }
         },
         "required": ["destination_id", "destination_ref"],
         "additionalProperties": false

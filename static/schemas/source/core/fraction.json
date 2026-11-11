@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/fraction.json",
+  "title": "Fraction",
+  "description": "Unitless proportion or probability from 0 to 1, where 0 means none and 1 means all or certain. Rates, shares, thresholds, and confidence scores use this scale.",
+  "type": "number",
+  "minimum": 0,
+  "maximum": 1
+}

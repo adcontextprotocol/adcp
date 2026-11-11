@@ -26,8 +26,7 @@
       "description": "Maximum height in pixels"
     },
     "aspect_ratio": {
-      "type": "string",
-      "pattern": "^\\d+:\\d+$",
+      "$ref": "/schemas/core/aspect-ratio.json",
       "description": "Required aspect ratio (e.g., '16:9', '9:16')"
     },
     "min_duration_ms": {

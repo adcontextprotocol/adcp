@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-claim-context-note.json",
+  "title": "Claim Context Note",
+  "description": "Public free text a brand chooses to show with a claim verification result, such as the rationale for a disputed status.",
+  "type": "string",
+  "maxLength": 500
+}

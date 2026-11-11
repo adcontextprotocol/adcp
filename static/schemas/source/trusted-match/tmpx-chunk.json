@@ -7,10 +7,7 @@
   "type": "object",
   "properties": {
     "slot_id": {
-      "type": "string",
-      "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
-      "minLength": 1,
-      "maxLength": 64,
+      "$ref": "/schemas/core/tmpx-slot-id.json",
       "description": "Provider-local slot identifier from the emitting provider's registered `tmpx_slots` (provider-registration.json). Opaque provider-namespaced token; publishers map `(provider_id, slot_id)` → local destination via `tmpx_macro_mapping`. NOT an ad-server macro name."
     },
     "value": {

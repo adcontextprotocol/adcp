@@ -50,10 +50,8 @@
           "description": "When the seller recorded the request."
         },
         "reason": {
-          "type": "string",
-          "description": "Human-readable rejection reason.",
-          "minLength": 1,
-          "maxLength": 1000
+          "$ref": "/schemas/core/identity-change-rejection-reason.json",
+          "description": "Human-readable rejection reason."
         }
       },
       "required": [

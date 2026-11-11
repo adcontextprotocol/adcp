@@ -8,17 +8,11 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "Random fire identifier reused across retries. Receivers dedupe within the authenticated sender scope."
     },
     "notification_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/notification-id.json",
       "description": "Logical notification identifier. Always equals proposal_id; re-emissions of the same offer retain it."
     },
     "notification_type": {
@@ -30,25 +24,17 @@
       "format": "date-time"
     },
     "subscriber_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json"
     },
     "account_id": {
       "type": "string",
       "x-entity": "account"
     },
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "proposal_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "proposal",
+      "$ref": "/schemas/core/proposal-id.json",
       "description": "The offer's proposal_id. notification_id equals it."
     },
     "expires_at": {
@@ -98,13 +84,7 @@
     {
       "properties": {
         "offer_reason": {
-          "enum": [
-            "installment_postponed",
-            "installment_cancelled",
-            "preemption",
-            "under_delivery",
-            "seller_request"
-          ]
+          "$ref": "/schemas/enums/offer-reason.json"
         }
       }
     }

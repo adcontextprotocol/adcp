@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/measurement-window-id.json",
+  "title": "Measurement Window ID",
+  "description": "Identifier of a measurement window from a product's reporting capabilities, such as live, c3, or c7.",
+  "type": "string",
+  "maxLength": 50
+}

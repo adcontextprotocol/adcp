@@ -1,5 +1,5 @@
 {
-  "$comment": "Corrections that DR-0036 records. A minor or patch release may change a closed schema only to make it accept what the published spec text already required before that release. Each entry names a schema location by document and JSON pointer, the property the correction lets in (* reopens the whole schema), the stable release it lands in, the source text that required it (a repository path and a quote from it), and the reason. The additive-minor check accepts exactly these additions. Each entry must also appear in the correction tables of DR-0036.",
+  "$comment": "Corrections and named exceptions under DR-0036. Each entry is one change that a minor or patch release of the major may make although the additive-minor rules forbid it. It names a schema location by document and JSON pointer; the change, which is a property the schema lets in (* opens the whole schema), a bound and its value, or a required name; the stable release it lands in; the published text it rests on, as a repository path and a quote from it; and the reason. The additive-minor check accepts exactly these changes. A PR that adds an entry is reviewed against DR-0036.",
   "decision": "DR-0036",
   "corrections": [
     {
@@ -11,7 +11,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/request-proposals-request.json",
@@ -22,7 +22,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/refine-proposals-request.json",
@@ -33,7 +33,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/buy-products-request.json",
@@ -44,7 +44,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/accept-proposal-request.json",
@@ -55,7 +55,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/decline-proposals-request.json",
@@ -66,7 +66,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/control-media-buy-request.json",
@@ -77,7 +77,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Task root. A task root is not a row, so neither DR-0019 class applies."
     },
     {
       "file": "media-buy/list-products-response.json",
@@ -88,7 +88,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/request-proposals-response.json",
@@ -99,7 +99,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
     },
     {
       "file": "media-buy/refine-proposals-response.json",
@@ -110,7 +110,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open."
     },
     {
       "file": "media-buy/refine-proposals-response.json",
@@ -121,7 +121,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "A Class B schema without an escape hatch is a defect."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Result row, one outcome per source proposal. It is not a join-key object, and it has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Result row, one outcome per source proposal. It is not a join-key object, and it has no ext."
     },
     {
       "file": "media-buy/decline-proposals-response.json",
@@ -132,7 +132,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root. DR-0019 keeps response roots open. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -143,7 +143,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -154,7 +154,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -165,7 +165,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for buy_products and accept_proposal. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -176,7 +176,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -187,7 +187,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -198,7 +198,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf arm, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Response root branch for control_media_buy. status tells the branches apart. A discriminated oneOf branch, but a whole task response, so the root rule wins. It rejected the adcp_version echo (#8518)."
     },
     {
       "file": "core/canonical-proposal.json",
@@ -209,7 +209,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for a proposal's commercial terms, lineage, status, and narrative. It has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container for a proposal's commercial terms, lineage, status, and narrative. It has no ext."
     },
     {
       "file": "core/canonical-product.json",
@@ -220,7 +220,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Schemas that do not fit either class must be opened."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Resource: the product, not a row. The product schema it parallels is open."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Resource: the product, not a row. The product schema it parallels is open."
     },
     {
       "file": "media-buy/product-discovery-criteria.json",
@@ -231,7 +231,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for the discovery filters of list_products, request_proposals and refine_proposals."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container for the discovery filters of list_products, request_proposals and refine_proposals."
     },
     {
       "file": "media-buy/proposal-refinement.json",
@@ -242,7 +242,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "A Class B schema without an escape hatch is a defect."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Request row for one refinement instruction. It is not a join-key object, and it has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Request row for one refinement instruction. It is not a join-key object, and it has no ext."
     },
     {
       "file": "media-buy/package-control.json",
@@ -253,7 +253,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "A Class B schema without an escape hatch is a defect."
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Request row for one package's controls. It is not a join-key object, and it has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Request row for one package's controls. It is not a join-key object, and it has no ext."
     },
     {
       "file": "core/opportunity-context.json",
@@ -264,7 +264,7 @@
         "path": "governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md",
         "quote": "Response roots, capability blocks, and container objects stay open"
       },
-      "reason": "Correction (a) of DR-0036: closed in 3.2 against DR-0019. Container for buyer context in a planning cycle. Its opportunity_id is opaque, not a join key. It has no ext."
+      "reason": "Opens a schema closed in 3.2 against DR-0019. Container for buyer context in a planning cycle. Its opportunity_id is opaque, not a join key. It has no ext."
     },
     {
       "file": "core/protocol-envelope.json",
@@ -276,7 +276,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The envelope's task_id, carried by every task response."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The envelope's task_id, carried by every task response."
     },
     {
       "file": "core/mcp-webhook-payload.json",
@@ -288,7 +288,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task a webhook notification reports on."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task a webhook notification reports on."
     },
     {
       "file": "core/tasks-get-request.json",
@@ -300,7 +300,7 @@
         "path": "static/schemas/source/core/tasks-get-request.json",
         "quote": "Unique identifier of the task to retrieve"
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get retrieves; it requires task_id."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get retrieves; it requires task_id."
     },
     {
       "file": "core/tasks-get-response.json",
@@ -312,7 +312,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get returns."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get returns."
     },
     {
       "file": "core/tasks-list-request.json",
@@ -324,7 +324,7 @@
         "path": "static/schemas/source/core/tasks-get-request.json",
         "quote": "Unique identifier of the task to retrieve"
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the tasks/list filter."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the tasks/list filter."
     },
     {
       "file": "core/tasks-list-response.json",
@@ -336,7 +336,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task tasks/list returns."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task tasks/list returns."
     },
     {
       "file": "protocol/get-task-status-request.json",
@@ -348,7 +348,7 @@
         "path": "static/schemas/source/core/tasks-get-request.json",
         "quote": "Unique identifier of the task to retrieve"
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task get_task_status retrieves; it requires task_id."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task get_task_status retrieves; it requires task_id."
     },
     {
       "file": "protocol/list-tasks-request.json",
@@ -360,7 +360,7 @@
         "path": "static/schemas/source/core/tasks-get-request.json",
         "quote": "Unique identifier of the task to retrieve"
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the list_tasks filter."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task named in the list_tasks filter."
     },
     {
       "file": "protocol/list-tasks-response.json",
@@ -372,7 +372,7 @@
         "path": "static/schemas/source/core/protocol-envelope.json",
         "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
       },
-      "reason": "Correction (c) of DR-0036: task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task list_tasks returns."
+      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. A task list_tasks returns."
     },
     {
       "file": "core/compact-task-input-required.json",
@@ -383,7 +383,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "core/compact-task-working.json",
@@ -394,7 +394,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "creative/sync-creatives-async-response-input-required.json",
@@ -405,7 +405,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "creative/sync-creatives-async-response-working.json",
@@ -416,7 +416,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/accept-proposal-async-response-input-required.json",
@@ -427,7 +427,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/accept-proposal-async-response-working.json",
@@ -438,7 +438,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/accept-proposal-response.json",
@@ -449,7 +449,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/build-creative-async-response-input-required.json",
@@ -460,7 +460,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/build-creative-async-response-working.json",
@@ -471,7 +471,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/buy-products-async-response-input-required.json",
@@ -482,7 +482,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/buy-products-async-response-working.json",
@@ -493,7 +493,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/buy-products-response.json",
@@ -504,7 +504,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/control-media-buy-async-response-input-required.json",
@@ -515,7 +515,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/control-media-buy-async-response-working.json",
@@ -526,7 +526,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/control-media-buy-response.json",
@@ -537,7 +537,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/create-media-buy-async-response-input-required.json",
@@ -548,7 +548,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/create-media-buy-async-response-working.json",
@@ -559,7 +559,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/decline-proposals-async-response-input-required.json",
@@ -570,7 +570,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/decline-proposals-async-response-working.json",
@@ -581,7 +581,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/decline-proposals-response.json",
@@ -592,7 +592,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/get-products-async-response-input-required.json",
@@ -603,7 +603,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/get-products-async-response-working.json",
@@ -614,7 +614,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/list-products-response.json",
@@ -625,7 +625,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/media-buy-commitment-response.json",
@@ -636,7 +636,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/refine-proposals-async-response-input-required.json",
@@ -647,7 +647,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/refine-proposals-async-response-working.json",
@@ -658,7 +658,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/refine-proposals-response.json",
@@ -669,7 +669,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/request-proposals-async-response-input-required.json",
@@ -680,7 +680,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/request-proposals-async-response-working.json",
@@ -691,7 +691,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/request-proposals-response.json",
@@ -702,7 +702,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/sync-catalogs-async-response-input-required.json",
@@ -713,7 +713,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/sync-catalogs-async-response-working.json",
@@ -724,7 +724,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/update-media-buy-async-response-input-required.json",
@@ -735,7 +735,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "media-buy/update-media-buy-async-response-working.json",
@@ -746,7 +746,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "signals/get-signals-async-response-working.json",
@@ -757,7 +757,7 @@
         "path": "dist/schemas/3.2.7/core/protocol-envelope.json",
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
-      "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+      "reason": "Applies the required name the published text sets. The response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
     },
     {
       "file": "core/protocol-envelope.json",
@@ -769,7 +769,7 @@
         "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
         "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
       },
-      "reason": "Correction (d) of DR-0036: the envelope's message, on every task response, refers to core/task-message.json, so it carries the 2,000-character bound that 3.2.7 published on the compact responses and the submitted payloads. One bound for every delivery path, at the same 2,000."
+      "reason": "Applies the bound the published text sets. The envelope's message, on every task response, refers to core/task-message.json, so it carries the 2,000-character bound that 3.2.7 published on the compact responses and the submitted payloads. One bound for every delivery path, at the same 2,000."
     },
     {
       "file": "core/mcp-webhook-payload.json",
@@ -781,7 +781,7 @@
         "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
         "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
       },
-      "reason": "Correction (d) of DR-0036: a webhook notification's message refers to core/task-message.json, so the bound does not depend on whether the task state arrives in a response or a webhook. The same 2,000 that 3.2.7 published on the compact responses."
+      "reason": "Applies the bound the published text sets. A webhook notification's message refers to core/task-message.json, so the bound does not depend on whether the task state arrives in a response or a webhook. The same 2,000 that 3.2.7 published on the compact responses."
     },
     {
       "file": "core/response.json",
@@ -793,7 +793,1423 @@
         "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
         "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
       },
-      "reason": "Correction (d) of DR-0036: the response wrapper's message refers to core/task-message.json, so the wrapper carries the same 2,000-character bound as the envelope."
+      "reason": "Applies the bound the published text sets. The response wrapper's message refers to core/task-message.json, so the wrapper carries the same 2,000-character bound as the envelope."
+    },
+    {
+      "file": "aao/agent-publishers.json",
+      "pointer": "/definitions/PublisherEntry/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "account/get-account-financials-response.json",
+      "pointer": "/oneOf/0/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "account/get-account-financials-response.json",
+      "pointer": "/oneOf/0/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "account/sync-accounts-request.json",
+      "pointer": "/properties/accounts/items/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "account/sync-accounts-request.json",
+      "pointer": "/properties/accounts/items/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "account/sync-accounts-response.json",
+      "pointer": "/oneOf/0/properties/accounts/items/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "adagents.json",
+      "pointer": "/oneOf/1/properties/contact/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "adagents.json",
+      "pointer": "/oneOf/1/properties/revoked_publisher_domains/items/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "collection/base-collection-source.json",
+      "pointer": "/oneOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "collection/base-collection-source.json",
+      "pointer": "/oneOf/2/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "compliance/comply-test-controller-request.json",
+      "pointer": "/properties/params/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "core/account-ref.json",
+      "pointer": "/oneOf/1/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/account-ref.json",
+      "pointer": "/oneOf/1/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/account-timezone-capability.json",
+      "pointer": "/properties/fixed_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/account-timezone-capability.json",
+      "pointer": "/properties/supported_timezones/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/account.json",
+      "pointer": "/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/account.json",
+      "pointer": "/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/brand-key.json",
+      "pointer": "/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/brand-ref.json",
+      "pointer": "/properties/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/canonical-account-ref.json",
+      "pointer": "/anyOf/1/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/canonical-account-ref.json",
+      "pointer": "/anyOf/1/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/canonical-format-option.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/canonical-placement.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/canonical-reporting-capabilities.json",
+      "pointer": "/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/canonical-reporting-capabilities.json",
+      "pointer": "/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "core/catalog-field-mapping.json",
+      "pointer": "/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/catalog-field-mapping.json",
+      "pointer": "/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "core/collection-property-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection-ref.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection-selector.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/creative-operation-format-declaration.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/data-provider-signal-selector.json",
+      "pointer": "/oneOf/0/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/data-provider-signal-selector.json",
+      "pointer": "/oneOf/1/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/data-provider-signal-selector.json",
+      "pointer": "/oneOf/2/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/format-option-ref.json",
+      "pointer": "/oneOf/0/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/indicator-scope.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/installment-property-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/media-buy.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/media-buy.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "core/operator-identity.json",
+      "pointer": "/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement-identity.json",
+      "pointer": "/oneOf/0/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement-property-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement-ref.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/placement.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/planned-delivery.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/planned-delivery.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "core/product-format-declaration.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/property-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/property-ref.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/0/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/0/properties/publisher_domains/items",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/2/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/publisher-property-selector.json",
+      "pointer": "/oneOf/2/properties/publisher_domains/items",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/registry-event.json",
+      "pointer": "/$defs/domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/reporting-capabilities.json",
+      "pointer": "/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "core/reporting-capabilities.json",
+      "pointer": "/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "core/reporting-webhook.json",
+      "pointer": "/properties/token",
+      "bound": "maxLength",
+      "value": 4096,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/push-notification-config.json",
+        "quote": "both checks remain independent obligations.\", \"minLength\": 16, \"maxLength\": 4096 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A webhook token, which core/webhook-token.json bounds."
+    },
+    {
+      "file": "core/response-payload-jws-envelope.json",
+      "pointer": "/definitions/response_payload/properties/brand_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/signal-id.json",
+      "pointer": "/oneOf/0/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/signal-ref.json",
+      "pointer": "/oneOf/1/properties/data_provider_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/$defs/signal/properties/description",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed description of what this signal represents and how it's derived\", \"maxLength\": 2000 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A signal description, which core/signal-description.json bounds."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/$defs/signal/properties/name",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1, \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A signal name, which core/signal-name.json bounds."
+    },
+    {
+      "file": "creative/get-creative-delivery-response.json",
+      "pointer": "/properties/reporting_period/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "creative/get-creative-delivery-response.json",
+      "pointer": "/properties/reporting_period/properties/timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/accept-proposal-request.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/accept-proposal-request.json",
+      "pointer": "/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/buy-products-request.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/commercial-terms.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-request.json",
+      "pointer": "/properties/artifact_webhook/properties/token",
+      "bound": "maxLength",
+      "value": 4096,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/push-notification-config.json",
+        "quote": "both checks remain independent obligations.\", \"minLength\": 16, \"maxLength\": 4096 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A webhook token, which core/webhook-token.json bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-request.json",
+      "pointer": "/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/create-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/create-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/decline-proposals-response.json",
+      "pointer": "/properties/results/items/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/reporting_period/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/get-products-request.json",
+      "pointer": "/properties/refine/items/oneOf/2/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/list-creative-formats-request.json",
+      "pointer": "/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/reporting_period/properties/timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/package-control.json",
+      "pointer": "/properties/catalog_ids/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/catalog-item-availability-ref.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned catalog ID.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "media-buy/product-purchase.json",
+      "pointer": "/properties/catalog_ids/items",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/catalog-item-availability-ref.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned catalog ID.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "media-buy/product-refinement.json",
+      "pointer": "/items/oneOf/2/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/proposal-refinement.json",
+      "pointer": "/properties/proposal_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/proposal.json",
+        "quote": "\"proposal_id\": { \"type\": \"string\", \"description\": \"Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.\", \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A proposal ID, which core/proposal-id.json bounds."
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "/properties/results/items/properties/suggestions/items",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/get-products-response.json",
+        "quote": "\"items\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 1000 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A seller suggestion, which core/seller-suggestion.json bounds."
+    },
+    {
+      "file": "media-buy/request-proposals-response.json",
+      "pointer": "/properties/reason",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/get-products-response.json",
+        "quote": "\"reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 2000, \"description\": \"Buyer-facing market explanation required only on the GetProductsRejected arm."
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A rejection reason, which core/brief-rejection-reason.json bounds."
+    },
+    {
+      "file": "media-buy/request-proposals-response.json",
+      "pointer": "/properties/suggestions/items",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/get-products-response.json",
+        "quote": "\"items\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 1000 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the same concept elsewhere, so one definition carries it. A seller suggestion, which core/seller-suggestion.json bounds."
+    },
+    {
+      "file": "media-buy/update-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/budget_cap_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "media-buy/update-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/budget_cap_timezone",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with minLength 1. A timezone identifier, which core/iana-timezone.json keeps non-empty."
+    },
+    {
+      "file": "property/base-property-source.json",
+      "pointer": "/oneOf/0/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "property/base-property-source.json",
+      "pointer": "/oneOf/1/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "protocol/get-adcp-capabilities-response.json",
+      "pointer": "/properties/media_buy/properties/budget_capping/properties/fixed_timezone",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/iana-timezone.json",
+        "quote": "\"description\": \"Concrete timezone identifier in the implementation's supported IANA Time Zone Database, such as America/New_York, CET, or UTC.\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. The site names a UTC or IANA timezone identifier, and 3.2.8 published core/iana-timezone.json with maxLength 255. A timezone identifier, which core/iana-timezone.json bounds."
+    },
+    {
+      "file": "protocol/get-adcp-capabilities-response.json",
+      "pointer": "/properties/media_buy/properties/portfolio/properties/publisher_domains/items",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "protocol/get-adcp-capabilities-response.json",
+      "pointer": "/properties/signals/properties/data_provider_domains/items",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "compliance/get-creative-features-completion.json",
+      "pointer": "/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "core/canonical-account-ref.json",
+      "pointer": "/anyOf/0/properties/account_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/account-change.json",
+        "quote": "\"description\": \"Seller-assigned account containing the resource.\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the account ID in core/account-change.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "core/canonical-proposal.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "core/media-buy.json",
+      "pointer": "/properties/cancellation/properties/reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "core/package.json",
+      "pointer": "/properties/cancellation/properties/reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "core/planned-delivery.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "core/signal-definition.json",
+      "pointer": "/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/wholesale-feed-event.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed signal description\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the signal description in core/wholesale-feed-event.json. A signal description, which core/signal-description.json keeps non-empty."
+    },
+    {
+      "file": "creative/get-creative-features-async-response-submitted.json",
+      "pointer": "/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "creative/get-creative-features-response.json",
+      "pointer": "/oneOf/1/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "creative/get-creative-features-response.json",
+      "pointer": "/oneOf/2/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "creative/get-creative-features-terminal-success.json",
+      "pointer": "/properties/evaluation_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/compliance/comply-test-controller-request.json",
+        "quote": "\"evaluation_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the evaluation ID in the compliance test controller. A creative evaluation ID, which core/creative-evaluation-id.json bounds."
+    },
+    {
+      "file": "media-buy/control-media-buy-request.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/control-media-buy-response.json",
+      "pointer": "/oneOf/0/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/accepted_proposal/allOf/1/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/cancellation/properties/reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/get-media-buys-response.json",
+      "pointer": "/properties/media_buys/items/properties/packages/items/properties/cancellation/properties/reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "/oneOf/0/properties/accepted_proposal/allOf/1/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "/oneOf/0/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "media-buy/package-update.json",
+      "pointer": "/properties/cancellation_reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/update-media-buy-request.json",
+      "pointer": "/properties/cancellation_reason",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/media-buy/package-control.json",
+        "quote": "\"cancellation_reason\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 500 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on cancellation_reason in media-buy/package-control.json. A cancellation reason, which core/cancellation-reason.json keeps non-empty."
     }
   ]
 }

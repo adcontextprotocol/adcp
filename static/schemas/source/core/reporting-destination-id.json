@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-destination-id.json",
+  "title": "Reporting Destination ID",
+  "description": "Caller-selected logical key of a destination in a principal's reporting_destinations.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+}

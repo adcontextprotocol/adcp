@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/vast-tracker-target.json",
+  "title": "VAST Tracker Target",
+  "description": "VAST creative element that a tracker scopes to: linear, non_linear, or companion.",
+  "type": "string",
+  "enum": [
+    "linear",
+    "non_linear",
+    "companion"
+  ]
+}

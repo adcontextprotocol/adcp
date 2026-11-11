@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/incomplete-scope.json",
+  "title": "Incomplete Scope",
+  "description": "Part of a discovery response that a seller could not complete, for discovery responses that can also return proposals. It is the product incomplete scope plus proposals.",
+  "type": "string",
+  "anyOf": [
+    { "$ref": "/schemas/enums/product-incomplete-scope.json" },
+    {
+      "type": "string",
+      "const": "proposals",
+      "description": "Proposals were not generated or are incomplete."
+    }
+  ]
+}

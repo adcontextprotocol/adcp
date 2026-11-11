@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/governance-attribute-id.json",
+  "title": "Governance Attribute ID",
+  "description": "Identifier of a governance attribute definition.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*$"
+}

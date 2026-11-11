@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/delegation-type.json",
+  "title": "Delegation Type",
+  "description": "Commercial relationship of an inventory path: direct, delegated, or ad_network.",
+  "type": "string",
+  "enum": [
+    "direct",
+    "delegated",
+    "ad_network"
+  ]
+}

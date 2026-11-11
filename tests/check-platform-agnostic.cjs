@@ -70,28 +70,14 @@ const FIELD_ALLOWLIST = new Set([
 //   - pathContains: exact relative path or path suffix (e.g., 'enums/identifier-types.json')
 //   - comment:     one-line justification (inline below)
 const ENUM_VALUE_ALLOWLIST = [
-  // brand.json — store property: platform names ARE the canonical app-store
-  // identifiers; no platform-neutral alternative name exists.
-  { value: 'apple',  pathContains: 'brand.json' },
-  { value: 'google', pathContains: 'brand.json' },
-  { value: 'amazon', pathContains: 'brand.json' },
-  { value: 'roku',   pathContains: 'brand.json' },
-
-  // brand/verify-brand-claim-request.json — store enum mirrors brand.json's
-  // properties[].store (when claim_type=property). Factoring into a shared
-  // enums/property-store.json is tracked as cleanup; same canonical-identifier
-  // justification applies.
-  { value: 'apple',  pathContains: 'brand/verify-brand-claim-request.json' },
-  { value: 'google', pathContains: 'brand/verify-brand-claim-request.json' },
-  { value: 'amazon', pathContains: 'brand/verify-brand-claim-request.json' },
-  { value: 'roku',   pathContains: 'brand/verify-brand-claim-request.json' },
-
-  // brand/verify-brand-claims-request.json — bulk variant mirrors the same
-  // store enum; same canonical-identifier justification applies.
-  { value: 'apple',  pathContains: 'brand/verify-brand-claims-request.json' },
-  { value: 'google', pathContains: 'brand/verify-brand-claims-request.json' },
-  { value: 'amazon', pathContains: 'brand/verify-brand-claims-request.json' },
-  { value: 'roku',   pathContains: 'brand/verify-brand-claims-request.json' },
+  // enums/app-store.json — the one store enum that brand.json properties[].store
+  // and both verify-brand-claim request schemas reference. Platform names ARE
+  // the canonical app-store identifiers; no platform-neutral alternative name
+  // exists.
+  { value: 'apple',  pathContains: 'enums/app-store.json' },
+  { value: 'google', pathContains: 'enums/app-store.json' },
+  { value: 'amazon', pathContains: 'enums/app-store.json' },
+  { value: 'roku',   pathContains: 'enums/app-store.json' },
 
   // brand.json — feed_format now $refs enums/feed-format.json (no inline enum
   // values), so the canonical feed-format.json entries below cover it.

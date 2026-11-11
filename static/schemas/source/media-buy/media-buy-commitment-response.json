@@ -26,15 +26,10 @@
       "properties": {
         "status": { "type": "string", "const": "completed" },
         "media_buy_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "media_buy"
+          "$ref": "/schemas/core/media-buy-id.json"
         },
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "pattern": "\\S",
+          "$ref": "/schemas/core/media-buy-name.json",
           "description": "Persisted human-readable MediaBuy name for trafficking UI display and operational communication. The seller MUST echo a buyer-supplied request name unchanged; when the seller seeded a new MediaBuy name from an already-valid proposal.name, it MUST return that value unchanged here. Existing named MediaBuys return the stored value on amendment or cancellation commitments. This operational metadata is outside accepted_proposal and is not covered by terms_digest. This display label is not an identifier or financial reference."
         },
         "revision": {
@@ -54,7 +49,7 @@
             {
               "properties": {
                 "proposal_status": { "type": "string", "const": "accepted" },
-                "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" }
+                "media_buy_id": { "$ref": "/schemas/core/media-buy-id.json" }
               },
               "required": ["proposal_status", "media_buy_id", "accepted_at", "commercial_terms", "terms_digest"]
             }
@@ -78,8 +73,8 @@
             "type": "object",
             "properties": {
               "purchase_index": { "type": "integer", "minimum": 0 },
-              "product_id": { "type": "string", "minLength": 1, "x-entity": "product" },
-              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" }
+              "product_id": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" },
+              "package_id": { "$ref": "/schemas/core/package-id.json" }
             },
             "required": ["purchase_index", "product_id", "package_id"],
             "additionalProperties": false

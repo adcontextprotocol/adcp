@@ -39,10 +39,8 @@
             ]
           },
           "rate": {
-            "type": "number",
-            "description": "Adjustment as a decimal proportion (e.g., 0.15 for 15%). Always positive — kind determines the economic effect. Mutually exclusive with amount.",
-            "exclusiveMinimum": 0,
-            "exclusiveMaximum": 1
+            "$ref": "/schemas/core/price-adjustment-rate.json",
+            "description": "Adjustment as a decimal proportion (e.g., 0.15 for 15%). Always positive — kind determines the economic effect. Mutually exclusive with amount."
           },
           "amount": {
             "type": "number",

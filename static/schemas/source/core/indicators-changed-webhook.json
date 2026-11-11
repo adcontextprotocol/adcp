@@ -6,17 +6,11 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "Random fire identifier reused across retries. Receivers dedupe within the authenticated sender scope."
     },
     "notification_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "$ref": "/schemas/core/notification-id.json",
       "description": "Stable identity for this logical snapshot change across re-emissions. A later semantic change receives a new value."
     },
     "notification_type": {
@@ -28,10 +22,7 @@
       "format": "date-time"
     },
     "subscriber_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json"
     },
     "account_id": {
       "type": "string",

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-training-data-type.json",
+  "title": "Signal Training Data Type",
+  "description": "Type of data used to train a modeled signal.",
+  "type": "string",
+  "enum": [
+    "first_party_crm",
+    "panel",
+    "declared_survey",
+    "transactional",
+    "behavioral"
+  ]
+}

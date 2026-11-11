@@ -12,9 +12,8 @@
   "x-status": "experimental",
   "properties": {
     "query": {
-      "type": "string",
-      "description": "Natural language description of desired rights. The agent interprets intent, budget signals, and compatibility from this text.",
-      "maxLength": 2000
+      "$ref": "/schemas/core/brand-agent-query.json",
+      "description": "Natural language description of desired rights. The agent interprets intent, budget signals, and compatibility from this text."
     },
     "uses": {
       "type": "array",
@@ -32,8 +31,7 @@
       "type": "array",
       "description": "Countries where rights are needed (ISO 3166-1 alpha-2). Filters to rights available in these markets.",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       }
     },
     "brand_id": {

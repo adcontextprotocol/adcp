@@ -12,13 +12,19 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 128
+    },
+    "canonical_utf8_base64": {
+      "title": "Canonical Bytes Base64",
+      "description": "Base64 encoding of the exact canonical UTF-8 bytes a golden vector expects.",
+      "type": "string",
+      "minLength": 1
     }
   },
   "properties": {
     "contract_version": { "type": "string", "const": "1.0" },
     "media_type": { "type": "string", "const": "application/vnd.adcp.reporting-canonicalization+json" },
     "algorithm": { "type": "string", "const": "adcp_jcs_rows_v1" },
-    "schema_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact row schema to which this contract applies." },
+    "schema_sha256": { "$ref": "/schemas/core/sha256-hex-digest.json", "description": "Digest of the exact row schema to which this contract applies." },
     "primary_keys": {
       "type": "array",
       "items": { "$ref": "#/definitions/ReportingPrimaryKey" },
@@ -33,7 +39,7 @@
           "title": "EmptyReportGoldenVector",
           "type": "object",
           "properties": {
-            "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+            "name": { "$ref": "/schemas/core/golden-vector-name.json" },
             "purpose": { "type": "string", "const": "empty_report" },
             "input_rows": { "type": "array", "maxItems": 0 },
             "canonical_utf8_base64": { "type": "string", "const": "W10=", "description": "Base64 of the exact UTF-8 bytes for []." },
@@ -46,11 +52,11 @@
           "title": "OrderingEncodingGoldenVector",
           "type": "object",
           "properties": {
-            "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+            "name": { "$ref": "/schemas/core/golden-vector-name.json" },
             "purpose": { "type": "string", "const": "ordering_encoding" },
             "input_rows": { "type": "array", "items": { "type": "object" }, "minItems": 2 },
-            "canonical_utf8_base64": { "type": "string", "minLength": 1, "description": "Base64 of the exact expected canonical UTF-8 bytes." },
-            "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+            "canonical_utf8_base64": { "$ref": "#/definitions/canonical_utf8_base64", "description": "Base64 of the exact expected canonical UTF-8 bytes." },
+            "sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" }
           },
           "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],
           "additionalProperties": false
@@ -61,11 +67,11 @@
             "title": "AdditionalGoldenVector",
             "type": "object",
             "properties": {
-              "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+              "name": { "$ref": "/schemas/core/golden-vector-name.json" },
               "purpose": { "type": "string", "const": "additional" },
               "input_rows": { "type": "array", "items": { "type": "object" } },
-              "canonical_utf8_base64": { "type": "string", "minLength": 1, "description": "Base64 of the exact expected canonical UTF-8 bytes." },
-              "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+              "canonical_utf8_base64": { "$ref": "#/definitions/canonical_utf8_base64", "description": "Base64 of the exact expected canonical UTF-8 bytes." },
+              "sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" }
             },
             "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],
             "additionalProperties": false

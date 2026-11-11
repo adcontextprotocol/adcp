@@ -58,9 +58,15 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Core gender adds one shared predicate reached by five inputs.
   // core/task-id.json, the one task_id definition, is reached by one input
   // (+1 instance, +1 unique).
-  assert.equal(report.definition_instances, 711);
-  assert.equal(report.unique_definitions, 192);
-  assert.equal(report.repeated_definitions, 136);
+  // Naming the currency code, country code, idempotency key, domain name, and
+  // HTTPS URL (#8525) turns five inline subschemas into definitions (+78
+  // instances, +5 unique). Naming the further repeated scalar concepts adds 209
+  // instances and 61 unique definitions; naming repeated enums adds 27 and 8;
+  // naming every remaining repeat adds 95 and 27. Pointing every site at one
+  // definition adds 57 and 10.
+  assert.equal(report.definition_instances, 1177);
+  assert.equal(report.unique_definitions, 303);
+  assert.equal(report.repeated_definitions, 205);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -184,7 +190,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 192);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 303);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

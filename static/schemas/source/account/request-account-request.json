@@ -12,11 +12,8 @@
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated key that makes retries of this call safe, with the standard replay semantics. A replayed key returns the original request; a new key is a new request. Use a fresh UUID v4 for each logical call.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated key that makes retries of this call safe, with the standard replay semantics. A replayed key returns the original request; a new key is a new request. Use a fresh UUID v4 for each logical call."
     },
     "account_id": {
       "type": "string",
@@ -24,9 +21,7 @@
       "x-entity": "account"
     },
     "request_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
+      "$ref": "/schemas/core/account-request-id.json",
       "description": "Continue one of the caller's own open requests. With account_id and no change fields: pick a candidate from an ambiguous request, or name the account a human created after a sign_up action; the open request resolves as matched. Change requests are never edited in place: send a new change request instead, which supersedes the open one. Unknown request_ids, or another caller's, are treated as not found."
     },
     "revision": {
@@ -44,8 +39,7 @@
       "description": "Advertiser identity. Required to open an account. Sellers matching on brand use domain and brand_id; countries is an attribute. With account_id, send brand only to change countries; domain and brand_id must equal the account's."
     },
     "operator": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent."
     },
     "operator_unit": {
@@ -53,13 +47,11 @@
       "description": "Optional operator-owned business unit or seat. An account attribute; name is display metadata."
     },
     "currency": {
-      "type": "string",
-      "pattern": "^[A-Z]{3}$",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency for a currency-bound advertiser object, as in sync_accounts. An account attribute set when the account opens."
     },
     "timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Buyer-selected timezone when the seller declares account_fixed, buyer_selected timezones, as in sync_accounts. An account attribute set when the account opens."
     },
     "sandbox": {

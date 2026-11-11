@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/logo-background.json",
+  "title": "Logo Background",
+  "description": "Background a logo is compatible with.",
+  "type": "string",
+  "enum": [
+    "dark-bg",
+    "light-bg",
+    "transparent-bg"
+  ]
+}

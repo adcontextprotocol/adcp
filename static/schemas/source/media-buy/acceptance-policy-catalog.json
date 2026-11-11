@@ -5,7 +5,7 @@
   "description": "Seller-hosted catalog referenced from capabilities. Profiles compose restrictively: every referenced profile applies and the most restrictive matching disposition wins (prohibited over conditional over allowed).",
   "type": "object",
   "properties": {
-    "catalog_version": { "type": "string", "minLength": 1 },
+    "catalog_version": { "$ref": "/schemas/core/acceptance-policy-catalog-version.json" },
     "generated_at": { "type": "string", "format": "date-time" },
     "profiles": {
       "type": "array",

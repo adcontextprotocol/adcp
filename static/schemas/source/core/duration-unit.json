@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/duration-unit.json",
+  "title": "Duration Unit",
+  "description": "General duration unit, including campaign for the length of a campaign.",
+  "type": "string",
+  "enum": [
+    "seconds",
+    "minutes",
+    "hours",
+    "days",
+    "campaign"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/buyer-reason-message.json",
+  "title": "Buyer Reason Message",
+  "description": "Buyer-safe explanation of an actionable failure in an error buyer_reason.",
+  "type": "string",
+  "minLength": 1
+}

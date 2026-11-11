@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-place-id.json",
+  "title": "Geo Place ID",
+  "description": "Stable identifier of a place in a geographic place catalog system.",
+  "type": "string",
+  "minLength": 1
+}

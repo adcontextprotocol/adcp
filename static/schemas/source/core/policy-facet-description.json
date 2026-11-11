@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/policy-facet-description.json",
+  "title": "Policy Facet Description",
+  "description": "Human-readable description of one registry-defined facet within a policy category.",
+  "type": "string",
+  "minLength": 1
+}

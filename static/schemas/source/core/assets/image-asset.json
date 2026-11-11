@@ -47,7 +47,7 @@
     },
     "focal_point": {
       "type": "array",
-      "items": { "type": "number", "minimum": 0, "maximum": 1 },
+      "items": { "$ref": "/schemas/core/normalized-image-coordinate.json" },
       "minItems": 2,
       "maxItems": 2,
       "description": "Normalized `[x, y]` coordinates (0–1 from top-left) of the image's visual anchor. Seller-side renderers crop toward the focal point when deriving renditions across breakpoints and aspect ratios; absent, cropping falls back to center-weighted defaults."

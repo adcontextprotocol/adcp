@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/catalog-item-availability-action.json",
+  "title": "Catalog Item Availability Action",
+  "description": "Action that changes a catalog item's availability overlay.",
+  "type": "string",
+  "enum": [
+    "suppress",
+    "restore"
+  ]
+}

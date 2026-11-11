@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/seller-suggestion.json",
+  "title": "Seller Suggestion",
+  "description": "Actionable alternative a seller offers the buyer, such as a change to budget, dates, or channel.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 1000
+}

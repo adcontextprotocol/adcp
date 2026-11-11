@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/placement-authority.json",
+  "title": "Placement Authority",
+  "description": "Who declares a placement's identity: a publisher catalog or the seller inline.",
+  "type": "string",
+  "enum": [
+    "publisher_ref",
+    "seller_inline"
+  ]
+}

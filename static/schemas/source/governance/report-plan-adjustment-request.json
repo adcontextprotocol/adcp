@@ -84,8 +84,7 @@
       "x-entity": "seller_adjustment"
     },
     "adjustment_type": {
-      "type": "string",
-      "enum": ["decommitment", "refund", "credit", "makegood"],
+      "$ref": "/schemas/enums/plan-adjustment-type.json",
       "description": "Commercial meaning. Verified decommitments restore headroom in every mode; verified refunds and credits restore it only in verified_net_cost mode; makegoods never restore cash headroom."
     },
     "amount": {
@@ -98,8 +97,7 @@
           "description": "Finite positive amount. Cumulative adjustments for an outcome cannot exceed its authoritative commitment."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "Three-letter uppercase currency code matching the plan currency."
         }
       },
@@ -107,9 +105,7 @@
       "additionalProperties": false
     },
     "reason": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 1000,
+      "$ref": "/schemas/core/plan-adjustment-reason.json",
       "description": "Human-readable reason retained in the audit trail."
     },
     "effective_at": {
@@ -129,20 +125,16 @@
           "x-entity": "governance_adjustment_evidence"
         },
         "evidence_type": {
-          "type": "string",
-          "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"]
+          "$ref": "/schemas/enums/plan-adjustment-evidence-type.json"
         },
-        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "digest": { "$ref": "/schemas/core/sha256-digest.json" },
         "issued_at": { "type": "string", "format": "date-time" }
       },
       "required": ["evidence_id", "evidence_type", "digest", "issued_at"],
       "additionalProperties": false
     },
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "Caller-generated retry key. Exact replays return the original report or review; reuse with another payload is rejected."
     },
     "context": { "$ref": "/schemas/core/context.json" },

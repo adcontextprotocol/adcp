@@ -47,8 +47,7 @@
       "type": "array",
       "description": "Filter to transformers that can produce any of these canonical creative.supported_formats capability IDs.",
       "items": {
-        "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]+$"
+        "$ref": "/schemas/core/creative-capability-id.json"
       },
       "minItems": 1,
       "uniqueItems": true

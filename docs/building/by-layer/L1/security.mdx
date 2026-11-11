@@ -2553,15 +2553,20 @@ fields the schema enforces nothing new in 3.x. Each carries the bound as an
 annotation instead, `x-max-items-4.0`, `x-max-length-4.0`, or
 `x-max-properties-4.0`, which becomes the keyword in 4.0. Through 3.x a producer
 **SHOULD** stay within the annotated limit, and a document above it stays
-schema-valid. The annotations are registered as a 4.0 tightening in the
+schema-valid. A position can carry both, when a 3.x release published a
+keyword and 4.0 plans a lower limit: an IANA timezone identifier enforces
+`maxLength: 255`, which 3.2.8 published, and annotates `x-max-length-4.0: 64`.
+An annotation never sits above the keyword, because that would plan a
+loosening. The annotations are registered as a 4.0 tightening in the
 [4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
 **Worst case.** With the 4.0 bounds applied, the largest schema-valid
-capabilities document is 99,100,981 bytes (about 95 MiB), counting only the
+capabilities document is 99,051,189 bytes (about 94 MiB), counting only the
 members the schema declares. `scripts/capabilities-structural-bounds.cjs` computes it
 and `tests/capabilities-structural-bounds.test.cjs` pins it, so the figure moves
 only when a declared member or limit changes. The calculation assumes every declared member is
 present, every list and map is full, every string is at its maximum length, a
+position with both a keyword and an annotation takes the lower limit, a
 union takes its widest branch, free text takes four bytes per character, and
 patterned or formatted strings one. The largest blocks are `media_buy` (34 MiB),
 `creative` (27 MiB), `adcp` (12 MiB), `governance` (6 MiB), `account` (5 MiB),

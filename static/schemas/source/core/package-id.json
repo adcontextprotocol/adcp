@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/package-id.json",
+  "title": "Package ID",
+  "description": "Identifier of a package within a media buy.",
+  "type": "string",
+  "minLength": 1,
+  "x-entity": "package"
+}

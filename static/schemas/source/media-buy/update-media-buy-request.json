@@ -111,11 +111,8 @@
   },
   "properties": {
     "governance_context": {
-      "type": "string",
-      "description": "Opaque intent authorization for a commitment-increasing media-buy update.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque intent authorization for a commitment-increasing media-buy update."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
@@ -127,10 +124,7 @@
       "x-entity": "media_buy"
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Replacement human-readable name for this media buy, used for trafficking UI display and operational communication. Sellers that cannot update name mid-flight SHOULD echo the prior unchanged value in the success response rather than silently dropping the field. This display label is not an identifier or financial reference."
     },
     "revision": {
@@ -148,9 +142,8 @@
       "const": true
     },
     "cancellation_reason": {
-      "type": "string",
-      "description": "Reason for cancellation. Sellers SHOULD store this and return it in subsequent get_media_buys responses.",
-      "maxLength": 500
+      "$ref": "/schemas/core/cancellation-reason.json",
+      "description": "Reason for cancellation. Sellers SHOULD store this and return it in subsequent get_media_buys responses."
     },
     "start_time": {
       "$ref": "/schemas/core/start-timing.json"
@@ -169,8 +162,7 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json"
         }
       },
       "required": [
@@ -192,8 +184,10 @@
       ]
     },
     "budget_cap_timezone": {
-      "type": ["string", "null"],
-      "minLength": 1,
+      "anyOf": [
+        { "$ref": "/schemas/core/iana-timezone.json" },
+        { "type": "null" }
+      ],
       "description": "Replace the shared IANA cap-day timezone; null restores the default selected by budget_capping.timezone_basis (Account.timezone or fixed_timezone). Requires buyer_timezone_override. Changes start at the next boundary in the previously effective timezone; numeric cap changes remain immediate."
     },
     "budget_allocation": {
@@ -244,11 +238,8 @@
       "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time. This is separate from reporting_webhook which configures ongoing campaign reporting."
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

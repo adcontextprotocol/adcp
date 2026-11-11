@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-minor-version.json",
+  "title": "AdCP Minor Version",
+  "description": "AdCP version in MAJOR.MINOR form, such as 3.2.",
+  "type": "string",
+  "pattern": "^\\d+\\.\\d+$"
+}

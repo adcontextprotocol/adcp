@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/date-duration.json",
+  "title": "Date Duration",
+  "description": "ISO 8601 duration made only of years, months, and days, with any time components zero, such as P1D, P1M, or P1DT0H. It applies to a duration that the enclosing schema declares.",
+  "pattern": "^P[^T]*(?:T(?:0+[HMS])*)?$"
+}

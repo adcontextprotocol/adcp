@@ -45,22 +45,16 @@
       "x-entity": "vendor_pricing_option"
     },
     "governance_context": {
-      "type": "string",
-      "description": "Opaque authorization context returned by an approved check_governance decision for this signal activation. Required when the account has a registered governance agent; signal agents MUST reject governed activations that omit a valid context. Conditions and denied decisions never produce this value.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque authorization context returned by an approved check_governance decision for this signal activation. Required when the account has a registered governance agent; signal agents MUST reject governed activations that omit a valid context. Conditions and denied decisions never produce this value."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account for this activation. Associates with a commercial relationship established via sync_accounts."
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

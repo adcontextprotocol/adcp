@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/proposal-alternative-count.json",
+  "title": "Proposal Alternative Count",
+  "description": "Number of draft alternatives in one proposal refinement, from 2 to the protocol maximum of 10.",
+  "type": "integer",
+  "minimum": 2,
+  "maximum": 10
+}

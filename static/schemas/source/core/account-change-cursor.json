@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-change-cursor.json",
+  "title": "Account Change Cursor",
+  "description": "Opaque checkpoint in the account change feed.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 4096
+}

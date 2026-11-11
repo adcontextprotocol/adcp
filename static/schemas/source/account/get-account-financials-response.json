@@ -20,8 +20,7 @@
           "description": "Account reference, echoed from the request"
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code for all monetary amounts in this response"
         },
         "period": {
@@ -29,7 +28,7 @@
           "description": "The actual period covered by spend data. May differ from the requested period if the seller adjusts to billing cycle boundaries."
         },
         "timezone": {
-          "type": "string",
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "IANA timezone of the seller's billing day boundaries (e.g., 'America/New_York'). All dates in this response — period, invoice periods, due dates — are calendar dates in this timezone. This may differ from Account.timezone or a feature-specific cap/reporting timezone when the upstream platform uses distinct clocks; buyers MUST use this value for financial periods rather than infer equality."
         },
         "spend": {
@@ -65,9 +64,7 @@
               "description": "Remaining credit available (credit_limit minus outstanding balance)"
             },
             "utilization_percent": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100,
+              "$ref": "/schemas/core/percentage.json",
               "description": "Credit utilization as a percentage (0-100)"
             }
           },

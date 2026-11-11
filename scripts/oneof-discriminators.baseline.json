@@ -281,16 +281,6 @@
       "variants": 3,
       "note": "0:[media_buy_id,confirmed_at,revision,packages] | 1:[errors] | 2:[status,task_id]"
     },
-    "media-buy/get-media-buy-delivery-request.json##/properties/status_filter/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:ref-only(/schemas/enums/media-buy-status.json) | 1:array"
-    },
-    "media-buy/get-media-buys-request.json##/properties/status_filter/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:ref-only(/schemas/enums/media-buy-status.json) | 1:array"
-    },
     "media-buy/get-products-response.json##/properties/filter_diagnostics/properties/excluded_by/additionalProperties/properties/values/items/oneOf": {
       "kind": "dangerous",
       "variants": 2,
@@ -354,7 +344,7 @@
     "property/property-feature-result.json##/properties/property/oneOf": {
       "kind": "dangerous",
       "variants": 2,
-      "note": "shared-required=[∅]; 0:string | 1:ref-only(/schemas/core/property-id.json)"
+      "note": "shared-required=[∅]; 0:string | 1:string"
     },
     "protocol/get-adcp-capabilities-response.json##/properties/media_buy/properties/execution/properties/targeting/properties/language/oneOf": {
       "kind": "dangerous",

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-place-system-version.json",
+  "title": "Geo Place System Version",
+  "description": "Exact version of a geographic place catalog from the seller's supported versions.",
+  "type": "string",
+  "minLength": 1
+}

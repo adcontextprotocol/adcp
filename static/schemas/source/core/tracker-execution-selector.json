@@ -8,9 +8,7 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
@@ -24,8 +22,7 @@
           "description": "AdCP 3.2 execution contracts cover image-pixel initiation only; JavaScript response evaluation is outside this contract version."
         },
         "custom_event_name": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/custom-event-name.json",
           "description": "Required only when event is custom."
         },
         "execution_actor": {
@@ -63,9 +60,7 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
@@ -113,9 +108,7 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
@@ -160,5 +153,14 @@
       "additionalProperties": false
     }
   ],
-  "discriminator": { "propertyName": "asset_type" }
+  "discriminator": { "propertyName": "asset_type" },
+  "definitions": {
+    "selector_id": {
+      "title": "Tracker Selector ID",
+      "description": "Stable identifier of one tracker selector, unique within its execution contract.",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "tracker_execution_selector"
+    }
+  }
 }

@@ -34,9 +34,7 @@
           "const": "agent"
         },
         "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+          "$ref": "/schemas/core/canonical-https-url.json",
           "description": "Canonical HTTPS endpoint of the agent the claim concerns."
         },
         "ext": {
@@ -71,8 +69,7 @@
           "description": "Stable identifier for the subject within namespace. It MUST NOT be compared without resource_type and namespace."
         },
         "content_digest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$",
+          "$ref": "/schemas/core/sha256-digest.json",
           "description": "Optional SHA-256 pin for the exact content or immutable snapshot identified by this resource subject. This is part of the complete typed subject identity and is distinct from AttestationReference.content_digest, which pins credential bytes."
         },
         "ext": {

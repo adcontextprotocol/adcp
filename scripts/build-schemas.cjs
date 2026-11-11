@@ -1464,9 +1464,12 @@ function writeManifest(sourceDir, targetDir, urlVersion, semverVersion, repoRoot
   const manifest = buildManifest(sourceDir, urlVersion, semverVersion, repoRoot);
   const ajv = new Ajv({ allErrors: true, strict: false });
   addFormats(ajv);
-  const validateManifest = ajv.compile(
-    JSON.parse(fs.readFileSync(path.join(sourceDir, 'manifest.schema.json'), 'utf8'))
-  );
+  const manifestSchema = JSON.parse(fs.readFileSync(path.join(sourceDir, 'manifest.schema.json'), 'utf8'));
+  // The manifest schema references named scalar schemas, which reference nothing further.
+  for (const ref of new Set(JSON.stringify(manifestSchema).match(/\/schemas\/[a-z-]+\/[a-z0-9-]+\.json/g) || [])) {
+    ajv.addSchema(JSON.parse(fs.readFileSync(path.join(sourceDir, ref.replace('/schemas/', '')), 'utf8')), ref);
+  }
+  const validateManifest = ajv.compile(manifestSchema);
   if (!validateManifest(manifest)) {
     throw new Error(`Generated manifest is invalid: ${ajv.errorsText(validateManifest.errors)}`);
   }

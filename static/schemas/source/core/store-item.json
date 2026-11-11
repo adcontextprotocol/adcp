@@ -18,15 +18,11 @@
       "description": "Geographic coordinates of the store.",
       "properties": {
         "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
+          "$ref": "/schemas/core/latitude.json",
           "description": "Latitude in decimal degrees (WGS 84)."
         },
         "lng": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
+          "$ref": "/schemas/core/longitude.json",
           "description": "Longitude in decimal degrees (WGS 84)."
         }
       },
@@ -54,8 +50,7 @@
           "description": "Postal or ZIP code."
         },
         "country": {
-          "type": "string",
-          "pattern": "^[A-Z]{2}$",
+          "$ref": "/schemas/core/country-code.json",
           "description": "ISO 3166-1 alpha-2 country code."
         }
       },
@@ -82,7 +77,7 @@
       "type": "object",
       "description": "Operating hours. Keys are ISO day names (monday–sunday), values are time ranges.",
       "propertyNames": {
-        "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        "$ref": "/schemas/enums/day-of-week.json"
       },
       "additionalProperties": {
         "type": "string",

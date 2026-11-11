@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/request-binding-digest.json",
+  "title": "Request Binding Digest",
+  "description": "Digest of a request-binding object.",
+  "type": "string",
+  "pattern": "^sha256:[A-Za-z0-9_-]{43}$"
+}

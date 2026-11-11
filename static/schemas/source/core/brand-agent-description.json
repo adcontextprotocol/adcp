@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-agent-description.json",
+  "title": "Brand Agent Description",
+  "description": "Description of the capabilities or scope of one agent a brand declares in brand.json.",
+  "type": "string",
+  "maxLength": 500
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/canonical-optimization-metric.json",
+  "title": "Canonical Optimization Metric",
+  "description": "Metric a canonical optimization goal can target. Unbound attention metrics are excluded on purpose.",
+  "type": "string",
+  "enum": [
+    "clicks",
+    "views",
+    "completed_views",
+    "viewed_seconds",
+    "viewable_rate",
+    "engagements",
+    "follows",
+    "saves",
+    "profile_visits",
+    "reach"
+  ]
+}

@@ -69,9 +69,8 @@
       "minItems": 1
     },
     "pricing_group": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-pricing-group.json",
       "description": "Experimental (signals.pricing_groups). Optional seller-defined key naming the set of signals whose fees combine under one signal_pricing_group_rules entry when selected in the same package. The key is scoped to the listing surface (product options or the get_signals agent) it appears on. A product-scoped value overrides the get_signals value, as product-scoped pricing_options do; an option omitting it inherits. Omit when the fee is independent. Distinct from selection_group, which governs targeting composability, not fees.",
-      "minLength": 1,
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },

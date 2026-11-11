@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/governance-policy-id.json",
+  "title": "Governance Policy ID",
+  "description": "Identifier of a policy in the governance registry.",
+  "type": "string",
+  "minLength": 1
+}

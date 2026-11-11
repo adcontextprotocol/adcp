@@ -16,9 +16,8 @@
       "maxLength": 500
     },
     "description": {
-      "type": "string",
-      "description": "Explanation of the proposal strategy and what it achieves",
-      "maxLength": 2000
+      "$ref": "/schemas/core/proposal-description.json",
+      "description": "Explanation of the proposal strategy and what it achieves"
     },
     "allocations": {
       "type": "array",
@@ -84,9 +83,8 @@
       "additionalProperties": true
     },
     "brief_alignment": {
-      "type": "string",
-      "description": "Explanation of how this proposal aligns with the campaign brief",
-      "maxLength": 2000
+      "$ref": "/schemas/core/proposal-brief-alignment.json",
+      "description": "Explanation of how this proposal aligns with the campaign brief"
     },
     "forecast": {
       "$ref": "/schemas/core/delivery-forecast.json",

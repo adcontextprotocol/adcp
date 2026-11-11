@@ -58,8 +58,7 @@
             "type": "object",
             "properties": {
               "id": {
-                "type": "string",
-                "minLength": 1
+                "$ref": "/schemas/core/signal-taxonomy-node-id.json"
               },
               "path": {
                 "type": "string"
@@ -102,16 +101,14 @@
           }
         },
         "parent_match_behavior": {
-          "type": "string",
-          "enum": ["exact_only", "descendants_supported", "unknown"]
+          "$ref": "/schemas/enums/signal-parent-match-behavior.json"
         }
       },
       "required": ["ref", "values"],
       "additionalProperties": false
     },
     "segmentation_criteria": {
-      "type": "string",
-      "maxLength": 500
+      "$ref": "/schemas/core/signal-segmentation-criteria.json"
     },
     "criteria_url": {
       "type": "string",
@@ -121,31 +118,11 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "enum": [
-          "app_behavior",
-          "app_usage",
-          "web_usage",
-          "geo_location",
-          "email",
-          "tv_ott_or_stb_device",
-          "panel",
-          "online_ecommerce",
-          "credit_data",
-          "loyalty_card",
-          "transaction",
-          "online_survey",
-          "offline_survey",
-          "public_record_census",
-          "public_record_voter_file",
-          "public_record_other",
-          "offline_transaction"
-        ]
+        "$ref": "/schemas/enums/signal-data-source.json"
       }
     },
     "methodology": {
-      "type": "string",
-      "enum": ["observed", "declared", "derived", "inferred", "modeled"]
+      "$ref": "/schemas/enums/signal-methodology.json"
     },
     "audience_expansion": {
       "type": "boolean"
@@ -154,12 +131,10 @@
       "type": "boolean"
     },
     "refresh_cadence": {
-      "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"]
+      "$ref": "/schemas/enums/signal-refresh-cadence.json"
     },
     "lookback_window": {
-      "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"]
+      "$ref": "/schemas/enums/signal-lookback-window.json"
     },
     "onboarder": {
       "type": "object",
@@ -168,8 +143,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string",
-            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone"]
+            "$ref": "/schemas/enums/signal-match-key.json"
           }
         },
         "pre_onboarding_audience_expansion": {
@@ -179,8 +153,7 @@
           "type": "boolean"
         },
         "pre_onboarding_precision_level": {
-          "type": "string",
-          "enum": ["individual", "household", "business", "geography"]
+          "$ref": "/schemas/enums/signal-pre-onboarding-precision.json"
         }
       },
       "required": ["match_keys"],
@@ -190,8 +163,7 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       }
     },
     "consent_basis": {
@@ -203,23 +175,20 @@
       "description": "Data provider's declared GDPR Article 6 lawful basis or consent basis for the underlying signal definition, projected into this get_signals response row when requested. Sellers and federating agents that pass through another provider's signal MUST NOT substitute their own processing basis for the provider-declared basis."
     },
     "art9_basis": {
-      "type": "string",
-      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"],
+      "$ref": "/schemas/enums/gdpr-article-9-basis.json",
       "description": "Data provider's declared GDPR Article 9 basis for the underlying signal definition when special-category data is involved and Article 9 applies, projected into this get_signals response row when requested. Sellers and federating agents that pass through another provider's signal MUST NOT substitute their own Article 9 basis for the provider-declared basis."
     },
     "modeling": {
       "type": "object",
       "properties": {
         "method": {
-          "type": "string",
-          "enum": ["lookalike", "supervised", "embedding", "rules"]
+          "$ref": "/schemas/enums/signal-modeling-method.json"
         },
         "seed_source": {
           "type": "object",
           "properties": {
             "type": {
-              "type": "string",
-              "enum": ["first_party_crm", "panel", "declared_survey", "transactional", "behavioral"]
+              "$ref": "/schemas/enums/signal-training-data-type.json"
             },
             "provider_signed": {
               "type": "boolean",
@@ -233,13 +202,11 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         },
         "ai_act_risk_class": {
-          "type": "string",
-          "enum": ["minimal", "limited", "high_risk"]
+          "$ref": "/schemas/enums/ai-act-risk-class.json"
         },
         "disclosure": {
           "$ref": "/schemas/core/signal-modeling-disclosure.json"
@@ -253,9 +220,7 @@
       "description": "Per-signal data-subject-rights routing. This is a contact/routing reference, not a machine-callable AdCP API.",
       "properties": {
         "upstream_source_domain": {
-          "type": "string",
-          "format": "hostname",
-          "maxLength": 253
+          "$ref": "/schemas/core/domain-name.json"
         },
         "channels": {
           "type": "array",
@@ -266,7 +231,7 @@
               "rights": {
                 "type": "array",
                 "contains": {
-                  "enum": ["access", "erasure", "objection"]
+                  "$ref": "/schemas/enums/required-data-subject-right.json"
                 }
               }
             },
@@ -278,16 +243,13 @@
               "rights": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "enum": ["access", "rectification", "erasure", "portability", "objection"]
+                  "$ref": "/schemas/enums/data-subject-right.json"
                 },
                 "minItems": 1,
                 "uniqueItems": true
               },
               "url": {
-                "type": "string",
-                "format": "uri",
-                "pattern": "^https://"
+                "$ref": "/schemas/core/https-url.json"
               },
               "email": {
                 "type": "string",
@@ -302,8 +264,7 @@
               "countries": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{2}$"
+                  "$ref": "/schemas/core/country-code.json"
                 }
               }
             },
@@ -316,14 +277,10 @@
           }
         },
         "response_sla_days": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 90
+          "$ref": "/schemas/core/rights-response-sla-days.json"
         },
         "ccpa_opt_out_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://"
+          "$ref": "/schemas/core/https-url.json"
         }
       },
       "required": ["channels"],

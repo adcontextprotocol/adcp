@@ -42,10 +42,7 @@
         "type": "object",
         "properties": {
           "destination_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64,
-            "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            "$ref": "/schemas/core/reporting-destination-id.json"
           },
           "destination_refs": {
             "type": "array",

@@ -27,17 +27,14 @@
         "discriminator": { "propertyName": "outcome" },
         "properties": {
           "proposal_id": {
-            "type": "string",
-            "minLength": 1,
-            "x-entity": "proposal"
+            "$ref": "/schemas/core/proposal-id.json"
           },
           "outcome": {
             "type": "string",
             "enum": ["declined", "unable"]
           },
           "reason": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/decline-failure-reason.json",
             "description": "Why the seller could not apply a decline. Present only for outcome unable."
           }
         },

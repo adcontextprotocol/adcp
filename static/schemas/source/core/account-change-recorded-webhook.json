@@ -7,18 +7,12 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated delivery key stable across retries of one fire. Deliberate re-emission uses a new key.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated delivery key stable across retries of one fire. Deliberate re-emission uses a new key."
     },
     "notification_id": {
-      "type": "string",
-      "description": "Logical notification identifier. Always equals change_id; retries and deliberate re-emissions of the same change retain it.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/notification-id.json",
+      "description": "Logical notification identifier. Always equals change_id; retries and deliberate re-emissions of the same change retain it."
     },
     "notification_type": {
       "type": "string",
@@ -29,22 +23,13 @@
       "format": "date-time"
     },
     "subscriber_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json"
     },
     "account_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "account"
+      "$ref": "/schemas/core/account-id.json"
     },
     "change_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/account-change-id.json"
     },
     "recorded_at": {
       "type": "string",
@@ -54,8 +39,8 @@
       "type": "object",
       "description": "Resource identity copied from the corresponding account change record.",
       "properties": {
-        "type": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[a-z][a-z0-9_.-]{0,99}$"},
-        "resource_id": {"type": "string", "minLength": 1, "maxLength": 255},
+        "type": {"$ref": "/schemas/core/account-change-resource-type.json"},
+        "resource_id": {"$ref": "/schemas/core/account-change-resource-id.json"},
         "parent_ids": {
           "type": "object",
           "additionalProperties": {"type": "string", "maxLength": 255},
@@ -71,10 +56,8 @@
       "maxLength": 100
     },
     "through_cursor": {
-      "type": "string",
-      "description": "Optional advisory checkpoint at or after this change. It is a drain target, not a cursor the receiver may install without reading every intervening page.",
-      "minLength": 1,
-      "maxLength": 4096
+      "$ref": "/schemas/core/account-change-cursor.json",
+      "description": "Optional advisory checkpoint at or after this change. It is a drain target, not a cursor the receiver may install without reading every intervening page."
     },
     "ext": {
       "allOf": [{"$ref": "/schemas/core/ext.json"}],

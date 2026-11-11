@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/url-macro-context.json",
+  "title": "URL Macro Context",
+  "description": "Part of a URL where a macro occurs: a path segment or a query value.",
+  "type": "string",
+  "enum": [
+    "url_query_value",
+    "url_path_segment"
+  ]
+}

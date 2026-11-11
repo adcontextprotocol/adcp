@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/products-pricing-version.json",
+  "title": "Products Pricing Version",
+  "description": "Account-scoped pricing fence issued by list_products.",
+  "type": "string",
+  "minLength": 1
+}

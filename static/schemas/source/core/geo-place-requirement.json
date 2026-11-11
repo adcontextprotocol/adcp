@@ -11,7 +11,7 @@
       "properties": {
         "countries": {
           "type": "object",
-          "propertyNames": { "pattern": "^[A-Z]{2}$" },
+          "propertyNames": { "$ref": "/schemas/core/country-code.json" },
           "additionalProperties": {
             "type": "array",
             "items": { "$ref": "/schemas/core/geo-place-type.json" },
@@ -23,7 +23,7 @@
         "system_versions": {
           "type": "array",
           "description": "Optional exact catalog versions that must remain selectable. Versions are opaque strings, not ordered ranges.",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "$ref": "/schemas/core/geo-place-system-version.json" },
           "minItems": 1,
           "uniqueItems": true
         }

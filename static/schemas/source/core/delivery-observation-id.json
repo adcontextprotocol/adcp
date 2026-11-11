@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/delivery-observation-id.json",
+  "title": "Delivery Observation ID",
+  "description": "Identifier of one governance delivery observation.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "x-entity": "governance_delivery_observation"
+}

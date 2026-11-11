@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "country": {
-      "type": "string",
-      "pattern": "^[A-Z]{2}$",
+      "$ref": "/schemas/core/country-code.json",
       "description": "ISO 3166-1 alpha-2 country code."
     },
     "system": {
@@ -20,19 +19,19 @@
     {
       "properties": {
         "country": { "const": "US" },
-        "system": { "enum": ["zip", "zip_plus_four"] }
+        "system": { "$ref": "/schemas/enums/us-postal-system.json" }
       }
     },
     {
       "properties": {
         "country": { "const": "GB" },
-        "system": { "enum": ["outward", "full"] }
+        "system": { "$ref": "/schemas/enums/gb-postal-system.json" }
       }
     },
     {
       "properties": {
         "country": { "const": "CA" },
-        "system": { "enum": ["fsa", "full"] }
+        "system": { "$ref": "/schemas/enums/ca-postal-system.json" }
       }
     },
     {
@@ -78,7 +77,7 @@
             "enum": ["US", "GB", "CA", "DE", "CH", "AT", "FR", "AU", "BR", "IN", "ZA"]
           }
         },
-        "system": { "enum": ["postal_code", "custom"] }
+        "system": { "$ref": "/schemas/enums/other-postal-system.json" }
       }
     }
   ]

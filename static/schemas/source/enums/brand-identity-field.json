@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/brand-identity-field.json",
+  "title": "Brand Identity Field",
+  "description": "Field of a brand identity that a caller can request.",
+  "type": "string",
+  "enum": [
+    "description",
+    "industries",
+    "keller_type",
+    "logos",
+    "colors",
+    "fonts",
+    "visual_guidelines",
+    "tone",
+    "tagline",
+    "voice_synthesis",
+    "assets",
+    "rights",
+    "collections"
+  ]
+}

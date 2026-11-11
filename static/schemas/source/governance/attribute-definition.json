@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "attribute_id": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
+      "$ref": "/schemas/core/governance-attribute-id.json",
       "description": "Unique identifier for this attribute. Used in plan.restricted_attributes, signal-definition.restricted_attributes, and data marketplace catalog entries."
     },
     "name": {
