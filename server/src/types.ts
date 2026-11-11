@@ -1230,7 +1230,9 @@ export interface AgentCompliance {
     passed_count: number;
     duration_ms: number;
     has_coverage_gap_skip?: boolean;
+    skipped_by_reason?: Record<string, number>;
   }>;
+  coverage_incomplete?: boolean;
   streak_days: number;
   last_checked_at: string | null;
   headline: string | null;
