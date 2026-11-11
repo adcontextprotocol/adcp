@@ -1,8 +1,8 @@
 'use strict';
 
 // #8791 step 1: enum values that collide with SDK reserved words or with the
-// enum member protocol (`pass`, `global`, `name`, `value`) gain a replacement
-// in 3.3. Both values are accepted through 3.x; the old one is deprecated and
+// enum member protocol (`pass`, `global`, `name`) gain a replacement in
+// 3.3. Both values are accepted through 3.x; the old one is deprecated and
 // removed in 4.0.
 
 const assert = require('node:assert/strict');
@@ -26,8 +26,6 @@ const REPLACEMENTS = [
   ['error-details/rate-limited.json', '/properties/scope', 'global', 'agent'],
   ['core/signal-definition.json', '/properties/onboarder/properties/match_keys/items', 'name', 'full_name'],
   ['core/signal-definition-enrichment.json', '/properties/onboarder/properties/match_keys/items', 'name', 'full_name'],
-  ['brand.json', '/definitions/color_ref/properties/kind', 'name', 'palette_key'],
-  ['brand.json', '/definitions/color_ref/properties/kind', 'value', 'hex'],
 ];
 
 function readSchema(relativePath) {
@@ -90,23 +88,6 @@ test('x-deprecated-enum-values only lists values the enum still accepts', () => 
   };
   walk(SCHEMA_ROOT);
   assert.deepEqual(offenders, []);
-});
-
-test('color_ref: old and new kinds select the same variant', async () => {
-  const validate = await compile({ $ref: '/schemas/brand.json#/definitions/color_ref' });
-  const accepts = value => assert.equal(validate(value), true, `${JSON.stringify(value)}: ${JSON.stringify(validate.errors)}`);
-  const rejects = value => assert.equal(validate(value), false, `${JSON.stringify(value)} should be rejected`);
-
-  accepts({ kind: 'name', name: 'market_yellow' });
-  accepts({ kind: 'palette_key', name: 'market_yellow' });
-  accepts({ kind: 'value', value: '#FFD200' });
-  accepts({ kind: 'hex', value: '#FFD200' });
-  accepts({ kind: 'surface', surface: 'background' });
-
-  rejects({ kind: 'palette_key', value: '#FFD200' });
-  rejects({ kind: 'hex', name: 'market_yellow' });
-  rejects({ kind: 'palette_key' });
-  rejects({ kind: 'hex' });
 });
 
 test('rate-limited scope accepts agent and the deprecated global', async () => {

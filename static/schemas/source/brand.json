@@ -213,34 +213,11 @@
     },
     "color_ref": {
       "type": "object",
-      "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use kind=palette_key for palette lookup keys in colors, kind=hex for a literal hex color, and kind=surface for layout surfaces such as background or text. kind=name and kind=value are deprecated in 3.3 and removed in 4.0; they select the same variants as palette_key and hex.",
+      "description": "Reference to a brand color or usage surface for machine-readable guideline constraints. Use kind=name for palette lookup keys in colors, kind=value for a literal hex color, and kind=surface for layout surfaces such as background or text.",
       "properties": {
         "kind": {
           "type": "string",
-          "x-deprecated-enum-values": ["name", "value"],
-          "x-deprecated-enum-values-doc": "Deprecated in 3.3 and removed in 4.0 (#8791): `name` and `value` collide with the enum member protocol in Python and Java (`Enum.name`, `Enum.value`). Use `palette_key` and `hex`. The payload fields stay `name` and `value`. Receivers accept both values through 3.x. Send the replacement only to a counterparty on AdCP 3.3 or later, because a 3.2 validator rejects it.",
-          "enum": ["name", "value", "surface", "palette_key", "hex"],
-          "enumDescriptions": {
-            "name": "**Deprecated in 3.3**, removed in 4.0: use `palette_key`. Selects the palette-key variant, which carries `name`.",
-            "value": "**Deprecated in 3.3**, removed in 4.0: use `hex`. Selects the literal-color variant, which carries `value`.",
-            "surface": "Selects the usage-surface variant, which carries `surface`.",
-            "palette_key": "Selects the palette-key variant, which carries `name`: a key from colors{}. Replaces the deprecated `name`; a receiver on AdCP 3.2 or earlier rejects it.",
-            "hex": "Selects the literal-color variant, which carries `value`: a hex color. Replaces the deprecated `value`; a receiver on AdCP 3.2 or earlier rejects it."
-          },
-          "enumMetadata": {
-            "name": {
-              "deprecated": true,
-              "x-deprecated-in": "3.3.0",
-              "x-removed-in": "4.0.0",
-              "x-superseded-by": "palette_key"
-            },
-            "value": {
-              "deprecated": true,
-              "x-deprecated-in": "3.3.0",
-              "x-removed-in": "4.0.0",
-              "x-superseded-by": "hex"
-            }
-          },
+          "enum": ["name", "value", "surface"],
           "description": "Discriminator for the color reference variant."
         },
         "name": {
@@ -259,11 +236,11 @@
       },
       "oneOf": [
         {
-          "properties": { "kind": { "enum": ["name", "palette_key"], "x-deprecated-enum-values": ["name"] } },
+          "properties": { "kind": { "const": "name" } },
           "required": ["kind", "name"]
         },
         {
-          "properties": { "kind": { "enum": ["value", "hex"], "x-deprecated-enum-values": ["value"] } },
+          "properties": { "kind": { "const": "value" } },
           "required": ["kind", "value"]
         },
         {
