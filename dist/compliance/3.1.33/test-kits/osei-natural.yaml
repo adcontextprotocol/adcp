@@ -1,0 +1,126 @@
+# Osei Natural — Beauty Advertiser Test Kit
+#
+# Entity definition: fictional-entities.yaml → advertisers[osei_natural]
+#
+# 8-person natural skincare company based in Nairobi. Represents the small
+# business that advertising should serve but currently doesn't.
+#
+# This brand is registered as a sandbox brand in AgenticAdvertising.org (AAO).
+# Agents resolve oseinatural.example via the standard AAO brand resolution path.
+# AAO returns the brand.json below but excludes sandbox brands from production
+# brand discovery results.
+
+id: osei_natural
+name: "Osei Natural"
+description: "Natural skincare brand for small-business advertiser storyboard testing"
+sandbox: true
+
+# security_baseline auth fixture — see acme-outdoor.yaml for semantics.
+auth:
+  api_key: "demo-osei-natural-v1"
+  probe_task: list_creatives
+
+brand:
+  house:
+    domain: "oseinatural.example"
+    name: "Osei Natural"
+  brand_id: "osei_natural"
+  names:
+    - en: "Osei Natural"
+  description: "Natural skincare rooted in East African botanicals. Small-batch, founder-led, and unapologetically simple."
+  industry: "beauty"
+  keller_type: "master"
+  logos:
+    - url: "https://test-assets.adcontextprotocol.org/osei-natural/logo-primary.png"
+      orientation: "horizontal"
+      background: "light-bg"
+      variant: "primary"
+      width: 400
+      height: 100
+    - url: "https://test-assets.adcontextprotocol.org/osei-natural/logo-icon.png"
+      orientation: "square"
+      background: "transparent-bg"
+      variant: "icon"
+      width: 200
+      height: 200
+  colors:
+    primary: "#5D4037"
+    secondary: "#C8E6C9"
+    accent: "#FF8F00"
+    background: "#FBF7F4"
+    text: "#2E2E2E"
+  fonts:
+    heading:
+      family: "Cormorant Garamond"
+      weight: 600
+      url: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600"
+    body:
+      family: "Lato"
+      weight: 400
+      url: "https://fonts.googleapis.com/css2?family=Lato"
+  tone:
+    voice: "Calm, grounded, and personal. Amara speaks directly to customers like a trusted friend sharing what works."
+    attributes:
+      - "authentic"
+      - "gentle"
+      - "personal"
+    dos:
+      - "Name specific botanicals and their origins"
+      - "Use first-person when appropriate — the founder is the brand"
+      - "Keep it warm and conversational"
+    donts:
+      - "Use clinical or pharmaceutical language"
+      - "Make anti-aging claims — Osei Natural is about care, not correction"
+      - "Erase the brand's Kenyan identity — it's a feature, not a detail"
+
+assets:
+  images:
+    - id: "hero_300x250"
+      url: "https://test-assets.adcontextprotocol.org/osei-natural/hero-300x250.jpg"
+      width: 300
+      height: 250
+      mime_type: "image/jpeg"
+      description: "Medium rectangle hero — product jars with botanical ingredients"
+
+    - id: "hero_728x90"
+      url: "https://test-assets.adcontextprotocol.org/osei-natural/hero-728x90.jpg"
+      width: 728
+      height: 90
+      mime_type: "image/jpeg"
+      description: "Leaderboard hero — Amara in workshop with shea butter"
+
+    - id: "hero_320x50"
+      url: "https://test-assets.adcontextprotocol.org/osei-natural/hero-320x50.jpg"
+      width: 320
+      height: 50
+      mime_type: "image/jpeg"
+      description: "Mobile banner hero — close-up of baobab oil serum"
+
+    - id: "hero_160x600"
+      url: "https://test-assets.adcontextprotocol.org/osei-natural/hero-160x600.jpg"
+      width: 160
+      height: 600
+      mime_type: "image/jpeg"
+      description: "Wide skyscraper hero — vertical product lineup on linen"
+
+    - id: "hero_master"
+      url: "https://test-assets.adcontextprotocol.org/osei-natural/hero-master.jpg"
+      width: 1200
+      height: 628
+      mime_type: "image/jpeg"
+      description: "Master hero image — high-res flat lay of full product range"
+
+  text:
+    headlines:
+      - "Your Skin Deserves Better Ingredients"
+      - "Small-Batch Skincare from Nairobi"
+      - "Rooted in East African Botanicals"
+    descriptions:
+      - "Shea butter, baobab oil, and aloe — sourced from East African growers, blended by hand in Nairobi. Osei Natural."
+      - "Eight people, twelve products, zero compromises. Natural skincare that actually works."
+    cta:
+      - "Shop the Collection"
+      - "Meet the Founder"
+      - "Try a Sample Kit"
+
+  click_url: "https://oseinatural.example/shop"

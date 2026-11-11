@@ -23,6 +23,7 @@ import {
 } from '../../src/training-agent/state.js';
 import {
   createTrainingAgentServer,
+  deriveStatus,
   executeTrainingAgentTool,
   handleGetAdcpCapabilities,
   handleBuildCreative,
@@ -509,11 +510,9 @@ describe('buildCatalog', () => {
       }
     });
 
-    it('has format_ids as a non-empty array', () => {
+    it('has format_ids as an array', () => {
       for (const cp of catalog) {
-        const fids = cp.product.format_ids as unknown[];
-        expect(Array.isArray(fids)).toBe(true);
-        expect(fids.length).toBeGreaterThanOrEqual(1);
+        expect(Array.isArray(cp.product.format_ids)).toBe(true);
       }
     });
 
@@ -525,7 +524,6 @@ describe('buildCatalog', () => {
         'agent_placement',
       ]);
       for (const cp of catalog) {
-        const formatIds = cp.product.format_ids as Array<{ agent_url: string; id: string }>;
         const formatOptions = cp.product.format_options as Array<{
           format_kind: string;
           format_option_id: string;
@@ -534,17 +532,32 @@ describe('buildCatalog', () => {
           v1_format_ref?: Array<{ agent_url: string; id: string }>;
         }>;
 
-        expect(formatOptions, `${cp.product.product_id} missing canonical format_options`).toHaveLength(formatIds.length);
+        expect(formatOptions?.length, `${cp.product.product_id} missing canonical format_options`).toBeGreaterThan(0);
         expect(formatOptions.every(option => option.format_kind && option.format_option_id && option.params)).toBe(true);
-        formatOptions.forEach((option, index) => {
+        for (const option of formatOptions) {
           if (canonicalOnlyKinds.has(option.format_kind)) {
             expect(option.canonical_formats_only).toBe(true);
             expect(option.v1_format_ref).toBeUndefined();
           } else {
             expect(option.canonical_formats_only).toBeUndefined();
-            expect(option.v1_format_ref).toEqual([formatIds[index]]);
+            expect(option.v1_format_ref).toHaveLength(1);
           }
-        });
+        }
+      }
+    });
+
+    // adcp#8802: core/product.json requires format_ids and format_options to
+    // describe the same formats, and a canonical_formats_only declaration is
+    // absent from format_ids. The SDK runtime refuses a get_products answer
+    // that dual-emits anything else.
+    it('projects format_ids from exactly the format options v1_format_ref values', () => {
+      const key = (ref: { agent_url: string; id: string }) => `${ref.agent_url}#${ref.id}`;
+      for (const cp of catalog) {
+        const formatIds = (cp.product.format_ids ?? []) as Array<{ agent_url: string; id: string }>;
+        const refs = ((cp.product.format_options ?? []) as Array<{ v1_format_ref?: Array<{ agent_url: string; id: string }> }>)
+          .flatMap(option => option.v1_format_ref ?? []);
+        expect(formatIds.map(key).sort(), cp.product.product_id).toEqual(refs.map(key).sort());
+        expect(new Set(formatIds.map(key)).size, `${cp.product.product_id} repeats a format_id`).toBe(formatIds.length);
       }
     });
 
@@ -889,8 +902,14 @@ describe('NovaMind AI publisher', () => {
       const fids = cp.product.format_ids as Array<Record<string, unknown>>;
       return fids.map(f => f.id);
     });
-    expect(allFormatIds).toContain('ai_sponsored_agent');
     expect(allFormatIds).toContain('ai_sponsored_recommendation');
+    // agent_placement has no v1 named format, so the sponsored agent is offered
+    // only as a canonical option, not as a legacy format_id.
+    const agentOptions = novamindProducts.flatMap(cp => cp.product.format_options ?? [])
+      .filter(option => option.format_option_id === 'ai_sponsored_agent_agent_placement');
+    expect(agentOptions.length).toBeGreaterThan(0);
+    expect(agentOptions.every(option => option.canonical_formats_only === true)).toBe(true);
+    expect(allFormatIds).not.toContain('ai_sponsored_agent');
   });
 });
 
@@ -6030,19 +6049,18 @@ describe('create_media_buy handler', () => {
     });
   });
 
-  it('accepts every advertised legacy selector whose canonical kind is intentionally non-equivalent', async () => {
+  it('accepts every advertised legacy selector on the 3.0 surface', async () => {
     const server = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
-    const cases = buildCatalog().flatMap(({ product }) => {
-      const formatIds = product.format_ids ?? [];
-      const formatOptions = product.format_options ?? [];
-      return formatOptions.flatMap((option, index) => option.canonical_formats_only === true
-        ? [{ product, formatId: formatIds[index] }]
-        : []);
-    });
+    // One case per distinct legacy format, on the first product that advertises it.
+    const seen = new Set<string>();
+    const cases = buildCatalog().flatMap(({ product }) => (product.format_ids ?? []).flatMap(formatId => {
+      if (seen.has(formatId.id)) return [];
+      seen.add(formatId.id);
+      return [{ product, formatId }];
+    }));
     expect(cases.length).toBeGreaterThan(0);
 
     for (const [index, { product, formatId }] of cases.entries()) {
-      expect(formatId, `${product.product_id} canonical-only option lacks its independent legacy selector`).toBeDefined();
       const account = {
         brand: { domain: `legacy-canonical-only-${index}.example` },
         operator: 'pinnacle-agency.example',
@@ -6125,8 +6143,18 @@ describe('create_media_buy handler', () => {
       media_buy_ids: [mediaBuyId],
     });
     const partialBuy = (partiallyReady.media_buys as Array<Record<string, any>>)[0];
-    expect(partialBuy.status).toBe('pending_creatives');
+    // Served at 3.2, where pending_creatives means no creatives assigned: the
+    // assigned package advances, and formats_pending still names the gap.
+    expect(partialBuy.status).toBe('pending_start');
     expect(partialBuy.packages[0].formats_pending).toEqual([selected[1]]);
+
+    // The same buy reads in each release's own vocabulary (#8833).
+    const session = await findMediaBuyAcrossSessions(mediaBuyId);
+    const storedBuy = session!.mediaBuys.get(mediaBuyId)!;
+    expect(deriveStatus(storedBuy, session!, '3.1')).toBe('pending_start');
+    expect(deriveStatus(storedBuy, session!, '3.2')).toBe('pending_start');
+    expect(deriveStatus(storedBuy, session!, '3.3-beta.5')).toBe('pending_creatives');
+    expect(deriveStatus(storedBuy, session!, '3.3')).toBe('pending_creatives');
 
     await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
       account,
@@ -6190,6 +6218,54 @@ describe('create_media_buy handler', () => {
       media_buy_ids: [created.media_buy_id],
     });
     expect((ready.media_buys as Array<Record<string, any>>)[0].status).toBe('pending_start');
+  });
+
+  it('does not report pending_creatives on 3.1 once every package has a creative (#8833)', async () => {
+    // The reported case: one creative assigned on a package with no format
+    // selector, so every product format is active and most stay uncovered.
+    const product = buildCatalog().find(entry => entry.product.channels?.includes('display')
+      && (entry.product.format_options?.length ?? 0) > 1)!.product;
+    const account = { brand: { domain: 'release-readiness.example' }, operator: 'release-readiness.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_creatives', {
+      adcp_version: '3.1',
+      account,
+      creatives: [{
+        creative_id: 'cr_release_readiness',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: {},
+      }],
+    });
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      adcp_version: '3.1',
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: product.pricing_options[0].pricing_option_id,
+        budget: 50000,
+        creative_assignments: [{ creative_id: 'cr_release_readiness' }],
+      }],
+    });
+    expect(created.media_buy_id, JSON.stringify(created)).toEqual(expect.any(String));
+    expect((created.packages as Array<Record<string, any>>)[0].creative_assignments).toHaveLength(1);
+
+    const { result: read } = await simulateCallTool(server, 'get_media_buys', {
+      adcp_version: '3.1',
+      account,
+      media_buy_ids: [created.media_buy_id],
+    });
+    const buy = (read.media_buys as Array<Record<string, any>>)[0];
+    expect(buy.status).toBe('pending_start');
+
+    // The 3.3 meaning still holds the same buy for missing coverage.
+    const session = await findMediaBuyAcrossSessions(created.media_buy_id as string);
+    const storedBuy = session!.mediaBuys.get(created.media_buy_id as string)!;
+    expect(storedBuy.packages[0].formatsToProvide?.length ?? 0).toBeGreaterThan(1);
+    expect(deriveStatus(storedBuy, session!, '3.3')).toBe('pending_creatives');
   });
 
   it('keeps a unique-kind package pending for a wrong option ref or fixed dimensions', async () => {
