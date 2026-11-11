@@ -10449,6 +10449,16 @@ function idempotencyPayloadForServedVersion(
   return toolName === 'get_products' ? args : { ...args, __adcp_operation: toolName };
 }
 
+/**
+ * The reasons a proposal decline may carry: the closed enum in
+ * enums/proposal-decline-reason.json, read from the source schema so both
+ * decline checks below accept exactly what the schema does.
+ */
+export const PROPOSAL_DECLINE_REASONS: ReadonlySet<string> = new Set(
+  (loadSourceSchema('enums/proposal-decline-reason.json').enum as unknown[])
+    .filter((reason): reason is string => typeof reason === 'string'),
+);
+
 export function validateProductDiscoveryAliasInput(
   toolName: string,
   args: Record<string, unknown>,
@@ -10620,10 +10630,6 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'declines exceeds the maximum batch size (25)', field: 'declines' };
     }
     const proposalIds = new Set<string>();
-    const reasons = new Set([
-      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
-      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
-    ]);
     for (let index = 0; index < args.declines.length; index += 1) {
       const entry = args.declines[index];
       if (!isRecord(entry)) {
@@ -10636,7 +10642,7 @@ export function validateProductDiscoveryAliasInput(
         return { message: 'proposal_id values in declines must be unique', field: `declines[${index}].proposal_id` };
       }
       proposalIds.add(entry.proposal_id);
-      if (typeof entry.reason !== 'string' || !reasons.has(entry.reason)) {
+      if (typeof entry.reason !== 'string' || !PROPOSAL_DECLINE_REASONS.has(entry.reason)) {
         return { message: 'a supported reason is required for every decline', field: `declines[${index}].reason` };
       }
       if (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0)) {
@@ -24893,10 +24899,6 @@ function validateIdempotencyProtectedInput(
         field: 'refine',
       };
     }
-    const reasons = new Set([
-      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
-      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
-    ]);
     const invalidIndex = (args.refine as unknown[]).findIndex(entry => (
       isRecord(entry)
       && entry.scope === 'proposal'
@@ -24904,7 +24906,7 @@ function validateIdempotencyProtectedInput(
       && (
         typeof entry.proposal_id !== 'string'
         || typeof entry.reason !== 'string'
-        || !reasons.has(entry.reason)
+        || !PROPOSAL_DECLINE_REASONS.has(entry.reason)
         || (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0))
       )
     ));
