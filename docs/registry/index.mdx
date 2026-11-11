@@ -226,7 +226,7 @@ https://agenticadvertising.org/assets/brands/acmecorp.com/{logoId}.svg?format=pn
 | `format` | `png` | Omit `format` and `w` for the stored bytes. |
 | `w` | `64`, `128`, `256`, `512`, `1024` | Defaults to `512`. Height follows the aspect ratio, capped at 4× the width. Raster logos are never enlarged past their natural width. |
 
-A rendition is rasterised from the stored, sanitised logo; the endpoint never fetches a remote URL. A logo type with no rendition (ICO) returns `415`, and a saturated renderer returns `503` with `Retry-After`. External logo URLs (for example an enrichment provider's CDN) are not proxied; use them as published.
+A rendition is rasterised from the stored, sanitised logo; the endpoint never fetches a remote URL. A logo type with no rendition (ICO) returns `415`, a logo that cannot be rendered returns `422`, and a saturated renderer returns `503` with `Retry-After`. Error responses carry `Cache-Control: no-store`. External logo URLs (for example an enrichment provider's CDN) are not proxied; use them as published.
 
 Every logo in a resolve or bulk-resolve response (`brand_manifest.logos[]`, `brand_manifest.brands[].logos[]` and `brand.logos[]`) carries brand.json's `background` field when the registry knows it:
 
@@ -236,7 +236,7 @@ Every logo in a resolve or bulk-resolve response (`brand_manifest.logos[]`, `bra
 | `dark-bg` | Dark backgrounds | White or light colour |
 | `transparent-bg` | Any background | Declared by the brand only |
 
-A `background` the brand declares is returned as published and never replaced. Without one, a `light-bg`, `dark-bg` or `transparent-bg` tag on the logo supplies it. For registry-hosted logos with neither, the registry derives `light-bg` or `dark-bg` from the luminance of the rendered logo: mostly light ink is `dark-bg`. An opaque logo is judged by its own background colour. A background job derives it shortly after a logo is uploaded, so treat a missing `background` as unknown rather than as either value. Enrichment-provider `light`/`dark` tags describe the ink, not the background, and are not read as a `background`.
+A `background` the brand declares as `light-bg`, `dark-bg` or `transparent-bg` is returned as published and never replaced. Any other declared value is treated as undeclared and is never returned. Without a declared value, a `light-bg` or `dark-bg` tag on the logo supplies it, and then a `transparent-bg` tag. For registry-hosted logos with neither, the registry derives `light-bg` or `dark-bg` from the luminance of the rendered logo: mostly light ink is `dark-bg`. An opaque logo is judged by its own background colour. A background job derives it shortly after a logo is uploaded, so treat a missing `background` as unknown rather than as either value. Enrichment-provider `light`/`dark` tags describe the ink, not the background, and are not read as a `background`.
 
 To pick a logo for a light interface, prefer `background: "light-bg"`, then `transparent-bg`; for a dark interface prefer `dark-bg`, then `transparent-bg`.
 
