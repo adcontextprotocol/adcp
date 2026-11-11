@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-delivery-metrics.json",
   "title": "Creative Delivery Metrics",
-  "description": "Delivery metrics row for one creative within a package.",
+  "description": "Delivery metrics row for one creative within a package: the delivery the seller measured for that creative, not a share of the package total divided across the package's creatives.",
   "allOf": [
     {
       "$ref": "/schemas/core/delivery-metrics.json"
@@ -12,7 +12,7 @@
       "properties": {
         "creative_id": {
           "type": "string",
-          "description": "Creative identifier matching the creative assignment",
+          "description": "The creative's creative_id in the seller's creative library, matching the creative assignment and list_creatives: the buyer's ID for a creative the buyer synced, or the seller-assigned ID for a creative that entered the library outside sync_creatives (for example, an ad made in the seller platform's own tools). The platform's own identifier is list_creatives platform_id, not this field. A seller-assigned ID stays the same across reports only when the seller declares creative.stable_creative_ids.",
           "x-entity": "creative"
         },
         "creative_name": {
