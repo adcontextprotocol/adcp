@@ -4,7 +4,8 @@
  *
  * Run hourly. Idempotent via the partial unique index on
  * person_events (event_type, data->>'invite_id') from migration 458, so
- * overlapping runs and crashed-mid-batch retries are safe.
+ * crashed-mid-batch retries are safe. A session advisory lock skips overlapping
+ * runs before candidate selection and person resolution.
  *
  * occurred_at is set to the invite's expires_at (logical truth — the moment
  * the state actually became "expired"), not the wall clock when the sweep
@@ -12,7 +13,8 @@
  * dashboards that need to track sweep latency.
  */
 
-import { query } from '../../db/client.js';
+import type { PoolClient } from 'pg';
+import { getClient } from '../../db/client.js';
 import { resolvePersonId } from '../../db/relationship-db.js';
 import { recordInviteEvent } from '../../db/person-events-db.js';
 import { createLogger } from '../../logger.js';
@@ -20,6 +22,10 @@ import { createLogger } from '../../logger.js';
 const logger = createLogger('invite-expiry-sweep');
 
 const log = logger.child({ module: 'invite-expiry-sweep' });
+
+// Stable, job-specific signed bigint: ASCII "invexpir". Pass as a string to pg
+// to avoid losing precision through JavaScript numbers.
+const INVITE_EXPIRY_LOCK_KEY = 0x696e766578706972n;
 
 interface ExpiredInviteRow {
   id: string;
@@ -38,9 +44,49 @@ export interface InviteExpirySweepResult {
 }
 
 export async function runInviteExpirySweep(): Promise<InviteExpirySweepResult> {
+  // Session locks must be acquired and released on the same checked-out client.
+  const client = await getClient();
+  let haveLock = false;
+  // If acquisition fails, the server may have acquired the lock before the
+  // connection failed. Never return that uncertain session to the pool.
+  let destroyClient = true;
+  try {
+    const lock = await client.query<{ acquired: boolean }>(
+      'SELECT pg_try_advisory_lock($1) AS acquired',
+      [INVITE_EXPIRY_LOCK_KEY.toString()],
+    );
+    haveLock = lock.rows[0]?.acquired === true;
+    destroyClient = false;
+    if (!haveLock) {
+      log.info('Another invite expiry sweep is running — skipping');
+      return { candidates: 0, emitted: 0, resolveFailures: 0, recordFailures: 0 };
+    }
+
+    return await sweepExpiredInvites(client);
+  } finally {
+    if (haveLock) {
+      try {
+        const unlock = await client.query<{ released: boolean }>(
+          'SELECT pg_advisory_unlock($1) AS released',
+          [INVITE_EXPIRY_LOCK_KEY.toString()],
+        );
+        destroyClient = unlock.rows[0]?.released !== true;
+        if (destroyClient) {
+          log.warn('Invite expiry advisory unlock returned false — destroying client');
+        }
+      } catch (err) {
+        destroyClient = true;
+        log.warn({ err }, 'Failed to release invite expiry advisory lock — destroying client');
+      }
+    }
+    client.release(destroyClient);
+  }
+}
+
+async function sweepExpiredInvites(client: PoolClient): Promise<InviteExpirySweepResult> {
   const detectedAt = new Date();
 
-  const result = await query<ExpiredInviteRow>(
+  const result = await client.query<ExpiredInviteRow>(
     `SELECT mi.id, mi.token, mi.workos_organization_id, mi.lookup_key,
             mi.contact_email, mi.expires_at
      FROM membership_invites mi
