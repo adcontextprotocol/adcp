@@ -920,6 +920,26 @@ source changed. Treat the local run as **advisory**: the
   `npm run build:schemas` in the same tree cannot fail the SDK's schema-root
   version check mid-run.
 
+### Parallel worktrees
+
+Git worktrees isolate the working tree, index and `HEAD`. They share the
+object store, every ref (including remote-tracking `origin/*`) and the stash.
+One session's `git fetch` therefore moves `origin/main` for every other
+worktree of the same clone, mid-task.
+
+- Resolve the base once, right after your first fetch
+  (`BASE=$(git rev-parse origin/main)`), and use that SHA for every rebase,
+  diff and test baseline. Do not re-resolve `origin/main` mid-task; refetch
+  and re-pin deliberately if you need a newer base.
+- Force-push with an exact lease:
+  `git push --force-with-lease=<branch>:<expected-sha>`. A bare
+  `--force-with-lease` compares against the shared `origin/<branch>`, which
+  another session may have moved.
+- Never use bare `git stash` / `git stash pop`; another session can pop your
+  entry. Prefer a temporary WIP commit. If you must stash, use
+  `git stash push -u -m "<unique-tag>"` and restore by SHA with
+  `git stash apply`, then drop your entry by its tag.
+
 ## PR Preparation Checklist
 
 Before creating or updating a PR, always:
