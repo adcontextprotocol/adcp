@@ -54,7 +54,11 @@ import { v4ReadinessReportForComplianceResult } from '../../compliance/v4-readin
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport, type SdkTransportOptions } from '../../utils/sdk-safe-fetch.js';
 import { createHostedRouteStoryboard } from '../../compliance/hosted-route-storyboard.js';
-import { getTestKitForStoryboard } from '../../services/storyboards.js';
+import {
+  HOSTED_RUN_FIXTURE_TEST_KIT_ID,
+  withHostedRunFixtureTestKit,
+} from '../../compliance/hosted-run-test-kit.js';
+import { getTestKit, getTestKitForStoryboard } from '../../services/storyboards.js';
 import { redactHostedGovernanceSecrets } from '../../compliance/hosted-multi-agent-routing.js';
 
 import type {
@@ -331,13 +335,21 @@ export async function comply(
     return sdkComply(
       agentUrl,
       withHostedComplianceTransport(
-        withHostedComplianceRunOptions({
-          ...safeOptions,
-          routeStoryboard,
-          ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
-          ...(effectiveComplianceDir ? { complianceDir: effectiveComplianceDir } : {}),
-          ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
-        }, target, authDefaults.probeTask, authDefaults.apiKey),
+        // The hosted credential in the run-level kit stops the SDK loading
+        // each storyboard's declared kit, so carry the bundle kit's fixtures
+        // in it (#8882). A caller-supplied kit stays authoritative.
+        withHostedRunFixtureTestKit(
+          withHostedComplianceRunOptions({
+            ...safeOptions,
+            routeStoryboard,
+            ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
+            ...(effectiveComplianceDir ? { complianceDir: effectiveComplianceDir } : {}),
+            ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
+          }, target, authDefaults.probeTask, authDefaults.apiKey),
+          () => (options.test_kit === undefined
+            ? getTestKit(HOSTED_RUN_FIXTURE_TEST_KIT_ID, hostedComplianceOptions(target))
+            : undefined),
+        ),
       ),
     );
   };
