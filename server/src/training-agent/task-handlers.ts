@@ -2023,9 +2023,21 @@ function formatsPendingForPackage(pkg: PackageState, session: SessionState): Can
   });
 }
 
-function packageNeedsCreative(pkg: PackageState, session: SessionState): boolean {
+/**
+ * Whether `pending_creatives` means required creative coverage is missing.
+ * Through 3.2 the status means the buy "has no creatives assigned"; 3.3
+ * redefines it as missing coverage. A response follows the release it serves
+ * (DR-0024), so a 3.1 or 3.2 buyer with every package assigned sees the buy
+ * advance even while `formats_pending` still lists uncovered formats (#8833).
+ */
+function pendingCreativesTracksCoverage(servedAdcpVersion: string | undefined): boolean {
+  const version = parseAdcpReleaseVersion(servedAdcpVersion ?? DEFAULT_ADCP_VERSION);
+  return version !== undefined && (version.major > 3 || (version.major === 3 && version.minor >= 3));
+}
+
+function packageNeedsCreative(pkg: PackageState, session: SessionState, tracksCoverage: boolean): boolean {
   if (pkg.canceled) return false;
-  if (pkg.formatsToProvide?.length) return formatsPendingForPackage(pkg, session).length > 0;
+  if (tracksCoverage && pkg.formatsToProvide?.length) return formatsPendingForPackage(pkg, session).length > 0;
   return pkg.creativeAssignments.length === 0;
 }
 
@@ -4805,12 +4817,16 @@ const SYNONYM_MAP: Record<string, string[]> = {
   subscriber: ['subscriber', 'engagement'],
 };
 
-/** Derive lifecycle status from stored status and flight dates. */
-export function deriveStatus(mb: MediaBuyState, session?: SessionState): string {
+/**
+ * Derive lifecycle status from stored status and flight dates, in the
+ * vocabulary of the release the response is served at.
+ */
+export function deriveStatus(mb: MediaBuyState, session?: SessionState, servedAdcpVersion?: string): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
+  const tracksCoverage = pendingCreativesTracksCoverage(servedAdcpVersion);
   const needsCreative = session
-    ? mb.packages.some(pkg => packageNeedsCreative(pkg, session))
+    ? mb.packages.some(pkg => packageNeedsCreative(pkg, session, tracksCoverage))
     : mb.packages.some(pkg => pkg.creativeAssignments.length === 0);
   if (needsCreative && mb.status !== 'completed' && !mb.complyControllerForced) {
     return 'pending_creatives';
@@ -17078,7 +17094,7 @@ async function handleCreateMediaBuyUnlocked(
     ),
   );
 
-  const status = deriveStatus(mediaBuy, session);
+  const status = deriveStatus(mediaBuy, session, lifecycleSplitVersionForContext(ctx));
   const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
   if (productAvailableActions !== undefined) mediaBuy.availableActions = productAvailableActions;
   // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
@@ -17197,9 +17213,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   const statusFilter = req.status_filter;
   if (!filterIds?.length) {
     const effectiveFilter = statusFilter || ['active'];
-    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb, session)));
+    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx))));
   } else if (statusFilter?.length) {
-    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb, session)));
+    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx))));
   }
 
   const includeSnapshot = req.include_snapshot === true;
@@ -17242,7 +17258,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   const subscriptionFields = supportsAccountSurfaces33(ctx.servedAdcpVersion);
   return {
     media_buys: pageBuys.map(mb => {
-      const status = deriveStatus(mb, session);
+      const status = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
       const totalBudget = mb.totalBudget
         ?? mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const openImpairments = mb.impairments ?? [];
@@ -18163,7 +18179,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     currency: mb.currency,
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
-      status: deriveStatus(mb, session),
+      status: deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx)),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       totals: requestedMetrics ? narrowDeliveryMetricObject(totals, requestedMetrics) : totals,
@@ -19426,7 +19442,7 @@ async function handleUpdateMediaBuyUnlocked(
 
   // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
   // media_buy_seller/invalid_transitions pins this error code explicitly.
-  const currentStatus = deriveStatus(mb, session);
+  const currentStatus = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
   if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
     const isRecancel = req.canceled === true && currentStatus === 'canceled';
     const code = isRecancel ? 'NOT_CANCELLABLE' : 'INVALID_STATE';
@@ -19608,7 +19624,7 @@ async function handleUpdateMediaBuyUnlocked(
       captureAccountRef,
     );
 
-    const status = deriveStatus(mb, session);
+    const status = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
     return {
       media_buy_id: mb.mediaBuyId,
       ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
@@ -19941,7 +19957,7 @@ async function handleUpdateMediaBuyUnlocked(
         }
       }
       if (assignments?.length === 0) {
-        const currentStatus = deriveStatus(mb, session);
+        const currentStatus = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
         if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
           return {
             errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments cannot be cleared on a buy in "${currentStatus}" status`, field: `packages[${pkgId}].creative_assignments` }] as TaskError[],
@@ -20667,7 +20683,7 @@ async function handleUpdateMediaBuyUnlocked(
     await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal, req.idempotency_key);
   }
 
-  const status = deriveStatus(mb, session);
+  const status = deriveStatus(mb, session, lifecycleSplitVersionForContext(ctx));
   const updatedPackages = mb.packages.map(pkg => ({
     package_id: pkg.packageId,
     product_id: pkg.productId,
@@ -22627,6 +22643,55 @@ function pricingContextsForUsage(
 //
 // The handler is documented and stable for storyboard authors: pick the URL
 // pattern that drives the test outcome, no fixture mutation needed.
+//
+// content_category follows the same URL convention so learners can exercise a
+// categorical feature (adcp#8676): the first listed category whose name
+// appears as a whole word in an asset URL path wins, otherwise `general`.
+
+export interface CreativeFeatureDefinition {
+  feature_id: string;
+  type: 'binary' | 'quantitative' | 'categorical';
+  range?: { min: number; max: number };
+  categories?: string[];
+  description: string;
+}
+
+const CONTENT_CATEGORY_GENERAL = 'general';
+const FLAGGED_CONTENT_CATEGORIES = ['alcohol', 'gambling', 'pharmaceutical', 'political'] as const;
+const CONTENT_CATEGORY_MATCH_CONFIDENCE = 0.9;
+const CONTENT_CATEGORY_DEFAULT_CONFIDENCE = 0.7;
+
+/**
+ * Creative features the governance tenant advertises in
+ * `governance.creative_features` and evaluates in `get_creative_features`.
+ * Keep in step with `handleGetCreativeFeatures`, which returns one result per
+ * entry, in this order.
+ */
+export const TRAINING_CREATIVE_FEATURES: readonly CreativeFeatureDefinition[] = [
+  {
+    feature_id: 'ai_generated',
+    type: 'binary',
+    description: 'Whether the creative is AI-generated. Sandbox detection: an asset URL containing "ai-generated-true" or "ai-generated-false" sets the verdict; otherwise it follows the claimed provenance.digital_source_type.',
+  },
+  {
+    feature_id: 'ai_modified',
+    type: 'binary',
+    description: 'Whether AI edited otherwise captured media. The sandbox always reports false.',
+  },
+  {
+    feature_id: 'ai_confidence',
+    type: 'quantitative',
+    range: { min: 0, max: 1 },
+    description: 'Detection confidence behind the ai_generated verdict, from 0 to 1.',
+  },
+  {
+    feature_id: 'content_category',
+    type: 'categorical',
+    categories: [CONTENT_CATEGORY_GENERAL, ...FLAGGED_CONTENT_CATEGORIES],
+    description: 'Sensitive content category of the creative. Sandbox detection: the first listed category whose name appears as a whole word in an asset URL path (e.g. ".../gambling-banner.jpg"), otherwise "general".',
+  },
+];
+
 interface GetCreativeFeaturesArgs {
   creative_manifest?: { provenance?: Record<string, unknown>; assets?: Record<string, { url?: unknown; provenance?: Record<string, unknown> }> };
   feature_ids?: string[];
@@ -22679,6 +22744,29 @@ function detectAiFromManifest(creative_manifest: GetCreativeFeaturesArgs['creati
   return { value: false, confidence: 0.3 };
 }
 
+function assetUrlPathname(url: unknown): string {
+  if (typeof url !== 'string') return '';
+  try {
+    return new URL(url).pathname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+// Whole-word match on the path only, so "apolitical", "nonalcoholic", hosts
+// and query strings never set a category.
+const CONTENT_CATEGORY_PATTERNS = FLAGGED_CONTENT_CATEGORIES.map(name => ({
+  name,
+  pattern: new RegExp(`(^|[^a-z])${name}([^a-z]|$)`),
+}));
+
+function detectContentCategory(creative_manifest: GetCreativeFeaturesArgs['creative_manifest']): { value: string; confidence: number } {
+  const paths = Object.values(creative_manifest?.assets ?? {}).map(asset => assetUrlPathname(asset?.url));
+  const match = CONTENT_CATEGORY_PATTERNS.find(({ pattern }) => paths.some(path => pattern.test(path)));
+  if (match) return { value: match.name, confidence: CONTENT_CATEGORY_MATCH_CONFIDENCE };
+  return { value: CONTENT_CATEGORY_GENERAL, confidence: CONTENT_CATEGORY_DEFAULT_CONFIDENCE };
+}
+
 function buildOversightDisclosureAuditObservations(
   creative_manifest: GetCreativeFeaturesArgs['creative_manifest'],
   opts: {
@@ -22720,11 +22808,13 @@ export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingCo
   const req = args as unknown as GetCreativeFeaturesArgs;
   const requested = req.feature_ids?.length ? new Set(req.feature_ids) : null;
   const ai = detectAiFromManifest(req.creative_manifest);
+  const category = detectContentCategory(req.creative_manifest);
 
   const allFeatures: CreativeFeatureResult[] = [
     { feature_id: 'ai_generated', value: ai.value, confidence: ai.confidence },
     { feature_id: 'ai_modified', value: false, confidence: 0.6 },
     { feature_id: 'ai_confidence', value: ai.confidence },
+    { feature_id: 'content_category', value: category.value, confidence: category.confidence },
   ];
   const results = requested ? allFeatures.filter(f => requested.has(f.feature_id)) : allFeatures;
   const aiResult = results.find(f => f.feature_id === 'ai_generated');
@@ -24494,7 +24584,7 @@ async function handleControlMediaBuyUnlocked(
     }
     const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
     if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
-    const currentStatus = deriveStatus(mediaBuy, session);
+    const currentStatus = deriveStatus(mediaBuy, session, lifecycleSplitVersionForContext(ctx));
     const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
     if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
     overlaySeededProducts(session, productMap);

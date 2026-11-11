@@ -3063,9 +3063,17 @@ describe('tenant routing smoke', () => {
       expect(payload?.errors).toBeUndefined();
       expect(payload?.products?.length).toBeGreaterThan(0);
       expect(payload?.products?.every(product =>
-        Array.isArray(product.format_ids) && product.format_ids.length > 0
+        Array.isArray(product.format_ids)
         && Array.isArray(product.format_options) && product.format_options.length > 0
       )).toBe(true);
+      // The dual shape carries the same formats twice: format_ids is exactly the
+      // options' v1_format_ref set, empty when every option is canonical-only (#8802).
+      const formatKey = (ref: unknown) => JSON.stringify([(ref as { agent_url?: unknown }).agent_url, (ref as { id?: unknown }).id]);
+      for (const product of payload?.products ?? []) {
+        const refs = (product.format_options ?? []).flatMap(option =>
+          Array.isArray(option.v1_format_ref) ? option.v1_format_ref : []);
+        expect((product.format_ids ?? []).map(formatKey).sort()).toEqual(refs.map(formatKey).sort());
+      }
       const carousel = payload?.products
         ?.flatMap(product => product.format_options ?? [])
         .find(option => option.format_kind === 'image_carousel');

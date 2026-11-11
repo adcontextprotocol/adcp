@@ -64,6 +64,7 @@ const RESPONSE_SCHEMAS: Record<string, string> = {
   get_property_list: 'property/get-property-list-response.json',
   list_collection_lists: 'collection/list-collection-lists-response.json',
   list_content_standards: 'content-standards/list-content-standards-response.json',
+  get_creative_features: 'creative/get-creative-features-response.json',
   get_brand_identity: 'brand/get-brand-identity-response.json',
   get_rights: 'brand/get-rights-response.json',
   acquire_rights: 'brand/acquire-rights-response.json',
@@ -89,7 +90,7 @@ const ROUTES: Record<string, readonly string[]> = {
     'list_tasks', 'sync_audiences', 'sync_event_sources',
   ],
   signals: ['get_adcp_capabilities', 'list_accounts', 'get_signals', 'list_tasks'],
-  governance: ['get_adcp_capabilities', 'list_accounts', 'list_property_lists', 'create_property_list', 'get_property_list', 'list_collection_lists', 'list_content_standards', 'list_tasks'],
+  governance: ['get_adcp_capabilities', 'list_accounts', 'list_property_lists', 'create_property_list', 'get_property_list', 'list_collection_lists', 'list_content_standards', 'get_creative_features', 'list_tasks'],
   creative: ['get_adcp_capabilities', 'list_accounts', 'list_creative_formats', 'list_creatives', 'list_transformers', 'list_tasks'],
   'creative-builder': ['get_adcp_capabilities', 'list_accounts', 'list_creative_formats', 'list_transformers', 'list_tasks'],
   brand: ['get_adcp_capabilities', 'list_accounts', 'get_brand_identity', 'get_rights', 'acquire_rights', 'search_brands', 'list_tasks'],
@@ -207,6 +208,8 @@ function argsFor(tool: string, label: string, version: string, state: FlowState)
       return { name: 'Served release list', idempotency_key: key('property-list') };
     case 'get_property_list':
       return state.propertyListId ? { list_id: state.propertyListId } : undefined;
+    case 'get_creative_features':
+      return { creative_manifest: { format_id: { agent_url: 'https://creative.example.com', id: 'display_300x250' }, assets: { image } } };
     case 'get_brand_identity':
       return { brand_id: 'daan_janssen' };
     case 'get_rights':

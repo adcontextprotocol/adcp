@@ -1,0 +1,195 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string"
+    },
+    "adcp_major_version": {
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "notification_configs": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1agent-notification-config.json"
+          },
+          {
+            "if": {
+              "required": [
+                "authentication"
+              ]
+            },
+            "then": {
+              "properties": {
+                "authentication": {
+                  "required": [
+                    "credentials"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_configs"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/agent-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "subscriber_id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:enums~1notification-type.json"
+              },
+              {
+                "not": {
+                  "enum": [
+                    "scheduled",
+                    "final",
+                    "delayed",
+                    "adjusted",
+                    "window_update",
+                    "impairment"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "all_authorized_accounts": {
+          "type": "boolean"
+        },
+        "include_future_event_types": {
+          "type": "boolean"
+        },
+        "authentication": {
+          "type": "object",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              }
+            },
+            "credentials": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemes"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "subscriber_id",
+        "url",
+        "event_types"
+      ],
+      "if": {
+        "properties": {
+          "event_types": {
+            "contains": {
+              "enum": [
+                "creative.status_changed",
+                "creative.assignment_changed",
+                "indicators.changed",
+                "creative.purged",
+                "account.status_changed",
+                "account.change_recorded",
+                "product.created",
+                "product.updated",
+                "product.priced",
+                "product.removed",
+                "signal.created",
+                "signal.updated",
+                "signal.priced",
+                "signal.removed",
+                "wholesale_feed.bulk_change"
+              ]
+            }
+          }
+        },
+        "required": [
+          "event_types"
+        ]
+      },
+      "then": {
+        "properties": {
+          "all_authorized_accounts": {
+            "const": true
+          }
+        },
+        "required": [
+          "all_authorized_accounts"
+        ]
+      }
+    },
+    "external:enums/notification-type.json": {
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted",
+        "window_update",
+        "impairment",
+        "creative.status_changed",
+        "creative.assignment_changed",
+        "indicators.changed",
+        "creative.purged",
+        "account.status_changed",
+        "account.change_recorded",
+        "product.created",
+        "product.updated",
+        "product.priced",
+        "product.removed",
+        "signal.created",
+        "signal.updated",
+        "signal.priced",
+        "signal.removed",
+        "wholesale_feed.bulk_change",
+        "capabilities.changed",
+        "reporting.delivery_ready",
+        "reporting.status_changed",
+        "reporting.ledger_changed",
+        "principal.changed"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

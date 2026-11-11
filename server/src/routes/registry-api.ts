@@ -51,6 +51,8 @@ import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
 import { isRegistryDomain } from "../services/registry-domain.js";
 import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
+import { annotateLogoBackgrounds } from "../services/logo-background.js";
+import { DEFAULT_LOGO_RENDITION_WIDTH, LOGO_RENDITION_WIDTHS } from "../services/logo-rendition.js";
 import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, capabilityProbeRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { compareAdcpVersions, listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
@@ -1128,6 +1130,76 @@ registry.registerPath({
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
     503: { description: "Too much resolution work is already queued", content: { "application/json": { schema: ErrorSchema } } },
   },
+});
+
+const LogoRenditionQuerySchema = z.object({
+  format: z.enum(["png"]).optional().openapi({
+    description: "Return a PNG rendition instead of the stored bytes. SVG logos are rasterised at the requested width; raster logos are converted to PNG and never enlarged past their natural width. Omit `format` and `w` for the original bytes.",
+  }),
+  w: z.enum(LOGO_RENDITION_WIDTHS.map(String) as [string, ...string[]]).optional().openapi({
+    description: `Rendition width in pixels; requires \`format=png\`. Defaults to ${DEFAULT_LOGO_RENDITION_WIDTH}. Height follows the logo's aspect ratio, capped at four times the width.`,
+    example: "512",
+  }),
+});
+
+const logoAssetResponses = {
+  200: {
+    description: "The logo, or its PNG rendition. Served with `Cache-Control: public, max-age=2592000`: a logo id names immutable bytes, so a changed logo gets a new id and URL.",
+    content: {
+      "image/png": { schema: z.string().openapi({ format: "binary" }) },
+      "image/svg+xml": { schema: z.string() },
+      "image/jpeg": { schema: z.string().openapi({ format: "binary" }) },
+      "image/webp": { schema: z.string().openapi({ format: "binary" }) },
+      "image/gif": { schema: z.string().openapi({ format: "binary" }) },
+    },
+  },
+  400: { description: "Invalid domain, logo id, `format` or `w`", content: { "application/json": { schema: ErrorSchema } } },
+  404: { description: "No approved logo with this id for this domain", content: { "application/json": { schema: ErrorSchema } } },
+  415: { description: "The stored logo type (for example ICO) has no PNG rendition", content: { "application/json": { schema: ErrorSchema } } },
+  422: { description: "The stored logo could not be rendered as PNG", content: { "application/json": { schema: ErrorSchema } } },
+  503: { description: "Too many renditions are already being rendered; retry after the `Retry-After` interval", content: { "application/json": { schema: ErrorSchema } } },
+} as const;
+
+registry.registerPath({
+  method: "get",
+  path: "/assets/brands/{domain}/{logoId}.{ext}",
+  operationId: "getBrandLogoAsset",
+  summary: "Get brand logo",
+  description: [
+    "Download an approved AgenticAdvertising.org-hosted brand logo. This is the URL form that `brand_manifest.logos[].url` uses. When `ext` does not match the stored type, the response is a 301 to the canonical extension, keeping `format` and `w`.",
+    "",
+    "Add `?format=png&w=<width>` for a PNG rendition, for clients that cannot draw SVG. Renditions are rasterised from the stored, sanitised logo only; the endpoint never fetches a remote URL.",
+  ].join("\n"),
+  tags: ["Brand Resolution"],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "acmecorp.com" }),
+      logoId: z.string().uuid(),
+      ext: z.string().openapi({ example: "svg" }),
+    }),
+    query: LogoRenditionQuerySchema,
+  },
+  responses: {
+    ...logoAssetResponses,
+    301: { description: "Redirect to the URL with the stored type's extension" },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/logos/brands/{domain}/{logoId}",
+  operationId: "getBrandLogoLegacy",
+  summary: "Get brand logo (legacy URL)",
+  description: "Legacy form of the brand logo URL, without an extension. Accepts the same `format` and `w` rendition parameters as `/assets/brands/{domain}/{logoId}.{ext}`.",
+  tags: ["Brand Resolution"],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "acmecorp.com" }),
+      logoId: z.string().uuid(),
+    }),
+    query: LogoRenditionQuerySchema,
+  },
+  responses: logoAssetResponses,
 });
 
 registry.registerPath({
@@ -5598,10 +5670,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-          const selected = storedBrandResolutionResponse(
+          const [selected] = await annotateLogoBackgrounds([storedBrandResolutionResponse(
             discovered,
             liveValidation ? serializeBrandValidation(liveValidation) : undefined,
-          );
+          )]);
           res.setHeader("Cache-Control", brandResolveCacheControl(selected.source, fresh));
           recordBrandResolutionOutcome(selected.source);
           return res.json(selected);
@@ -5620,7 +5692,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         });
       }
 
-      const selected = selectResolvedBrandResponse(resolved, discovered, fresh);
+      const [selected] = await annotateLogoBackgrounds([
+        selectResolvedBrandResponse(resolved, discovered, fresh),
+      ]);
       registryRequestsDb
         .markResolved("brand", domain, selected.canonical_domain)
         .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
@@ -5887,7 +5961,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         return res.status(400).json({ error: "All domains must be bare multi-label DNS hostnames" });
       }
 
-      const results: Record<string, unknown> = {};
+      const results: Record<string, ResolvedBrandResponse | null> = {};
       const uniqueDomains = [...new Set(domains.map((d: string) => d.trim().toLowerCase()))];
 
       for (let i = 0; i < uniqueDomains.length; i += BRAND_BULK_PROCESS_CONCURRENCY) {
@@ -5940,6 +6014,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           }
         }
       }
+
+      const resolvedDomains = Object.keys(results).filter((domain) => results[domain] !== null);
+      const annotated = await annotateLogoBackgrounds(
+        resolvedDomains.map((domain) => results[domain] as ResolvedBrandResponse),
+      );
+      resolvedDomains.forEach((domain, i) => {
+        results[domain] = annotated[i];
+      });
 
       return res.json({ results });
     } catch (error) {

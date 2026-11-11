@@ -33,7 +33,7 @@
             "credential_uri": {
               "type": "string",
               "format": "uri",
-              "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+              "pattern": "^https://",
               "description": "HTTPS URI of the credential. Before any fetch, evaluators MUST match its canonical origin to credential_origins on the accepted issuer capability and then apply the attestation fetch contract."
             },
             "ext": {
@@ -124,12 +124,12 @@
     },
     "verify_agent": {
       "type": "object",
-      "description": "Optional presenter nomination of a verifier already published by the evaluator. This is a representation, not routing authority: agent_url MUST match an accepted_verifiers[] entry after canonicalization, and the evaluator may choose another accepted verifier or verify locally.",
+      "description": "Optional presenter nomination of a verifier already published by the evaluator. This is a representation, not routing authority: agent_url MUST match an accepted_verifiers[] entry after canonicalization, and the evaluator may choose another accepted verifier or verify locally. A verifier call goes to the matched accepted_verifiers[] entry's agent_url, never to the presented string.",
       "properties": {
         "agent_url": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+          "pattern": "^https://"
         }
       },
       "required": ["agent_url"],

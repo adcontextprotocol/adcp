@@ -12,6 +12,7 @@
  * `translateV5Result` — same approach as `/signals` and `/sales`.
  */
 
+import { randomUUID } from 'node:crypto';
 import {
   AdcpError,
   type DecisioningPlatform,
@@ -49,6 +50,8 @@ import {
   handleCalibrateContent,
   handleValidateContentDelivery,
 } from './content-standards-handlers.js';
+import { handleGetCreativeFeatures, TRAINING_CREATIVE_FEATURES } from './task-handlers.js';
+import { getAgentUrl } from './config.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from './governance-agent-credentials.js';
@@ -178,6 +181,9 @@ export class TrainingGovernancePlatform
     requireOperatorAuth: this.storyboardCompat?.version === '3.0' ? true : false,
     supportedBillings: ['agent', 'operator'] as const,
     compliance_testing: {},
+    overrides: {
+      governance: { creative_features: TRAINING_CREATIVE_FEATURES.map(feature => ({ ...feature })) },
+    },
       config: { strict: false },
     };
   }
@@ -275,6 +281,24 @@ export class TrainingGovernancePlatform
     validateContentDeliveryLegacy: async (req, ctx) => {
       const result = await handleValidateContentDelivery(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
+    },
+    getCreativeFeaturesLegacy: async (req, ctx) => {
+      const result = await handleGetCreativeFeatures(req as ToolArgs, buildTrainingCtx(ctx.account));
+      // Audit observations name the governance agent that produced them: this
+      // tenant's MCP URL, not the training agent's bare origin.
+      const agentUrl = `${getAgentUrl()}/governance/mcp`;
+      const audit_observations = result.audit_observations?.map(observation => ({
+        ...observation,
+        details: { ...observation.details, agent_url: agentUrl },
+      }));
+      // The shared handler stays a stateless fixture oracle for the public
+      // verifier route; this tenant names each accepted evaluation, and keyed
+      // retries replay the stored response with the same identity.
+      return translateV5Result({
+        evaluation_id: `eval_${randomUUID()}`,
+        ...result,
+        ...(audit_observations && { audit_observations }),
+      });
     },
   };
 }
