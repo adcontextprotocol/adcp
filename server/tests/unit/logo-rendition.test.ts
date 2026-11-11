@@ -468,6 +468,38 @@ describe('classifyRgbaPixels', () => {
     expect(classifyRgbaPixels(p, 6, 6)).toBe('light-bg');
   });
 
+  // A light grey (relative luminance ~0.418, just over the 0.4 threshold):
+  // transparent corners counted as black ink would pull it under.
+  const LIGHT_GREY = 173;
+
+  it('ignores transparent border pixels: a light logo with clear corners stays light-bg', () => {
+    // 100x100, opaque light grey with 4x4 transparent (black, alpha 0)
+    // corners (0.64% of the image, 7% of the border) and a black mark.
+    const p = px(100, 100, (x, y) => {
+      const corner = (x < 4 || x > 95) && (y < 4 || y > 95);
+      if (corner) return [0, 0, 0, 0];
+      if (x > 40 && x < 60 && y > 40 && y < 60) return [0, 0, 0, 255];
+      return [LIGHT_GREY, LIGHT_GREY, LIGHT_GREY, 255];
+    });
+    expect(classifyRgbaPixels(p, 100, 100)).toBe('light-bg');
+  });
+
+  it('a mostly opaque logo with rounded transparent corners is judged by its opaque border', async () => {
+    const grey = `rgb(${LIGHT_GREY},${LIGHT_GREY},${LIGHT_GREY})`;
+    const rounded = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">' +
+        `<rect width="200" height="200" rx="20" fill="${grey}"/><rect x="60" y="60" width="80" height="80" fill="#000"/></svg>`,
+    );
+    expect(await classifyLogoBackground(rounded, 'image/svg+xml')).toBe('light-bg');
+  });
+
+  it('falls back to the ink when every border pixel is transparent', () => {
+    // 100x100 with a 1 px clear frame (396 px, under 1% clear) and black ink:
+    // the frame's black RGB would have read as a dark border.
+    const p = px(100, 100, (x, y) => (x === 0 || y === 0 || x === 99 || y === 99 ? [0, 0, 0, 0] : [0, 0, 0, 255]));
+    expect(classifyRgbaPixels(p, 100, 100)).toBe('light-bg');
+  });
+
   it('uses the border, not the ink, for an opaque image', () => {
     const p = px(10, 10, (x, y) => (x > 2 && x < 7 && y > 2 && y < 7 ? [255, 255, 255, 255] : [0, 0, 0, 255]));
     expect(classifyRgbaPixels(p, 10, 10)).toBe('dark-bg');

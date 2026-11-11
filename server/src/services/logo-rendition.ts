@@ -258,10 +258,13 @@ export function classifyRgbaPixels(
   }
 
   if (transparent / total < OPAQUE_IMAGE_MAX_TRANSPARENT_FRACTION) {
+    // Transparent border pixels (rounded or clipped corners) carry no
+    // background colour; their RGB is usually black and would read as dark.
     let borderLuminance = 0;
     let borderCount = 0;
     const addBorder = (x: number, y: number) => {
       const o = (y * width + x) * 4;
+      if (pixels[o + 3] <= TRANSPARENT_ALPHA_MAX) return;
       borderLuminance += relativeLuminance(pixels[o], pixels[o + 1], pixels[o + 2]);
       borderCount++;
     };
@@ -273,7 +276,10 @@ export function classifyRgbaPixels(
       addBorder(0, y);
       if (width > 1) addBorder(width - 1, y);
     }
-    return borderLuminance / borderCount > LIGHT_LUMINANCE_THRESHOLD ? 'light-bg' : 'dark-bg';
+    if (borderCount > 0) {
+      return borderLuminance / borderCount > LIGHT_LUMINANCE_THRESHOLD ? 'light-bg' : 'dark-bg';
+    }
+    // A fully transparent border: judge by the ink instead.
   }
 
   let inkWeight = 0;
