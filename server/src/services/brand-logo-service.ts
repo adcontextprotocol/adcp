@@ -153,14 +153,102 @@ export async function detectContentType(buffer: Buffer): Promise<string | null> 
   return null;
 }
 
+const SVG_PURIFY_CONFIG = {
+  USE_PROFILES: { svg: true },
+  FORBID_TAGS: ['foreignObject', 'use', 'script', 'iframe', 'object', 'embed', 'animate', 'set', 'animateTransform'],
+  FORBID_ATTR: ['xlink:href', 'href'],
+};
+
+// A CSS escape: a backslash and 1-6 hex digits (plus one optional
+// whitespace), or a backslash and any other character.
+const CSS_ESCAPE = /\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([\s\S]))/gi;
+// `url(` or `src(`, any case, through the first `)` (or to the end).
+const CSS_RESOURCE_FUNCTION = /(?:url|src)\(([^)]*)\)?/gi;
+const SAME_DOCUMENT_FRAGMENT = /^#[^\s'"()]+$/;
+// An @import rule through its terminating `;` (or to the end).
+const CSS_IMPORT_RULE = /@import[^;]*;?/gi;
+
+function decodeCssEscapes(css: string): string {
+  return css
+    .replace(CSS_ESCAPE, (_match, hex: string | undefined, char: string | undefined) => {
+      if (hex === undefined) return char ?? '';
+      const codePoint = parseInt(hex, 16);
+      const valid = codePoint > 0 && codePoint <= 0x10ffff && (codePoint < 0xd800 || codePoint > 0xdfff);
+      return String.fromCodePoint(valid ? codePoint : 0xfffd);
+    })
+    .replace(/\\/g, '');
+}
+
+/**
+ * Neutralise every resource a CSS value or stylesheet could load, keeping
+ * same-document references such as `url(#gradient)`.
+ *
+ * DOMPurify keeps `<style>` text and CSS in attributes (`fill`, `mask`,
+ * `filter`, `style`, ...). librsvg follows `url(...)` there and `@import` in
+ * a stylesheet, including `data:` URLs whose nested SVG was never sanitised
+ * and can embed images decoded outside the render's pixel limit. So:
+ *
+ * - every `url(...)` / `src(...)` whose target is not a `#fragment` becomes
+ *   `none`, which every property taking a URL accepts;
+ * - every `@import` rule is removed;
+ * - both are looked for after decoding CSS escapes, since an escape can
+ *   spell `url(` or `@import` without those characters (`u\72l(`). Text with
+ *   escapes and nothing to neutralise is returned as it was.
+ *
+ * It matches inside strings and comments too: over-matching only drops a
+ * paint, never lets a reference through.
+ */
+export function neutralizeCssResources(css: string): string {
+  const neutralize = (text: string) =>
+    text
+      .replace(CSS_RESOURCE_FUNCTION, (match, arg: string) => {
+        const target = arg.trim().replace(/^(['"])(.*)\1$/s, '$2').trim();
+        return SAME_DOCUMENT_FRAGMENT.test(target) ? match : 'none';
+      })
+      .replace(CSS_IMPORT_RULE, '');
+  if (!css.includes('\\')) return neutralize(css);
+  const decoded = decodeCssEscapes(css);
+  const neutralized = neutralize(decoded);
+  return neutralized === decoded ? css : neutralized;
+}
+
+/** The slice of the DOM API used here; the server compiles without lib.dom. */
+interface SanitizedSvgElement {
+  readonly localName: string;
+  readonly attributes: ArrayLike<{ value: string }>;
+  readonly children: ArrayLike<SanitizedSvgElement>;
+  textContent: string | null;
+  innerHTML: string;
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+  querySelectorAll(selector: string): ArrayLike<SanitizedSvgElement>;
+}
+
+/** Sanitise SVG markup and return the DOMPurify body holding it. */
+function sanitizeSvgToBody(raw: string): SanitizedSvgElement {
+  const body = DOMPurify.sanitize(raw, { ...SVG_PURIFY_CONFIG, RETURN_DOM: true }) as unknown as SanitizedSvgElement;
+  for (const element of Array.from(body.querySelectorAll('*'))) {
+    for (const attr of Array.from(element.attributes)) {
+      const value = neutralizeCssResources(attr.value);
+      if (value !== attr.value) attr.value = value;
+    }
+    if (element.localName === 'style') {
+      const css = element.textContent ?? '';
+      const value = neutralizeCssResources(css);
+      if (value !== css) element.textContent = value;
+    }
+  }
+  return body;
+}
+
+/**
+ * Sanitise an uploaded SVG: DOMPurify's SVG profile without scripting,
+ * `<use>`, `href`s or animation, and with every CSS resource reference other
+ * than a same-document `#fragment` neutralised (see neutralizeCssResources).
+ * `<style>` is kept: real logos fill paths through classes.
+ */
 export function sanitizeSvg(buffer: Buffer): Buffer {
-  const raw = buffer.toString('utf8');
-  const clean = DOMPurify.sanitize(raw, {
-    USE_PROFILES: { svg: true },
-    FORBID_TAGS: ['foreignObject', 'use', 'script', 'iframe', 'object', 'embed', 'animate', 'set', 'animateTransform'],
-    FORBID_ATTR: ['xlink:href', 'href'],
-  });
-  return Buffer.from(clean, 'utf8');
+  return Buffer.from(sanitizeSvgToBody(buffer.toString('utf8')).innerHTML, 'utf8');
 }
 
 export async function extractDimensions(

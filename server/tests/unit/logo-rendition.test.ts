@@ -238,6 +238,40 @@ describe('renderLogoPng', () => {
     const png = await renderLogoPng(data, 'image/svg+xml', 64);
     expect((await sharp(png).metadata()).width).toBe(64);
   });
+
+  describe('a paint server in a nested data: SVG', () => {
+    // The nested document is never sanitised and can carry an <image> whose
+    // bytes would be decoded outside the pixel limit. Small and blue here.
+    async function nestedImageReference(): Promise<string> {
+      const blue = await solidPng(8, 8, { r: 0, g: 0, b: 255, alpha: 1 });
+      const inner =
+        '<svg xmlns="http://www.w3.org/2000/svg"><pattern id="p" patternUnits="userSpaceOnUse" width="8" height="8">' +
+        `<image width="8" height="8" href="data:image/png;base64,${blue.toString('base64')}"/></pattern></svg>`;
+      return `data:image/svg+xml;base64,${Buffer.from(inner).toString('base64')}#p`;
+    }
+
+    async function expectNothingDrawn(png: Buffer) {
+      const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      expect(info.width).toBe(64);
+      for (let o = 3; o < data.length; o += 4) expect(data[o]).toBe(0);
+    }
+
+    it('is not loaded from a fill attribute', async () => {
+      const ref = await nestedImageReference();
+      const png = await renderLogoPng(svg(16, 16, `<rect width="16" height="16" fill="url(${ref})"/>`), 'image/svg+xml', 64);
+      await expectNothingDrawn(png);
+    });
+
+    it('is not loaded from a <style> rule', async () => {
+      const ref = await nestedImageReference();
+      const png = await renderLogoPng(
+        svg(16, 16, `<style>.x{fill:url(${ref})}</style><rect class="x" width="16" height="16"/>`),
+        'image/svg+xml',
+        64,
+      );
+      await expectNothingDrawn(png);
+    });
+  });
 });
 
 // ── Classification ──────────────────────────────────────────────────
