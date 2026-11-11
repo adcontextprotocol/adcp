@@ -16,6 +16,7 @@ import { downloadAndCacheLogos, getBrandAssetUrl, isBrandfetchUrl } from '../../
 import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
 import { safeFetch } from '../../utils/url-security.js';
 import { detectContentType, sanitizeSvg, validateLogoTags, computeSha256, extractDimensions, rebuildManifestLogos } from '../../services/brand-logo-service.js';
+import { classifyLogoBackground } from '../../services/logo-rendition.js';
 import { notifyPendingBrandLogo } from '../../notifications/registry.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
@@ -650,6 +651,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       tags,
       width,
       height,
+      derived_background: await classifyLogoBackground(buffer, contentType),
       source: 'community',
       // Always queue Addie uploads as pending — she's a system caller without
       // org-membership context, so the auto-approval path (reserved for

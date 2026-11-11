@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import type { DerivedLogoBackground } from '../services/logo-rendition.js';
 
 export interface InsertBrandLogoInput {
   domain: string;
@@ -17,6 +18,11 @@ export interface InsertBrandLogoInput {
   original_filename?: string;
   source_flow?: string;
   provenance?: Record<string, unknown>;
+  /**
+   * Result of classifyLogoBackground. Pass it (null included) once
+   * classification has run; omit it to leave the row for the backfill job.
+   */
+  derived_background?: DerivedLogoBackground | null;
 }
 
 export interface BrandLogoRow {
@@ -44,6 +50,8 @@ export interface BrandLogoRow {
   reviewed_at: Date | null;
   deleted_at: Date | null;
   slack_thread_ts: string | null;
+  derived_background: DerivedLogoBackground | null;
+  background_derived_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -54,7 +62,7 @@ const SUMMARY_COLUMNS = `id, domain, content_type, storage_type, storage_key, sh
   tags, width, height, source, review_status, uploaded_by_user_id, uploaded_by_org_id,
   uploaded_by_email, upload_note, original_filename, source_flow, provenance,
   review_note, reviewed_by_user_id, reviewed_at, deleted_at, slack_thread_ts,
-  created_at, updated_at`;
+  derived_background, background_derived_at, created_at, updated_at`;
 
 export interface ListBrandLogosOptions {
   tags?: string[];
@@ -68,8 +76,10 @@ export class BrandLogoDatabase {
       `INSERT INTO brand_logos (
         domain, content_type, data, sha256, tags, width, height,
         source, review_status, uploaded_by_user_id, uploaded_by_org_id,
-        uploaded_by_email, upload_note, original_filename, source_flow, provenance
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        uploaded_by_email, upload_note, original_filename, source_flow, provenance,
+        derived_background, background_derived_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+        $17, CASE WHEN $18::boolean THEN now() END)
       ON CONFLICT (domain, sha256) WHERE review_status IN ('pending', 'approved')
       DO NOTHING
       RETURNING *`,
@@ -90,6 +100,8 @@ export class BrandLogoDatabase {
         input.original_filename ?? null,
         input.source_flow ?? null,
         JSON.stringify(input.provenance ?? {}),
+        input.derived_background ?? null,
+        input.derived_background !== undefined,
       ]
     );
     return result.rows[0] ?? null;
@@ -295,5 +307,64 @@ export class BrandLogoDatabase {
       [limit, offset]
     );
     return result.rows;
+  }
+
+  /**
+   * Logos the background backfill has not classified yet, oldest first.
+   * Returns ids only: rows can hold up to 5 MB each, so the job loads the
+   * bytes one row at a time.
+   */
+  async listLogosNeedingBackground(limit: number): Promise<Array<{ id: string; domain: string }>> {
+    const result = await query<{ id: string; domain: string }>(
+      `SELECT id, domain FROM brand_logos
+        WHERE background_derived_at IS NULL
+          AND review_status IN ('pending', 'approved')
+        ORDER BY created_at ASC
+        LIMIT $1`,
+      [limit]
+    );
+    return result.rows;
+  }
+
+  async getLogoBytes(id: string): Promise<{ content_type: string; data: Buffer } | null> {
+    const result = await query<{ content_type: string; data: Buffer }>(
+      `SELECT content_type, data FROM brand_logos WHERE id = $1`,
+      [id]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
+   * Record a classification. Only fills an unclassified row, so concurrent
+   * backfill runs on several machines never overwrite each other.
+   */
+  async setDerivedBackground(id: string, background: DerivedLogoBackground | null): Promise<boolean> {
+    const result = await query(
+      `UPDATE brand_logos
+          SET derived_background = $2, background_derived_at = now()
+        WHERE id = $1 AND background_derived_at IS NULL`,
+      [id, background]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Background facts for approved logos, keyed by id: the derived background
+   * and the tags, which may declare one.
+   */
+  async getApprovedLogoBackgrounds(
+    ids: string[]
+  ): Promise<Map<string, { domain: string; derived_background: DerivedLogoBackground | null; tags: string[] }>> {
+    const map = new Map<string, { domain: string; derived_background: DerivedLogoBackground | null; tags: string[] }>();
+    if (ids.length === 0) return map;
+    const result = await query<{ id: string; domain: string; derived_background: DerivedLogoBackground | null; tags: string[] }>(
+      `SELECT id, domain, derived_background, tags FROM brand_logos
+        WHERE id = ANY($1::uuid[]) AND review_status = 'approved'`,
+      [ids]
+    );
+    for (const row of result.rows) {
+      map.set(row.id, { domain: row.domain, derived_background: row.derived_background, tags: row.tags ?? [] });
+    }
+    return map;
   }
 }

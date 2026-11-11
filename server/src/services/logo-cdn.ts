@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import { query } from '../db/client.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { sanitizeSvg } from './brand-logo-service.js';
+import { classifyLogoBackground } from './logo-rendition.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('logo-cdn');
@@ -149,6 +150,7 @@ export async function downloadAndCacheLogos(
         data,
         sha256,
         tags: logo.tags || [],
+        derived_background: await classifyLogoBackground(data, contentType),
         source: 'brandfetch',
         review_status: 'approved',
       });
