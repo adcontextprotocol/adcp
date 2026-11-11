@@ -253,6 +253,7 @@ describe('cache', () => {
     expect((await sharp(binary(png128b)).metadata()).width).toBe(128);
     expect((await sharp(binary(png256b)).metadata()).width).toBe(256);
     expect(binary(png128b).equals(binary(png128))).toBe(true);
+    expect(binary(png256b).equals(binary(png256))).toBe(true);
   });
 
   it('keeps redirecting a wrong extension when the logo is cached', async () => {
