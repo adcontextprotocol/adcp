@@ -22643,6 +22643,55 @@ function pricingContextsForUsage(
 //
 // The handler is documented and stable for storyboard authors: pick the URL
 // pattern that drives the test outcome, no fixture mutation needed.
+//
+// content_category follows the same URL convention so learners can exercise a
+// categorical feature (adcp#8676): the first listed category whose name
+// appears as a whole word in an asset URL path wins, otherwise `general`.
+
+export interface CreativeFeatureDefinition {
+  feature_id: string;
+  type: 'binary' | 'quantitative' | 'categorical';
+  range?: { min: number; max: number };
+  categories?: string[];
+  description: string;
+}
+
+const CONTENT_CATEGORY_GENERAL = 'general';
+const FLAGGED_CONTENT_CATEGORIES = ['alcohol', 'gambling', 'pharmaceutical', 'political'] as const;
+const CONTENT_CATEGORY_MATCH_CONFIDENCE = 0.9;
+const CONTENT_CATEGORY_DEFAULT_CONFIDENCE = 0.7;
+
+/**
+ * Creative features the governance tenant advertises in
+ * `governance.creative_features` and evaluates in `get_creative_features`.
+ * Keep in step with `handleGetCreativeFeatures`, which returns one result per
+ * entry, in this order.
+ */
+export const TRAINING_CREATIVE_FEATURES: readonly CreativeFeatureDefinition[] = [
+  {
+    feature_id: 'ai_generated',
+    type: 'binary',
+    description: 'Whether the creative is AI-generated. Sandbox detection: an asset URL containing "ai-generated-true" or "ai-generated-false" sets the verdict; otherwise it follows the claimed provenance.digital_source_type.',
+  },
+  {
+    feature_id: 'ai_modified',
+    type: 'binary',
+    description: 'Whether AI edited otherwise captured media. The sandbox always reports false.',
+  },
+  {
+    feature_id: 'ai_confidence',
+    type: 'quantitative',
+    range: { min: 0, max: 1 },
+    description: 'Detection confidence behind the ai_generated verdict, from 0 to 1.',
+  },
+  {
+    feature_id: 'content_category',
+    type: 'categorical',
+    categories: [CONTENT_CATEGORY_GENERAL, ...FLAGGED_CONTENT_CATEGORIES],
+    description: 'Sensitive content category of the creative. Sandbox detection: the first listed category whose name appears as a whole word in an asset URL path (e.g. ".../gambling-banner.jpg"), otherwise "general".',
+  },
+];
+
 interface GetCreativeFeaturesArgs {
   creative_manifest?: { provenance?: Record<string, unknown>; assets?: Record<string, { url?: unknown; provenance?: Record<string, unknown> }> };
   feature_ids?: string[];
@@ -22695,6 +22744,29 @@ function detectAiFromManifest(creative_manifest: GetCreativeFeaturesArgs['creati
   return { value: false, confidence: 0.3 };
 }
 
+function assetUrlPathname(url: unknown): string {
+  if (typeof url !== 'string') return '';
+  try {
+    return new URL(url).pathname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+// Whole-word match on the path only, so "apolitical", "nonalcoholic", hosts
+// and query strings never set a category.
+const CONTENT_CATEGORY_PATTERNS = FLAGGED_CONTENT_CATEGORIES.map(name => ({
+  name,
+  pattern: new RegExp(`(^|[^a-z])${name}([^a-z]|$)`),
+}));
+
+function detectContentCategory(creative_manifest: GetCreativeFeaturesArgs['creative_manifest']): { value: string; confidence: number } {
+  const paths = Object.values(creative_manifest?.assets ?? {}).map(asset => assetUrlPathname(asset?.url));
+  const match = CONTENT_CATEGORY_PATTERNS.find(({ pattern }) => paths.some(path => pattern.test(path)));
+  if (match) return { value: match.name, confidence: CONTENT_CATEGORY_MATCH_CONFIDENCE };
+  return { value: CONTENT_CATEGORY_GENERAL, confidence: CONTENT_CATEGORY_DEFAULT_CONFIDENCE };
+}
+
 function buildOversightDisclosureAuditObservations(
   creative_manifest: GetCreativeFeaturesArgs['creative_manifest'],
   opts: {
@@ -22736,11 +22808,13 @@ export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingCo
   const req = args as unknown as GetCreativeFeaturesArgs;
   const requested = req.feature_ids?.length ? new Set(req.feature_ids) : null;
   const ai = detectAiFromManifest(req.creative_manifest);
+  const category = detectContentCategory(req.creative_manifest);
 
   const allFeatures: CreativeFeatureResult[] = [
     { feature_id: 'ai_generated', value: ai.value, confidence: ai.confidence },
     { feature_id: 'ai_modified', value: false, confidence: 0.6 },
     { feature_id: 'ai_confidence', value: ai.confidence },
+    { feature_id: 'content_category', value: category.value, confidence: category.confidence },
   ];
   const results = requested ? allFeatures.filter(f => requested.has(f.feature_id)) : allFeatures;
   const aiResult = results.find(f => f.feature_id === 'ai_generated');
