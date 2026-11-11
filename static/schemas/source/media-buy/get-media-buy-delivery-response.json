@@ -511,7 +511,7 @@
                     },
                     "by_creative": {
                       "type": "array",
-                      "description": "Metrics broken down by creative within this package, one row per creative for the whole reporting period. Available when the seller supports creative-level reporting. Creatives that entered the seller's library outside sync_creatives appear under their seller-assigned creative_id.",
+                      "description": "Metrics broken down by creative within this package, one row per creative for the whole reporting period. Each row is the delivery the seller measured for that creative, not a share of the package total divided across creatives. Available when the seller supports creative-level reporting. Creatives that entered the seller's library outside sync_creatives appear under their seller-assigned creative_id.",
                       "items": {
                         "$ref": "/schemas/core/creative-delivery-metrics.json"
                       }
