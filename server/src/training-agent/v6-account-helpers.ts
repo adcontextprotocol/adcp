@@ -49,7 +49,11 @@ function trainingCtxFromResolveCtx(ctx: ResolveContext | undefined): TrainingCon
   // res.locals.trainingPrincipal onto req.auth.clientId so the framework
   // surfaces it as ctx.authInfo.clientId for platform handlers.
   const principal = ctx?.authInfo?.clientId;
-  return principal ? { mode: 'open', principal } : { mode: 'open' };
+  return {
+    mode: 'open',
+    ...(principal && { principal }),
+    ...(ctx?.servedAdcpVersion && { servedAdcpVersion: ctx.servedAdcpVersion }),
+  };
 }
 
 export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (refs, ctx) => {

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/account-request-state.json",
+  "title": "Account Request State",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "Lifecycle state of an account request (experimental, account.requests). in_review and ambiguous are open; resolved and rejected are terminal for that request.",
+  "type": "string",
+  "enum": [
+    "in_review",
+    "resolved",
+    "ambiguous",
+    "rejected"
+  ],
+  "enumDescriptions": {
+    "in_review": "Someone has to act before the request can resolve. pending_action.waiting_on says whether that is the seller (review, matching against existing records) or the buyer (a human completes pending_action.url).",
+    "resolved": "The request produced an account the caller can use. account_id and resolution are present.",
+    "ambiguous": "The request matches more than one account the caller is already granted. candidates lists them; the buyer re-requests with the chosen account_id.",
+    "rejected": "The seller declined, or a buyer action expired. Terminal for this request; errors explain why. A new request for the same key opens a new request."
+  }
+}

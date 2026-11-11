@@ -9,26 +9,22 @@ build
 dist
 !dist/docs
 dist/docs/*
-# Frozen documentation snapshots currently exposed by docs.json. The Addie
-# docs-version tests keep this allowlist synchronized with navigation.
-# Older snapshots remain in Git and on Mintlify; the server indexes only
-# configured snapshots. Exclude retired selectors from the runtime image.
-!dist/docs/2.5.3
-!dist/docs/2.5.3/**
-!dist/docs/3.0.26
-!dist/docs/3.0.26/**
-!dist/docs/3.1.27
-!dist/docs/3.1.27/**
-!dist/docs/3.2.3
-!dist/docs/3.2.3/**
-!dist/docs/3.0.27
-!dist/docs/3.0.27/**
+# Frozen documentation snapshots currently exposed by docs.json. The
+# release-docs workflow regenerates this allowlist from navigation
+# (scripts/update-release-docs-nav.mjs), and tests/update-release-docs-nav
+# fails if it drifts. Older snapshots remain in Git and on Mintlify; the
+# server indexes only configured snapshots. Retired selectors stay out of
+# the runtime image.
+!dist/docs/3.2.8
+!dist/docs/3.2.8/**
+!dist/docs/3.3.0-beta.5
+!dist/docs/3.3.0-beta.5/**
+!dist/docs/3.1.32
+!dist/docs/3.1.32/**
 !dist/docs/3.0.28
 !dist/docs/3.0.28/**
-!dist/docs/3.3.0-beta.0
-!dist/docs/3.3.0-beta.0/**
-!dist/docs/3.2.6
-!dist/docs/3.2.6/**
+!dist/docs/2.5.3
+!dist/docs/2.5.3/**
 !dist/schemas
 dist/schemas/latest
 dist/schemas/v*

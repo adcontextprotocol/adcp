@@ -61,6 +61,14 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Bind product fixtures to the complete sandbox account used by their probes.
+context:
+  account:
+    brand:
+      domain: "acmeoutdoor.example"
+    operator: "pinnacle-agency.example"
+    sandbox: true
+
 fixtures:
   products:
     - product_id: "display_vendor_metric_catalog_precondition"
@@ -93,7 +101,7 @@ fixtures:
       pricing_option_id: "cpm_vendor_metric_catalog_precondition"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 14.0
+      floor_price: 14.0
 
 phases:
   - id: account_setup
@@ -116,6 +124,7 @@ phases:
             - brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              sandbox: true
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_catalog_precondition_sync_accounts"
@@ -145,6 +154,9 @@ phases:
           catalog for this compliance session.
         sample_request:
           account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
             sandbox: true
           brand:
             domain: "acmeoutdoor.example"
@@ -203,11 +215,13 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "display_vendor_metric_catalog_precondition"
               pricing_option_id: "cpm_vendor_metric_catalog_precondition"
+              bid_price: 21
               budget: 5000
               optimization_goals:
                 - kind: "vendor_metric"
@@ -266,11 +280,13 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "display_vendor_metric_catalog_precondition"
               pricing_option_id: "cpm_vendor_metric_catalog_precondition"
+              bid_price: 21
               budget: 5000
               optimization_goals:
                 - kind: "vendor_metric"

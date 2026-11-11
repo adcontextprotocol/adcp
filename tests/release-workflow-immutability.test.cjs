@@ -5,7 +5,6 @@ const path = require('path');
 const assert = require('assert');
 const crypto = require('crypto');
 const os = require('os');
-const vm = require('vm');
 const { spawnSync } = require('child_process');
 const YAML = require('yaml');
 
@@ -103,49 +102,14 @@ assert(
   !typescriptCandidateStep.includes('sync-version -- --auto-update'),
   'Candidate validation must not bump the TypeScript SDK package release number.'
 );
-const candidateVersionBridge = typescriptCandidateStep.match(
-  /node <<'NODE_CANDIDATE_VERSION'\n([\s\S]*?)\nNODE_CANDIDATE_VERSION/
-)?.[1];
-assert(candidateVersionBridge, 'Candidate compatibility bridge must remain executable and isolated.');
-const compatibilityFixture = `function buildCompatibleVersions(adcpVersion: string): string[] {
-  const [, majorText, minorText, patchText, prerelease] = /^(\\d+)\\.(\\d+)\\.(\\d+)(?:-(.+))?$/.exec(adcpVersion);
-  const major = Number(majorText), minor = Number(minorText), patch = Number(patchText);
-  // 3.2 prereleases are exact.
-  if (adcpVersion === '3.2.5') return ['v3', '3.2.1', '3.2.5', '3.2'];
-  throw new Error('unsupported version');
-}`;
-function bridgeCandidateVersion(candidate, pinned = '3.2.5', original = compatibilityFixture) {
-  let generated = original;
-  vm.runInNewContext(candidateVersionBridge, {
-    process: { env: { BUNDLE_VERSION: candidate } },
-    require(name) {
-      assert.strictEqual(name, 'node:fs');
-      return {
-        readFileSync(filename) { return filename === 'sdk/ADCP_VERSION' ? pinned : original; },
-        writeFileSync(filename, source) {
-          assert.strictEqual(filename, 'sdk/scripts/sync-version.ts');
-          generated = source;
-        },
-      };
-    },
-  });
-  return generated;
-}
-for (const candidate of ['3.3.0-beta.0', '3.3.0-rc.2']) {
-  const generated = bridgeCandidateVersion(candidate).replace('(adcpVersion: string): string[]', '(adcpVersion)');
-  const context = {};
-  vm.runInNewContext(generated, context);
-  assert.deepStrictEqual(Array.from(context.buildCompatibleVersions(candidate)), [
-    'v3', '3.2.1', '3.2.5', '3.2', candidate, candidate.replace('3.3.0-', '3.3-'),
-  ], 'The bridge must retain stable peers and add only the exact preview aliases.');
-  assert.throws(() => context.buildCompatibleVersions('3.4.0-beta.0'), /unsupported version/);
-  assert.deepStrictEqual(Array.from(context.buildCompatibleVersions('3.2.5')), ['v3', '3.2.1', '3.2.5', '3.2']);
-}
-for (const candidate of ['3.2.5', '3.3.0', '3.3.0-alpha.0', '3.4.0-beta.0']) {
-  assert.strictEqual(bridgeCandidateVersion(candidate), compatibilityFixture,
-    'The bridge must leave released versions and unrecognized candidate lines untouched.');
-}
-assert.throws(() => bridgeCandidateVersion('3.3.0-beta.0', '3.2.5', 'changed generator'), /generator changed/);
+// The SDK's own sync-version generator owns candidate compatibility: since
+// adcp-client 56d45712c it keeps 3.2.x GA as stable peers and adds only exact
+// 3.3 preview aliases. Candidate validation must not rewrite it.
+assert(
+  !typescriptCandidateStep.includes('NODE_CANDIDATE_VERSION') &&
+    !typescriptCandidateStep.includes('sdk/scripts/sync-version.ts'),
+  'Candidate validation must use the SDK compatibility generator unmodified.'
+);
 const typescriptProtocolCheckout = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
   step => step.uses?.startsWith('actions/checkout@') && step.with?.path === 'protocol'
 );
@@ -465,6 +429,31 @@ for (const name of ['Verify current storyboard coverage', 'Verify 3.0 storyboard
     gate.if.includes("steps.release-relevance.outputs.relevant == 'true' && steps.verified-merge.outputs.verified != 'true'"),
     `${name} must run unless the exact approved head is provenance-verified.`
   );
+  assert(
+    gate.if.includes("steps.verified-merge.outputs.generation_only != 'true'"),
+    `${name} must skip a generation-only push on main (it publishes nothing; the Version Packages PR is verified).`
+  );
+}
+{
+  // generation_only is set only for a main push that commits no release
+  // artifacts for the package version, i.e. never for a release merge.
+  const detect = verificationJob.steps.find(step => step.id === 'verified-merge');
+  assert(detect.if.includes("github.event_name == 'push'") && detect.if.includes("github.ref_name == 'main'"),
+    'generation_only must be limited to main pushes.');
+  const notMerge = detect.run.indexOf('if ! grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]"');
+  const gen = detect.run.indexOf('generation_only=true');
+  const verified = detect.run.indexOf('verified=true');
+  assert(notMerge >= 0 && gen > notMerge && gen < verified,
+    'generation_only must be emitted only inside the not-a-release-merge branch, before verified-merge runs.');
+  assert(/set -euo pipefail/.test(detect.run), 'classification must run under set -e so a read failure emits nothing.');
+  assert.strictEqual(verificationJob.outputs.generation_only, '${{ steps.verified-merge.outputs.generation_only }}',
+    'verify-release must export generation_only for the release job tripwire.');
+  const artifacts = releaseJob.steps.find(step => step.id === 'release-artifacts');
+  assert.strictEqual(artifacts.env.GENERATION_ONLY, '${{ needs.verify-release.outputs.generation_only }}');
+  const trip = artifacts.run.indexOf('if [ "${GENERATION_ONLY:-}" = true ]; then');
+  const has = artifacts.run.indexOf('echo "has_release_artifacts=true"');
+  assert(trip >= 0 && trip < has && /exit 1/.test(artifacts.run.slice(trip, has)),
+    'The release job must refuse to publish a push classified generation_only that commits release artifacts.');
 }
 
 assert.strictEqual(
@@ -671,3 +660,64 @@ for (const { line, source } of forwardMergeWorkflows) {
 }
 
 console.log('Release and forward-merge workflow checks passed.');
+
+const { test } = require('node:test');
+const documentationSnapshotStep = releaseDocsWorkflowConfig.jobs['snapshot-docs'].steps.find(step => step.name === 'Create docs snapshot');
+
+function createDocsSnapshotFixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-docs-source-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    assert.strictEqual(result.status, 0, result.stderr);
+  };
+  git('init', '--quiet');
+  git('config', 'user.name', 'Release fixture');
+  git('config', 'user.email', 'release-fixture@example.test');
+  fs.mkdirSync(path.join(root, 'docs'));
+  fs.writeFileSync(path.join(root, 'docs/stable.md'), 'Tagged release content\n');
+  fs.writeFileSync(path.join(root, 'docs/.hidden.md'), 'Tagged hidden page\n');
+  git('add', 'docs');
+  git('commit', '--quiet', '-m', 'Tagged documentation');
+  git('tag', 'v9.9.9');
+  fs.writeFileSync(path.join(root, 'docs/stable.md'), 'Current main content\n');
+  fs.writeFileSync(path.join(root, 'docs/future-only.md'), 'Future protocol guide\n');
+  return root;
+}
+
+function runDocsSnapshotFixture(root, version, event) {
+  const script = documentationSnapshotStep.run
+    .replaceAll('${{ steps.version.outputs.version }}', version)
+    .replaceAll('${{ github.event_name }}', event)
+    .replaceAll('${{ github.ref_name }}', `v${version}`);
+  assert.ok(!script.includes('${{'), 'all workflow expressions must be resolved');
+  return spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, GITHUB_EVENT_NAME: event },
+  });
+}
+
+test('release and manual snapshots contain only the tagged tree and preserve live docs', t => {
+  const root = createDocsSnapshotFixture(t);
+  const output = path.join(root, 'dist/docs/9.9.9');
+  for (const event of ['release', 'workflow_dispatch']) {
+    const result = runDocsSnapshotFixture(root, '9.9.9', event);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.deepStrictEqual(fs.readdirSync(output).sort(), ['.hidden.md', 'stable.md']);
+    assert.strictEqual(fs.readFileSync(path.join(output, 'stable.md'), 'utf8'), 'Tagged release content\n');
+    assert.strictEqual(fs.readFileSync(path.join(output, '.hidden.md'), 'utf8'), 'Tagged hidden page\n');
+    assert.strictEqual(fs.readFileSync(path.join(root, 'docs/stable.md'), 'utf8'), 'Current main content\n');
+    assert.strictEqual(fs.readFileSync(path.join(root, 'docs/future-only.md'), 'utf8'), 'Future protocol guide\n');
+    fs.writeFileSync(path.join(output, 'stale.md'), 'An obsolete candidate file\n');
+  }
+});
+
+test('an invalid source tag fails without moving or overwriting live documentation', t => {
+  const root = createDocsSnapshotFixture(t);
+  const result = runDocsSnapshotFixture(root, '9.9.8', 'workflow_dispatch');
+  assert.notStrictEqual(result.status, 0);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'docs/stable.md'), 'utf8'), 'Current main content\n');
+  assert.strictEqual(fs.readFileSync(path.join(root, 'docs/future-only.md'), 'utf8'), 'Future protocol guide\n');
+  assert.deepStrictEqual(fs.readdirSync(path.join(root, 'dist/docs/9.9.8')), []);
+});

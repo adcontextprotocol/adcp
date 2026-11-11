@@ -1,23 +1,16 @@
-const fs = require("node:fs");
-const path = require("node:path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 
-const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
+const { ensureBuiltSchemas, readBuiltSchema } = require("../scripts/built-schemas.cjs");
 
-async function loadSchema(uri) {
-  const filename = path.resolve(SCHEMA_ROOT, uri.slice("/schemas/".length));
-  if (!filename.startsWith(`${SCHEMA_ROOT}${path.sep}`))
-    throw new Error(`Schema path escape: ${uri}`);
-  return JSON.parse(fs.readFileSync(filename, "utf8"));
-}
+ensureBuiltSchemas();
 
 async function compile(uri) {
-  const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema });
+  const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: async (ref) => readBuiltSchema(ref) });
   addFormats(ajv);
-  return ajv.compileAsync(await loadSchema(uri));
+  return ajv.compileAsync(readBuiltSchema(uri));
 }
 
 const ESTIMATE = "2026-10-20T17:00:00Z";

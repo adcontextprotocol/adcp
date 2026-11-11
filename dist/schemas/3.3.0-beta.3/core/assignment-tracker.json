@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/assignment-tracker.json",
+  "title": "Assignment Tracker",
+  "description": "A renderer-fired HTTP GET measurement tracker for one creative-to-package assignment, in addition to the creative's own trackers. Uses the pixel_tracker event vocabulary with image-pixel semantics; it is not a click destination, JavaScript include, or advertiser-site conversion pixel. The seller MUST fire every accepted tracker at its declared event or reject the assignment, including unrecognized custom events; silent no-op behavior is not permitted for assignment trackers.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "event": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/pixel-tracking-event.json",
+      "description": "Measurement event, with the same timing as pixel_tracker. An event the seller cannot fire on the assigned format MUST cause assignment rejection."
+    },
+    "custom_event_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required when event is custom; MUST be absent otherwise. The seller must recognize and fire this event or reject the assignment."
+    },
+    "url": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/macro-bearing-url.json",
+      "description": "Tracker URL template, preserved on readback. AdCP macros follow the creative tracker rules without declarations, including existing 3.x compatibility behavior. Creative asset macro_declarations do not transfer to this URL, and assignment tracker support does not promise resolution of any particular token."
+    }
+  },
+  "required": [
+    "event",
+    "url"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "then": {
+        "required": [
+          "custom_event_name"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "custom_event_name"
+          ]
+        }
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "asset_type"
+        ]
+      },
+      {
+        "required": [
+          "method"
+        ]
+      },
+      {
+        "required": [
+          "macro_declarations"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "event": "impression",
+      "url": "https://measurement.example/imp?mb=mb_1&pkg=pkg_1&cb={CACHEBUSTER}"
+    },
+    {
+      "event": "custom",
+      "custom_event_name": "start",
+      "url": "https://measurement.example/start?mb=mb_1"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/reporting-dimension.json",
+  "title": "Reporting Dimension",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Standard breakdown vocabulary that reporting subscriptions select by, stable across sellers (experimental, media_buy.reporting_subscriptions). Sellers map each report definition's native dimensions onto these values. Receivers MUST accept unknown values; a selector naming a value the seller does not map matches no offering.",
+  "type": "string",
+  "x-extensible": true,
+  "x-pattern": "^[a-z][a-z0-9_]*$",
+  "enum": [
+    "package",
+    "creative",
+    "country",
+    "region",
+    "metro"
+  ],
+  "enumDescriptions": {
+    "package": "One row per media-buy package.",
+    "creative": "One row per creative.",
+    "country": "One row per ISO 3166-1 country.",
+    "region": "One row per ISO 3166-2 subdivision.",
+    "metro": "One row per metro area, such as a Nielsen DMA."
+  }
+}

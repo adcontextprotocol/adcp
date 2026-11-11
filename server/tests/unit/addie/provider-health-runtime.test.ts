@@ -7,10 +7,14 @@ import type {
   NormalizedModelEvent,
   PreparedModelInvocation,
 } from '../../../src/addie/model-providers/model-provider.js';
+import { createModelProviderAdapterError } from '../../../src/addie/model-providers/model-provider.js';
+import { GOOGLE_ROUTER_MODEL } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 
 const anthropicCall = vi.fn(() => {
   throw new Error('Anthropic SDK must not be reached while the shared circuit is open');
 });
+
+vi.mock('../../../src/addie/config-version.js', () => ({ getCurrentConfigVersionId: vi.fn(async () => null) }));
 
 vi.mock('@anthropic-ai/sdk', () => {
   class APIError extends Error {}
@@ -68,6 +72,37 @@ class BillingExhaustedProvider implements ModelProvider {
 describe('shared Addie provider circuit', () => {
   beforeEach(() => {
     anthropicCall.mockClear();
+  });
+
+  it('returns recoverable Google billing responses and blocks subsequent streaming dispatch', async () => {
+    const health = new ProviderHealthController();
+    let calls = 0;
+    const provider: ModelProvider = {
+      id: 'google', capabilities,
+      prepare: request => ({ provider: 'google', model: request.model, capabilities, providerRequest: {} }),
+      async *respond() {
+        calls++;
+        throw createModelProviderAdapterError('provider_transport', 402);
+      },
+    };
+    const client = new AddieClaudeClient('unused', undefined, health).forkForGeminiDirect(provider);
+    const options = {
+      uncapped: true, allowedToolNames: [],
+      directToolSession: { visibleToolNames: () => new Set<string>(), selectedToolSetNames: () => [] },
+    };
+    const response = await client.processMessage('hello', undefined, undefined, undefined, options);
+    expect(response).toMatchObject({
+      flag_reason: 'provider_unavailable:billing_exhausted',
+      model_execution: { source: 'local', requested_provider: 'google', requested_model: GOOGLE_ROUTER_MODEL, reason: 'provider_error' },
+    });
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream('hello again', undefined, undefined, options)) {
+      events.push(event);
+    }
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'done', response: { flag_reason: 'provider_unavailable:billing_exhausted' } });
+    expect(calls).toBe(1);
+    expect(anthropicCall).not.toHaveBeenCalled();
   });
 
   it('propagates router billing exhaustion and gates subsequent provider dispatch', async () => {

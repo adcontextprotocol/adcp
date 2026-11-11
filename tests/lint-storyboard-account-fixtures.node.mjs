@@ -289,7 +289,7 @@ test('rc.35 effective account requests exactly match isolated seeded fixtures', 
     let accountEstablished = false;
     for (const phase of storyboard.phases ?? []) {
       for (const step of phase.steps ?? []) {
-        if (step.task === 'sync_accounts') {
+        if (step.task === 'sync_accounts' || step.task === 'request_account') {
           accountEstablished = true;
           continue;
         }

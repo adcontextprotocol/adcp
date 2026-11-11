@@ -195,7 +195,7 @@ digest is intentionally retained).
 
 1. **Advertise the tier.** In `get_adcp_capabilities`, add
    `media_buy.reporting_delivery` with `supported: true`, `configuration_task`,
-   `status_task`, at least one offering, `automated_recovery_window_seconds`,
+   `configuration_tasks` (3.3), `status_task`, at least one offering, `automated_recovery_window_seconds`,
    and `status_retention_days` — and add `media_buy.reporting_delivery` to
    `experimental_features`. Do not set `managed_delivery` or
    `reconciled_billing` until you implement them.
@@ -212,7 +212,9 @@ digest is intentionally retained).
    revision. Every later ledger snapshot must record it, and a
    matching `get_reporting_status` `periods` view must return it, even when the
    first report never arrives. Campaign starts, stops, and configuration
-   generations change *future* obligations, never past ones.
+   generations change *future* obligations, never past ones. A principal-level
+   [reporting subscription](#configuring-through-a-reporting-subscription)
+   produces the same obligations for every account it covers.
 4. **Commit revisions.** When a period's data is final enough for its
    declared finality, record an immutable revision — including zero-row
    periods. Snapshot restatements create superseding revisions. Official
@@ -261,7 +263,15 @@ digest is intentionally retained).
    definition, coverage requirement, and required finality. Do not reconstruct
    historical expectations from a seller's current configuration.
 2. **Derive expected periods.** Calculate the same half-open intervals and
-   `expected_at` timestamps. A mid-period configuration activation begins at
+   `expected_at` timestamps. For a reporting subscription, each visible buy and
+   resolved offering is owed the complete periods of the offering's schedule that
+   start on or after the first boundary at or after the later of the subscription
+   version's `accepted_at` and the account's `authorized_at`, that end after the
+   buy's `confirmed_at`, and that overlap the buy's flight up to its stop time (the
+   earliest of `end_time`, `cancellation.canceled_at`, and `completed_at`, as of
+   each period's `scope_resolved_at`). Subtract the exceptions in
+   `subscription_coverage`, and read `expected_at` timing from each obligation's
+   `offering_id`. A mid-period configuration activation begins at
    the next full boundary; deactivation still owes a period that already
    started.
 3. **Use your own denominator.** For each elapsed expected period, require a
@@ -325,6 +335,45 @@ the returned account and stable identifiers in a `get_reporting_status`
 the summary, run `publish_zero_row`, and read the periods view again. The
 [controller reference](/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe)
 contains the exact request shapes.
+
+## Configuring through a reporting subscription
+
+<Note>
+Experimental in 3.3 under `media_buy.reporting_subscriptions`.
+</Note>
+
+[`sync_accounts`](/docs/accounts/tasks/sync_accounts) configures reporting one
+account at a time, so every new account reports nothing until someone configures
+it. A seller that lists `sync_principal` in `configuration_tasks` and advertises
+`media_buy.reporting_delivery.subscriptions` also accepts principal-level
+[reporting subscriptions](/docs/protocol/sync_principal#reporting-subscriptions):
+
+1. The buyer registers its reporting destinations and one subscription per
+   `feed_purpose` with `scope: { "all_authorized_accounts": true }` in a single
+   `sync_principal` call.
+2. For each account the principal is authorized for, the seller resolves the
+   subscription's selector (feed purpose, period, finality, dimensions) to
+   offerings that the account's products support, and creates obligations with
+   `delivery_config_id` equal to the `subscription_id`. Nothing else in Core
+   changes: obligations, revisions, health, and consumer status work as for an
+   account-level configuration.
+3. The buyer computes coverage without asking. Each confirmed buy it can see
+   through `get_media_buys`, for each resolved offering, is owed the complete
+   periods of the offering's published schedule that start on or after the first
+   boundary at or after the later of the subscription version's `accepted_at` and the
+   account's `authorized_at`, and that end after the buy's `confirmed_at`, so the
+   period in which the buy is confirmed is owed in full. The periods must also
+   overlap the buy's flight up to its stop time (the earliest of `end_time`,
+   `canceled_at`, and `completed_at`), and are never clipped.
+   `get_reporting_status` returns only the exceptions in `subscription_coverage[]`,
+   each removing the periods whose start falls in its `[from, until)` interval. Accounts whose authority the principal lost are listed in
+   `get_principal` instead. See
+   [subscription coverage](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage).
+
+An account-level `reporting_delivery_configs` entry still works during 3.x. The
+caller's own entry takes precedence over the caller's subscriptions for that account
+and `feed_purpose`; another principal's entries never affect them. A subscription with
+`replace_account_configs: true` ends the caller's own entries by cutover, without advancing the account's revision.
 
 ## The ladder above Core
 

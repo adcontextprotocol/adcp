@@ -75,7 +75,7 @@ fixtures:
         - pricing_option_id: "acceptance_policy_cpm"
           pricing_model: "cpm"
           currency: "USD"
-          fixed_price: 12
+          floor_price: 12
 
 phases:
   - id: discover_catalog

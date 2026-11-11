@@ -133,39 +133,52 @@ Version Packages PRs that resolve to `3.2.0-beta.N`. Keep pre mode and its
 changeset pool on `main`; neither belongs on `3.1.x`. Exiting pre mode for 3.2
 GA is a separate, explicitly reviewed release operation.
 
-## Cutting a 3.2 release candidate
+## Cutting a release candidate
 
-The first candidate is `3.2.0-rc.0`. Treat that promotion as a reviewed release
+A minor (or major) line's first candidate is `X.Y.0-rc.0`, promoted from the
+line's final accepted beta: `3.2.0-beta.11` became `3.2.0-rc.0`, and 3.3 goes
+from `3.3.0-beta.N` to `3.3.0-rc.0`. Treat that promotion as a reviewed release
 operation, not as an ordinary Changesets tag switch.
 Changesets increments the existing beta ordinal when its prerelease tag changes,
 which would turn `beta.10` into `rc.11`. The repository's guarded promotion
 script uses semver's phase-change behavior instead. It can fold a reviewed
 pending changeset pool directly into RC.0 without publishing another beta.
 
-After verifying the latest beta's immutable assets, close any superseded beta
-Version Packages PR. Then, from a clean branch based on the resulting `main`:
+After verifying the latest beta's immutable assets, deal with the open beta
+Version Packages PR on `changeset-release/main`. Either leave it open, and the
+release workflow regenerates it in place at `X.Y.0-rc.0` once the marker lands
+(3.2's #7196 was), or close it with `gh pr close <n> --delete-branch`. Closing
+it but leaving the branch stops the next release run ("PR and release ref
+disagree"). Then, from a clean branch based on the resulting `main`:
 
 ```bash
-git switch main
-git pull --ff-only origin main
+git fetch origin
+git switch -c chore/prepare-rc0 origin/main
 npm run promote:rc -- --check
 npm run promote:rc -- --prepare
 git diff --check
 git add .changeset/rc-promotion.json
-git commit -m "chore(release): prepare 3.2.0-rc.0"
+git commit -m "chore(release): prepare X.Y.0-rc.0"
 ```
 
-Open and merge that state-only commit as its own PR. The release workflow sees
-the marker, creates the Version Packages PR at `3.2.0-rc.0`, and generates and
+`--check` and `--prepare` print the target version and the pending changesets
+that fold into it. Open and merge that state-only commit as its own PR. Any
+changeset that reaches `main` after `--prepare`, including one in the same PR,
+invalidates the marker: delete it and run `--prepare` again on the new head.
+From the marker PR's merge until the RC release finishes publishing, merge
+nothing else into `main`. The release workflow sees
+the marker, creates the Version Packages PR at `X.Y.0-rc.0`, and generates and
 signs the normal schema, compliance, and protocol artifacts in GitHub Actions.
 That generated PR must receive human approval on its final head SHA. Do not run
 `changeset version` for this one phase-transition, and do not hand-edit the
 package version, lockfile, prerelease state, marker, or generated artifacts.
 
-The script is intentionally one-way and 3.2-specific: it requires `beta.N` and
-beta pre mode, computes `3.2.0-rc.0`, and records the exact pending changeset
-filenames and SHA-256 digests in the reviewed marker. The Version Packages
-workflow refuses any changed or additional changeset, consumes the reviewed
+The script is intentionally one-way: it reads the line from `package.json`,
+requires an `X.Y.0-beta.N` version and beta pre mode, computes `X.Y.0-rc.0`, and
+records the exact pending changeset filenames and SHA-256 digests in the
+reviewed marker. The Version Packages
+workflow refuses any changed, added or removed changeset, and any marker that
+does not name the current beta and its rc.0. It consumes the reviewed
 pool through Changesets, retitles that generated changelog section to RC.0,
 updates the package and lockfile through `npm version`, and switches pre mode to
 `rc` before building the release artifacts. With an empty pool it adds the
@@ -174,7 +187,7 @@ and the normal Version Packages flow to produce `rc.1`, `rc.2`, and so on.
 
 Before merging the RC Version Packages PR, confirm:
 
-- the package and lockfile resolve to `3.2.0-rc.N`, and `.changeset/pre.json`
+- the package and lockfile resolve to `X.Y.0-rc.N`, and `.changeset/pre.json`
   still has `"mode": "pre"` and `"tag": "rc"`;
 - the changelog contains only changes intended for the candidate;
 - versioned schemas, compliance bundles, protocol tarball, checksum,
@@ -182,13 +195,13 @@ Before merging the RC Version Packages PR, confirm:
 - the compact lifecycle storyboards and training-agent profile tests pass;
 - the TypeScript, Python, Go, and Java SDK disposition is recorded, with any
   unsupported SDK called out rather than silently implied ready; and
-- open 3.2 milestone items are either closed or explicitly moved out of the
+- open `X.Y.0` milestone items are either closed or explicitly moved out of the
   release by their decision owner.
 
 After merge, verify the exact immutable release rather than a moving alias:
 
 ```bash
-VERSION=3.2.0-rc.0
+VERSION=3.3.0-rc.0
 
 git fetch origin --tags
 git rev-parse "v$VERSION^{}"
@@ -199,18 +212,23 @@ curl -fsSI "https://adcontextprotocol.org/protocol/$VERSION.tgz"
 ```
 
 Also confirm the release is marked prerelease, has exactly the tarball and
-three sidecars, the `3.2-rc` docs snapshot lands, and the public training agent
-advertises and executes the exact RC version. Subsequent fixes get ordinary
+three sidecars, the `X.Y-rc` docs snapshot lands (`release-docs.yml` derives
+the label from the tag, so `v3.3.0-rc.0` adds a `3.3-rc` selector), and the
+public training agent advertises and executes the exact RC version. The hosted
+agent serves one pinned preview, `TRAINING_AGENT_HOSTED_PREVIEW` in
+`server/src/training-agent/candidate-version.ts`, and it must be the
+prerelease the installed `@adcp/sdk` negotiates. Move it to `X.Y-rc.N` in the
+PR that adopts an SDK that negotiates that RC. Subsequent fixes get ordinary
 changesets and advance to the next `rc.N` through the Version Packages PR.
 
-For 3.2 stable, use a separate reviewed state change:
+For the line's stable release, use a separate reviewed state change:
 
 ```bash
 npx changeset pre exit
 ```
 
 The resulting Version Packages PR removes the prerelease suffix. Do not
-re-enter another tag before that stable versioning step. 3.2 GA ships as
+re-enter another tag before that stable versioning step. 3.2 GA shipped as
 **`3.2.1`**, not `3.2.0` (see the next section). Follow the ordered GA runbook
 in [`.agents/shortcuts/cut-minor-ga.md`](.agents/shortcuts/cut-minor-ga.md):
 freeze gates, pre-exit PR contents, the Version Packages audit, CDN worker
@@ -455,6 +473,21 @@ supersession or release-status change, a publication-machinery change,
 rewritten history, or a remote/Git failure. Approval, merge provenance,
 signature verification and the byte-for-byte immutable-object checks are
 unchanged.
+
+On `main`, an ordinary push that is not a Version Packages merge skips the
+storyboard matrix in `verify-release` (`generation_only`). Such a push only
+regenerates the Draft Version Packages PR, which publishes nothing. That PR's
+storyboard run happens in PR CI once it is marked ready (Drafts skip the
+matrix), and publication requires that run (below) or full verification at
+the release merge. The release job refuses to publish if a push it finds
+committing release artifacts was classified `generation_only`. Without the
+skip, generation waited about two hours behind verification and was staled by
+the next unrelated merge, because generation still requires exact current
+`main`. `main`'s own storyboard health is covered by
+`training-agent-storyboards.yml` on storyboard-relevant pushes. Generation
+still builds and signs a candidate tarball before any storyboard run; a
+superseded candidate is never published, and its Sigstore signature attests
+the producing workflow, not storyboard verification.
 
 On `main`, a Version Packages merge also skips re-running the storyboard
 matrix in `verify-release` when it is a provenance-verified release merge.

@@ -95,7 +95,8 @@ describe('flexible-window availability discovery (training agent)', () => {
 
   describe('get_adcp_capabilities', () => {
     it('declares media_buy.availability_horizon: true', async () => {
-      const caps = await callTool(server, 'get_adcp_capabilities', {});
+      // A 3.2 field: an unpinned (3.0) caller does not get it (#8487).
+      const caps = await callTool(server, 'get_adcp_capabilities', { adcp_version: '3.2' });
       expect((caps as { media_buy: { availability_horizon?: boolean } }).media_buy.availability_horizon).toBe(true);
     });
   });

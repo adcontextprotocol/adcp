@@ -13,7 +13,8 @@
         "format": "uri"
       },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 32
     },
     "accepted_proof_formats": {
       "type": "array",
@@ -23,7 +24,8 @@
         "format": "uri"
       },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 32
     },
     "supported_delivery_methods": {
       "type": "array",
@@ -52,7 +54,8 @@
               "format": "uri"
             },
             "minItems": 1,
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-max-items-4.0": 32
           },
           "proof_formats": {
             "type": "array",
@@ -62,7 +65,8 @@
               "format": "uri"
             },
             "minItems": 1,
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-max-items-4.0": 32
           },
           "credential_origins": {
             "type": "array",
@@ -73,7 +77,8 @@
               "pattern": "^https://[^/?#@]+$"
             },
             "minItems": 1,
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-max-items-4.0": 32
           },
           "resolvers": {
             "type": "array",
@@ -102,7 +107,8 @@
               "required": ["resolver_id", "url", "authentication"],
               "additionalProperties": false
             },
-            "minItems": 1
+            "minItems": 1,
+            "x-max-items-4.0": 8
           },
           "ext": {
             "$ref": "/schemas/core/ext.json"
@@ -111,7 +117,8 @@
         "required": ["issuer"],
         "additionalProperties": false
       },
-      "minItems": 1
+      "minItems": 1,
+      "x-max-items-4.0": 32
     },
     "accepted_verifiers": {
       "type": "array",
@@ -131,7 +138,8 @@
               "format": "uri"
             },
             "minItems": 1,
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-max-items-4.0": 32
           },
           "proof_formats": {
             "type": "array",
@@ -140,7 +148,8 @@
               "format": "uri"
             },
             "minItems": 1,
-            "uniqueItems": true
+            "uniqueItems": true,
+            "x-max-items-4.0": 32
           },
           "ext": {
             "$ref": "/schemas/core/ext.json"
@@ -149,7 +158,8 @@
         "required": ["agent_url"],
         "additionalProperties": false
       },
-      "minItems": 1
+      "minItems": 1,
+      "x-max-items-4.0": 16
     },
     "max_embedded_credential_bytes": {
       "type": "integer",

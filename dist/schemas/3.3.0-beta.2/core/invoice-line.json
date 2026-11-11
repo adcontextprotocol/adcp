@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/invoice-line.json",
+  "title": "Invoice Line",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "One itemised line of an invoice: the media buy (and optionally package) it bills, and the reporting revisions and adjustments that amount is drawn from. Reference only, never settles: a line identifies which reporting an invoice amount covers and does not create, approve, or settle an invoice, calculate tax or FX, or determine payment obligations. Experimental in AdCP 3.3 under the account.invoice_lines feature id.",
+  "type": "object",
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Seller's identifier of the media buy this line bills.",
+      "x-entity": "media_buy"
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Package within the media buy this line bills. Omit when the line covers the media buy as a whole.",
+      "x-entity": "package"
+    },
+    "reporting_revision_ids": {
+      "type": "array",
+      "description": "Official reporting revisions this line bills from. Each MUST belong to this line's media_buy_id (and package_id when present) and MUST be an official revision (enums/reporting-finality.json); a snapshot revision is provisional and is not invoice-addressable. A line MAY carry both revisions and adjustments; reporting_revision_ids and reporting_adjustment_ids are opaque references from the media_buy.reporting_delivery surface, and the seller's billing system, not this schema, defines how they net into billed_quantity and amount.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+        "x-entity": "reporting_revision"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "reporting_adjustment_ids": {
+      "type": "array",
+      "description": "Reporting adjustments this line applies (each MUST belong to this line's media_buy_id and package_id when present), for post-official corrections billed in a later period than the revision they adjust.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+        "x-entity": "reporting_adjustment"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "billed_quantity": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/reporting-control-total.json",
+      "description": "Quantity this line bills, in the control-total value and unit shape (for example impressions or spots). The name matches a control total of the referenced revisions' pinned report definition, and all referenced revisions share one report definition when billed_quantity is present. The value MUST be non-negative; direction is carried by invoice_kind."
+    },
+    "amount": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Line amount in the response currency. Non-negative on every line; on a credit note the invoice_kind carries the sign. The sum of line amounts SHOULD NOT exceed the invoice amount; the remainder is unitemised tax, fees, or other charges."
+    }
+  },
+  "required": [
+    "media_buy_id"
+  ],
+  "additionalProperties": true
+}

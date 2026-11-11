@@ -51,6 +51,10 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
+// The canonical Product's `not`, as the projection serializes it.
+const CANONICAL_PRODUCT_PROHIBITION = JSON.stringify({
+  not: JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, 'core', 'canonical-product.json'), 'utf8')).not,
+}).slice(1, -1);
 // The generated profiles describe the active surface of the package's release
 // line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
 // manifest declares via added_in; once the line has a stable release it is the
@@ -121,8 +125,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // measure 468,555 bytes / 457.57 KiB, within the existing 462 KiB ceiling.
 // Product service commitments (#8408) add report/poll request shapes. The
 // media-buy context measures 473,582 bytes / 462.48 KiB; bound it at 463 KiB.
+// 3.3.0-beta.1 window: the queued account, pricing, seller-terms and creative
+// PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
+// top of main). Bound at 476 KiB once for the window; resume per-PR bounding
+// after the beta.1 cut.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 463,
+  'media-buy': 476,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -173,7 +181,27 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // capabilities. After shortening repeated SLA prose, the controller measures
 // 1_313_240 bytes; bound compilation at 1_315_000. Every fixture still compiles;
 // the independent 4 MiB schema and 22 MiB projection budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_315_000;
+// performance_standard.metric_id (#8394) reaches the controller through the
+// seeded Product's canonical performance standards; the controller measures
+// 1_315_463 bytes, bound at 1_316_000.
+// Creative approval startup policy (#8479) adds the package gate, capability
+// and scoped control action to the controller closure. After condensing shared
+// field prose, it measures 1_318_217 bytes; bound it at 1_320_000. The 4 MiB
+// schema and 22 MiB projection caps and all fixture parity checks remain.
+// 3.3.0-beta.1 window: set the bound once for the decided beta.1 queue
+// instead of per PR. Queued work measured on top of 1_318_217: price
+// adjustments (#7955) 1_326_489, provider-initiated signals (#8044) 1_324_027,
+// signal pricing groups (#8058) 1_321_133, capabilities bounds (#8505) about
+// +2.2 KB, plus the account and creative PRs. Bound at 1_375_000 for the
+// window; resume per-PR bounding after the beta.1 cut, and track shrinking
+// the controller closure separately.
+// 3.3.0-beta.4: the reset_state scenario and the set_account_timezone result
+// (#8717) reach the controller on top of the beta.4 coverage fixes (#8718,
+// trimmed to 1_374_852); the controller measures 1_375_833 bytes, bound at
+// 1_376_000.
+// Experimental match keys (#8375) reach the seeded Product through
+// Product.identity.match_keys: 1_375_833 → 1_383_804 bytes. Bound at 1_384_000.
+const PARITY_COMPILE_LIMIT = 1_384_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1089,7 +1117,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
-      assert.doesNotMatch(output, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
+      // The canonical Product forbids the legacy Product's keys by name;
+      // forbidding them does not expose them.
+      const exposed = output.replaceAll(CANONICAL_PRODUCT_PROHIBITION, '');
+      assert.doesNotMatch(exposed, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
         `${toolName} output must not expose the legacy Product graph`);
     }
   }
@@ -1155,6 +1186,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     },
   };
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',
@@ -1164,6 +1196,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     }],
   }), true, JSON.stringify(validateProjectedListProducts.errors));
   assert.equal(validateProjectedListProducts({
+    status: 'completed',
     outcome: 'listed',
     feed_version: 'feed-1',
     cache_scope: 'public',
@@ -1231,7 +1264,12 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // to 21_021_886 bytes, so the cap moves to 22 MiB. Experimental
   // list_collections and the collection card webhooks (#8183) take it from
   // 21_151_775 to 21_294_989 bytes, still under the cap.
-  assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // request_account change mode (#8543) puts the Account snapshot on resolved
+  // requests, reached from request_account and list_accounts (23,090,968 bytes
+  // measured), so the cap moves to 23 MiB. Composing the protocol envelope
+  // into every task response (every response bundles the envelope) also
+  // grows it; the 23 MiB cap holds both.
+  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
@@ -1593,72 +1631,77 @@ test('rewriteEmbeddedResourceRefs unit: root-$id collision causes projection to 
   }
 });
 
-test('comply-test-controller projected schema uses embedded-resource refs, not root-anchored pointers', () => {
-  // Regression for #8041: cross-definition refs within bundled sub-schemas must
-  // use each embedded resource's own canonical $id URL, not the long
-  // rootId#/$defs/key form. This ensures additive Product growth (new fields on
-  // product.json) adds bytes only to the single shared definition and does not
-  // balloon ref strings throughout the schema.
-  const schemaPath = path.join(PROJECTION_DIR, 'compliance/comply-test-controller-request.json');
-  assert.ok(fs.existsSync(schemaPath), 'comply-test-controller projected schema must exist');
-  const projected = readJson(schemaPath);
+for (const [relativePath, expectedDefinition] of [
+  ['compliance/comply-test-controller-request.json', 'external:core/product.json'],
+  ['media-buy/get-products-request.json', 'external:media-buy/package-forecast-input.json'],
+  ['media-buy/get-products-response.json', 'external:core/product.json'],
+]) {
+  test(`${relativePath} uses embedded-resource refs without long root-anchored pointers`, () => {
+    // Regression for #8041: cross-definition refs within bundled sub-schemas must
+    // use each embedded resource's own canonical $id URL, not the long
+    // rootId#/$defs/key form. This ensures additive Product growth (new fields on
+    // product.json) adds bytes only to the single shared definition and does not
+    // balloon ref strings throughout the schema.
+    const schemaPath = path.join(PROJECTION_DIR, relativePath);
+    assert.ok(fs.existsSync(schemaPath), `${relativePath} projected schema must exist`);
+    const projected = readJson(schemaPath);
 
-  const rootId = projected.$id;
-  assert.ok(typeof rootId === 'string' && rootId.startsWith('https://'), 'projected schema has absolute $id');
+    const rootId = projected.$id;
+    assert.ok(typeof rootId === 'string' && rootId.startsWith('https://'), 'projected schema has absolute $id');
 
-  // No cross-def ref should use the root schema URL as a base (long-pointer form)
-  const rootRefPrefix = `${rootId}#/$defs/`;
-  function walkAllRefs2(value, visit) {
-    if (!value || typeof value !== 'object') return;
-    if (typeof value.$ref === 'string') visit(value.$ref);
-    for (const child of Object.values(value)) walkAllRefs2(child, visit);
-  }
-  const longRefs = [];
-  walkAllRefs2(projected, ref => { if (ref.startsWith(rootRefPrefix)) longRefs.push(ref); });
-  assert.deepEqual(longRefs, [], `${longRefs.length} root-anchored cross-def refs remain; expected 0`);
+    // No cross-def ref should use the root schema URL as a base (long-pointer form)
+    const rootRefPrefix = `${rootId}#/$defs/`;
+    function walkAllRefs2(value, visit) {
+      if (!value || typeof value !== 'object') return;
+      if (typeof value.$ref === 'string') visit(value.$ref);
+      for (const child of Object.values(value)) walkAllRefs2(child, visit);
+    }
+    const longRefs = [];
+    walkAllRefs2(projected, ref => { if (ref.startsWith(rootRefPrefix)) longRefs.push(ref); });
+    assert.deepEqual(longRefs, [], `${longRefs.length} root-anchored cross-def refs remain; expected 0`);
 
-  const defs = projected.$defs || {};
+    const defs = projected.$defs || {};
 
-  // Product.json is present as a shared def with its canonical $id intact.
-  // compactDraft07Schema deduplicates by resolved file path, so each external
-  // schema appears at most once; the meaningful invariant is that the product
-  // graph is present and its $id is preserved (no stripping by the rewrite).
-  const productKey = 'external:core/product.json';
-  assert.ok(Object.hasOwn(defs, productKey), 'product.json is a shared def in $defs');
-  const productDef = defs[productKey];
-  assert.ok(
-    typeof productDef.$id === 'string' && productDef.$id.startsWith('https://'),
-    'product.json def retains its canonical $id',
-  );
-  assert.ok(
-    typeof productDef.properties === 'object' || typeof productDef.allOf !== 'undefined',
-    'product.json def contains its full schema (not a stub)',
-  );
-
-  // Cross-def refs must now be embedded-resource canonical $id URLs
-  const embeddedIds = new Set(
-    Object.values(defs)
-      .filter(d => d && typeof d.$id === 'string')
-      .map(d => d.$id.split('#')[0])
-  );
-  const allEmbeddedRefs = [];
-  walkAllRefs2(projected, ref => {
-    const base = ref.split('#')[0];
-    if (base.startsWith('https://') && embeddedIds.has(base)) allEmbeddedRefs.push(ref);
-  });
-  assert.ok(
-    allEmbeddedRefs.length > 100,
-    `expected >100 embedded-resource refs, saw ${allEmbeddedRefs.length}`,
-  );
-
-  // All $id values are preserved on every def (no stripping)
-  for (const [key, def] of Object.entries(defs)) {
+    // The shared product/package graph retains its canonical $id.
+    // compactDraft07Schema deduplicates by resolved file path, so each external
+    // schema appears at most once; the meaningful invariant is that the product
+    // graph is present and its $id is preserved (no stripping by the rewrite).
+    assert.ok(Object.hasOwn(defs, expectedDefinition), `${expectedDefinition} is a shared def in $defs`);
+    const productDef = defs[expectedDefinition];
     assert.ok(
-      !key.startsWith('external:') || (def && typeof def.$id === 'string'),
-      `external def ${key} must retain its $id`,
+      typeof productDef.$id === 'string' && productDef.$id.startsWith('https://'),
+      `${expectedDefinition} retains its canonical $id`,
     );
-  }
-});
+    assert.ok(
+      typeof productDef.properties === 'object' || typeof productDef.allOf !== 'undefined',
+      `${expectedDefinition} contains its full schema (not a stub)`,
+    );
+
+    // Cross-def refs must now be embedded-resource canonical $id URLs
+    const embeddedIds = new Set(
+      Object.values(defs)
+        .filter(d => d && typeof d.$id === 'string')
+        .map(d => d.$id.split('#')[0])
+    );
+    const allEmbeddedRefs = [];
+    walkAllRefs2(projected, ref => {
+      const base = ref.split('#')[0];
+      if (base.startsWith('https://') && embeddedIds.has(base)) allEmbeddedRefs.push(ref);
+    });
+    assert.ok(
+      allEmbeddedRefs.length > 100,
+      `expected >100 embedded-resource refs, saw ${allEmbeddedRefs.length}`,
+    );
+
+    // All $id values are preserved on every def (no stripping)
+    for (const [key, def] of Object.entries(defs)) {
+      assert.ok(
+        !key.startsWith('external:') || (def && typeof def.$id === 'string'),
+        `external def ${key} must retain its $id`,
+      );
+    }
+  });
+}
 
 test('generated production profile exposes the active 3.2 surface without compliance annotations', () => {
   assert.ok(fs.existsSync(PRODUCTION_PROFILE_DIR), 'production profile is missing');

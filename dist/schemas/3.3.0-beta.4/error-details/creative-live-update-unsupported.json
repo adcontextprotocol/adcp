@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/error-details/creative-live-update-unsupported.json",
+  "title": "Creative Live Update Unsupported Details",
+  "description": "Typed details for CREATIVE_LIVE_UPDATE_UNSUPPORTED. Names the kinds of change the seller refused on a live creative and the packages that make it live, so the buyer can sync the change as a new creative_id and replace it on those packages.",
+  "type": "object",
+  "properties": {
+    "refused_changes": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/creative-change-kind.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Change kinds in the item that the seller does not apply in place to this live creative."
+    },
+    "live_package_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "package"
+      },
+      "uniqueItems": true,
+      "description": "Packages in the caller's account on which the creative is live. These are the packages on which to replace it."
+    }
+  },
+  "required": [
+    "refused_changes"
+  ],
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

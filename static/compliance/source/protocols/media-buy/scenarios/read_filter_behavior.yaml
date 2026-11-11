@@ -71,7 +71,7 @@ fixtures:
       pricing_option_id: "read_filter_pricing"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 10
+      floor_price: 10
   creatives:
     - creative_id: "read_filter_active_creative"
       status: "approved"
@@ -94,6 +94,7 @@ fixtures:
         - package_id: "read_filter_active_package"
           product_id: "read_filter_product"
           pricing_option_id: "read_filter_pricing"
+          bid_price: 15
           budget: 1000
           creative_assignments: ["read_filter_active_creative"]
     - media_buy_id: "read_filter_paused_buy"
@@ -106,6 +107,7 @@ fixtures:
         - package_id: "read_filter_paused_package"
           product_id: "read_filter_product"
           pricing_option_id: "read_filter_pricing"
+          bid_price: 15
           budget: 1000
           creative_assignments: ["read_filter_paused_creative"]
 

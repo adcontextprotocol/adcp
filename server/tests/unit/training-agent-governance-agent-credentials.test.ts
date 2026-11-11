@@ -144,7 +144,7 @@ async function approvedIntent(planId: string, target = SELLER): Promise<string> 
       idempotency_key: randomUUID(),
     },
   });
-  expect(intent.structured.status ?? intent.structured.verdict, JSON.stringify(intent.json)).toBe('approved');
+  expect(intent.structured.verdict, JSON.stringify(intent.json)).toBe('approved');
   return intent.structured.governance_context as string;
 }
 
@@ -191,7 +191,7 @@ describe('governance agent credentials (adcp#7758)', () => {
     expect(registeredUrl).toBe(base);
     const approved = await callTool(registeredUrl, credential, 'check_governance', executionCheck(context));
     expect(approved.error, JSON.stringify(approved.json)).toBeUndefined();
-    expect(approved.structured.status ?? approved.structured.verdict).toBe('approved');
+    expect(approved.structured.verdict).toBe('approved');
     expect(approved.structured.check_type).toBe('execution');
     const purchase = claimsOf(approved.structured.governance_context as string);
     expect(purchase).toMatchObject({ iss: registeredUrl, aud: SELLER, caller: SELLER, phase: 'purchase' });

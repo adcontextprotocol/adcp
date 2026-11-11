@@ -1,0 +1,310 @@
+id: error_compliance_signals
+version: "1.0.1"
+title: "Error handling — signals protocol"
+category: error_compliance
+summary: "Checks discovery error codes, context echo, and protocol versions for owned and marketplace signals agents."
+track: error_handling
+requires:
+  - controller
+
+required_tools:
+  - get_signals
+
+narrative: |
+  Every signals agent must handle invalid discovery input gracefully. This
+  baseline uses get_signals for owned agents and marketplaces alike. Activation
+  negatives live in signal_marketplace/error_compliance, selected by the
+  signal-marketplace specialism. Exposing optional activation without that
+  specialism does not add activation coverage to this baseline.
+
+  AdCP defines three compliance levels for error responses:
+  - L1: isError flag set on the MCP response
+  - L2: JSON text fallback with adcp_error object in content
+  - L3: structuredContent.adcp_error binding (full compliance)
+
+  This storyboard sends intentionally bad discovery input and validates error
+  codes and context echo. The error structure and transport requirements above
+  remain normative; these executable checks do not independently validate every
+  message/recovery field or capture the raw MCP isError flag.
+
+  Context echo is required on error responses — the correlation ID is even more
+  important for error diagnosis than for success cases. Every error response must
+  include the caller's context object unchanged. This contract applies to
+  application-level errors (your tool handler returns an error). MCP transport
+  errors (unknown tool, malformed request) are outside the agent's control and do
+  not carry AdCP context.
+
+agent:
+  interaction_model: owned_signals
+  capabilities: []
+  examples:
+    - "Any AdCP signals agent (owned or marketplace)"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  controller_seeding: true
+  description: |
+    No special prerequisites. The storyboard sends intentionally invalid requests
+    to test error handling.
+  test_kit: "test-kits/nova-motors.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_1929356d9412"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-error_compliance_signals-2d7e8fc7"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_live_710a6531f35c"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-error_compliance_signals-2d7e8fc7"
+        billing: "operator"
+        status: "active"
+        sandbox: false
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports the
+      signals protocol before testing error handling.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring signals in supported_protocols, confirming
+          the agent exposes get_signals. Activation support is not required.
+        sample_request:
+          context:
+            correlation_id: "error_compliance_signals--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance_signals--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: error_structure
+    title: "Discovery error codes and context"
+    narrative: |
+      A malformed discovery request must return an error code and echo context.
+      Error producers still owe the full version-appropriate error structure.
+
+    steps:
+      - id: validate_error_shape
+        title: "Check discovery error code and context"
+        narrative: |
+          Trigger an error and inspect the response structure. The adcp_error object
+          must have code, message, and recovery. Optional fields include retry_after,
+          field, and suggestion. The shared schema remains permissive for legacy input,
+          but omission of recovery is a 3.2 producer conformance failure.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: error_codes
+        expect_error: true
+        negative_path: schema_invalid
+        sample_request_skip_schema: true
+        stateful: false
+        expected: |
+          Error response with:
+          - code: INVALID_REQUEST or VALIDATION_ERROR
+          - message: human-readable description
+          - recovery: transient, correctable, or terminal (required for a 3.2 producer)
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
+          # A numeric spec is invalid for every signals interaction model.
+          signal_spec: 123
+          context:
+            correlation_id: "error_compliance_signals--validate_error_shape"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Response surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance_signals--validate_error_shape"
+            description: "Context correlation_id returned unchanged"
+
+  - id: version_negotiation
+    title: "Protocol version validation"
+    narrative: |
+      Every AdCP request may carry adcp_major_version. Agents validate against their
+      declared supported_major_versions (from get_adcp_capabilities) and return
+      VERSION_UNSUPPORTED when the buyer asks for a version the agent does not speak.
+      When omitted, the agent assumes its highest supported version — so version
+      validation only fires when the buyer explicitly declares an unsupported number.
+
+    steps:
+      - id: unsupported_major_version
+        title: "Reject unsupported adcp_major_version"
+        narrative: |
+          Send a get_signals request asserting a future major version the agent
+          cannot support. The agent must reject with VERSION_UNSUPPORTED and
+          indicate which versions are supported so the buyer can retry.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: error_handling
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with:
+          - code: VERSION_UNSUPPORTED
+          - recovery: correctable
+          - message referencing the buyer's requested version and the agent's supported set
+
+        sample_request:
+          adcp_major_version: 99
+          signal_spec: "Version negotiation probe"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
+
+          context:
+            correlation_id: "error_compliance_signals--unsupported_major_version"
+        validations:
+          - check: error_code
+            allowed_values: ["VERSION_UNSUPPORTED"]
+            description: "Error code is VERSION_UNSUPPORTED"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance_signals--unsupported_major_version"
+            description: "Context correlation_id returned unchanged"
+
+      - id: supported_major_version
+        title: "Accept supported adcp_major_version"
+        narrative: |
+          Send a get_signals request with the current major version (3). The agent
+          must accept the request normally — version negotiation only rejects
+          mismatched versions, not explicit declarations of a supported one.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signals_flow
+        stateful: false
+        expected: |
+          Return signals normally — adcp_major_version: 3 is a supported version.
+
+        sample_request:
+          adcp_major_version: 3
+          signal_spec: "Adults interested in electric vehicles"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
+
+          context:
+            correlation_id: "error_compliance_signals--supported_major_version"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance_signals--supported_major_version"
+            description: "Context correlation_id returned unchanged"
+
+  - id: error_transport
+    title: "Discovery error context echo"
+    narrative: |
+      Check that a discovery rejection preserves the caller context. Raw MCP
+      flags and content bindings require separate transport capture evidence.
+
+    steps:
+      - id: validate_transport_binding
+        title: "Check context on a discovery rejection"
+        narrative: |
+          Send a wrong-typed discovery spec and check the normalized error code
+          and context echo. This step does not independently capture MCP isError.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: error_transport
+        expect_error: true
+        negative_path: schema_invalid
+        sample_request_skip_schema: true
+        stateful: false
+        expected: |
+          A structured rejection with a typed error code and unchanged context.
+
+        sample_request:
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
+          # A numeric spec is invalid for every signals interaction model.
+          signal_spec: 123
+          context:
+            correlation_id: "error_compliance_signals--validate_transport_binding"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Discovery rejection surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object even on errors"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "error_compliance_signals--validate_transport_binding"
+            description: "Context correlation_id returned unchanged"

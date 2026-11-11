@@ -78,14 +78,12 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return products with pricing_options. At least one product should advertise
-          measurement support in the response.
+          Return at least one purchasable product with pricing_options. The product need
+          not accept measurement terms: this scenario verifies unsupported-term rejection.
         sample_request:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_rejected_discover_products_get_products_brief"
           buying_mode: "brief"
-          brief: "Premium video inventory with measurement guarantees. Q3 flight, $50K."
-          filters:
-            is_fixed_price: true
+          brief: "Available advertising inventory for an outdoor lifestyle campaign. Q3 flight, $50K."
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -105,8 +103,8 @@ phases:
             path: "products[0].product_id"
             description: "At least one product returned"
           - check: field_present
-            path: "products[0].pricing_options[0].fixed_price"
-            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "Product exposes a selectable pricing option; auction and fixed pricing are both valid"
 
   - id: reject_terms
     title: "Seller rejects unworkable terms"
@@ -125,6 +123,8 @@ phases:
         comply_scenario: create_media_buy
         expect_error: true
         negative_path: payload_well_formed
+        # Prepare valid auction pricing before testing the measurement-terms rejection.
+        enrich_request: true
         stateful: false
         expected: |
           Reject with:

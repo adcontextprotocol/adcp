@@ -37,6 +37,12 @@
       "symbol": "list_authorized_properties",
       "path": "docs/protocol/get_adcp_capabilities.mdx",
       "reason": "Historical v2 task retained only in migration guidance after removal from v3."
+    },
+    {
+      "family": "error_code",
+      "symbol": "SUBSCRIPTIONS_REQUIRE_ACCOUNT_ID_KEY",
+      "path": "docs/protocol/sync_principal.mdx",
+      "reason": "Seller SDK configuration error frozen in the reporting-subscription test vectors' error-codes.json, raised locally before anything is served; not a wire error code, so it is not in the protocol error catalog."
     }
   ]
 }

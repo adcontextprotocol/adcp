@@ -17,9 +17,11 @@
           "$ref": "/schemas/core/geo-place-type.json"
         },
         "minItems": 1,
-        "uniqueItems": true
+        "uniqueItems": true,
+        "x-max-items-4.0": 32
       },
-      "minProperties": 1
+      "minProperties": 1,
+      "x-max-properties-4.0": 8
     },
     "catalog": {
       "$ref": "/schemas/core/geo-place-catalog-capability.json"

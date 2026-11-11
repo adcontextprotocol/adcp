@@ -1,12 +1,14 @@
 'use strict';
 
+require('./helpers/ajv-maglev-guard.cjs');
+
 // Reproducible security qualification for the ACTUAL reporting storyboards.
 // Uses only the SDK's public runner/profile/transport APIs. All MCP I/O is
 // intercepted by trustedFetchFn; no private client seams or network writes.
 // Run: node --test --test-timeout=30000 tests/optional-product-reporting-public.test.cjs
 // Executes production caller preparation for actual full and standalone source.
 // Both configured and option-omitting repository callers use authored sandbox identity;
-// a bare SDK control retains the separately disclosed upstream default (issue3381).
+// The bare SDK also preserves the authored identity without a run-brand override.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -44,6 +46,10 @@ function product(kind) {
 
 async function execute(kind, { adversarialAccount = false, broken, configureBrand = true, rawCaller = false, minSpend, standalone = false, decoy = false, hostDenied = false, suppliedState = false, callerContext, runOverrides = {}, localRejection = false, discoveryFailure = false, failPreflightOnce = false, prepareOnly = false, hostedBudget = false, responsePaddingBytes = 0 } = {}) {
   const doc = loadStoryboardFile(path.join(SOURCE, FILES[kind]));
+  if (broken === 'brand') {
+    const create = doc.phases.flatMap(phase => phase.steps).find(step => step.task === 'create_media_buy');
+    create.sample_request.brand = { domain: 'foreign.example' };
+  }
   const expectedAccount = structuredClone(doc.context.sandbox_account);
   const offer = product(kind);
   if (minSpend !== undefined) offer.pricing_options[0].min_spend_per_package = minSpend;
@@ -105,8 +111,7 @@ async function execute(kind, { adversarialAccount = false, broken, configureBran
       } else if (name === 'create_media_buy') {
         assert.deepEqual(request.account, expectedAccount, 'untrusted controller data cannot downgrade the purchase account');
         if (!configureBrand && request.brand?.domain !== doc.context.sandbox_brand.domain) {
-          // A real seller may correctly reject a brand/account mismatch. Keep
-          // the SDK's authored-brand override visible as a qualification hold.
+          // A real seller correctly rejects a brand/account mismatch.
           return new Response(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {
             isError: true, content: [{ type: 'text', text: 'Brand does not match the qualified sandbox account' }],
           } }), { headers: { 'content-type': 'application/json' } });
@@ -177,16 +182,27 @@ async function execute(kind, { adversarialAccount = false, broken, configureBran
   assert.ok(methods.includes('initialize') && methods.includes('tools/call'), 'the real public MCP transport executes');
   assert.equal(calls.some(call => call.task === 'sync_accounts'), false, 'seeded sandbox setup needs no mutable account-sync extraction');
   const terminalPreparation = result.fixture_resolutions?.some(record => record.status === 'failed' || record.status === 'unsatisfied');
-  assert.deepEqual(calls.filter(call => call.task === 'comply_test_controller' && call.request.scenario !== 'list_scenarios').map(call => call.request.scenario), !terminalPreparation && (!rawCaller || configureBrand) && !standalone ? SCENARIOS : ['seed_account'], JSON.stringify(result));
+  assert.deepEqual(calls.filter(call => call.task === 'comply_test_controller' && call.request.scenario !== 'list_scenarios').map(call => call.request.scenario), !terminalPreparation && !standalone && broken !== 'brand' ? SCENARIOS : ['seed_account'], JSON.stringify(result));
   return { result, calls };
 }
 
 for (const kind of ['format', 'time']) {
-  test(`${kind}: qualification counterexample preserves the public caller's default-brand mismatch`, async () => {
+  test(`${kind}: the public SDK preserves the authored brand without a run-brand override`, async () => {
     const { result, calls } = await execute(kind, { configureBrand: false, rawCaller: true });
+    assert.equal(result.overall_passed, true, JSON.stringify(result));
+    const create = calls.find(call => call.task === 'create_media_buy').request;
+    assert.deepEqual(create.brand, create.account.brand);
+    assert.equal(create.brand.domain, 'acmeoutdoor.example');
+    assert.ok(result.phases.flatMap(phase => phase.steps).some(step => step.step_id === 'create_buy' && step.passed && !step.skipped));
+  });
+
+  test(`${kind}: a mismatched authored brand is preserved and refused before delivery simulation`, async () => {
+    const { result, calls } = await execute(kind, { configureBrand: false, rawCaller: true, broken: 'brand' });
     assert.equal(result.overall_passed, false, JSON.stringify(result));
-    assert.equal(calls.find(call => call.task === 'create_media_buy').request.brand.domain, 'test.example');
-    assert.ok(result.phases.flatMap(phase => phase.steps).some(step => step.step_id === 'create_buy' && !step.passed && !step.skipped));
+    const create = calls.find(call => call.task === 'create_media_buy').request;
+    assert.equal(create.brand.domain, 'foreign.example');
+    assert.equal(create.account.brand.domain, 'acmeoutdoor.example');
+    assert.equal(calls.some(call => call.task === 'get_media_buy_delivery'), false);
   });
 
   test(`${kind}: public full runner preserves sandbox identity with normal and adversarial controller responses`, async () => {
@@ -238,7 +254,7 @@ for (const kind of ['format', 'time']) {
     for (const standalone of [false, true]) {
       const { error, calls, audits, lookups } = await execute(kind, { hostDenied: true, standalone });
       assert.equal(error.name, 'PreparedFixturesDeniedError');
-      assert.equal(lookups.length, 0, 'SDK #3389: no truthful public precontact lookup exists; do not claim hook invocation');
+      assert.equal(lookups.length, 0, 'adcp-client#3435: the adapter preflight precedes any SDK preparation hook; do not claim hook invocation');
       assert.equal(calls.some(call => call.task === 'create_media_buy'), false);
       assert.equal(audits.length, 1);
       assert.deepEqual(audits[0].fixture_resolutions, [], 'no preparation or seller identity exists before contact');
@@ -259,7 +275,7 @@ for (const kind of ['format', 'time']) {
       const { error, calls, audits, lookups, result } = await execute(kind, { hostDenied: true, discoveryFailure: true, standalone });
       assert.equal(result, undefined, 'denial must not return an enriched caller result');
       assert.equal(error.name, 'PreparedFixturesDeniedError');
-      assert.equal(lookups.length, 0, 'SDK #3389: no truthful public precontact lookup exists; do not claim hook invocation');
+      assert.equal(lookups.length, 0, 'adcp-client#3435: the adapter preflight precedes any SDK preparation hook; do not claim hook invocation');
       assert.equal(audits.length, 1);
       assert.deepEqual(audits[0].fixture_resolutions, [], 'precontact refusal cannot invent a failed seller preparation');
       assert.deepEqual(calls, []);

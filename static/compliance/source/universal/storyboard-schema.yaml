@@ -152,7 +152,7 @@
 #   never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent |
+#   Known values: controller | seeded_state | real_wire | collect_product_pages_runner | field_excludes_runner | test_kit_format_catalog_runner | webhook_receiver | multi_agent |
 #   trusted_match_publisher_auth_runner | property_list_reference_runner (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
@@ -163,6 +163,27 @@
 #   behavior, or omit the field entirely."
 #
 #   Values and availability:
+#
+#     test_kit_format_catalog_runner — intrinsic support for the explicit offline
+#                    legacy-format catalog form of $build_assets_from_format
+#                    described below. Storyboards using that form MUST declare
+#                    this requirement. Older runners report requirement_unmet
+#                    before fixture mutation. Availability means syntax support,
+#                    not that the operator supplied a matching declaration.
+#
+#     collect_product_pages_runner — intrinsic support for the opt-in wholesale
+#                    product-page collector. No operator configuration is needed.
+#                    A storyboard using collect_product_pages MUST declare this
+#                    requirement so older runners report requirement_unmet before
+#                    fixture mutation instead of silently checking only one page.
+#
+#     field_excludes_runner — runner support for the field_excludes negative
+#                    membership check. A storyboard using that check MUST declare
+#                    this requirement. Runners that cannot execute it report
+#                    requirement_unmet before fixture mutation. A harness may
+#                    satisfy it with the public assertion API while its SDK lacks
+#                    a native implementation, provided full-run and standalone
+#                    step grading both enforce the authored exclusion.
 #
 #     controller   — gate on agent advertising comply_test_controller.
 #                    Available when the agent's get_adcp_capabilities response
@@ -1011,9 +1032,14 @@
 #     2. THIS field (storyboard-root `context:` block, fixed at run start)
 #     3. Test-kit substitutions where explicitly scoped into context
 #
-#   Values MUST be scalars (strings, numbers, booleans — JSON scalar types).
-#   Object and array values are not supported here — capture structured values
-#   from step responses via `context_outputs:` instead.
+#   Values may be JSON scalars, objects, or arrays. For example, a structured
+#   `account` default preserves the same caller scope for native catalog
+#   discovery and subsequent fixture preparation. A whole-value `$context.key`
+#   substitution preserves its JSON type; it does not stringify structured
+#   values. Ordinary request substitution does not drill into a captured object
+#   with `$context.key.child`: declare or capture that leaf under its own key.
+#   Seller-issued values still come from earlier step responses via
+#   `context_outputs:`, not from invented initial defaults.
 #
 #   See "Context accumulator and substitution" below for the full precedence
 #   contract, runner substitution rules, and unresolved-substitution grading.)
@@ -1126,6 +1152,29 @@
 #   from `sample_request`, use `context_inputs:` (above) as the
 #   post-builder injection path.
 #
+# collect_product_pages: true (optional; omit to read one page). Only valid for a
+#   get_products step with sample_request.buying_mode: wholesale and the
+#   storyboard requirement collect_product_pages_runner. The runner walks the
+#   complete, stable enumeration using the actual authored account, filters,
+#   fields, credentials, context, and page size. Every physical response must
+#   satisfy the Product schema, including its required fields when fields is
+#   supplied; collection does not relax validation for fields projections.
+#   Collected reads MUST omit idempotency_key: each cursor changes the request
+#   body and must execute a fresh read rather than replay a prior page.
+#   The initial request MUST NOT
+#   contain a cursor or if_wholesale_feed_version/if_pricing_version token.
+#   Negative-auth, parallel-dispatch, and response-applicability probe paths
+#   cannot be combined with collection.
+#
+#   Each physical page is schema-validated and observed by the step's enabled
+#   invariants, including pages later discarded after a feed restart or omitted
+#   from bounded receipt retention. Broken cursors, rejected/malformed pages,
+#   duplicate identities, unstable feeds, and exhausted budgets never yield a
+#   partial successful catalog. Authored field checks and context captures use
+#   the separately labelled logical_response only after enumeration completes.
+#   Actual wire receipts remain actual pages; see runner-output-contract.yaml >
+#   product_page_collection_output for evidence and JSON Pointer requirements.
+#
 #   Creative asset expansion: an `assets` object MAY contain the reserved
 #   `$build_assets_from_format` key with a `$context.<name>` value. The context
 #   value MUST be either canonical `FormatOption.params` captured from
@@ -1142,6 +1191,32 @@
 #   text semantics from a slot-id substring or populate an unmapped slot (for
 #   example, `legal`, `disclaimer`, or `alt_text`) from an arbitrary fallback
 #   category.
+#
+#   Offline legacy declarations: to test a media-buy-only seller without imposing
+#   list_creative_formats on it, the directive MAY instead use this object form:
+#     $build_assets_from_format:
+#       format_id: "$context.legacy_format_id"
+#       catalog: test_kit
+#   The wrapper MUST contain exactly those two keys, and the storyboard MUST
+#   require test_kit_format_catalog_runner. The captured value MUST be a valid
+#   complete FormatId. The operator supplies test_kit.creative_formats as an
+#   array of full core/format.json declarations obtained from their declaring
+#   agents. Each entry MUST include an explicit assets array (empty is allowed),
+#   valid slot declarations and unique asset identifiers. These are fixture
+#   inputs, not seller responses or seeds; runners MUST NOT overwrite discovery
+#   context or the seller's catalog with them, or fetch any reference implicitly.
+#
+#   Match the entire format_id by structural JSON equality after canonicalizing
+#   agent_url per the URL canonicalization rules. Preserve every other field,
+#   including width, height, duration_ms, pixel_ratio and extension parameters.
+#   Do not instantiate a template, override dimensions, or match by slug alone.
+#   An absent catalog or absent exact match is fixture_unavailable, naming
+#   "format declaration" as the unavailable slot and "format" as its type.
+#   Malformed catalogs, duplicate exact matches and malformed captured references
+#   are harness authoring errors, not fixture_unavailable. Unresolved context
+#   remains a prerequisite/harness error; it is not evidence of a catalog gap.
+#   Unsupported declared constraints are fixture_unavailable. The ordinary
+#   preflight and whole-storyboard termination rules below apply to this form.
 #
 #   Asset-fixture coverage exception: when the captured format is valid but the
 #   runner cannot populate a required slot from the test kit — including an
@@ -1408,6 +1483,13 @@
 #     steps is caught statically.
 #   Omitting `negative_path` when `expect_error: true` behaves as `schema_invalid`
 #   (backwards-compatible default).
+#
+# enrich_request: true (optional — only with expect_error: true and
+#   negative_path: payload_well_formed). Opt this semantic rejection probe into
+#   the normal per-task request enricher, including discovered auction bids.
+#   The default for negative probes preserves the authored request exactly;
+#   intentionally malformed requests MUST NOT set this flag. Explicit fixture
+#   values still win, and governance-authorized payloads remain unmodified.
 #
 # sample_request_skip_schema: boolean (optional — explicit opt-out of schema
 #   validation for a step regardless of `expect_error` / `negative_path`. Use
@@ -1695,6 +1777,14 @@
 #                use `[*]` segments and passes when any resolved value matches
 #                `value` or one of `allowed_values`; object/array expectations
 #                are matched as deep subsets),
+#                "field_excludes" (wildcard-aware negative membership check;
+#                passes when none of the resolved values matches `value` or any
+#                `allowed_values`, using the same deep-subset matching as
+#                field_contains. An empty array passes. Pair with field_present
+#                when a nonempty result is required. This tests exclusion of a
+#                negative control without limiting the number of valid results.
+#                Storyboards using this check MUST require field_excludes_runner
+#                so an unsupported runner skips before seeding),
 #                "array_length" (asserts exact array cardinality with `value`,
 #                or an inclusive range with `min` / `max`),
 #                "all_fields_present" (every item of an array carries a field;
@@ -1702,6 +1792,8 @@
 #                "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "oauth_metadata_graph",
+#                "undefined_properties" (always advisory: reports properties the
+#                served release does not define, outside ext and context),
 #                "any_of", "refs_resolve", "a2a_submitted_artifact",
 #                "field_greater_than" (strict finite-number comparison against
 #                a literal threshold),
@@ -1713,7 +1805,13 @@
 #                query_upstream_traffic scenario — see "upstream_traffic" section below),
 #                "canonical_format_satisfaction" (asserts create_media_buy package
 #                selectors against prior get_products format_options[] context — see
-#                "Canonical format satisfaction" section below))
+#                "Canonical format satisfaction" section below),
+#                "owed_periods_match" (compares the periods a reporting
+#                subscription owes, computed from wire state, with the
+#                seller's obligations — see "Owed periods" section below),
+#                "instant_offset_within" (bounds an RFC 3339 instant by a base
+#                instant plus ISO 8601 durations — see "Instant offsets"
+#                section below))
 # severity: string (optional, default "required"): "required" | "advisory".
 #                A "required" validation failure fails the step and contributes
 #                to steps_failed; this is the default. An "advisory" failure
@@ -1981,6 +2079,135 @@
 #     - check: canonical_format_satisfaction
 #       value: false
 #       description: "Bare image selector lacks the dimensions required by the fixed product"
+#
+# Owed periods — use `check: owed_periods_match` (experimental,
+# media_buy.reporting_subscriptions):
+#   Applies only to get_reporting_status steps with view: periods for one
+#   account. The runner computes the periods one reporting subscription owes
+#   that account from wire state alone and compares them with the seller's
+#   obligations for that subscription in the response. Before grading it reads,
+#   as the same authenticated caller:
+#     - get_principal: the subscription's current version (accepted_at,
+#       configuration), prior_versions (paging reporting_subscription_page
+#       when prior_versions_count exceeds the inline list), deactivated_at, and
+#       inactive_intervals;
+#     - list_accounts for the account: authorization.authorized_at and
+#       regranted_at, timezone, and operator;
+#     - get_media_buys for the account: confirmed_at, start_time, end_time,
+#       cancellation_effective_at (or cancellation.canceled_at), completed_at,
+#       flight_history, and packages[].reporting_delivery_offering_ids;
+#     - get_adcp_capabilities: media_buy.reporting_delivery offerings (with
+#       standard_dimensions, available_from, withdrawn_at),
+#       status_retention_days, and subscriptions.backfill_on_regrant;
+#     - and, from this response, the subscription's subscription_coverage
+#       entry (excluded[], gaps[], timezone_cutovers[]).
+#   It applies the coverage rule of core/reporting-subscription.json (the rule
+#   the canonical vectors in test-vectors/reporting-subscriptions/ pin) with
+#   now = ledger_as_of, then compares the two sets over one window.
+#
+#   Comparison window. The window starts at the later of:
+#     - the expected start: the request's period.start when one is set;
+#       otherwise the window has no lower bound here and every period the
+#       coverage rule owes from the subscription's first version on counts;
+#     - the retention bound: scope.ledger_retained_from from this response,
+#       the earliest period boundary the seller still retains after purging
+#       older history, capped at ledger_as_of minus status_retention_days
+#       (exact 86,400-second days). The seller keeps obligation metadata
+#       queryable for at least status_retention_days, so a
+#       ledger_retained_from later than that instant does not move the
+#       window start past it.
+#   The end of the window is unchanged: the coverage rule with now =
+#   ledger_as_of decides which periods are owed so far, and when the request
+#   sets a period only periods that fall inside it are compared. Only periods
+#   that start at or after the window start are compared, on both sides: an
+#   owed period that starts before the window start is not required, and an
+#   obligation the seller returns for a period that starts before it is
+#   ignored, not counted as unexpected. Inside the window an obligation the
+#   coverage rule does not owe is still a mismatch. A seller that purged
+#   history beyond its retention therefore passes, and one that purged inside
+#   it fails on the periods it no longer returns.
+#
+#   Within the window the check passes when the owed set equals the
+#   response's obligations whose delivery_config_id is the subscription_id:
+#   one obligation per (delivery_config_version, offering_id, period.start,
+#   period.end), with the same media_buy_ids and stub flag, compared as
+#   instants. A response with pagination.has_more true fails as
+#   unverifiable; request a page large enough for the window. Failure output
+#   reports the window start and which bound set it (expected_start,
+#   ledger_retained_from, or retention_cap). Runners that do not implement
+#   the check grade it not_applicable (forward compatibility); storyboards
+#   declare it advisory until runner support ships.
+#
+#   Fields:
+#     check: owed_periods_match
+#     subscription_id: string     # the subscription whose obligations are compared
+#
+#   Example:
+#     - check: owed_periods_match
+#       subscription_id: "analytics-daily"
+#       severity: advisory
+#       expires_after_version: "17.0.0"
+#       description: "The owed set computed from wire state equals the seller's obligations"
+#
+# Instant offsets — use `check: instant_offset_within`:
+#   Bounds an RFC 3339 instant on this step's response by a base instant plus
+#   ISO 8601 durations, for rules the other checks cannot express because they
+#   are duration arithmetic over instants. Introduced for the experimental
+#   hold storyboards (`media_buy.hold_policy`, `media_buy.hold_extension`),
+#   for example `hold_placed_at + min_duration <= expires_at <=
+#   hold_placed_at + max_duration`.
+#
+#   The runner resolves `path` and the base to instants and compares them on
+#   the UTC timeline, so offsets and fractional seconds do not matter.
+#   Durations are the hold-policy form: days, hours, minutes, and seconds
+#   only (`P2D`, `PT36H`, `P1DT12H`), where a day is exactly 86,400 seconds
+#   added to the UTC instant, never a calendar day. The check passes when
+#   base + lower <= value (strictly greater when `exclusive_min` is true) and
+#   value <= base + upper, for each bound declared.
+#
+#   Fields:
+#     check: instant_offset_within
+#     path: string               # the instant on this step's response
+#     base_path: string          # base instant on this step's response, or
+#     base_context_key: string   # base instant captured by a prior step
+#                                # (exactly one of the two)
+#     min_offset: string         # lower bound as a literal duration, or
+#     min_offset_path: string    # a duration on this step's response
+#                                # (at most one of the two)
+#     max_offset: string         # upper bound as a literal duration, or
+#     max_offset_path: string    # a duration on this step's response
+#                                # (at most one of the two)
+#     exclusive_min: boolean     # optional, default false
+#
+#   At least one bound MUST be declared. A missing or unparseable `path` or
+#   base fails the check. A declared `*_offset_path` that resolves to nothing
+#   leaves that bound unapplied (a policy without `max_duration` sets no
+#   maximum), and the runner records an `offset_absent` observation; one that
+#   is not a valid duration fails. An absent `base_context_key` passes with a
+#   `context_key_absent` observation, as for the cross-step comparison checks.
+#   Failure output uses the RFC 6901 pointer of `path` as `json_pointer`, the
+#   computed bounds as `expected`, and the observed instant as `actual`.
+#   Runners that do not implement the check grade it not_applicable
+#   (forward compatibility); storyboards declare it advisory until runner
+#   support ships.
+#
+#   Examples:
+#     - check: instant_offset_within
+#       path: "results[0].proposal.expires_at"
+#       base_path: "results[0].proposal.hold_placed_at"
+#       min_offset_path: "results[0].proposal.hold_policy.min_duration"
+#       max_offset_path: "results[0].proposal.hold_policy.max_duration"
+#       severity: advisory
+#       expires_after_version: "17.0.0"
+#       description: "hold_placed_at + min_duration <= expires_at <= hold_placed_at + max_duration"
+#     - check: instant_offset_within
+#       path: "results[0].proposal.expires_at"
+#       base_context_key: "source_expires_at"
+#       min_offset: "PT0S"
+#       exclusive_min: true
+#       severity: advisory
+#       expires_after_version: "17.0.0"
+#       description: "The extension's expires_at is later than the source's"
 #
 # Cross-step integrity — use `check: refs_resolve`:
 #   `refs_resolve` asserts every ref in a source set resolves to a member of a

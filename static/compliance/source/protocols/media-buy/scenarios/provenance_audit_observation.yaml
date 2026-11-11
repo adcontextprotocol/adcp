@@ -1,11 +1,17 @@
 id: media_buy_seller/provenance_audit_observation
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller accepts a provenance carve-out claim surfaced as an audit observation"
 category: media_buy_seller
 summary: "Buyer submits AI-assisted creatives with human_oversight directed/edited and disclosure.required false. Seller invokes an on-list verifier, records OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED audit observations, and accepts the creatives rather than treating the observations as rejections."
 track: creative
 requires:
   - controller
+
+requires_all_capabilities:
+  - path: creative.supports_provenance
+    equals: true
+  - path: compliance_testing.scenarios
+    contains: query_provenance_audit_observations
 
 required_tools:
   - get_products
@@ -108,7 +114,7 @@ fixtures:
       pricing_options:
         - pricing_option_id: "test-pricing-cpm"
           pricing_model: "cpm"
-          fixed_price: 5.00
+          floor_price: 5.00
           currency: "USD"
 
 phases:
@@ -134,11 +140,6 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_provenance_audit_observation_discover_verifier_get_products_with_accepted_verifiers"
           buying_mode: "brief"
-          # Brief intentionally surfaces "Provenance Audit Observation" so
-          # brief-mode keyword scoring places the seeded fixture product at
-          # products[0]. This mirrors the provenance_enforcement coupling; if
-          # the runner supports JSONPath predicates later, switch to wholesale
-          # mode plus product_id predicate matching.
           brief: "Provenance audit-observation display inventory — verifier surfaces carve-out claims for audit"
           brand:
             domain: "acmeoutdoor.example"
@@ -154,9 +155,14 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
-          - check: field_present
-            path: "products[0].creative_policy.accepted_verifiers[0].agent_url"
-            description: "Seller publishes at least one accepted verifier"
+          - check: field_contains
+            path: "products[*]"
+            value:
+              product_id: "test-product-provenance-audit-observation"
+              creative_policy:
+                accepted_verifiers:
+                  - agent_url: "https://test-agent.adcontextprotocol.org/governance/creative-features/mcp"
+            description: "The seeded product publishes the verifier used by subsequent submissions"
           - check: field_value
             path: "context.correlation_id"
             value: "provenance_audit_observation--get_products"
@@ -317,6 +323,11 @@ phases:
           to expose this internal audit log.
         sample_request:
           account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_provenance_audit_ob-d4a38e65"
             sandbox: true
           scenario: "query_provenance_audit_observations"
           params:
@@ -357,6 +368,11 @@ phases:
           human_oversight value.
         sample_request:
           account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_provenance_audit_ob-d4a38e65"
             sandbox: true
           scenario: "query_provenance_audit_observations"
           params:

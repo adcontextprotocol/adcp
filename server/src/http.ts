@@ -57,6 +57,7 @@ import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, b
 import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson, sanitizeBrandSnapshot } from "./db/brand-db.js";
 import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
 import { getStandaloneSite, resolveStandaloneRequest, type StandaloneSite } from "./standalone-sites.js";
+import { createTrustLookupRouter } from './routes/trust-lookup.js';
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -171,8 +172,7 @@ import { getPublicJwks } from "./services/verification-token.js";
 import { isManifestReferenceReachable } from "./services/manifest-reference-verifier.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { createCommunityMirrorRouter } from "./routes/community-mirrors.js";
-import { extensionForLogoContentType, getBrandAssetUrl, getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
-import { BrandLogoDatabase } from "./db/brand-logo-db.js";
+import { createBrandLogoAssetRouter } from "./routes/brand-logo-assets.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { createAccountLinkingRouter, handleEmailLinkVerification } from "./routes/account-linking.js";
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
@@ -184,6 +184,7 @@ import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { initializeTrainingGcsReporting, getTrainingGcsReporting, drainTrainingGcsReporting, stopTrainingGcsReporting } from './training-agent/gcs-reporting.js';
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
+import { isCreative33McpPath } from "./training-agent/lab-route-paths.js";
 import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
@@ -1395,6 +1396,9 @@ export class HTTPServer {
           limit: jsonBodyLimitForPath(req.path),
           verify: (req, _res, buf) => {
             (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+            if (isCreative33McpPath(req.url)) {
+              (req as unknown as { creative33RawBody: Buffer }).creative33RawBody = buf;
+            }
           },
         })(req, res, next);
       }
@@ -1932,6 +1936,7 @@ export class HTTPServer {
     });
     this.complianceRefreshQueue = complianceRefreshQueue;
     this.app.use('/api', registryApiRouter);
+    this.app.use('/api/trust', createTrustLookupRouter({ brandManager: this.brandManager }));
     // adcp#4924: spec defines the AAO directory inverse-lookup path as
     // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
     // v1AgentsRouter at /v1 so spec-conformant clients work without the /api
@@ -2007,122 +2012,9 @@ export class HTTPServer {
       }
     });
 
-    // Serve brand logos by UUID — public endpoint so agents can download them.
-    const logoDomainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-    const brandLogoDb = new BrandLogoDatabase();
-
-    // LRU cache: bounded to ~100MB / ~200 entries, 5-minute TTL
-    const logoCache = new Map<string, { content_type: string; data: Buffer; cachedAt: number }>();
-    const LOGO_CACHE_MAX_BYTES = 100 * 1024 * 1024;
-    const LOGO_CACHE_TTL_MS = 5 * 60 * 1000;
-    let logoCacheTotalBytes = 0;
-
-    function evictLogoCache(): void {
-      const now = Date.now();
-      // Evict expired entries first
-      for (const [key, entry] of logoCache) {
-        if (now - entry.cachedAt > LOGO_CACHE_TTL_MS) {
-          logoCacheTotalBytes -= entry.data.length;
-          logoCache.delete(key);
-        }
-      }
-      // Evict oldest entries until under budget
-      while (logoCacheTotalBytes > LOGO_CACHE_MAX_BYTES && logoCache.size > 0) {
-        const firstKey = logoCache.keys().next().value!;
-        const entry = logoCache.get(firstKey)!;
-        logoCacheTotalBytes -= entry.data.length;
-        logoCache.delete(firstKey);
-      }
-    }
-
-    const serveApprovedLogoAsset = async (domain: string, id: string, res: express.Response, requestedExt?: string) => {
-      if (!logoDomainPattern.test(domain)) {
-        return res.status(400).json({ error: 'Invalid domain' });
-      }
-
-      try {
-        if (!isUuid(id)) {
-          return res.status(400).json({ error: 'Invalid logo ID' });
-        }
-
-        // Check LRU cache (with TTL)
-        const cacheKey = `${domain}/${id}`;
-        const cached = logoCache.get(cacheKey);
-        if (cached && (Date.now() - cached.cachedAt) < LOGO_CACHE_TTL_MS) {
-          // Move to end (most recently used)
-          logoCache.delete(cacheKey);
-          logoCache.set(cacheKey, cached);
-
-          const expectedExt = extensionForLogoContentType(cached.content_type);
-          if (requestedExt && requestedExt.toLowerCase() !== expectedExt) {
-            return res.redirect(301, getBrandAssetUrl(domain, id, cached.content_type));
-          }
-
-          res.setHeader('Content-Type', cached.content_type);
-          res.setHeader('Cache-Control', 'public, max-age=2592000');
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-          res.setHeader('Content-Security-Policy', "default-src 'none'");
-          res.setHeader('Content-Disposition', 'inline');
-          return res.send(cached.data);
-        }
-
-        const logo = await getLogo(domain, id);
-        if (!logo) {
-          return res.status(404).json({ error: 'Logo not found' });
-        }
-        if (!isAllowedLogoContentType(logo.content_type)) {
-          logger.error({ domain, id, contentType: logo.content_type }, 'Logo has disallowed content-type');
-          return res.status(500).json({ error: 'Failed to retrieve logo' });
-        }
-        const expectedExt = extensionForLogoContentType(logo.content_type);
-        if (requestedExt && requestedExt.toLowerCase() !== expectedExt) {
-          return res.redirect(301, getBrandAssetUrl(domain, id, logo.content_type));
-        }
-
-        // Add to LRU cache
-        logoCacheTotalBytes += logo.data.length;
-        logoCache.set(cacheKey, { content_type: logo.content_type, data: logo.data, cachedAt: Date.now() });
-        evictLogoCache();
-
-        res.setHeader('Content-Type', logo.content_type);
-        res.setHeader('Cache-Control', 'public, max-age=2592000');
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader('Content-Security-Policy', "default-src 'none'");
-        res.setHeader('Content-Disposition', 'inline');
-        return res.send(logo.data);
-      } catch (error) {
-        logger.error({ err: error, domain, id }, 'Failed to serve logo');
-        return res.status(500).json({ error: 'Failed to retrieve logo' });
-      }
-    };
-
-    this.app.get('/assets/brands/:domain/:asset', async (req, res) => {
-      const domain = req.params.domain.toLowerCase();
-      const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([a-z0-9]+)$/i.exec(req.params.asset);
-      if (!match) {
-        return res.status(400).json({ error: 'Invalid asset ID' });
-      }
-      return serveApprovedLogoAsset(domain, match[1], res, match[2]);
-    });
-
-    this.app.get('/logos/brands/:domain/:id', async (req, res) => {
-      const domain = req.params.domain.toLowerCase();
-      const id = req.params.id;
-
-      // Integer fallback: old /:idx URLs redirect to UUID.
-      if (/^\d+$/.test(id)) {
-        const oldIdx = parseInt(id, 10);
-        const newId = await brandLogoDb.getLogoRedirect(domain, oldIdx);
-        if (!newId) {
-          return res.status(404).json({ error: 'Logo not found' });
-        }
-        res.setHeader('Content-Security-Policy', "default-src 'none'");
-        res.setHeader('Content-Disposition', 'inline');
-        return res.redirect(301, `/logos/brands/${domain}/${newId}`);
-      }
-
-      return serveApprovedLogoAsset(domain, id, res);
-    });
+    // Serve approved brand logos by UUID, and PNG renditions of them — public
+    // so agents can download them.
+    this.app.use(createBrandLogoAssetRouter());
 
     // Brand-book import for the brand.json builder (stateless, anonymous-capable)
     this.app.use('/api', createBrandImportRouter());

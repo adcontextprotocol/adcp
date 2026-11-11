@@ -101,7 +101,7 @@ fixtures:
               age: { min: 35, max: 44, include_unknown: false }
     - product_id: "demographic_signal_audio"
       delivery_type: "non_guaranteed"
-      channels: ["audio"]
+      channels: ["streaming_audio"]
       format_ids:
         - id: "audio_30s"
       demographic_targeting:

@@ -1,0 +1,126 @@
+# Bistro Oranje — Hospitality Advertiser Test Kit
+#
+# Entity definition: fictional-entities.yaml → advertisers[bistro_oranje]
+#
+# Dutch restaurant chain used in rights licensing scenarios.
+#
+# This brand is registered as a sandbox brand in AgenticAdvertising.org (AAO).
+# Agents resolve bistro-oranje.example via the standard AAO brand resolution path.
+# AAO returns the brand.json below but excludes sandbox brands from production
+# brand discovery results.
+
+id: bistro_oranje
+name: "Bistro Oranje"
+description: "Dutch restaurant chain for rights licensing storyboard testing"
+sandbox: true
+
+# security_baseline auth fixture — see acme-outdoor.yaml for semantics.
+auth:
+  api_key: "demo-bistro-oranje-v1"
+  probe_task: list_creatives
+
+brand:
+  house:
+    domain: "bistro-oranje.example"
+    name: "Bistro Oranje"
+  brand_id: "bistro_oranje"
+  names:
+    - en: "Bistro Oranje"
+    - nl: "Bistro Oranje"
+  description: "Modern Dutch dining — seasonal menus inspired by the Netherlands, served with warmth."
+  industry: "hospitality"
+  keller_type: "master"
+  logos:
+    - url: "https://test-assets.adcontextprotocol.org/bistro-oranje/logo-primary.png"
+      orientation: "horizontal"
+      background: "light-bg"
+      variant: "primary"
+      width: 400
+      height: 100
+    - url: "https://test-assets.adcontextprotocol.org/bistro-oranje/logo-icon.png"
+      orientation: "square"
+      background: "transparent-bg"
+      variant: "icon"
+      width: 200
+      height: 200
+  colors:
+    primary: "#E65100"
+    secondary: "#1B5E20"
+    accent: "#FFC107"
+    background: "#FFF8E1"
+    text: "#212121"
+  fonts:
+    heading:
+      family: "Playfair Display"
+      weight: 700
+      url: "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700"
+    body:
+      family: "Source Sans Pro"
+      weight: 400
+      url: "https://fonts.googleapis.com/css2?family=Source+Sans+Pro"
+  tone:
+    voice: "Warm and inviting, with understated confidence. We let the food speak — no excess, no pretension."
+    attributes:
+      - "welcoming"
+      - "seasonal"
+      - "unpretentious"
+    dos:
+      - "Mention seasonal ingredients by name"
+      - "Reference Dutch culinary traditions"
+      - "Keep descriptions sensory and specific"
+    donts:
+      - "Use fine-dining jargon"
+      - "Overuse superlatives"
+      - "Promise exclusivity — Bistro Oranje is for everyone"
+
+assets:
+  images:
+    - id: "hero_300x250"
+      url: "https://test-assets.adcontextprotocol.org/bistro-oranje/hero-300x250.jpg"
+      width: 300
+      height: 250
+      mime_type: "image/jpeg"
+      description: "Medium rectangle hero — seasonal dish on rustic table"
+
+    - id: "hero_728x90"
+      url: "https://test-assets.adcontextprotocol.org/bistro-oranje/hero-728x90.jpg"
+      width: 728
+      height: 90
+      mime_type: "image/jpeg"
+      description: "Leaderboard hero — bistro exterior with canal backdrop"
+
+    - id: "hero_320x50"
+      url: "https://test-assets.adcontextprotocol.org/bistro-oranje/hero-320x50.jpg"
+      width: 320
+      height: 50
+      mime_type: "image/jpeg"
+      description: "Mobile banner hero — close-up of signature stamppot"
+
+    - id: "hero_160x600"
+      url: "https://test-assets.adcontextprotocol.org/bistro-oranje/hero-160x600.jpg"
+      width: 160
+      height: 600
+      mime_type: "image/jpeg"
+      description: "Wide skyscraper hero — vertical dining room scene"
+
+    - id: "hero_master"
+      url: "https://test-assets.adcontextprotocol.org/bistro-oranje/hero-master.jpg"
+      width: 1200
+      height: 628
+      mime_type: "image/jpeg"
+      description: "Master hero image — high-res chef plating seasonal dish"
+
+  text:
+    headlines:
+      - "Taste the Season at Bistro Oranje"
+      - "Dutch Comfort, Modern Kitchen"
+      - "Reserve Your Table Tonight"
+    descriptions:
+      - "Seasonal menus inspired by Dutch tradition, made with ingredients sourced within 50km. Bistro Oranje — Amsterdam, Rotterdam, Utrecht."
+      - "From stamppot to stroopwafel, every dish tells a story. Book your table at Bistro Oranje."
+    cta:
+      - "Reserve a Table"
+      - "View the Menu"
+      - "Find a Location"
+
+  click_url: "https://bistro-oranje.example/reservations"

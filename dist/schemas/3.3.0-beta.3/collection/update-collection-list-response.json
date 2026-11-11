@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/collection/update-collection-list-response.json",
+  "title": "Update Collection List Response",
+  "description": "Response payload for update_collection_list task",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "list": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/collection/collection-list.json",
+      "description": "The updated collection list"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "list"
+  ],
+  "additionalProperties": true
+}

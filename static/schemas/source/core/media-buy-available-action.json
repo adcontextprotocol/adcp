@@ -51,6 +51,13 @@
   "required": ["action", "mode"],
   "allOf": [
     {
+      "if": { "properties": { "action": { "type": "string", "const": "update_creative_start_policy" } }, "required": ["action"] },
+      "then": {
+        "required": ["task", "applicable_package_ids"],
+        "properties": { "task": { "type": "string", "const": "control_media_buy" }, "change_term_id": false, "terms_ref": false }
+      }
+    },
+    {
       "if": { "properties": { "task": { "const": "report_media_buy_issue" } }, "required": ["task"] },
       "then": { "properties": { "action": { "const": "report_media_buy_issue" } } }
     },

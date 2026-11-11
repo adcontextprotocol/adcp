@@ -87,10 +87,18 @@ describe('standalone standard sites (real server)', () => {
   });
 
   it('serves the trustjson.org landing page and 404s app paths', async () => {
-    const landing = await request(app()).get('/').set('Host', 'trustjson.org');
+    const standaloneApp = app();
+    const landing = await request(standaloneApp).get('/').set('Host', 'trustjson.org');
     expect(landing.status).toBe(200);
     expect(landing.text).toContain('window.__ADCP_SITE__="trustjson"');
-    const other = await request(app()).get('/registry').set('Host', 'trustjson.org');
+    const guide = await request(standaloneApp).get('/llms-full.txt').set('Host', 'trustjson.org');
+    expect(guide.status).toBe(200);
+    expect(guide.headers['content-type']).toContain('text/plain');
+    expect(guide.text).toContain('A child with a verified parent does not need its own trust.json');
+    const lookup = await request(standaloneApp).get('/api/trust/lookup?domain=127.0.0.1').set('Host', 'trustjson.org');
+    expect(lookup.status).toBe(400);
+    expect(lookup.body.error).toContain('public domain');
+    const other = await request(standaloneApp).get('/registry').set('Host', 'trustjson.org');
     expect(other.status).toBe(404);
   });
 

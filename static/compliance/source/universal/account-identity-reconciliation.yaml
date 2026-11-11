@@ -2,7 +2,7 @@ id: account_identity_reconciliation
 version: "1.0.0"
 title: "Account identity reconciliation"
 category: account_identity_reconciliation
-summary: "Validates revision-guarded operator identity rekeying, collision safety, and former-key redirects for sellers that advertise identity updates."
+summary: "Deprecated in 3.3 with account.identity_updates. Validates revision-guarded operator identity rekeying, collision safety, and former-key redirects for sellers that advertise identity updates."
 track: core
 required_tools:
   - list_accounts
@@ -17,6 +17,9 @@ requires_capability:
   equals: true
 
 narrative: |
+  Deprecated in 3.3 with `account.identity_updates`. This storyboard runs
+  only for sellers that still declare it.
+
   A buyer sometimes needs to reconcile the operator-owned portion of an
   existing advertiser account without replacing the seller account or losing
   account-scoped state. This storyboard runs only when the seller advertises

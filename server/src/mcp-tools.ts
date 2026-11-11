@@ -18,6 +18,9 @@ import type { AgentType, MemberOffering } from "./types.js";
 import { BrandManager } from "./brand-manager.js";
 import { brandDb, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
 import { isDomainControlVerified } from "./services/brand-trust-fields.js";
+import {
+  INVALID_DOMAIN_MESSAGE, LOOKUP_BUSY_MESSAGE, InvalidTrustLookupDomain, TrustLookupBusy, TrustLookupService,
+} from "./services/trust-lookup.js";
 import { propertyDb } from "./db/property-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "./services/brandfetch.js";
@@ -422,6 +425,21 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "lookup_brand_authorization",
+    description:
+      "Show who is publicly authorized to act for a brand. Resolves the brand's verified parent organization, reads the authoritative /.well-known/trust.json, and returns the agents that organization operates and the grants it has published (grantee, scopes, brands, countries, validity, exclusivity). status is published, not_found (a confirmed missing file), unavailable (outage or invalid record: never treat as unprotected), or unverified_parent. Reports public declarations only: it does not authenticate a request, check seller enforcement, or see seller-private approvals.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        domain: {
+          type: "string",
+          description: "Brand domain to check (e.g., 'yourbrand.com'). A bare domain or https origin; no path or port.",
+        },
+      },
+      required: ["domain"],
+    },
+  },
+  {
     name: "validate_brand_agent",
     description:
       "Validate that a brand agent is reachable and responding via MCP protocol",
@@ -637,6 +655,7 @@ export class MCPToolHandler {
   private brandManager: BrandManager;
   private adagentsManager: AdAgentsManager;
   private orgDb: OrganizationDatabase;
+  private trustLookup: TrustLookupService;
 
   constructor() {
     this.agentService = new AgentService();
@@ -646,6 +665,7 @@ export class MCPToolHandler {
     this.brandManager = new BrandManager();
     this.adagentsManager = new AdAgentsManager();
     this.orgDb = new OrganizationDatabase();
+    this.trustLookup = new TrustLookupService(this.brandManager);
   }
 
   /**
@@ -1346,6 +1366,40 @@ export class MCPToolHandler {
             },
           ],
         };
+      }
+
+      case "lookup_brand_authorization": {
+        const domain = args?.domain;
+        if (typeof domain !== "string" || !domain) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: "Missing required parameter: domain" }) }],
+            isError: true,
+          };
+        }
+        try {
+          const result = await this.trustLookup.lookup(domain);
+          return {
+            content: [
+              {
+                type: "resource",
+                resource: {
+                  uri: `brand://authorization/${encodeURIComponent(result.domain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify(result, null, 2),
+                },
+              },
+            ],
+          };
+        } catch (error) {
+          let message = "The lookup could not be completed. Try again later.";
+          if (error instanceof InvalidTrustLookupDomain) message = INVALID_DOMAIN_MESSAGE;
+          else if (error instanceof TrustLookupBusy) message = LOOKUP_BUSY_MESSAGE;
+          else logger.error({ err: error, domain }, "Brand authorization lookup failed");
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+            isError: true,
+          };
+        }
       }
 
       case "validate_brand_agent": {

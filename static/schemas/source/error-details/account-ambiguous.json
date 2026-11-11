@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/account-ambiguous.json",
+  "x-added-in": "3.3.0",
+  "title": "Account Ambiguous Details",
+  "description": "Recommended details shape for ACCOUNT_AMBIGUOUS errors. Lists the matching accounts the caller is already granted, so a human can pick one. Sellers MUST NOT list accounts the caller cannot already reach.",
+  "type": "object",
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/account-candidate.json" },
+      "minItems": 2,
+      "maxItems": 50
+    }
+  },
+  "additionalProperties": true
+}

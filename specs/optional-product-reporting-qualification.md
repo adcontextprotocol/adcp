@@ -36,6 +36,11 @@ closed before all seller contact: SDK 16.3 has no public way to construct its
 truthful lookup before preparation (#3389). No hook is called with a fabricated
 binding or alternate reference. Exact-once pre-preparation invocation remains an
 upstream requirement; this refusal is not qualification of that missing API.
+SDK 16.5 added `prepared_fixtures_preparation_authorizer` (#3393), consulted
+inside `prepareStoryboardFixtures`. The adapter still refuses on SDK
+17.0.0-beta.0: its capability preflight contacts the seller before that
+preparation, because the SDK's preparation applies no storyboard root gates
+before seeding (adcp-client#3435).
 Request-local state is never serialized or reused across unrelated callers.
 A failed initial/capability preflight delegates the ORIGINAL invocation to the
 SDK (`execute(originalOptions)`). The adapter neither throws raw remote text nor

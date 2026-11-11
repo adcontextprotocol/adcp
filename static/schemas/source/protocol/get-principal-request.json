@@ -22,6 +22,18 @@
     }
   ],
   "properties": {
+    "reporting_subscription_page": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Experimental (media_buy.reporting_subscriptions). Page through one reporting subscription's accounts_with_exceptions, accounts_unauthorized, or prior_versions when the inline list in configuration.reporting_subscriptions is shorter than its count. The response carries the usual result plus reporting_subscription_page. An unknown subscription_id fails with INVALID_REQUEST.",
+      "properties": {
+        "subscription_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_subscription" },
+        "list": { "type": "string", "enum": ["accounts_with_exceptions", "accounts_unauthorized", "prior_versions"] },
+        "pagination": { "$ref": "/schemas/core/pagination-request.json" }
+      },
+      "required": ["subscription_id", "list"],
+      "additionalProperties": false
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

@@ -158,7 +158,9 @@ async function startGatedSeller(): Promise<{ url: string; seen: Seen[]; server: 
     } else if (msg.method === 'tools/call') {
       let structured: Record<string, unknown>;
       if (msg.params?.name === 'get_adcp_capabilities') {
-        structured = { adcp: { major_versions: [3], supported_versions: ['3.2'] }, supported_protocols: ['media_buy'] };
+        // SDK 17 sends a prerelease-pinned request only to a seller that
+        // advertises that exact prerelease, so list the bundle's rc.7 release.
+        structured = { adcp: { major_versions: [3], supported_versions: ['3.2-rc.7', '3.2'] }, supported_protocols: ['media_buy'] };
       } else if (args.scenario === 'list_scenarios') {
         structured = { success: true, scenarios: ['force_creative_status'] };
       } else if (bearer === LIVE_KEY) {

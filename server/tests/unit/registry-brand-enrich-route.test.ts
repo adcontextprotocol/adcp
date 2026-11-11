@@ -349,6 +349,108 @@ describe('public registry brand read paths', () => {
     mocks.isBrandfetchConfigured.mockReturnValue(true);
   });
 
+  const completeEntry = {
+    id: 'acme',
+    names: [{ 'en-GB': 'Acme' }, { fr: 'Acme France' }],
+    properties: [{ type: 'website', identifier: 'acme.com', relationship: 'owned' }],
+    tagline: [{ 'en-GB': 'Made for everyday' }],
+    fonts: { primary: { family: 'Example Sans' } },
+    tone: { voice: [{ 'en-GB': 'Warm and direct' }] },
+    colors: { primary: '#047857' },
+  };
+  const completePortfolio = {
+    house: { domain: 'nova-brands.example', name: 'Nova Brands' },
+    brands: [{ id: 'glow', names: [{ en: 'Glow' }] }, completeEntry],
+  };
+  const storedPortfolio = () => ({
+    ...discoveredBrandWithContext(),
+    source_type: 'brand_json',
+    brand_manifest: completePortfolio,
+  });
+
+  it('returns the selected stored portfolio entry without flattening or replacing the manifest', async () => {
+    const brandDb = { getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(storedPortfolio()), upsertDiscoveredBrand: vi.fn() };
+    const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.brand).toEqual(completeEntry);
+    expect(res.body.brand_manifest).toEqual(completePortfolio);
+    expect(res.body.source).toBe('brand_json');
+  });
+
+  it('returns a complete flat entry while excluding historical enrichment context', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        ...storedPortfolio(), brand_manifest: { ...completeEntry, brand_context: { private_notes: 'not public' } },
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=acme.com');
+
+    expect(res.body.brand).toEqual(completeEntry);
+    expect(res.body.brand_manifest).toEqual(completeEntry);
+    expect(JSON.stringify(res.body)).not.toContain('private_notes');
+  });
+
+  it('selects the full entry from the stored winner on a tie and the live winner on a fresh read', async () => {
+    const liveEntry = { ...completeEntry, tagline: [{ en: 'Live tagline' }] };
+    const live = {
+      canonical_id: 'acme', canonical_domain: 'acme.com', brand_name: 'Acme',
+      source: 'brand_json' as const, brand: liveEntry, brand_manifest: { tagline: liveEntry.tagline },
+    };
+    const app = buildApp({ getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(storedPortfolio()), upsertDiscoveredBrand: vi.fn() }, false, {
+      resolveBrandWithDiagnostics: vi.fn().mockResolvedValue({ brand: live }),
+    });
+
+    const normal = await request(app).get('/api/brands/resolve?domain=acme.com');
+    const fresh = await request(app).get('/api/brands/resolve?domain=acme.com&fresh=true');
+    expect(normal.body.brand).toEqual(completeEntry);
+    expect(normal.body.brand_manifest).toEqual(completePortfolio);
+    expect(fresh.body.brand).toEqual(liveEntry);
+    expect(fresh.body.brand_manifest).toEqual(live.brand_manifest);
+  });
+
+  it('does not borrow a lower-provenance live entry when the stored winner has no complete entry', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        ...discoveredBrandWithContext(), source_type: 'community',
+        workos_organization_id: 'org_owner', domain_verified: true,
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const res = await request(buildApp(brandDb, false, {
+      resolveBrandWithDiagnostics: vi.fn().mockResolvedValue({ brand: {
+        canonical_id: 'acme', canonical_domain: 'acme.com', brand_name: 'Acme',
+        source: 'brand_json', brand: completeEntry,
+      } }),
+    })).get('/api/brands/resolve?domain=acme.com&fresh=true');
+
+    expect(res.body.source).toBe('hosted');
+    expect(res.body.brand).toBeUndefined();
+  });
+
+  it('omits the new entry for an ambiguous stored portfolio without altering its legacy manifest', async () => {
+    const ambiguous = { ...completePortfolio, brands: [completeEntry, { ...completeEntry, id: 'another_acme' }] };
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({ ...storedPortfolio(), brand_manifest: ambiguous }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.brand).toBeUndefined();
+    expect(res.body.brand_manifest).toEqual(ambiguous);
+  });
+
+  it('returns the same selected complete entry on the bulk read path', async () => {
+    const brandDb = { getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(storedPortfolio()), upsertDiscoveredBrand: vi.fn() };
+    const res = await request(buildApp(brandDb)).post('/api/brands/resolve/bulk').send({ domains: ['acme.com'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results['acme.com'].brand).toEqual(completeEntry);
+    expect(res.body.results['acme.com'].brand_manifest).toEqual(completePortfolio);
+  });
+
   it('strips legacy brand_context from /api/brands/resolve fallback manifests', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(discoveredBrandWithContext()),

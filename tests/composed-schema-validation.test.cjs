@@ -14,13 +14,22 @@ const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
+const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
+
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
+
+// Validation vectors run against the published schemas (dist/schemas/latest),
+// the one tree every response validator reads. Structural lints below read
+// the raw source where they inspect it.
+function loadComposedSchema(schemaPath) {
+  return readBuiltSchema(schemaPath);
+}
 
 async function loadExternalSchema(uri) {
   if (uri.startsWith('/schemas/')) {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
-    const content = fs.readFileSync(schemaPath, 'utf8');
-    return JSON.parse(content);
+    return loadComposedSchema(path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', '')));
   }
   throw new Error(`Cannot load external schema: ${uri}`);
 }
@@ -52,7 +61,7 @@ async function testSchemaValidation(schemaId, testData, description) {
     addFormats(ajv);
 
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const schema = loadComposedSchema(schemaPath);
 
     const validate = await ajv.compileAsync(schema);
     const valid = validate(testData);
@@ -90,7 +99,7 @@ async function testSchemaRejection(schemaId, testData, description) {
     addFormats(ajv);
 
     const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+    const schema = loadComposedSchema(schemaPath);
 
     const validate = await ajv.compileAsync(schema);
     const valid = validate(testData);
@@ -3125,7 +3134,7 @@ async function runTests() {
 
   await testSchemaValidation(
     '/schemas/governance/report-plan-outcome-response.json',
-    { outcome_id: 'outcome_abc123', outcome_state: 'accepted', replayed: true },
+    { outcome_id: 'outcome_abc123', outcome_state: 'accepted', replayed: true, status: 'completed' },
     'report_plan_outcome accepts replayed on envelope'
   );
 
@@ -3147,7 +3156,8 @@ async function runTests() {
     '/schemas/governance/sync-plans-response.json',
     {
       plans: [{ plan_id: 'plan_abc123', status: 'active', version: 1 }],
-      replayed: 'true'
+      replayed: 'true',
+      status: 'completed'
     },
     'sync_plans rejects replayed as string (type enforced)'
   );
@@ -3155,9 +3165,12 @@ async function runTests() {
   // Structural lint: no task-family response schema may seal the envelope with
   // `additionalProperties: false` anywhere on the root or in a composition
   // branch (oneOf/anyOf/allOf) unless `replayed` is declared on that seal. This
-  // catches the #2839 class of bug at author time. Skips `core/` (field
-  // sub-schemas that ship with `*-response.json` filenames but are not task
-  // response envelopes).
+  // catches the #2839 class of bug. It inspects the published composition: the
+  // schema build declares the envelope fields on closed roots and branches of
+  // every schema that composes core/protocol-envelope.json, so a seal fails
+  // here only when its schema does not compose the envelope. Skips `core/`
+  // (field sub-schemas that ship with `*-response.json` filenames but are not
+  // task response envelopes).
   totalTests++;
   const offenders = [];
   const inspectEnvelope = (schema, where) => {
@@ -3183,7 +3196,7 @@ async function runTests() {
       else if (entry.name.endsWith('-response.json')) {
         const rel = path.relative(SCHEMA_BASE_DIR, p);
         if (rel.startsWith('core/') || rel.startsWith('core' + path.sep)) continue;
-        const schema = JSON.parse(fs.readFileSync(p, 'utf8'));
+        const schema = loadComposedSchema(p);
         const issues = inspectEnvelope(schema, 'root');
         for (const issue of issues) offenders.push(`${rel} (${issue})`);
       }
@@ -3691,18 +3704,57 @@ async function runTests() {
         billing: 'operator'
       }]
     },
-    'sync_accounts provisions currency and timezone qualifiers in the natural key'
+    'sync_accounts provisions currency and timezone account attributes'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-attribute-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 7,
+        brand: { domain: 'nova-athletics.example', countries: ['BE', 'DE', 'NL'] },
+        operator_unit: { id: 'east-coast', name: 'East Coast' },
+        currency: 'EUR',
+        timezone: 'Europe/Amsterdam'
+      }]
+    },
+    'sync_accounts settings-update mode updates account attributes, countries included, by account_id'
   );
   await testSchemaRejection(
     '/schemas/account/sync-accounts-request.json',
     {
-      idempotency_key: 'sync-accounts-timezone-update-0001',
+      idempotency_key: 'sync-accounts-operator-update-0001',
       accounts: [{
         account: { account_id: 'seller-account-123' },
-        timezone: 'Europe/Amsterdam'
+        operator: 'new-operator.example'
       }]
     },
-    'sync_accounts rejects immutable timezone changes in settings-update mode'
+    'sync_accounts settings-update mode rejects an operator, which names a party rather than an attribute'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-billing-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        billing: 'agent'
+      }]
+    },
+    'sync_accounts settings-update mode accepts a billing change, an account attribute'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        action: 'unchanged',
+        status: 'pending_approval',
+        setup: { message: 'Adding BE requires a market review.' }
+      }]
+    },
+    'sync_accounts reports a countries change under seller review as pending_approval on the settings-update row'
   );
   await testSchemaValidation(
     '/schemas/account/sync-accounts-request.json',
@@ -4508,6 +4560,11 @@ async function runTests() {
   };
   await testSchemaValidation(
     '/schemas/media-buy/buy-products-request.json',
+    { ...cleanPurchase, opportunity: { opportunity_id: 'opp_nova_za_q4' } },
+    'buy_products retains ID-only opportunity acceptance for inferred closure'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-request.json',
     cleanPurchase,
     'buy_products creates directly from canonical product selections'
   );
@@ -4817,6 +4874,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/decline-proposals-response.json',
     {
+      status: 'completed',
       results: [
         { proposal_id: 'proposal-1', outcome: 'declined' },
         { proposal_id: 'proposal-2', outcome: 'unable', reason: 'Proposal not found.' }
@@ -4869,7 +4927,7 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/decline-proposals-response.json',
-    { results: [] },
+    { status: 'completed', results: [] },
     'decline_proposals returns no results for an opportunity-only update'
   );
   await testSchemaValidation(
@@ -4990,6 +5048,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [{ proposal: laterDraft, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'event_package' }],
       opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: laterState }]
@@ -4999,6 +5058,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [{ proposal: laterDraft, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later' }],
       opportunities: []
@@ -5008,6 +5068,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [{ proposal: { ...laterDraft, proposal_status: 'committed' }, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'new_inventory' }],
       opportunities: []
@@ -5037,15 +5098,16 @@ async function runTests() {
     commercial_terms: laterDraft.commercial_terms,
     terms_digest: `sha256:${'A'.repeat(43)}`
   };
-  const offerEntry = { proposal: sellerOffer, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'seller_offer' };
+  const offerEntry = { proposal: sellerOffer, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'seller_offer', offer_reason: 'installment_postponed' };
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [offerEntry], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [offerEntry], opportunities: [] },
     'list_proposals returns a seller offer with origin seller_offer'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [
         { ...offerEntry, proposal: { ...sellerOffer, proposal_kind: 'media_buy_cancellation', commercial_terms: { ...laterDraft.commercial_terms, cancellation_terms: { effective_at: '2026-11-01T00:00:00Z' } } } },
@@ -5058,32 +5120,33 @@ async function runTests() {
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, later_reason: 'new_inventory' }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, later_reason: 'new_inventory' }], opportunities: [] },
     'list_proposals forbids later_reason on a seller offer'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_initiator: undefined } }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_initiator: undefined } }], opportunities: [] },
     'list_proposals requires proposal_initiator seller on a seller offer'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_kind: 'new_media_buy', opportunity_id: 'opp_nova_za_q4' } }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_kind: 'new_media_buy', opportunity_id: 'opp_nova_za_q4' } }], opportunities: [] },
     'list_proposals rejects a seller offer that is a new_media_buy'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_status: 'draft' } }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_status: 'draft' } }], opportunities: [] },
     'list_proposals rejects a draft seller offer'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
-    { outcome: 'listed', proposals: [{ ...offerEntry, origin: 'request' }], opportunities: [] },
+    { status: 'completed', outcome: 'listed', proposals: [{ ...offerEntry, origin: 'request' }], opportunities: [] },
     'list_proposals lists a seller-initiated snapshot only as seller_offer'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [{ proposal: { ...laterDraft, proposal_initiator: 'seller', proposal_kind: 'media_buy_update' }, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'new_inventory' }],
       opportunities: []
@@ -5093,6 +5156,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [],
       opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, max_count: 5, min_interval: { interval: 1, unit: 'days' }, updated_at: '2026-10-09T15:02:11Z' } }]
@@ -5102,6 +5166,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [],
       opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, window_ends_at: '2026-12-31T23:59:59Z', updated_at: '2026-10-09T15:02:11Z' } }]
@@ -5111,6 +5176,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/list-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'listed',
       proposals: [],
       opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: false, updated_at: '2026-10-09T15:02:11Z' } }]
@@ -5191,22 +5257,78 @@ async function runTests() {
     },
     'create_media_buy rejects non-winning explicit opportunity closure'
   );
+  const packagePurchase = {
+    idempotency_key: 'create-package-opportunity-0001',
+    account: { account_id: 'account-opportunity-test' },
+    brand: { domain: 'buyer.example' },
+    packages: [{
+      product_id: 'display-standard',
+      pricing_option_id: 'fixed-cpm',
+      budget: 50000
+    }],
+    start_time: 'asap',
+    end_time: '2027-07-01T00:00:00Z'
+  };
+  const correlationOpportunity = { opportunity_id: 'opp-package-mode' };
+  for (const [mode, request] of [
+    ['implicit fixed', packagePurchase],
+    ['explicit fixed', { ...packagePurchase, budget_allocation: { mode: 'fixed' } }],
+    ['seller-optimized', {
+      ...packagePurchase,
+      packages: [{ product_id: 'display-standard', pricing_option_id: 'fixed-cpm' }],
+      total_budget: { amount: 50000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [{ kind: 'metric', metric: 'clicks' }]
+      }
+    }]
+  ]) {
+    await testSchemaValidation(
+      '/schemas/media-buy/create-media-buy-request.json',
+      request,
+      `create_media_buy ${mode} packages remain valid without opportunity`
+    );
+    await testSchemaValidation(
+      '/schemas/media-buy/create-media-buy-request.json',
+      { ...request, opportunity: correlationOpportunity },
+      `create_media_buy ${mode} packages accept correlation without a proposal`
+    );
+    for (const [label, opportunity] of [
+      ['open status', { ...correlationOpportunity, status: 'open' }],
+      ['closed status without reason', { ...correlationOpportunity, status: 'closed' }],
+      ['winning closure', { ...correlationOpportunity, status: 'closed', close_reason: 'accepted_with_seller' }],
+      ['other closure', { ...correlationOpportunity, status: 'closed', close_reason: 'not_pursued' }],
+      ['close reason alone', { ...correlationOpportunity, close_reason: 'accepted_with_seller' }],
+      ['close detail alone', { ...correlationOpportunity, close_detail: 'Campaign complete.' }],
+      ['consent grant', { ...correlationOpportunity, later_proposals: { accepted: true } }],
+      ['consent withdrawal', { ...correlationOpportunity, later_proposals: { accepted: false } }],
+      ['missing ID', {}],
+      ['empty ID', { opportunity_id: '' }],
+      ['invalid ID', { opportunity_id: 'opp/invalid' }],
+      ['oversized ID', { opportunity_id: 'o'.repeat(256) }]
+    ]) {
+      await testSchemaRejection(
+        '/schemas/media-buy/create-media-buy-request.json',
+        { ...request, opportunity },
+        `create_media_buy ${mode} packages reject ${label}`
+      );
+    }
+  }
+  for (const [label, opportunity] of [
+    ['open status', { ...correlationOpportunity, status: 'open' }],
+    ['closed status without reason', { ...correlationOpportunity, status: 'closed' }],
+    ['consent', { ...correlationOpportunity, later_proposals: { accepted: true } }]
+  ]) {
+    await testSchemaRejection(
+      '/schemas/media-buy/create-media-buy-request.json',
+      { ...proposalExecution, opportunity },
+      `create_media_buy committed proposal still rejects ${label}`
+    );
+  }
   await testSchemaRejection(
     '/schemas/media-buy/create-media-buy-request.json',
-    {
-      idempotency_key: 'create-package-opportunity-0001',
-      account: { account_id: 'account-opportunity-test' },
-      brand: { domain: 'buyer.example' },
-      packages: [{
-        product_id: 'display-standard',
-        pricing_option_id: 'fixed-cpm',
-        budget: 50000
-      }],
-      start_time: 'asap',
-      end_time: '2027-07-01T00:00:00Z',
-      opportunity: { opportunity_id: 'opp-package-mode' }
-    },
-    'create_media_buy restricts opportunity closure to proposal mode'
+    { ...packagePurchase, proposal_id: 'proposal-1', total_budget: { amount: 50000, currency: 'USD' }, opportunity: correlationOpportunity },
+    'create_media_buy correlation does not allow packages with proposal_id'
   );
   const splitCapabilityBase = {
     status: 'completed',
@@ -5282,7 +5404,7 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
-    { outcome: 'listed', products: [], feed_version: 'feed-empty-1', cache_scope: 'public' },
+    { status: 'completed', outcome: 'listed', products: [], feed_version: 'feed-empty-1', cache_scope: 'public' },
     'list_products treats no matches as an empty successful product page'
   );
   await testSchemaValidation(
@@ -5357,12 +5479,13 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
-    { outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
+    { status: 'completed', outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
     'list_products explicitly discriminates an unchanged feed response'
   );
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'proposed',
       proposals: [{
         proposal_id: 'proposal-1',
@@ -5391,6 +5514,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'rejected',
       reason: 'No available offer satisfies the campaign constraints.',
       suggestions: ['Broaden the flight dates.']
@@ -5399,12 +5523,13 @@ async function runTests() {
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
-    { products: [] },
+    { status: 'completed', products: [] },
     'request_proposals products-only compatibility requires an explicit outcome and continuation'
   );
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       incomplete: [{
@@ -5426,6 +5551,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       purchase_continuation: {
@@ -5441,6 +5567,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       incomplete: [{
@@ -5460,6 +5587,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       proposals: [{ proposal_id: 'synthetic-proposal' }],
@@ -5477,6 +5605,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       outcome: 'products_available',
       products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
       purchase_continuation: {
@@ -5493,6 +5622,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     {
+      status: 'completed',
       proposals: [{
         proposal_id: 'proposal-1',
         name: 'Draft premium video plan',
@@ -5530,6 +5660,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
@@ -5545,6 +5676,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'unable',
@@ -5559,6 +5691,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
@@ -5573,6 +5706,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5588,6 +5722,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5601,6 +5736,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'revised',
@@ -5613,6 +5749,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-draft-1',
         outcome: 'finalized',
@@ -5645,6 +5782,7 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
+      status: 'completed',
       results: [{
         source_proposal_id: 'proposal-draft-1',
         outcome: 'finalized',
@@ -6267,6 +6405,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/signals/get-signals-async-response-working.json',
     {
+      status: 'working',
       percentage: 40,
       current_step: 'querying_providers',
       step_number: 2,

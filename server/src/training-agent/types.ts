@@ -2,6 +2,7 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/sdk.
  */
+import type { StagedCreativeUpdate } from './live-creative-updates.js';
 import type {
   LegacyProduct as Product,
   Proposal,
@@ -11,7 +12,11 @@ import type {
   EventType,
   CanonicalProposal,
 } from '@adcp/sdk';
-import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } from './candidate-version.js';
+import {
+  TRAINING_AGENT_CANDIDATE_ADCP_VERSION,
+  TRAINING_AGENT_PREVIEW_ADCP_VERSION,
+  TRAINING_AGENT_SERVES_HOSTED_PREVIEW,
+} from './candidate-version.js';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
@@ -85,9 +90,25 @@ export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS: readonly string[] = Obje
   '3.2-rc.0', TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
-  ...(TRAINING_AGENT_CANDIDATE_ADCP_VERSION ? [TRAINING_AGENT_CANDIDATE_ADCP_VERSION] : []),
+  // The opt-in prerelease preview (candidate-version.ts), served only to an
+  // exact pin.
+  ...(TRAINING_AGENT_PREVIEW_ADCP_VERSION ? [TRAINING_AGENT_PREVIEW_ADCP_VERSION] : []),
 ])]);
 export const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0' as const;
+
+/**
+ * The releases an SDK registry can negotiate below its configured ceiling.
+ * The hosted preview is served by its own registry (tenants/registry.ts), so
+ * the stable registries keep exactly the releases they negotiated before it
+ * existed. In candidate mode the candidate stays in, as one registry serves
+ * it. Equal to TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS when the preview is
+ * off.
+ */
+export const TRAINING_AGENT_STABLE_REGISTRY_VERSIONS: readonly string[] = Object.freeze(
+  TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.filter(version => !(
+    TRAINING_AGENT_SERVES_HOSTED_PREVIEW && version === TRAINING_AGENT_PREVIEW_ADCP_VERSION
+  )),
+);
 
 export const PROPOSAL_NEGOTIATION_PROFILES = [
   'ask-only',
@@ -124,6 +145,20 @@ export function atLeastAdcpVersion(servedVersion: string | undefined, minimumVer
   return actual.prerelease >= minimum.prerelease;
 }
 
+/**
+ * Whether a response served at `servedVersion` belongs to a release line
+ * older than `major.minor` (prerelease qualifiers ignored: `3.1-rc.4` is on
+ * the 3.1 line). In-process callers without a served version speak the
+ * current line, so they are never older.
+ */
+export function servesReleaseBefore(servedVersion: string | undefined, major: number, minor: number): boolean {
+  const match = servedVersion?.match(/^(\d+)\.(\d+)/);
+  if (!match) return false;
+  const servedMajor = Number.parseInt(match[1], 10);
+  const servedMinor = Number.parseInt(match[2], 10);
+  return servedMajor < major || (servedMajor === major && servedMinor < minor);
+}
+
 export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, GET_PRODUCTS_REJECTED_ADCP_VERSION);
 }
@@ -140,9 +175,10 @@ export function supportsSellerGovernanceDiscovery(servedVersion: string | undefi
  *
  * This gate now covers only the `force_media_buy_confirmation` hold scenario,
  * which stays exercisable on the 3.2 wire. The `sales-fixed-rate` specialism
- * id itself is a 3.3 enum value and is gated separately by
- * `advertisesSalesFixedRateSpecialism` (3.3.0-beta.0 release verification
- * validates 3.2 responses against the published 3.2 schema).
+ * id itself is a 3.3 enum value; the tenant capability projection lists only
+ * the ids the served release's `enums/specialism.json` allows (3.3.0-beta.0
+ * release verification validates 3.2 responses against the published 3.2
+ * schema).
  */
 export const SALES_FIXED_RATE_ADCP_LINE = '3.2' as const;
 
@@ -153,28 +189,6 @@ export const SALES_FIXED_RATE_ADCP_LINE = '3.2' as const;
 export function supportsSalesFixedRate(servedVersion: string | undefined): boolean {
   const match = (servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION).match(/^(\d+)\.(\d+)/);
   const gate = SALES_FIXED_RATE_ADCP_LINE.match(/^(\d+)\.(\d+)/)!;
-  if (!match) return false;
-  const major = Number.parseInt(match[1], 10);
-  const minor = Number.parseInt(match[2], 10);
-  const gateMajor = Number.parseInt(gate[1], 10);
-  const gateMinor = Number.parseInt(gate[2], 10);
-  return major > gateMajor || (major === gateMajor && minor >= gateMinor);
-}
-
-/**
- * First wire line whose `specialisms` enum carries `sales-fixed-rate`. The id
- * is a 3.3 enum value (#7963), so a response served at 3.2 or below must not
- * list it (DR-0024). The hold controller scenario stays on the
- * `supportsSalesFixedRate` gate: `compliance_testing.scenarios` is not a
- * closed enum, and the scenario remains exercisable on the 3.2 wire.
- */
-export const SALES_FIXED_RATE_SPECIALISM_ADCP_LINE = '3.3' as const;
-
-/** Whether a capability response served at this wire version may list the
- * `sales-fixed-rate` specialism id. */
-export function advertisesSalesFixedRateSpecialism(servedVersion: string | undefined): boolean {
-  const match = (servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION).match(/^(\d+)\.(\d+)/);
-  const gate = SALES_FIXED_RATE_SPECIALISM_ADCP_LINE.match(/^(\d+)\.(\d+)/)!;
   if (!match) return false;
   const major = Number.parseInt(match[1], 10);
   const minor = Number.parseInt(match[2], 10);
@@ -242,6 +256,58 @@ export function supportsAccountChangeFeed(servedVersion: string | undefined): bo
   const major = Number.parseInt(match[1], 10);
   const minor = Number.parseInt(match[2], 10);
   return major > 3 || (major === 3 && minor >= 2);
+}
+
+/** First wire checkpoint carrying the experimental 3.3 account and reporting
+ * surfaces the training agent serves: account requests (`account.requests`),
+ * `authorization.authorized_at` / `regranted_at`, and principal-level
+ * reporting subscriptions (`media_buy.reporting_subscriptions`). */
+export const ACCOUNT_SURFACES_33_ADCP_VERSION = '3.3-beta' as const;
+
+export function supportsAccountSurfaces33(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, ACCOUNT_SURFACES_33_ADCP_VERSION);
+}
+
+/** Whether this process registers the experimental 3.3 account tools on its
+ * ordinary routes and enforces sandbox grants on every account-scoped call:
+ * only when one registry serves the 3.3 wire to every caller (the trusted
+ * storyboard candidate mode). The hosted preview's own registry and the 3.3
+ * identity route register them too. */
+export const TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33 = supportsAccountSurfaces33(TRAINING_AGENT_CANDIDATE_ADCP_VERSION);
+
+/** An AdCP release version (`3.2`, `3.1-rc.4`, `3.0.28`), parsed. */
+export interface ParsedAdcpReleaseVersion {
+  raw: string;
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease?: string;
+}
+
+/** The one parser for served and requested AdCP release versions. */
+export function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
+  if (typeof value !== 'string') return undefined;
+  const match = value.match(/^(\d+)\.(\d+)(?:\.(\d+))?(?:-([A-Za-z0-9.-]+))?$/);
+  if (!match) return undefined;
+  return {
+    raw: value,
+    major: Number.parseInt(match[1], 10),
+    minor: Number.parseInt(match[2], 10),
+    patch: match[3] ? Number.parseInt(match[3], 10) : 0,
+    ...(match[4] && { prerelease: match[4] }),
+  };
+}
+
+/**
+ * Whether the served release carries a task outcome in the top-level
+ * `status` key. AdCP 3.0 did; from 3.1 `status` is the envelope task status
+ * (`enums/task-status.json`) and the outcome has its own field (see
+ * served-outcome-status.ts). A caller with no served release speaks the
+ * current line.
+ */
+export function servesOutcomeInEnvelopeStatus(servedVersion: string | undefined): boolean {
+  const parsed = parseAdcpReleaseVersion(servedVersion);
+  return parsed !== undefined && parsed.major === 3 && parsed.minor === 0;
 }
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
@@ -1003,6 +1069,10 @@ export interface PackageState {
   canceledAt?: string;
   canceledBy?: string;
   cancellationReason?: string;
+  /** When the package was added to an already-confirmed buy (get_media_buys
+   * `added_at`, experimental 3.3 reporting subscriptions). Absent for packages
+   * that were part of the buy when it was confirmed. */
+  addedAt?: string;
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];
@@ -1137,6 +1207,9 @@ export interface CreativeState {
     reasonCode: string;
   };
   webhookActivity?: CreativeWebhookActivityRecord[];
+  /** Live creative update accepted in staged mode and not yet promoted. The
+   * fields above describe the version that serves until promotion. */
+  stagedUpdate?: StagedCreativeUpdate;
 }
 
 export interface CreativeWebhookActivityRecord {
@@ -1144,7 +1217,7 @@ export interface CreativeWebhookActivityRecord {
   subscriber_id: string;
   fired_at: string;
   completed_at: string;
-  notification_type: 'creative.status_changed' | 'creative.purged';
+  notification_type: 'creative.status_changed' | 'creative.purged' | 'creative.staged_update_changed';
   attempt: number;
   status: 'success' | 'failed';
   url: string;

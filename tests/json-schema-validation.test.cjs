@@ -14,10 +14,19 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { ensureBuiltSchemas, readBuiltSchema, builtSchemaFiles, builtSchemaPath } = require('../scripts/built-schemas.cjs');
+
+ensureBuiltSchemas();
 
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
 const SCHEMAS_DIR = path.join(__dirname, '../static/schemas/source');
+
+// Doc examples are wire payloads, so they validate against the published
+// schemas (dist/schemas/latest), the one tree every response validator reads.
+function loadComposedSchema(filePath) {
+  return readBuiltSchema(filePath);
+}
 
 // Test statistics
 let totalBlocks = 0;
@@ -67,8 +76,8 @@ function createAjvInstance() {
       }
       // Convert URI to local path
       const localPath = uriToLocalPath(uri);
-      if (localPath && fs.existsSync(localPath)) {
-        return JSON.parse(fs.readFileSync(localPath, 'utf8'));
+      if (localPath && fs.existsSync(builtSchemaPath(localPath))) {
+        return loadComposedSchema(localPath);
       }
       throw new Error(`Cannot resolve schema: ${uri}`);
     }
@@ -118,8 +127,7 @@ async function loadAllSchemas(ajv) {
     if (schemasLoaded.has(filePath)) return;
 
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      const schema = JSON.parse(content);
+      const schema = loadComposedSchema(filePath);
 
       // Add schema by its $id if it has one
       if (schema.$id) {
@@ -142,20 +150,8 @@ async function loadAllSchemas(ajv) {
     }
   }
 
-  // Recursively load all .json files
-  function walkDir(dir) {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walkDir(fullPath);
-      } else if (entry.name.endsWith('.json')) {
-        loadSchemaFile(fullPath);
-      }
-    }
-  }
-
-  walkDir(SCHEMAS_DIR);
+  // Every published schema (dist/schemas/latest).
+  for (const file of builtSchemaFiles()) loadSchemaFile(file);
   return schemasLoaded.size;
 }
 

@@ -54,6 +54,8 @@ export interface TrainingProposalPolicyContext {
   profile: Exclude<ProposalNegotiationProfile, "ask-only">;
   now: Date;
   activeHoldCount: number;
+  /** Draft IDs with a pending `force_hold_unavailable` directive. */
+  forcedHoldUnavailable?: ReadonlySet<string>;
   purchaseForProduct(
     productId: string,
     source: CanonicalProposal
@@ -290,6 +292,25 @@ function finalize(evaluation: Evaluation): ProposalRefinementResult {
       { source_unavailable: true },
       "The source proposal does not exist."
     );
+  // A force_hold_unavailable directive shapes this batch: the named drafts
+  // fail with hold_unavailable and every other entry with batch_aborted.
+  const forced = evaluation.context.forcedHoldUnavailable;
+  if (
+    forced &&
+    evaluation.request.refinements.some((entry) => forced.has(entry.proposal_id))
+  ) {
+    return forced.has(sourceId)
+      ? unable(
+          sourceId,
+          { hold_unavailable: true },
+          "The seller could not reserve the inventory this draft allocates."
+        )
+      : unable(
+          sourceId,
+          { batch_aborted: true },
+          "The batch was aborted because a sibling hold could not be created."
+        );
+  }
   if (evaluation.context.profile === "finalization-failure") {
     if (evaluation.index === 0) {
       return unable(

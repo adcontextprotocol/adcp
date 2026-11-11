@@ -3,13 +3,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 const semver = require('semver');
 const test = require('node:test');
+const { sdkCheckpoints } = require('./helpers/sdk-checkpoint.cjs');
 
-// Runtime surfaces must name the SDK the repository actually installs: learners
-// run these commands against the hosted training agent today.
+// Learner and production guidance names the stable SDK checkpoint: the
+// installed SDK when it is stable, otherwise the stable SDK on npm `latest`
+// (see tests/helpers/sdk-checkpoint.cjs). Learners run these commands against
+// the hosted training agent today.
 const CURRENT_SDK_CHECKPOINT_FILES = [
   'server/src/addie/mcp/certification-tools.ts',
   'docs/building/by-layer/L4/choose-your-sdk.mdx',
 ];
+// While the repository runs an SDK prerelease, the SDK page also states that
+// exact prerelease's support for the protocol beta.
+const PRERELEASE_SDK_SUPPORT_FILES = ['docs/building/by-layer/L4/choose-your-sdk.mdx'];
 
 // GA history and minimum-version guidance retain the stable SDK that shipped
 // at launch, independently of later dependency upgrades. Mixed pages can also
@@ -95,18 +101,24 @@ test('SDK checkpoint matching compares complete SemVer tokens', () => {
 });
 
 test('current exact SDK checkpoint references match package.json', () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8'));
-  const expectedVersion = packageJson.dependencies['@adcp/sdk'];
+  const { installed, stable, prerelease } = sdkCheckpoints();
 
   for (const relativePath of CURRENT_SDK_CHECKPOINT_FILES) {
     const source = fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
-    const versions = sdkCheckpointVersions(source, expectedVersion);
-    assert.deepEqual(versions, [expectedVersion], `${relativePath} must use the package.json SDK checkpoint`);
-    if (semver.prerelease(expectedVersion) === null) {
+    const versions = sdkCheckpointVersions(source, stable);
+    assert.deepEqual(versions, [stable], `${relativePath} must use the stable SDK checkpoint ${stable}`);
+    assert.deepEqual(
+      sdkCheckpointPrereleases(source, stable),
+      [],
+      `${relativePath} must not pin a ${stable} prerelease`,
+    );
+    if (prerelease) {
       assert.deepEqual(
-        sdkCheckpointPrereleases(source, expectedVersion),
-        [],
-        `${relativePath} must not pin a ${expectedVersion} prerelease`,
+        sdkCheckpointVersions(source, installed),
+        PRERELEASE_SDK_SUPPORT_FILES.includes(relativePath) ? [installed] : [],
+        PRERELEASE_SDK_SUPPORT_FILES.includes(relativePath)
+          ? `${relativePath} must state the installed prerelease ${installed}`
+          : `${relativePath} must not tell learners to install the prerelease ${installed}`,
       );
     }
   }
@@ -130,15 +142,28 @@ test('GA and minimum-version docs retain the stable SDK launch checkpoint', () =
   }
 });
 
+// An SDK prerelease pins a protocol prerelease (SDK 17 beta: 3.3.0-beta.0) and
+// retains stable bundles. The training agent keeps serving the newest stable
+// release the SDK bundles until the protocol line itself goes stable.
+function newestStableBundledAdcpVersion(sdk) {
+  const stable = sdk.listBundledAdcpVersions()
+    .filter(version => /^\d+\.\d+\.\d+$/.test(version));
+  assert.ok(stable.length > 0, 'installed SDK must bundle a stable AdCP release');
+  return stable.sort(semver.compare).at(-1);
+}
+
 test('training-agent current AdCP version exactly matches the installed SDK schema release', async () => {
   const currentVersion = trainingAgentAdcpVersion('TRAINING_AGENT_CURRENT_ADCP_VERSION');
-  const sdkVersion = installedSdkAdcpVersion();
   for (const sdk of [require('@adcp/sdk'), await import('@adcp/sdk')]) {
+    const primaryVersion = installedSdkAdcpVersion();
+    const sdkVersion = semver.prerelease(canonicalAdcpVersion(primaryVersion)) === null
+      ? primaryVersion
+      : newestStableBundledAdcpVersion(sdk);
     const resolvedVersion = sdk.resolveAdcpVersion(currentVersion);
     assert.equal(
       adcpReleaseLine(resolvedVersion),
       adcpReleaseLine(sdkVersion),
-      `training-agent current ${currentVersion} must track the installed SDK schema ${sdkVersion}`,
+      `training-agent current ${currentVersion} must track the installed SDK's newest stable schema ${sdkVersion}`,
     );
     assert.ok(
       sdk.listBundledAdcpVersions().includes(resolvedVersion),

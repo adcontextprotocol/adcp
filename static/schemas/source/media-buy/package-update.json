@@ -58,6 +58,25 @@
       "format": "date-time",
       "description": "Updated flight end date/time for this package in ISO 8601 format. Must fall within the media buy's date range."
     },
+    "start_requires_all_creatives_approved": {
+      "type": "boolean",
+      "description": "AdCP 3.3 initial-start policy. False (default) serves eligible approved assignments. True MUST retain booking and inventory commitment but block first enablement for serving until every current assignment is approved in all applicable package scopes; an empty set or library approval alone is insufficient. Retain pending-review/rejected assignments; same-creative_id resubmission needs no reassignment. Flight, pause, format-coverage and commitment constraints still apply. After first enablement, ordinary serving and impairment rules apply. Opt-in requires media_buy.features.creative_start_policy: true; otherwise buyers MUST NOT send true and sellers MUST reject true with UNSUPPORTED_FEATURE before mutation. Stage the full initial set atomically or while paused; the gate cannot anticipate future assignments. Omission preserves the stored policy; false clears the gate before first enablement for serving. A change to this policy after the package has first been enabled for serving MUST be rejected with INVALID_STATE.",
+      "x-added-in": "3.3.0",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "creative_start_policy": {
+            "default": "serve_approved_subset",
+            "true_gate": "all_current_assignments_approved_in_all_applicable_scopes",
+            "empty_assignments": "gate_unsatisfied",
+            "evaluation_window": "before_first_package_enablement",
+            "review_rejection": "retain_assignment",
+            "readback": "echo_effective_policy",
+            "unsupported_true": "UNSUPPORTED_FEATURE"
+          }
+        },
+        "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+      }
+    },
     "paused": {
       "type": "boolean",
       "description": "Pause/resume specific package (true = paused, false = active)"
@@ -179,7 +198,7 @@
     },
     "creative_assignments": {
       "type": "array",
-      "description": "Replace creative assignments for this package with optional rotation, grouping, weights, and placement routing. Uses replacement semantics - omit to leave assignments unchanged. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before mutation. When the same mutation narrows or clears targeting_overlay.placement_selection, this complete replacement MUST remove or reroute every assignment reference that would otherwise be orphaned; the seller validates both changes atomically.",
+      "description": "Replace creative assignments for this package with optional rotation, grouping, weights, and placement routing. Uses replacement semantics - omit to leave assignments unchanged. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before mutation. When the same mutation narrows or clears targeting_overlay.placement_selection, this complete replacement MUST remove or reroute every assignment reference that would otherwise be orphaned; the seller validates both changes atomically. A pending_review or rejected library creative MAY be assigned if the reference and other assignment constraints are valid; sellers MUST NOT reject or remove an assignment solely for its review status. Only package-approved eligible creatives may serve. See the package start_requires_all_creatives_approved policy and docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review.",
       "x-adcp-validation": {
         "verifier_constraints": {
           "package_rotation_policy": {

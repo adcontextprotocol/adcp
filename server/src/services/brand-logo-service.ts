@@ -9,6 +9,7 @@ import sharp from 'sharp';
 import { BrandLogoDatabase, type BrandLogoSummary, type InsertBrandLogoInput } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getBrandAssetUrl } from './logo-cdn.js';
+import { backgroundFromTags } from './logo-background.js';
 import { safeFetch } from '../utils/url-security.js';
 import { createLogger } from '../logger.js';
 
@@ -151,14 +152,143 @@ export async function detectContentType(buffer: Buffer): Promise<string | null> 
   return null;
 }
 
+const SVG_PURIFY_CONFIG = {
+  USE_PROFILES: { svg: true },
+  FORBID_TAGS: ['foreignObject', 'use', 'script', 'iframe', 'object', 'embed', 'animate', 'set', 'animateTransform'],
+  FORBID_ATTR: ['xlink:href', 'href'],
+};
+
+// A CSS escape: a backslash and 1-6 hex digits (plus one optional
+// whitespace), or a backslash and any other character.
+const CSS_ESCAPE = /\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([\s\S]))/gi;
+// `url(` or `src(`, any case, through the first `)` (or to the end).
+const CSS_RESOURCE_FUNCTION = /(?:url|src)\(([^)]*)\)?/gi;
+const SAME_DOCUMENT_FRAGMENT = /^#[^\s'"()]+$/;
+// An @import rule through its terminating `;` (or to the end).
+const CSS_IMPORT_RULE = /@import[^;]*;?/gi;
+
+function decodeCssEscapes(css: string): string {
+  return css
+    .replace(CSS_ESCAPE, (_match, hex: string | undefined, char: string | undefined) => {
+      if (hex === undefined) return char ?? '';
+      const codePoint = parseInt(hex, 16);
+      const valid = codePoint > 0 && codePoint <= 0x10ffff && (codePoint < 0xd800 || codePoint > 0xdfff);
+      return String.fromCodePoint(valid ? codePoint : 0xfffd);
+    })
+    .replace(/\\/g, '');
+}
+
+/**
+ * Neutralise every resource a CSS value or stylesheet could load, keeping
+ * same-document references such as `url(#gradient)`.
+ *
+ * DOMPurify keeps `<style>` text and CSS in attributes (`fill`, `mask`,
+ * `filter`, `style`, ...). librsvg follows `url(...)` there and `@import` in
+ * a stylesheet, including `data:` URLs whose nested SVG was never sanitised
+ * and can embed images decoded outside the render's pixel limit. So:
+ *
+ * - every `@import` rule becomes a single space (never nothing, which would
+ *   join the text either side of it into a new token);
+ * - then every `url(...)` / `src(...)` whose target is not a `#fragment`
+ *   becomes `none`, which every property taking a URL accepts;
+ * - both are looked for after decoding CSS escapes, since an escape can
+ *   spell `url(` or `@import` without those characters (`u\72l(`). Text with
+ *   escapes and nothing to neutralise is returned as it was.
+ *
+ * One pass can still assemble a token out of what it removed around
+ * (`ur@import;l(`), so passes repeat until the text stops changing. Each
+ * changing pass shortens the text, so this ends; the result neutralises to
+ * itself, which keeps sanitising idempotent (ingest, then render, sanitise
+ * the same bytes). If it somehow does not settle, the CSS is dropped.
+ *
+ * It matches inside strings and comments too: over-matching only drops a
+ * paint, never lets a reference through.
+ */
+export function neutralizeCssResources(css: string): string {
+  let current = css;
+  for (let pass = 0; pass < MAX_CSS_NEUTRALIZE_PASSES; pass++) {
+    const next = neutralizeCssOnce(current);
+    if (next === current) return current;
+    current = next;
+  }
+  return '';
+}
+
+const MAX_CSS_NEUTRALIZE_PASSES = 64;
+
+function neutralizeCssOnce(css: string): string {
+  const decoded = css.includes('\\') ? decodeCssEscapes(css) : css;
+  const neutralized = decoded
+    .replace(CSS_IMPORT_RULE, ' ')
+    .replace(CSS_RESOURCE_FUNCTION, (match, arg: string) => {
+      const target = arg.trim().replace(/^(['"])(.*)\1$/s, '$2').trim();
+      return SAME_DOCUMENT_FRAGMENT.test(target) ? match : 'none';
+    });
+  // Nothing to neutralise: keep the text as written, escapes and all.
+  return neutralized === decoded ? css : neutralized;
+}
+
+/** The slice of the DOM API used here; the server compiles without lib.dom. */
+interface SanitizedSvgElement {
+  readonly localName: string;
+  readonly attributes: ArrayLike<{ value: string }>;
+  readonly children: ArrayLike<SanitizedSvgElement>;
+  textContent: string | null;
+  innerHTML: string;
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+  querySelectorAll(selector: string): ArrayLike<SanitizedSvgElement>;
+}
+
+/** Sanitise SVG markup and return the DOMPurify body holding it. */
+function sanitizeSvgToBody(raw: string): SanitizedSvgElement {
+  const body = DOMPurify.sanitize(raw, { ...SVG_PURIFY_CONFIG, RETURN_DOM: true }) as unknown as SanitizedSvgElement;
+  for (const element of Array.from(body.querySelectorAll('*'))) {
+    for (const attr of Array.from(element.attributes)) {
+      const value = neutralizeCssResources(attr.value);
+      if (value !== attr.value) attr.value = value;
+    }
+    if (element.localName === 'style') {
+      const css = element.textContent ?? '';
+      const value = neutralizeCssResources(css);
+      if (value !== css) element.textContent = value;
+    }
+  }
+  return body;
+}
+
+/**
+ * Sanitise an uploaded SVG: DOMPurify's SVG profile without scripting,
+ * `<use>`, `href`s or animation, and with every CSS resource reference other
+ * than a same-document `#fragment` neutralised (see neutralizeCssResources).
+ * `<style>` is kept: real logos fill paths through classes.
+ */
 export function sanitizeSvg(buffer: Buffer): Buffer {
-  const raw = buffer.toString('utf8');
-  const clean = DOMPurify.sanitize(raw, {
-    USE_PROFILES: { svg: true },
-    FORBID_TAGS: ['foreignObject', 'use', 'script', 'iframe', 'object', 'embed', 'animate', 'set', 'animateTransform'],
-    FORBID_ATTR: ['xlink:href', 'href'],
-  });
-  return Buffer.from(clean, 'utf8');
+  return Buffer.from(sanitizeSvgToBody(buffer.toString('utf8')).innerHTML, 'utf8');
+}
+
+const PLAIN_SVG_LENGTH = /^\s*(\d+(?:\.\d+)?|\.\d+)\s*(?:px)?\s*$/;
+
+/**
+ * Sanitise an SVG and set its root element's width and height, so it renders
+ * at that size whatever size it declares. A root without a `viewBox` gets one
+ * from its declared width and height, so its drawing scales with it. Returns
+ * null when the root declares no usable size (no `viewBox`, and a width or
+ * height that is missing or not in plain pixels).
+ */
+export function sanitizeSvgAtSize(buffer: Buffer, width: number, height: number): Buffer | null {
+  const body = sanitizeSvgToBody(buffer.toString('utf8'));
+  const root = Array.from(body.children).find((element) => element.localName === 'svg');
+  if (!root) return null;
+  if (!root.getAttribute('viewBox')) {
+    const declaredWidth = PLAIN_SVG_LENGTH.exec(root.getAttribute('width') ?? '');
+    const declaredHeight = PLAIN_SVG_LENGTH.exec(root.getAttribute('height') ?? '');
+    if (!declaredWidth || !declaredHeight) return null;
+    root.setAttribute('viewBox', `0 0 ${declaredWidth[1]} ${declaredHeight[1]}`);
+  }
+  root.setAttribute('width', String(width));
+  root.setAttribute('height', String(height));
+  return Buffer.from(body.innerHTML, 'utf8');
 }
 
 export async function extractDimensions(
@@ -227,12 +357,16 @@ export async function rebuildManifestLogos(
 
   const finalLogos = [...higherPriority, ...keptBrandfetch];
 
-  const manifestLogos = finalLogos.map(l => ({
-    url: getBrandAssetUrl(domain, l.id, l.content_type),
-    tags: l.tags,
-    ...(l.width ? { width: l.width } : {}),
-    ...(l.height ? { height: l.height } : {}),
-  }));
+  const manifestLogos = finalLogos.map(l => {
+    const background = backgroundFromTags(l.tags) ?? l.derived_background;
+    return {
+      url: getBrandAssetUrl(domain, l.id, l.content_type),
+      tags: l.tags,
+      ...(l.width ? { width: l.width } : {}),
+      ...(l.height ? { height: l.height } : {}),
+      ...(background ? { background } : {}),
+    };
+  });
   const mergeLogosIntoManifest = (manifest?: Record<string, unknown>) => ({
     ...(manifest ?? {}),
     logos: manifestLogos,

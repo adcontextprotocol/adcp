@@ -4,7 +4,8 @@ description: "Operate Addie's global Gemini response policy, emergency fallback,
 "og:title": "AdCP — Addie Gemini response provider"
 ---
 
-Gemini 3.7 Flash (`gemini-3.7-flash`) is the normal response provider for
+Addie requests Gemini with `gemini-3.7-flash`, which Google now routes to
+Gemini 3.8 Flash, for
 authenticated and anonymous web, Slack DMs, mentions, thread continuations,
 channel responses and reactions, MCP `chat_with_addie`, email conversations,
 and Tavus voice/video. This includes existing web threads, saved control
@@ -86,6 +87,31 @@ fly secrets set -a adcp-docs ADDIE_RESPONSE_AUTOMATIC_FALLBACK=true
 Set the fallback control back to `false` to stop automatic cross-provider
 attempts. Setting enrollment percentages to zero or the old experiment mode to
 `off` has no effect on this global policy.
+
+## Gemini prepayment exhaustion
+
+HTTP 402 with `RESOURCE_EXHAUSTED` and "Your prepayment credits are depleted"
+means the Gemini Prepay balance is empty. A linked Cloud Billing account alone
+does not establish a positive Gemini Prepay balance. Open
+[AI Studio Billing](https://aistudio.google.com/billing) for the account associated
+with production's `GEMINI_API_KEY`, buy credits, and review auto-reload settings.
+Google documents [Prepay recovery](https://aistudio.google.com/docs/billing#buy-credits)
+and advises [against retrying HTTP 402](https://aistudio.google.com/docs/troubleshooting#retry-strategy).
+
+Addie classifies HTTP 402 as billing exhaustion and opens its existing five-minute
+Google circuit. With automatic fallback enabled, eligible turns use Sonnet while
+the circuit is open. Confirm recovery with a successful generation request;
+listing models can succeed while generation remains blocked by billing.
+
+## Returned model redirects
+
+Google automatically routes `gemini-3.7-flash` requests to `gemini-3.8-flash`
+following its [3.7 deprecation](https://aistudio.google.com/docs/deprecations).
+Production response adapters accept this exact redirect and retain the actual
+3.8 identity in response provenance and cost records. Its reviewed pricing entry
+expires January 1, 2027, when Google's published rates change. Other unreviewed
+returned identities still fail closed; frozen evaluation adapters retain their
+original model checks.
 
 ## Treatment behavior
 

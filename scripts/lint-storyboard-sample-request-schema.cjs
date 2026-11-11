@@ -246,6 +246,18 @@ function synthesizeObject(schema, depth) {
 }
 
 /**
+ * Different substitutions resolve to different values at runtime, so two
+ * `$context.*` IDs in one array (a multi-entry `refinements` batch) must not
+ * collide under `uniqueItems`. The generic UUID placeholder is varied by a
+ * digest of the token; every other placeholder is returned unchanged.
+ */
+function distinctPlaceholder(placeholder, token) {
+  if (placeholder !== STRING_PLACEHOLDER) return placeholder;
+  const digest = require('node:crypto').createHash('sha256').update(token).digest('hex');
+  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+}
+
+/**
  * Walk the payload in parallel with the schema, replacing substitution strings
  * with schema-typed placeholders. Descends into object properties, array items,
  * and follows $ref / oneOf / anyOf. Unknown property paths fall back to a
@@ -255,7 +267,7 @@ function normalizeSubstitutions(value, schema) {
   const discriminator = discriminatorFor(value, schema);
   const resolved = resolveSchemaNode(schema, discriminator);
   if (typeof value === 'string' && SUBSTITUTION_RE.test(value)) {
-    return placeholderFor(resolved);
+    return distinctPlaceholder(placeholderFor(resolved), value);
   }
   if (Array.isArray(value)) {
     const itemSchema = resolved?.items;
@@ -295,16 +307,19 @@ function normalizeSubstitutions(value, schema) {
  * Keep ordinary slots, malformed instructions, and every other request field
  * visible to schema validation. Direct validateStep calls remain wire-strict.
  */
-function normalizeExecutionOnlyAssetDirectives(value, isAssetMap = false) {
-  if (Array.isArray(value)) return value.map(item => normalizeExecutionOnlyAssetDirectives(item));
+function normalizeExecutionOnlyAssetDirectives(value, isAssetMap = false, allowTestKitCatalog = false) {
+  if (Array.isArray(value)) return value.map(item => normalizeExecutionOnlyAssetDirectives(item, false, allowTestKitCatalog));
   if (!value || typeof value !== 'object') return value;
   const out = {};
   for (const [key, item] of Object.entries(value)) {
-    if (isAssetMap && key === '$build_assets_from_format'
-        && typeof item === 'string' && /^\$context\.[A-Za-z_][A-Za-z0-9_]*$/.test(item)) {
+    const contextRef = candidate => typeof candidate === 'string'
+      && /^\$context\.[A-Za-z_][A-Za-z0-9_]*$/.test(candidate);
+    const catalogDirective = allowTestKitCatalog && item && typeof item === 'object' && !Array.isArray(item)
+      && Object.keys(item).length === 2 && item.catalog === 'test_kit' && contextRef(item.format_id);
+    if (isAssetMap && key === '$build_assets_from_format' && (contextRef(item) || catalogDirective)) {
       continue;
     }
-    out[key] = normalizeExecutionOnlyAssetDirectives(item, key === 'assets');
+    out[key] = normalizeExecutionOnlyAssetDirectives(item, key === 'assets', allowTestKitCatalog);
   }
   return out;
 }
@@ -317,7 +332,8 @@ function normalizeExecutionOnlyAssetDirectives(value, isAssetMap = false) {
  * coverage; this lint must still catch broken bindings and authored payloads.
  */
 function normalizeStoryboardSampleRequests(storyboard, step, schema) {
-  const sampleRequest = normalizeExecutionOnlyAssetDirectives(step.sample_request);
+  const sampleRequest = normalizeExecutionOnlyAssetDirectives(step.sample_request, false,
+    Array.isArray(storyboard.requires) && storyboard.requires.includes('test_kit_format_catalog_runner'));
   if (!storyboard.creative_build_probe || step.task !== 'build_creative'
       || step.requires_contract !== 'creative_build_probe_runner') {
     return [normalizeSubstitutions(sampleRequest, schema)];

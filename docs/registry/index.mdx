@@ -116,13 +116,27 @@ These endpoints resolve domains to brand identities. The `source` field identifi
 
 | Source | Meaning |
 |--------|----------|
-| `hosted` | Registered by a domain owner whose control of the domain has been verified |
+| `hosted` | Registered by a domain owner whose control of the domain has been verified: by a DNS record, by the domain's `/.well-known/brand.json` pointing at the hosted record, or by a member of the owning organization with a verified email address on the domain. An administrator adding the domain to an organization is not verification. |
 | `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
 | `enriched` | Enriched via Brandfetch API |
 | `community` | Submitted by a community member |
 | `stub` | Minimal organization-derived placeholder awaiting stronger evidence |
 
 All sources produce the same resolution response structure, but they are not equivalent evidence. `hosted` and `brand_json` are backed by domain control; `community` and `enriched` describe what the registry has learned without proving that the domain operator asserted it. `source` is the authoritative response provenance, not proof of a house relationship—use `relationship_trust` for that. `enrichment_provider`, when present, is the preferred open-ended attribution/diagnostic identifier and is only emitted for `source: "enriched"`; clients must not treat it as a trust tier or behavioral switch. `provenance_provider` is temporarily also emitted with the same value as a deprecated compatibility alias for enriched responses. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
+
+#### Resolved brand entry
+
+`GET /api/brands/resolve` and each successful result from `POST /api/brands/resolve/bulk` can include an optional `brand` object containing the complete selected brand entry. Read logos, colors, fonts, localized `names` and `tagline`, and tone directly from it. Fields retain their brand.json shapes; the registry does not rename or flatten them. The existing `brand_manifest` output remains available with its existing semantics.
+
+The entry comes from the same winning identity source as the response's `source`. A higher-priority stored portfolio never borrows an entry from a lower-priority live document. `fresh=true` applies the existing source-selection rules to the entry as well as the rest of the response.
+
+For a canonical single-brand document, `brand` is the brand document itself. For a portfolio, selection uses a known stored `brand_id` when present; otherwise it requires a unique entry matching the requested domain through its homepage `url` or an owned website property. Non-owned properties do not select brand identity. On the house's own domain, a unique `master` entry supplies the default; a sole inline brand can supply it only when there are no pointer brands. The resolver also recognizes an exact apex/`www` house hostname confirmed by its validated HTTPS redirect path. A redirect to another house does not grant that default.
+
+For property-based selection, `relationship` is the canonical brand.json field and defaults to `owned`. A supplied `delegation_type` compatibility field prevents an owned-property match, including when it conflicts with `relationship: "owned"`. This conservative rule does not change the document's schema validity or the resolver's existing identity metadata.
+
+`brand` is omitted when no complete entry can be selected, more than one entry matches, the entry disagrees with the existing live identity selection, or the selected document contains only an agent or an unexpanded redirect/pointer. It never falls back to the first portfolio entry. Successful live resolution through a house redirect, `authoritative_location`, or a portfolio pointer can supply the terminal brand entry, provided that live source wins. Legacy stored documents without a canonical brand entry still return their existing metadata and manifest without the new field. Historical ephemeral `brand_context` is excluded from both public outputs.
+
+This is a convenience identity projection. It does not change source provenance, establish a house relationship, or authorize an operator. Continue applying the trust rules below. Clients receiving older registry responses can keep their existing fallback when `brand` is absent.
 
 #### Reading trust
 
@@ -184,15 +198,59 @@ Pre-v3 documents are promoted to canonical v3 identity for the response, flagged
 
 An absent `relationship_trust` in a list result means trust has not yet been computed for that brand — it MUST NOT be interpreted as `standalone`. For an authoritative, real-time verdict use `/api/brands/resolve`.
 
+A brand that names a house but publishes no brand.json of its own (an enriched, community or hosted record) gets its verdict from stored records after each crawl: `house_only` when the house's record lists it in `brand_refs[]`, and `unverifiable` otherwise, with the house copied to `claimed_house_domain`. Neither verdict extends trust. `mutual` still requires both published documents.
+
+`/api/brands/registry?house_domain=pg.com` lists every brand the registry links to `pg.com`, and adds the house's own record as `house`. Each row's `house_link` says how the link is known:
+
+| `house_link` | Meaning | Extends trust |
+|---|---|---|
+| `confirmed` | Both sides publish the link, or the brand redirects to the house (`relationship_trust` is `mutual` or `inline`) | Yes |
+| `house_declared` | The house's own manifest lists the brand, and the house has shown it controls its domain | No |
+| `brand_declared` | The brand's own brand.json names the house; the house does not list it | No |
+| `inferred` | An enrichment or community record links them | No |
+
+A verdict computed from stored records does not make a row `brand_declared`: the brand published nothing. A house's declaration does not list a brand whose own brand.json names a different house, or that is confirmed under a different house. Offer anything other than `confirmed` as a suggestion, under the brand's own domain, never as authority from the house.
+
+#### Brand logos
+
+Logos the registry hosts use `https://agenticadvertising.org/assets/brands/{domain}/{logoId}.{ext}`, or the legacy `/logos/brands/{domain}/{logoId}`. Some stored manifests carry the legacy path relative to the registry host. A logo id names immutable bytes: a changed logo is a new id, so both forms are served with a 30-day public cache lifetime.
+
+Clients that cannot draw SVG can ask either form for a PNG rendition:
+
+```text
+https://agenticadvertising.org/assets/brands/acmecorp.com/{logoId}.svg?format=png&w=512
+```
+
+| Parameter | Values | Notes |
+|---|---|---|
+| `format` | `png` | Omit `format` and `w` for the stored bytes. |
+| `w` | `64`, `128`, `256`, `512`, `1024` | Defaults to `512`. Height follows the aspect ratio, capped at 4× the width. Raster logos are never enlarged past their natural width. |
+
+A rendition is rasterised from the stored, sanitised logo; the endpoint never fetches a remote URL. A logo type with no rendition (ICO) returns `415`, a logo that cannot be rendered returns `422`, and a saturated renderer returns `503` with `Retry-After`. Error responses carry `Cache-Control: no-store`. External logo URLs (for example an enrichment provider's CDN) are not proxied; use them as published.
+
+Every logo in a resolve or bulk-resolve response (`brand_manifest.logos[]`, `brand_manifest.brands[].logos[]` and `brand.logos[]`) carries brand.json's `background` field when the registry knows it:
+
+| `background` | Drawn for | Typical ink |
+|---|---|---|
+| `light-bg` | Light backgrounds | Dark or saturated colour |
+| `dark-bg` | Dark backgrounds | White or light colour |
+| `transparent-bg` | Any background | Declared by the brand only |
+
+A `background` the brand declares as `light-bg`, `dark-bg` or `transparent-bg` is returned as published and never replaced. Any other declared value is treated as undeclared and is never returned. Without a declared value, a `light-bg` or `dark-bg` tag on the logo supplies it, and then a `transparent-bg` tag. For registry-hosted logos with neither, the registry derives `light-bg` or `dark-bg` from the luminance of the rendered logo: mostly light ink is `dark-bg`. An opaque logo is judged by its own background colour. A background job derives it shortly after a logo is uploaded, so treat a missing `background` as unknown rather than as either value. Enrichment-provider `light`/`dark` tags describe the ink, not the background, and are not read as a `background`.
+
+To pick a logo for a light interface, prefer `background: "light-bg"`, then `transparent-bg`; for a dark interface prefer `dark-bg`, then `transparent-bg`.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
 | POST | `/api/brands/resolve/bulk` | Resolve up to 25 domains at once |
 | GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
-| GET | `/api/brands/registry` | List all brands (search, pagination) with cached trust state |
+| GET | `/api/brands/registry` | List all brands (search, pagination, source, house) with cached trust state |
 | GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |
 | GET | `/api/brands/history` | Edit history for a brand |
 | POST | `/api/brands/save` | Save or update a community brand (auth required) |
+| GET | `/assets/brands/{domain}/{logoId}.{ext}` | Download a hosted logo; `?format=png&w=` for a PNG rendition |
+| GET | `/logos/brands/{domain}/{logoId}` | Legacy logo URL; same rendition parameters |
 
 ### Property Resolution
 
@@ -289,7 +347,7 @@ curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 
 This returns every measurement agent enrolled in the registry by an AgenticAdvertising.org member organization.
 
-**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AgenticAdvertising.org crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AgenticAdvertising.org crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`. Each cached metric carries the vendor's optional display `name` when published; show it as the label and fall back to `metric_id`, but filter and key on `metric_id` only.
 
 ##### Trust and external links
 

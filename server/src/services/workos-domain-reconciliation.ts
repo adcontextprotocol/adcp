@@ -116,6 +116,7 @@ export async function reconcileWorkosOrganizationDomains(input: {
   const workosDomains = workosOrg.domains.map((d) => ({
     domain: d.domain.toLowerCase(),
     state: String(d.state),
+    verificationStrategy: d.verificationStrategy,
   }));
   const domainNames = workosDomains.map((d) => d.domain);
 
@@ -128,6 +129,7 @@ export async function reconcileWorkosOrganizationDomains(input: {
     domains: workosDomains.map((d) => ({
       domain: d.domain,
       state: d.state === 'verified' || d.state === 'legacy_verified' ? 'verified' : 'pending',
+      verification_strategy: d.verificationStrategy,
     })),
     created_at: workosOrg.createdAt ?? new Date().toISOString(),
     updated_at: workosOrg.updatedAt ?? new Date().toISOString(),

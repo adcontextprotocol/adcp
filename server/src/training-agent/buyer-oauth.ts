@@ -88,6 +88,8 @@ export function createTrainingBuyerOAuthMiddleware(
   fallback: RequestHandler,
   keyResolver: JWTVerifyGetKey = createRemoteJWKSet(new URL('/oauth2/jwks', config.issuer), { timeoutDuration: 5_000 }),
   access: 'sandbox' | 'private-reporting' = 'sandbox',
+  /** Only test harnesses that already disable the router's request ceiling pass false. */
+  options: { rateLimit?: boolean } = {},
 ): RequestHandler {
   const keys = unavailableJWTKeyService(keyResolver);
   const privateReporting = access === 'private-reporting';
@@ -107,9 +109,11 @@ export function createTrainingBuyerOAuthMiddleware(
         ? 'Sign in as an owner or admin of the private training buyer organization.'
         : 'Sign in to an AgenticAdvertising.org organization to use the sales training sandbox, or use the public test bearer token.' });
     if (!token) return unauthorized();
-    let limited = true;
-    await limit(req, res, () => { limited = false; });
-    if (limited) return;
+    if (options.rateLimit !== false) {
+      let limited = true;
+      await limit(req, res, () => { limited = false; });
+      if (limited) return;
+    }
     let dependency: 'jwt_key_service' | 'primary_authorization' | 'platform_ban' | 'workos_membership' = 'jwt_key_service';
     try {
       const { payload } = await jwtVerify(token, keys, { issuer: config.issuer, audience: config.resource,

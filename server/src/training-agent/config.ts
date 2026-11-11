@@ -23,6 +23,19 @@ export function getAgentUrl(): string {
 }
 
 /**
+ * Base of the advertised `identity.brand_json_url`. Defaults to the agent URL.
+ * The local storyboard runner sets `TRAINING_AGENT_IDENTITY_URL` only while it
+ * points `TRAINING_AGENT_URL` at its http loopback for `requires: [multi_agent]`
+ * storyboards: those flows never fetch brand.json, but AdCP 3.2+ requires an
+ * https `brand_json_url`, and SDK 16.5+ fails discovery for capability-gated
+ * storyboards on a schema-invalid capabilities response. Deployments never set it.
+ */
+export function getIdentityBaseUrl(): string {
+  const identity = process.env.TRAINING_AGENT_IDENTITY_URL?.trim().replace(/\/+$/, '');
+  return identity || getAgentUrl();
+}
+
+/**
  * Resolve a module's `tenant_ids` to per-tenant URLs. Order is significant —
  * the first id is "primary" (the URL Sage hands the learner first); later ids
  * are "also in scope" for tools the primary doesn't serve.

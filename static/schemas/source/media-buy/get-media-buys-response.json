@@ -6,9 +6,6 @@
   "type": "object",
   "allOf": [
     {
-      "$ref": "/schemas/core/version-envelope.json"
-    },
-    {
       "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
@@ -197,6 +194,36 @@
             },
             "additionalProperties": false
           },
+          "cancellation_effective_at": {
+            "type": "string",
+            "format": "date-time",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Present only when status is canceled: when delivery stops under the cancellation. It equals cancellation.canceled_at when delivery stops at once, and is later when the seller keeps delivering through a notice period (the product's cancellation_policy.notice_period) or to the end of a committed unit. Not later than end_time. Sellers advertising media_buy.reporting_subscriptions MUST populate it, because subscription reporting is owed through the period containing this instant, not the instant the cancellation was recorded. Buyers use cancellation.canceled_at when it is absent."
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "x-added-in": "3.3.0",
+            "description": "When the seller moved the buy to completed; present when status is completed. Sellers advertising media_buy.reporting_subscriptions MUST populate it for completed buys, because a buy that completes before end_time stops being owed reporting at this instant."
+          },
+          "flight_history": {
+            "type": "array",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "maxItems": 64,
+            "description": "Retroactive flight edits, oldest first, so a buyer can recompute which periods a reporting subscription owed (media_buy.reporting_subscriptions). The buy's flight runs from start_time to its stop time, as the reporting-subscription.json coverage rule defines it. An edit is retroactive when the start_time or stop time before or after it is earlier than the instant the seller recorded it. Each entry carries the flight in force before that edit. The flight in force at an instant X is the one in the earliest entry recorded after X, or the current flight when no entry is. Edits whose before and after values all lie after recorded_at change no elapsed period, so they are not listed. Sellers advertising media_buy.reporting_subscriptions MUST list every retroactive edit recorded within the last status_retention_days; an older entry MAY be dropped, because it governs only periods that ended before it was recorded. At most 64 entries are retained: a seller MUST refuse a retroactive edit that would exceed that with INVALID_STATE, and an edit it cannot refuse, such as one observed on a connected platform, it applies from the instant it records it (no start_time or stop time earlier than recorded_at), which needs no entry.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "recorded_at": { "type": "string", "format": "date-time", "description": "When the seller recorded the edit, or ingested it when it was observed on a connected platform. Flight values change at this instant for every period resolved after it." },
+                "start_time": { "type": "string", "format": "date-time", "description": "start_time in force before the edit." },
+                "stop_time": { "type": "string", "format": "date-time", "description": "Stop time in force before the edit." }
+              },
+              "required": ["recorded_at", "start_time", "stop_time"],
+              "additionalProperties": false
+            }
+          },
           "revision": {
             "type": "integer",
             "description": "Current optimistic concurrency token. Pass this in update_media_buy requests intended to change state. Sellers advance it on every committed change to state this read reports, whatever its origin (AdCP task, seller operator, seller automation, another authorized principal, or a connected platform), and reject stale tokens with CONFLICT when a revision token is provided.",
@@ -297,10 +324,10 @@
           },
           "packages": {
             "type": "array",
-            "description": "Packages within this media buy, augmented with creative approval status and optional delivery snapshots",
+            "description": "Packages within this media buy, augmented with creative approval status and optional delivery snapshots. Beginning with AdCP 3.3, sellers MUST retain all known package records for a returned canceled or completed buy, including individually canceled packages. On adopting 3.3, preserve records already held and durably record packages subsequently created through AdCP (including added packages), imported, discovered, or returned from the native platform. Preserve package_id, recorded product_id, persisted context, previously exposed platform identity mappings, and the underlying package-to-platform association needed to attribute historical delivery. If the platform no longer exposes packages, return persisted records reflecting the latest recorded committed configuration, including accepted AdCP updates and ingested changes from any other origin. Irrecoverable pre-adoption or never-observed external history need not be reconstructed, but incomplete history MUST be disclosed in a nonfatal errors[] entry using a seller-defined X_{VENDOR}_{CODE}, recovery: terminal, field: media_buys[N].packages, and details containing media_buy_id; the message explains the gap. This exception never permits dropping records held at or after adoption. Without this disclosure, an empty terminal list asserts no packages existed. Retention lasts as long as the seller returns the buy; no buy-retention period is established. Responses served as AdCP 3.2 permit empty terminal arrays and make no retention guarantee. Buyers use the echoed served adcp_version, not the requested pin or build version; absence gives no 3.3 assurance.",
             "items": {
               "title": "PackageStatus",
-              "description": "Current status of a package within a media buy — includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package.",
+              "description": "Current status of a package within a media buy — includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package. Beginning with AdCP 3.3, the containing buy's canceled or completed status makes all retained packages terminal for serving. Preserve actual package cancellation metadata and previously recorded terminal outcomes; do not relabel an already completed package as canceled solely because the buy was canceled. Preserve any available terminal snapshot outcome without inventing a snapshot. Released creative assignments MUST NOT be restored from a persisted package record, and retaining a package does not assert snapshot availability or zero delivery.",
               "type": "object",
               "properties": {
                 "package_id": {
@@ -407,13 +434,49 @@
                   "format": "date-time",
                   "description": "ISO 8601 flight end time for this package"
                 },
+                "reporting_delivery_offering_ids": {
+                  "type": "array",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0",
+                  "items": { "$ref": "/schemas/core/reporting-delivery-offering-id.json" },
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "description": "The reporting delivery offerings this package can satisfy (media_buy.reporting_subscriptions): its product's reporting_capabilities.reporting_delivery_offering_ids after account-level narrowing, fixed when the package is confirmed (for a package added to a confirmed buy, at its added_at). A later product or catalog change does not alter it, so a buyer resolves a subscription selector per package from this list and each offering's available_from and withdrawn_at. An offering in it stops being a candidate at its withdrawn_at. Sellers advertising media_buy.reporting_subscriptions MUST include it on every package, [] when none applies."
+                },
+                "added_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0",
+                  "description": "When this package was added to the buy, for a package added after the buy's confirmed_at (media_buy.reporting_subscriptions). It is the package's own confirmed_at for reporting-subscription coverage: the package is owed the periods that end after the later of the buy's confirmed_at and added_at, so the period containing added_at is owed in full, and it resolves subscription selectors at the later of the subscription version's accepted_at and that instant. Absent means the package was part of the buy when it was confirmed. A value at or before confirmed_at, such as for a package added while the buy awaited confirmation, has the same effect as absence. Sellers advertising media_buy.reporting_subscriptions MUST include it on every package added after the buy's confirmed_at. Immutable once set, and retained with the package record."
+                },
+                "start_requires_all_creatives_approved": {
+                  "type": "boolean",
+                  "description": "AdCP 3.3 initial-start policy. False (default) serves eligible approved assignments. True MUST retain booking and inventory commitment but block first enablement for serving until every current assignment is approved in all applicable package scopes; an empty set or library approval alone is insufficient. Retain pending-review/rejected assignments; same-creative_id resubmission needs no reassignment. Flight, pause, format-coverage and commitment constraints still apply. After first enablement, ordinary serving and impairment rules apply. Opt-in requires media_buy.features.creative_start_policy: true; otherwise buyers MUST NOT send true and sellers MUST reject true with UNSUPPORTED_FEATURE before mutation. Stage the full initial set atomically or while paused; the gate cannot anticipate future assignments. Sellers MUST echo the effective value on package readback, including false when defaulted.",
+                  "x-added-in": "3.3.0",
+                  "x-adcp-validation": {
+                    "verifier_constraints": {
+                      "creative_start_policy": {
+                        "default": "serve_approved_subset",
+                        "true_gate": "all_current_assignments_approved_in_all_applicable_scopes",
+                        "empty_assignments": "gate_unsatisfied",
+                        "evaluation_window": "before_first_package_enablement",
+                        "review_rejection": "retain_assignment",
+                        "readback": "echo_effective_policy",
+                        "unsupported_true": "UNSUPPORTED_FEATURE"
+                      }
+                    },
+                    "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+                  },
+                  "default": false
+                },
                 "paused": {
                   "type": "boolean",
                   "description": "Whether this package is currently paused by the buyer"
                 },
                 "canceled": {
                   "type": "boolean",
-                  "description": "Whether this package has been canceled. Canceled packages stop delivery and cannot be reactivated."
+                  "description": "Whether this package has been canceled independently of the buy's status. Canceled packages stop delivery and cannot be reactivated. The containing buy's terminal status also ends package serving; whole-buy cancellation MAY leave package cancellation fields unchanged rather than synthesizing per-package flags or metadata. Beginning with AdCP 3.3, preserve original flags and metadata for previously canceled packages and do not relabel previously completed packages as canceled. Package cancellation MUST NOT remove the package from readback."
                 },
                 "cancellation": {
                   "type": "object",

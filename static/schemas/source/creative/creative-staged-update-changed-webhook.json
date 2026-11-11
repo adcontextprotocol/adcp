@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/creative-staged-update-changed-webhook.json",
+  "title": "Creative Staged Update Changed Webhook",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Experimental (creative.live_updates) account-level push notification fired when review decides a staged update to a live creative: the seller promoted it, or rejected it. Fires per registered subscriber against each `notification_configs[]` entry whose `event_types` includes `creative.staged_update_changed`, and only to those entries; a subscriber that did not ask for it never receives it. Distinct from `creative.status_changed` because a staged update does not move the creative through the status lifecycle: the approved prior version keeps serving, so there is no `approved → approved` transition. When a rejection under `on_rejection: stops` also moves the creative to `rejected`, the seller fires that ordinary `approved → rejected` transition on `creative.status_changed` as well. A staged update that the buyer supersedes or withdraws, or that the seller discards because the creative left `approved`, does not fire. Receivers MUST verify signing per the registered scheme and dedupe by `idempotency_key`. The current staged update and serving version are always authoritative on `list_creatives` (request `fields: [\"staged_update\"]`), which is the repair path for a missed or out-of-order fire.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity. Distinct from `notification_id`.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Stable identifier for this logical outcome, used to correlate fires to current snapshot state. Stable across re-emissions of the same outcome; a later outcome on the same creative receives a new id.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "creative.staged_update_changed",
+      "description": "Fixed notification type discriminator. Matches the value registered on the subscriber's `event_types`."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller initiated this fire. Distinct from `observed_at`."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which `notification_configs[]` entry on the recipient account is receiving this fire. Echoed verbatim from the entry's `subscriber_id`.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Seller's identifier for the account this creative belongs to.",
+      "x-entity": "account"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Seller's identifier for the creative whose staged update was decided. References the same id space as `list_creatives` / `sync_creatives` responses.",
+      "x-entity": "creative"
+    },
+    "revision_id": {
+      "$ref": "/schemas/core/creative-revision-id.json",
+      "description": "Buyer-authored revision of the staged content this outcome applies to, when the sync that staged it supplied one. After promotion it is the creative's current `revision_id`."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["promoted", "rejected"],
+      "description": "promoted: the staged content now serves on every assignment and `staged_update` is removed from `list_creatives`. rejected: review rejected the staged content; under `on_rejection: keeps_prior` the prior version keeps serving and `staged_update.status` becomes `rejected`, and under `stops` the creative moves to `rejected` and `staged_update` is removed."
+    },
+    "rejection_reason": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Human-readable reason. Present only when `outcome` is `rejected`. Sellers MUST NOT include third-party PII in this field."
+    },
+    "creative_status": {
+      "$ref": "/schemas/enums/creative-status.json",
+      "description": "The creative's status after this outcome: `approved` after a promotion or a rejection under `keeps_prior`, `rejected` after a rejection under `stops`."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller observed the review decision. Distinct from `fired_at`, which may lag it."
+    },
+    "initiator": {
+      "type": "string",
+      "enum": ["seller", "system"],
+      "description": "Who made the decision. `seller`: an explicit review decision. `system`: an automated seller-side review."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "creative_id",
+    "outcome",
+    "creative_status",
+    "observed_at",
+    "initiator"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "const": "promoted" } }, "required": ["outcome"] },
+      "then": {
+        "not": { "required": ["rejection_reason"] },
+        "properties": { "creative_status": { "const": "approved" } }
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "rejected" } }, "required": ["outcome"] },
+      "then": {
+        "properties": { "creative_status": { "enum": ["approved", "rejected"] } }
+      }
+    }
+  ],
+  "examples": [
+    {
+      "description": "Staged update promoted after review",
+      "data": {
+        "idempotency_key": "whk_01JC4N2T3VXQ5M7K9N1P3R5S7U",
+        "notification_id": "su_acme_hero_video_rev_2026_11_02_promoted",
+        "notification_type": "creative.staged_update_changed",
+        "fired_at": "2026-11-03T09:05:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_acme_pinnacle",
+        "creative_id": "acme_hero_video",
+        "revision_id": "rev_2026_11_02",
+        "outcome": "promoted",
+        "creative_status": "approved",
+        "observed_at": "2026-11-03T09:04:41Z",
+        "initiator": "seller"
+      }
+    },
+    {
+      "description": "Staged update rejected; the prior version keeps serving (on_rejection keeps_prior)",
+      "data": {
+        "idempotency_key": "whk_01JC4P5V6XYR8P0L2M4Q6S8T0V",
+        "notification_id": "su_acme_hero_video_rev_2026_11_04_rejected",
+        "notification_type": "creative.staged_update_changed",
+        "fired_at": "2026-11-05T14:20:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_acme_pinnacle",
+        "creative_id": "acme_hero_video",
+        "revision_id": "rev_2026_11_04",
+        "outcome": "rejected",
+        "rejection_reason": "Updated end card references a claim the seller's content policy does not allow.",
+        "creative_status": "approved",
+        "observed_at": "2026-11-05T14:18:09Z",
+        "initiator": "seller"
+      }
+    }
+  ]
+}

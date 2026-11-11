@@ -1,0 +1,407 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/media-buy/package-control.json",
+  "title": "Package Control",
+  "description": "Operational controls for an existing package that remain inside its accepted commercial envelope. targeting_overlay is a per-dimension patch; keyword add/remove arrays are incremental, and the same keyword MUST NOT appear in both directions. Creative mutation, flight changes, new products, pricing changes, and billing-term changes require their dedicated lifecycle or a refined proposal.",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "package"
+    },
+    "budget": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "Replace this package's hard lifetime spend cap. A number in a resulting seller-optimized buy requires advertised media_buy.features.seller_optimized_package_budgets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
+    },
+    "daily_budget_cap": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "Replace this package's subordinate hard daily cap; null removes it. Numeric changes apply immediately with package spend already incurred in the shared current cap day counted."
+    },
+    "min_spend_target": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "Replace this package's soft minimum-spend target. A number is valid only for seller-optimized allocation and requires advertised media_buy.features.seller_optimized_min_spend_targets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
+    },
+    "impressions": {
+      "type": "number",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/enums/pacing.json",
+      "description": "Replace package pacing, subordinate to media-buy pacing. In a resulting seller-optimized buy, pacing that differs from the media-buy pacing requires advertised media_buy.features.seller_optimized_package_pacing; otherwise rejected with UNSUPPORTED_FEATURE."
+    },
+    "bidding": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/bidding-policy.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "start_requires_all_creatives_approved": {
+      "type": "boolean",
+      "description": "AdCP 3.3 initial-start policy. False (default) serves eligible approved assignments. True MUST retain booking and inventory commitment but block first enablement for serving until every current assignment is approved in all applicable package scopes; an empty set or library approval alone is insufficient. Retain pending-review/rejected assignments; same-creative_id resubmission needs no reassignment. Flight, pause, format-coverage and commitment constraints still apply. After first enablement, ordinary serving and impairment rules apply. Opt-in requires media_buy.features.creative_start_policy: true; otherwise buyers MUST NOT send true and sellers MUST reject true with UNSUPPORTED_FEATURE before mutation. Stage the full initial set atomically or while paused; the gate cannot anticipate future assignments. Omission preserves the stored policy; false clears the gate before first enablement for serving. A change to this policy after the package has first been enabled for serving MUST be rejected with INVALID_STATE. Operational control on control_media_buy, authorized by update_creative_start_policy in available_actions; it does not change accepted commercial terms.",
+      "x-added-in": "3.3.0",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "creative_start_policy": {
+            "default": "serve_approved_subset",
+            "true_gate": "all_current_assignments_approved_in_all_applicable_scopes",
+            "empty_assignments": "gate_unsatisfied",
+            "evaluation_window": "before_first_package_enablement",
+            "review_rejection": "retain_assignment",
+            "readback": "echo_effective_policy",
+            "unsupported_true": "UNSUPPORTED_FEATURE"
+          }
+        },
+        "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+      }
+    },
+    "paused": {
+      "type": "boolean"
+    },
+    "canceled": {
+      "type": "boolean",
+      "const": true,
+      "description": "Exercise an already-accepted unilateral package cancellation right. If seller agreement is required, refine the accepted proposal with change_kind amendment; cancellation proposals terminate the whole MediaBuy."
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/targeting-input.json",
+      "description": "Per-dimension targeting patch. Omission preserves the current dimension, a non-null value replaces it, and null clears it. The resulting effective targeting must remain within the accepted commercial envelope and is read back without null dimensions."
+    },
+    "catalog_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "catalog"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Replace the package's promoted catalogs with references previously managed through sync_catalogs."
+    },
+    "keyword_targets_add": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/keyword-target.json"
+      },
+      "minItems": 1
+    },
+    "keyword_targets_remove": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/keyword-target.json"
+      },
+      "minItems": 1
+    },
+    "negative_keywords_add": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/keyword-target.json"
+      },
+      "minItems": 1
+    },
+    "negative_keywords_remove": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/keyword-target.json"
+      },
+      "minItems": 1
+    },
+    "optimization_goals": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.2/core/canonical-optimization-goal.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "package_id"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "budget"
+      ]
+    },
+    {
+      "required": [
+        "daily_budget_cap"
+      ]
+    },
+    {
+      "required": [
+        "min_spend_target"
+      ]
+    },
+    {
+      "required": [
+        "impressions"
+      ]
+    },
+    {
+      "required": [
+        "pacing"
+      ]
+    },
+    {
+      "required": [
+        "bidding"
+      ]
+    },
+    {
+      "required": [
+        "start_requires_all_creatives_approved"
+      ]
+    },
+    {
+      "required": [
+        "paused"
+      ]
+    },
+    {
+      "required": [
+        "canceled"
+      ]
+    },
+    {
+      "required": [
+        "targeting_overlay"
+      ]
+    },
+    {
+      "required": [
+        "catalog_ids"
+      ]
+    },
+    {
+      "required": [
+        "keyword_targets_add"
+      ]
+    },
+    {
+      "required": [
+        "keyword_targets_remove"
+      ]
+    },
+    {
+      "required": [
+        "negative_keywords_add"
+      ]
+    },
+    {
+      "required": [
+        "negative_keywords_remove"
+      ]
+    },
+    {
+      "required": [
+        "optimization_goals"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "targeting_overlay"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "keyword_targets_add"
+              ]
+            },
+            {
+              "required": [
+                "keyword_targets_remove"
+              ]
+            },
+            {
+              "required": [
+                "negative_keywords_add"
+              ]
+            },
+            {
+              "required": [
+                "negative_keywords_remove"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "cancellation_reason"
+        ]
+      },
+      "then": {
+        "required": [
+          "canceled"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "canceled"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "budget"
+              ]
+            },
+            {
+              "required": [
+                "daily_budget_cap"
+              ]
+            },
+            {
+              "required": [
+                "min_spend_target"
+              ]
+            },
+            {
+              "required": [
+                "impressions"
+              ]
+            },
+            {
+              "required": [
+                "pacing"
+              ]
+            },
+            {
+              "required": [
+                "bidding"
+              ]
+            },
+            {
+              "required": [
+                "start_requires_all_creatives_approved"
+              ]
+            },
+            {
+              "required": [
+                "paused"
+              ]
+            },
+            {
+              "required": [
+                "targeting_overlay"
+              ]
+            },
+            {
+              "required": [
+                "catalog_ids"
+              ]
+            },
+            {
+              "required": [
+                "keyword_targets_add"
+              ]
+            },
+            {
+              "required": [
+                "keyword_targets_remove"
+              ]
+            },
+            {
+              "required": [
+                "negative_keywords_add"
+              ]
+            },
+            {
+              "required": [
+                "negative_keywords_remove"
+              ]
+            },
+            {
+              "required": [
+                "optimization_goals"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "keyword_identity_sets": {
+        "positive_add_remove": "disjoint_by_normalized_keyword_and_match_type",
+        "negative_add_remove": "disjoint_by_normalized_keyword_and_match_type",
+        "on_violation": "reject_before_mutation"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      },
+      {
+        "required": [
+          "start_time"
+        ]
+      },
+      {
+        "required": [
+          "end_time"
+        ]
+      },
+      {
+        "required": [
+          "product_id"
+        ]
+      },
+      {
+        "required": [
+          "pricing_option_id"
+        ]
+      },
+      {
+        "required": [
+          "catalogs"
+        ]
+      }
+    ]
+  }
+}

@@ -135,6 +135,7 @@ export interface AgentCapabilities {
   measurement_capabilities?: {
     metrics: Array<{
       metric_id: string;
+      name?: string;
       standard_reference?: string;
       accreditations?: Array<{
         accrediting_body: string;
@@ -611,6 +612,13 @@ export interface BrandAgentConfig {
 /**
  * Hosted brand record
  */
+/**
+ * How an organization's claim to a brand domain was established. `manual` is
+ * a WorkOS domain an administrator marked verified with no other evidence; it
+ * links the brand to the organization but leaves `domain_verified` false.
+ */
+export type DomainVerificationMethod = 'dns' | 'brand_json' | 'member_email' | 'manual';
+
 export interface HostedBrand {
   id: string;
   workos_organization_id?: string;
@@ -621,6 +629,8 @@ export interface HostedBrand {
   /** Registry provenance of the underlying brands row; 'brand_json' once the domain points at this hosted document. */
   source_type?: DiscoveredBrand['source_type'];
   domain_verified: boolean;
+  /** How the owning organization's claim to the domain was established; null on rows verified before it was recorded. */
+  domain_verification_method?: DomainVerificationMethod | null;
   verification_token?: string;
   is_public: boolean;
   /** True when a prior owner relinquished and the manifest is awaiting adoption. */
@@ -699,6 +709,8 @@ export interface ResolvedBrand {
   migration_warnings?: Array<{ field: string; message: string; suggestion?: string }>;
   brand_agent_url?: string;
   brand_manifest?: Record<string, unknown>;
+  /** Complete selected brand.json entry; absent when a unique entry is unavailable. */
+  brand?: Record<string, unknown>;
   source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
   /** Preferred provider attribution; present only when source is enriched and the writer is known. */
   enrichment_provider?: string;
@@ -1218,7 +1230,9 @@ export interface AgentCompliance {
     passed_count: number;
     duration_ms: number;
     has_coverage_gap_skip?: boolean;
+    skipped_by_reason?: Record<string, number>;
   }>;
+  coverage_incomplete?: boolean;
   streak_days: number;
   last_checked_at: string | null;
   headline: string | null;

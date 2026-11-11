@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add experimental `media_buy.purchase_rights` (#8090): an optional `rights[]` array on `product-purchase.json` carries usage and amplification rights inside `commercial_terms`, so `terms_digest` and `accept_proposal` bind them. Rights are priced in the purchase, the media seller grants or warrants them, and exclusivity is per purchase. The array references a new `brand/rights-scope.json` (`uses`, `start_date`, `end_date`, `exclusivity`) hoisted from `brand/rights-terms.json`, which now composes it with `allOf` alongside its pricing fields. `rights-terms` properties and required fields are unchanged, with one tightening: an empty `uses` array is now rejected (`minItems: 1`). Generated types for this experimental surface may change shape. The `right-use` enum gains `paid_amplification` and `content_reuse`, covered by `brand.rights_lifecycle`; the enum is shared, so `rights-constraint` and `generation-credential` also accept them before attested grants exist. No rights grant is minted at acceptance; attested grants that a `rights-constraint` can cite are planned for 3.4.

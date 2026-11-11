@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/enums/live-update-serving-mode.json",
+  "title": "Live Update Serving Mode",
+  "description": "How a live creative serves while a seller decides an in-place change to it. Ordered from least to most disruptive: uninterrupted, staged, paused_for_review.",
+  "type": "string",
+  "enum": [
+    "uninterrupted",
+    "staged",
+    "paused_for_review"
+  ],
+  "enumDescriptions": {
+    "uninterrupted": "The seller decides the change inside the sync_creatives call, for every assignment. Accepted: the item returns action updated with status approved and the changed creative serves. Refused: the item fails and the creative and its serving are unchanged. The in-call decision is the review of the change.",
+    "staged": "The approved prior version keeps serving under the same creative_id while the change is reviewed as a staged update. On approval the seller promotes it on every assignment. on_rejection says what serves if review rejects it.",
+    "paused_for_review": "The creative enters pending_review and does not serve until the change is approved (the ordinary revision lifecycle)."
+  },
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

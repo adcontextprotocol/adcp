@@ -22,7 +22,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import YAML from 'yaml';
-import { getComplianceStoryboardById, type ComplianceResult } from '@adcp/sdk/testing';
+import { type ComplianceResult } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from './storyboard-cache.js';
 import { hostedComplianceOptions, hostedComplianceTarget } from '../services/hosted-compliance-version.js';
 import { createLogger } from '../logger.js';
 
@@ -260,7 +261,7 @@ export type V4StepIdResolver = (
   step: RunnerStep,
 ) => string | undefined;
 
-const pinnedStoryboards = new WeakMap<ComplianceResult, Map<string, ReturnType<typeof getComplianceStoryboardById>>>();
+const pinnedStoryboards = new WeakMap<ComplianceResult, Map<string, ReturnType<typeof getCachedComplianceStoryboardById>>>();
 
 /**
  * Same lookup as compliance-testing.ts classifyRunStep: in the pinned
@@ -275,7 +276,7 @@ export const pinnedStepId: V4StepIdResolver = (result, storyboardId, phaseId, st
       pinnedStoryboards.set(result, byId);
     }
     if (!byId.has(storyboardId)) {
-      byId.set(storyboardId, getComplianceStoryboardById(
+      byId.set(storyboardId, getCachedComplianceStoryboardById(
         storyboardId,
         hostedComplianceOptions(hostedComplianceTarget(result.adcp_version)),
       ));

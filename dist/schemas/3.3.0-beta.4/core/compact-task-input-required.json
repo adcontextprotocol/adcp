@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/compact-task-input-required.json",
+  "title": "Compact Task Input Required",
+  "description": "Bounded payload for a compact lifecycle task paused for buyer input or approval.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/protocol-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/task-input-required.json"
+    }
+  ],
+  "properties": {
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.4/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

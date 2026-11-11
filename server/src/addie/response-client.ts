@@ -50,7 +50,7 @@ export function responseClient(client: ResponseClient, surface: Surface, hooks?:
     }
     let fork = clients.get(client);
     if (!fork) {
-      fork = client.forkForGeminiDirect(new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY));
+      fork = client.forkForGeminiDirect(GoogleGenerateContentProvider.forProductionResponses(process.env.GEMINI_API_KEY));
       clients.set(client, fork);
     }
     return fork;

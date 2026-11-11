@@ -5,10 +5,11 @@ import type { Pool } from 'pg';
 import type { AuthorizationSnapshot } from '../../src/db/user-authorization-snapshot-db.js';
 
 const mocks = vi.hoisted(() => ({
-  fetch: vi.fn(), memberships: vi.fn(), previousSnapshot: undefined as AuthorizationSnapshot | undefined,
+  fetch: vi.fn(), memberships: vi.fn(), createToken: vi.fn(), previousSnapshot: undefined as AuthorizationSnapshot | undefined,
 }));
 vi.mock('@workos-inc/node', () => ({
   WorkOS: class WorkOS {
+    widgets = { createToken: mocks.createToken };
     userManagement = { listOrganizationMemberships: mocks.memberships };
   },
 }));
@@ -42,6 +43,14 @@ const PRIMARY = 'user_api_key_boundary_primary';
 const LINKED = 'user_api_key_boundary_linked';
 const PINNACLE = 'org_api_key_boundary_pinnacle';
 const STREAMHAUS = 'org_api_key_boundary_streamhaus';
+
+function providerResponse(_url: string, options: RequestInit) {
+  const body = options.body ? JSON.parse(String(options.body)) : null;
+  return { ok: true, status: 200, json: async () => body?.query?.includes('CreateOrganizationApiKey')
+    ? { data: { createOrganizationApiKey: { __typename: 'OrganizationApiKeyCreated', value: 'secret', apiKey: { id: 'key_created' } } } }
+    : body?.query?.includes('DeleteOrganizationApiKey')
+      ? { data: { deleteOrganizationApiKey: { id: body.variables.apiKeyId } } } : { data: [] } };
+}
 
 describe('API key direct exact credential membership in PostgreSQL', () => {
   let pool: Pool;
@@ -82,11 +91,8 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
     await cleanup();
     mocks.previousSnapshot = undefined;
     mocks.memberships.mockReset().mockResolvedValue({ data: [] });
-    mocks.fetch.mockReset().mockImplementation(async (_url, options: RequestInit) => ({
-      ok: true,
-      status: options.method === 'DELETE' ? 204 : 200,
-      json: async () => ({ data: [] }),
-    }));
+    mocks.createToken.mockReset().mockResolvedValue({ token: 'widget_exact_credential' });
+    mocks.fetch.mockReset().mockImplementation(providerResponse);
     await pool.query(
       'INSERT INTO organizations (workos_organization_id, name) VALUES ($1, $2), ($3, $4)',
       [PINNACLE, 'Pinnacle Agency', STREAMHAUS, 'StreamHaus'],
@@ -242,7 +248,7 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
   });
 
   it.each(['absent', 'admin', 'owner', 'member', 'revoked', 'expired', 'future'] as const)(
-    'permits direct admin reads and contains mutations independently of %s grants', async (state) => {
+    'permits direct admin operations independently of %s grants', async (state) => {
       if (state !== 'absent') {
         const id = await grant(LINKED, STREAMHAUS, ['member', 'owner'].includes(state) ? state : 'admin');
         // Authentication may have captured an active grant. Changing that grant
@@ -253,8 +259,8 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
       allowDirectMembership('admin');
       const before = await persistedMemberships();
 
-      expect((await lifecycle(LINKED, STREAMHAUS)).map((result) => result.status)).toEqual([200, 503, 503]);
-      expect(mocks.fetch).toHaveBeenCalledTimes(1);
+      expect((await lifecycle(LINKED, STREAMHAUS)).map((result) => result.status)).toEqual([200, 201, 204]);
+      expect(mocks.fetch).toHaveBeenCalledTimes(3);
       expect(await persistedMemberships()).toEqual(before);
     },
   );
@@ -269,8 +275,8 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
       // Any grant-table read would block until the route's authorization query
       // times out. The route must complete while this lock remains held.
       await blocker.query('LOCK TABLE organization_credential_grants IN ACCESS EXCLUSIVE MODE');
-      expect((await lifecycle(LINKED, STREAMHAUS)).map((result) => result.status)).toEqual([200, 503, 503]);
-      expect(mocks.fetch).toHaveBeenCalledTimes(1);
+      expect((await lifecycle(LINKED, STREAMHAUS)).map((result) => result.status)).toEqual([200, 201, 204]);
+      expect(mocks.fetch).toHaveBeenCalledTimes(3);
     } finally {
       await blocker.query('ROLLBACK');
       blocker.release();
@@ -316,7 +322,7 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
   it.each([PRIMARY, LINKED])('denies replayed identity epoch for %s even when fresh WorkOS membership could authorize', async (credential) => {
     mocks.previousSnapshot = (await loadAuthorizationSnapshot(credential, STREAMHAUS))!;
     allowDirectMembership();
-    expect((await lifecycle(credential, STREAMHAUS)).map((result) => result.status)).toEqual([200, 503, 503]);
+    expect((await lifecycle(credential, STREAMHAUS)).map((result) => result.status)).toEqual([200, 201, 204]);
     await bumpAuthorizationEpochs(pool, [credential]);
     mocks.memberships.mockClear();
     mocks.fetch.mockClear();
@@ -364,7 +370,7 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
     }
   });
 
-  it.each((['list'] as const).flatMap((action) =>
+  it.each((['list', 'create', 'revoke'] as const).flatMap((action) =>
     [PRIMARY, LINKED].flatMap((credential) =>
       (['existing', 'absent'] as const).map((epochState) => ({ action, credential, epochState }))),
   ))('holds the exact $credential $epochState epoch fence throughout the $action provider effect', async ({ action, credential, epochState }) => {
@@ -375,11 +381,7 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
     mocks.fetch.mockImplementation(async (_url, options: RequestInit) => {
       providerEntered.release();
       await providerReleased.promise;
-      return {
-        ok: true,
-        status: options.method === 'DELETE' ? 204 : 200,
-        json: async () => ({ data: [] }),
-      };
+      return providerResponse(_url, options);
     });
     const mutation = await pool.connect();
     let mutationPending: Promise<void> | undefined;
@@ -402,7 +404,7 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
       expect(blockingPids.length).toBeGreaterThan(0);
       expect(mocks.fetch).toHaveBeenCalledTimes(1);
       providerReleased.release();
-      expect((await pending).status).toBe(200);
+      expect((await pending).status).toBe(action === 'list' ? 200 : action === 'create' ? 201 : 204);
       await mutationPending;
       await mutation.query('COMMIT');
     } finally {
@@ -485,9 +487,42 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
   });
 
   it.each([PRIMARY, LINKED].flatMap((credential) =>
+    (['create', 'revoke'] as const).map((action) => ({ credential, action })),
+  ))('honors provider denial for $credential $action after a stale final membership observation', async ({ credential, action }) => {
+    const entered = barrier();
+    const released = barrier();
+    let calls = 0;
+    allowDirectMembership();
+    const readMembership = mocks.memberships.getMockImplementation()!;
+    mocks.memberships.mockImplementation(async (selection) => {
+      const result = await readMembership(selection);
+      // The response is captured before the out-of-band membership change.
+      if (++calls === 3) { entered.release(); await released.promise; }
+      return result;
+    });
+    mocks.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({
+      data: null, errors: [{ message: 'Unauthorized' }],
+    }) });
+    const pending = operation(action, credential, STREAMHAUS).then((response) => response);
+    try {
+      await Promise.race([entered.promise, pending.then(() => { throw new Error('Mutation missed final lookup barrier'); })]);
+      released.release();
+      expect((await pending).status).toBe(403);
+      expect(mocks.createToken).toHaveBeenCalledExactlyOnceWith({
+        userId: credential, organizationId: STREAMHAUS, scopes: ['widgets:api-keys:manage'],
+      });
+      expect(mocks.fetch).toHaveBeenCalledOnce();
+      expect(mocks.fetch.mock.calls[0][0]).toBe('https://api.workos.com/client/graphql');
+    } finally {
+      released.release();
+      await pending;
+    }
+  });
+
+  it.each([PRIMARY, LINKED].flatMap((credential) =>
     (['create', 'revoke'] as const).flatMap((action) =>
       (['revoked', 'admin'] as const).map((change) => ({ credential, action, change }))),
-  ))('contains $credential $action even after the final provider lookup races with $change', async ({ credential, action, change }) => {
+  ))('rejects $credential $action when the provider lookup races with $change', async ({ credential, action, change }) => {
     const entered = barrier();
     const released = barrier();
     let changed = false;
@@ -510,8 +545,8 @@ describe('API key direct exact credential membership in PostgreSQL', () => {
       changed = true;
       released.release();
       const response = await pending;
-      expect(response.status).toBe(503);
-      expect(response.body.error).toBe('API key mutations unavailable');
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('Access denied');
       expect(mocks.fetch).not.toHaveBeenCalled();
       expect(await persistedMemberships()).toEqual([]);
     } finally {

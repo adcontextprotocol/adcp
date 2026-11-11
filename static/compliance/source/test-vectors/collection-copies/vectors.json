@@ -1158,6 +1158,7 @@
         ]
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1222,6 +1223,7 @@
         ]
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1321,6 +1323,7 @@
         "account": {"account_id": "acct_nova_agency"}
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1397,6 +1400,7 @@
         "filters": {"statuses": ["active"]}
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1474,6 +1478,7 @@
         "filters": {"kinds": ["series"], "languages": ["en"], "statuses": ["active", "hiatus"]}
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1537,6 +1542,7 @@
         "filters": {"kinds": ["series"], "languages": ["en"], "statuses": ["active", "hiatus"]}
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1618,6 +1624,7 @@
         }
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1677,6 +1684,7 @@
       "seller": {"experimental_features": ["media_buy.collection_cards", "media_buy.collection_catalog"]},
       "request": {"adcp_version": "3.3", "collections": [{"publisher_domain": "pinnaclepods.example"}]},
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1753,6 +1761,7 @@
         "collections": [{"publisher_domain": "pinnaclepods.example", "collection_ids": ["founders_hour"]}]
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1802,6 +1811,7 @@
         "collections": [{"publisher_domain": "novacreators.example", "collection_ids": ["kitchen_lab"]}]
       },
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -1864,7 +1874,7 @@
         "if_collections_version": "cc_t1"
       },
       "token_issued_for": {"collections_version": "cc_t1", "filters": {"kinds": ["series"]}, "cache_scope": "public"},
-      "response": {"outcome": "unchanged", "collections_version": "cc_t1", "cache_scope": "public"},
+      "response": {"status": "completed", "outcome": "unchanged", "collections_version": "cc_t1", "cache_scope": "public"},
       "expected": {"violations": ["token_scope_mismatch"]}
     },
     {
@@ -1892,7 +1902,7 @@
         "filters": {"statuses": ["active", "hiatus"]},
         "cache_scope": "public"
       },
-      "response": {"outcome": "unchanged", "collections_version": "cc_t2", "cache_scope": "public"},
+      "response": {"status": "completed", "outcome": "unchanged", "collections_version": "cc_t2", "cache_scope": "public"},
       "expected": {"violations": []}
     },
     {
@@ -1903,7 +1913,7 @@
       "seller": {"experimental_features": ["media_buy.collection_cards", "media_buy.collection_catalog"]},
       "request": {"adcp_version": "3.3", "account": {"account_id": "acct_other"}, "if_collections_version": "cc_t3"},
       "token_issued_for": {"collections_version": "cc_t3", "account_id": "acct_nova_agency", "cache_scope": "account"},
-      "response": {"outcome": "unchanged", "collections_version": "cc_t3", "cache_scope": "account"},
+      "response": {"status": "completed", "outcome": "unchanged", "collections_version": "cc_t3", "cache_scope": "account"},
       "expected": {"violations": ["token_scope_mismatch"]}
     },
     {
@@ -1915,6 +1925,7 @@
       "request": {"adcp_version": "3.3", "if_collections_version": "cc_u1"},
       "token_issued_for": {"collections_version": "cc_u1", "cache_scope": "public"},
       "response": {
+        "status": "completed",
         "outcome": "unchanged",
         "collections": [
           {
@@ -1973,6 +1984,7 @@
       "seller": {"experimental_features": ["media_buy.collection_cards", "media_buy.collection_catalog"]},
       "request": {"adcp_version": "3.3", "collections": [{"publisher_domain": "pinnaclepods.example"}]},
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -2118,7 +2130,7 @@
           }
         ]
       },
-      "response": {"outcome": "listed", "collections": [], "collections_version": "cc_l1", "cache_scope": "public"},
+      "response": {"status": "completed", "outcome": "listed", "collections": [], "collections_version": "cc_l1", "cache_scope": "public"},
       "expected": {"violations": ["id_limit_not_enforced"]}
     },
     {
@@ -2254,6 +2266,7 @@
       "seller": {"experimental_features": ["media_buy.collection_cards", "media_buy.collection_catalog"]},
       "request": {"adcp_version": "3.2", "collections": [{"publisher_domain": "pinnaclepods.example"}]},
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {
@@ -2295,6 +2308,7 @@
       "seller": {"experimental_features": ["media_buy.collection_catalog"]},
       "request": {"adcp_version": "3.3", "collections": [{"publisher_domain": "pinnaclepods.example"}]},
       "response": {
+        "status": "completed",
         "outcome": "listed",
         "collections": [
           {

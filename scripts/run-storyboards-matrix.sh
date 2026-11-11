@@ -275,7 +275,9 @@ else
     # validator checks previously skipped. Only subtract those 32 false-coverage
     # steps (115 -> 83, 160 -> 128); retain every clean/other/3.0-compat floor.
     "signals:45:80"
-    "sales:136:680"
+    # /sales ratcheted from the candidate-mode replay with the 3.3 hold
+    # storyboards (#8182).
+    "sales:191:1400"
     "governance:47:128"
     "creative:49:209"
     "creative-builder:50:184"
@@ -319,7 +321,22 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/governance_approved:13:0"
   "media_buy_seller/governance_conditions:12:0"
   "media_buy_seller/governance_denied:11:0"
-  "media_buy_seller/governance_denied_recovery:9:0"
+  "media_buy_seller/governance_denied_recovery:10:0"
+  # Experimental 3.3 account requests: exact counts pin the training agent's
+  # deterministic branches (separate-account refusal, matched, buyer sign-up).
+  "account_requests:36:3"
+  # Experimental 3.3 reporting subscriptions over the sandbox clock.
+  "media_buy_seller/reporting_subscription_coverage:46:1"
+  "media_buy_seller/reporting_subscription_capacity:16:0"
+  # Experimental 3.3 holds over seeded hold policies. The hold_extension
+  # skips are the extend_hold steps the @adcp/sdk runner cannot send yet
+  # (adcontextprotocol/adcp-client#3601) and their dependents.
+  "media_buy_seller/hold_policy_bounds:18:0"
+  "media_buy_seller/hold_policy_terms_only:19:4"
+  "media_buy_seller/hold_policy_version_gate:11:0"
+  "media_buy_seller/hold_unavailable_batch:12:0"
+  "media_buy_seller/hold_extension:22:10"
+  "media_buy_seller/hold_ranking:11:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"

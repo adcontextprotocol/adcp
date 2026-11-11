@@ -103,7 +103,7 @@ Hosted at `https://{host}/.well-known/trust.json`. Two variants:
 |---|---|
 | `agents[]` | Agents this organization runs: `url`, namespaced `roles`, optional `protocols` (`mcp`, `a2a`), `jwks_uri`, `countries`, per-protocol `profiles` |
 | `grants[]` | Authority this organization delegates: `grantee` domain, optional `agents[]` narrowing, namespaced `scopes`, `countries`, `valid_from` / `valid_until`, per-protocol `profiles`. Never carries keys |
-| `exclusive_grants` | Opt-in to fail-closed: when true, `grants[]` is exhaustive for the scopes it names |
+| `exclusive_grants` | Opt-in to fail-closed: when true, `grants[]` is exhaustive |
 | `acknowledgements[]` / `acknowledgements_url` | Grants this organization accepts: `grantor`, `agent_url`, and `via`, which names where the grant is published. Terms stay in the grantor's document |
 | `profiles` | Record-level per-protocol data |
 
@@ -146,7 +146,7 @@ In AdCP, request signing, webhook signing, governance JWS `iss`, rights attestat
    - The pointer MUST be exactly `https://{H}/.well-known/trust.json`. In AdCP it is `identity.trust_url`.
    - Fetch it with zero HTTP redirects, following at most one `authoritative_location` hop, also with zero redirects. The operator is `H`.
    - If the legacy `identity.brand_json_url` is also present, its host MUST equal `H`.
-3. **Origin binding.** eTLD+1(`A`) MUST equal eTLD+1(`H`), using the pinned PSL snapshot.
+3. **Origin binding.** eTLD+1(`A`) MUST equal eTLD+1(`H`), using the verifier's bundled Public Suffix List, as `security.mdx` requires (DR-0037).
    - There is no hosting-delegation fallback.
    - Cross-organization cases, such as a platform running an agent for a brand, go through a grant: the platform lists the agent in its own record, and the brand grants the platform.
 4. **Match the agent.** Exactly one `agents[]` entry must canonically equal `A`. No match → `request_signature_agent_not_in_trust_record`. More than one → `…_ambiguous`.
@@ -201,7 +201,7 @@ Compared with "both sides sign the same object", this needs no canonical seriali
 - **Freshness.**
   - Cache TTL ≤ the JWKS revocation polling ceiling (30 min); negative cache ≤ 60 s.
   - `valid_until` is enforced on every check.
-- **Absence vs failure.** No grants, or `exclusive_grants` absent or false, means relying-party discretion. A **fetch failure is never equivalent to absence**: once a relying party has seen `exclusive_grants: true` for a host, it fails closed on failure.
+- **Absence vs failure.** Without `exclusive_grants: true`, a claim no grant covers is at the relying party's discretion. With it, `grants: []` means no third party acts for the organization. A **fetch failure is never equivalent to absence**: once a relying party has seen `exclusive_grants: true` for a host, it fails closed on failure.
 
 **AdCP profile:**
 - **Checking a claim.** Say `sync_accounts` names brand B and operator O, and the call comes from agent `A`:

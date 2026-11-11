@@ -165,7 +165,22 @@ For example, if the agreed terms include DoubleVerify for viewability, every cre
 
 **Formats without tracker support**: Not all formats accept third-party tracking assets. Broadcast TV spots, for instance, have no tracker slot — there is no pixel to fire on a television. Buyer agents should check the format's `assets` array for tracker slots before proposing performance standards that require creative-level verification. When a format does not support trackers, measurement comes from the vendor declared in `billing_measurement` (panel data, set-top box telemetry) rather than creative-embedded pixels. See [Format definitions](/docs/creative/formats#third-party-tracker-support) for details.
 
-### 7. Breach and Resolution
+### 7. Judging a Standard Against Vendor Values
+
+Viewability is judged against the delivery `viewability` block under the standard's `standard`, and completion rate against the delivery `completion_rate` scalar. The other verification metrics (`ivt`, `brand_safety`, `attention_score`) arrive as `vendor_metric_values[]`, and one vendor usually reports several values per category: general, sophisticated, and combined invalid traffic rates, for example. The standard's optional `metric_id` names the one it is judged against:
+
+```json
+{
+  "metric": "ivt",
+  "threshold": 0.03,
+  "vendor": { "domain": "verification-vendor.example" },
+  "metric_id": "givt_rate"
+}
+```
+
+With `metric_id`, only `vendor_metric_values[]` entries with the same `vendor` and `metric_id` are evidence. The named metric MUST be a 0–1 fraction that runs the same way as `metric`, and a value outside 0–1 is not evidence and MUST NOT be converted. Without it, parties MUST NOT guess which of the vendor's metrics answers the standard, and treat it as not judged from vendor values. See [Measurement terms and performance standards](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards).
+
+### 8. Breach and Resolution
 
 When a performance standard or billing measurement variance is breached, the seller proposes a remedy from the agreed `makegood_policy`:
 
