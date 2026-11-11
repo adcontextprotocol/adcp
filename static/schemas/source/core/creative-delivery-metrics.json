@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-delivery-metrics.json",
   "title": "Creative Delivery Metrics",
-  "description": "Delivery metrics row for one creative within a package.",
+  "description": "Delivery metrics row for one creative within a package: the delivery the seller measured for that creative, not a share of the package total divided across the package's creatives.",
   "allOf": [
     {
       "$ref": "/schemas/core/delivery-metrics.json"

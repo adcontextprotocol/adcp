@@ -802,6 +802,8 @@ Each creative entry includes:
 - **`weight`**: Observed share of the package's delivery for this creative during the reporting period (0-100). It reports what delivered, not a configured assignment weight.
 - All standard delivery metrics (impressions, spend, clicks, ctr, etc.)
 
+Each row is the delivery the seller measured for that creative: what served under it and what that cost. A package total divided across the package's creatives, evenly or by assignment weight, is not a creative breakdown, because it says nothing about which creative delivered. That is also why `weight` is an observed share rather than a configured one. A product whose seller can't measure delivery per creative doesn't declare `supports_creative_breakdown`, and its packages carry no `by_creative`.
+
 ```json
 {
   "by_package": [
