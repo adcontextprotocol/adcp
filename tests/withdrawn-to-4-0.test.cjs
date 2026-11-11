@@ -1,13 +1,12 @@
 /**
  * Contract test for the 3.3 features withdrawn to 4.0 (adcp#8501).
  *
- * commercial-terms is closed on purpose: a buyer must not be bound by terms it
- * cannot read, and terms_digest signs exactly those terms. That is a
- * structural reason to keep it closed (DR-0036), so definition pins, purchase
- * rights and installment selection wait for 4.0, where commercial_terms gets a
- * declared extension point with must-understand. This test fails if any of
- * them returns to a 3.x schema, and checks that the release story and the 4.0
- * registry say where the designs went.
+ * commercial-terms and the term objects inside it are held closed until 4.0
+ * (DR-0036), so definition pins, purchase rights and installment selection
+ * wait for 4.0, where commercial_terms gets a declared extension point with
+ * must-understand. This test fails if any of them returns to a 3.x schema,
+ * and checks that the release story and the 4.0 registry say where the
+ * designs went.
  */
 'use strict';
 

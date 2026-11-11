@@ -35,9 +35,10 @@
  *
  * Closed schemas (DR-0036)
  *   Schemas are open by default. A schema stays closed
- *   (`additionalProperties: false` or `unevaluatedProperties: false`) only for
- *   a structural reason, and a property added to a schema that is closed in
- *   both the base and the candidate is property-added-to-closed: a validator
+ *   (`additionalProperties: false` or `unevaluatedProperties: false`) only
+ *   where closure enforces something; the commercial terms are held closed
+ *   until 4.0. A property added to a schema that is closed in both the base
+ *   and the candidate is property-added-to-closed: a validator
  *   on the base release rejects it. Opening a closed schema is allowed, and
  *   so is adding to a schema the candidate opens. Closing an open schema is
  *   additional-properties-closed.
