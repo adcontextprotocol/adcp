@@ -238,13 +238,15 @@ Differences from the root vector format:
 
 ## Test keypairs
 
-`keys.json` ships three keypairs used across the vectors:
+`keys.json` ships the keypairs used across the vectors and the signed-requests-runner test-kit contract:
 
 | kid | alg | adcp_use | purpose |
 |---|---|---|---|
 | `test-ed25519-2026` | EdDSA (Ed25519) | `request-signing` | primary signing key for Ed25519 positive vectors |
 | `test-es256-2026` | ES256 | `request-signing` | edge-runtime variant; covers ES256 |
 | `test-gov-2026` | EdDSA (Ed25519) | `governance-signing` | included to test the cross-purpose rejection rule at checklist step 8 (vector `009-key-ops-missing-verify` presents this key when verifying a request signature) |
+| `test-revoked-2026` | EdDSA (Ed25519) | `request-signing` | pre-revoked key for vector `017-key-revoked` under the signed-requests-runner contract |
+| `test-functional-2026` | EdDSA (Ed25519) | `request-signing` | signs ordinary functional storyboard requests under the signed-requests-runner contract; no vector uses it, so functional traffic stays out of vector `020-rate-abuse`'s per-keyid cap |
 
 The private-key halves are present in `keys.json` as `_private_d_for_test_only` so implementations can regenerate positive-vector signatures deterministically. **These keypairs are for conformance testing only. They are public knowledge and MUST NOT be used in any production capacity.**
 
