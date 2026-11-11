@@ -20,7 +20,6 @@ import {
   computeSha256,
   rebuildManifestLogos,
 } from '../services/brand-logo-service.js';
-import { classifyLogoBackground } from '../services/logo-rendition.js';
 import { backgroundFromTags } from '../services/logo-background.js';
 import { getBrandAssetUrl } from '../services/logo-cdn.js';
 import { createLogger } from '../logger.js';
@@ -217,7 +216,6 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
 
         // Extract dimensions for raster images
         const { width, height } = await extractDimensions(buffer, contentType);
-        const derivedBackground = await classifyLogoBackground(buffer, contentType);
 
         // Upload note
         const note = typeof req.body.note === 'string' ? req.body.note.slice(0, 500) : undefined;
@@ -252,7 +250,6 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           tags,
           width,
           height,
-          derived_background: derivedBackground,
           source,
           review_status: reviewStatus,
           uploaded_by_user_id: user.id,

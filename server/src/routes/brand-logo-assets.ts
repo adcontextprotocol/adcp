@@ -16,6 +16,9 @@ import {
 } from '../services/logo-cdn.js';
 import {
   canRasterizeLogo,
+  LOGO_RENDER_CONCURRENCY,
+  LOGO_RENDER_MAX_QUEUED,
+  logoRenderLimiter,
   LogoRenditionError,
   parseLogoRenditionQuery,
   renderLogoPng,
@@ -39,7 +42,11 @@ export interface BrandLogoAssetRouterOptions {
   cacheMaxBytes?: number;
   /** In-process cache TTL, so review-status changes take effect. Default 5 minutes. */
   cacheTtlMs?: number;
-  /** Renditions rasterised at once. Default 4. */
+  /**
+   * Renditions rasterised at once. Setting this or renderMaxQueued gives the
+   * router its own limiter (for tests); by default it shares the
+   * process-wide logoRenderLimiter (2 at once) with the background backfill.
+   */
   renderConcurrency?: number;
   /** Renditions allowed to wait for a slot before requests are shed. Default 32. */
   renderMaxQueued?: number;
@@ -58,10 +65,13 @@ export function createBrandLogoAssetRouter(options: BrandLogoAssetRouterOptions 
   const brandLogoDb = new BrandLogoDatabase();
   const cacheMaxBytes = options.cacheMaxBytes ?? 100 * 1024 * 1024;
   const cacheTtlMs = options.cacheTtlMs ?? 5 * 60 * 1000;
-  const renderSemaphore = new AsyncSemaphore(
-    options.renderConcurrency ?? 4,
-    options.renderMaxQueued ?? 32,
-  );
+  const renderSemaphore =
+    options.renderConcurrency !== undefined || options.renderMaxQueued !== undefined
+      ? new AsyncSemaphore(
+        options.renderConcurrency ?? LOGO_RENDER_CONCURRENCY,
+        options.renderMaxQueued ?? LOGO_RENDER_MAX_QUEUED,
+      )
+      : logoRenderLimiter;
 
   // LRU cache of originals and renditions, keyed by domain, id, format and width.
   const logoCache = new Map<string, CachedLogoEntry>();

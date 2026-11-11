@@ -9,6 +9,19 @@
 
 import sharp, { type Metadata, type Sharp } from 'sharp';
 import { sanitizeSvg, sanitizeSvgAtSize } from './brand-logo-service.js';
+import { AsyncSemaphore } from '../utils/async-semaphore.js';
+
+/**
+ * Renders (PNG renditions and background classification) run at once per
+ * process. sharp runs on the libuv thread pool, 4 threads by default; two
+ * leaves room for the file system, DNS and crypto work that shares it.
+ */
+export const LOGO_RENDER_CONCURRENCY = 2;
+/** Renders allowed to wait for a slot before callers are shed. */
+export const LOGO_RENDER_MAX_QUEUED = 32;
+
+/** The process-wide render limiter: every logo render acquires it. */
+export const logoRenderLimiter = new AsyncSemaphore(LOGO_RENDER_CONCURRENCY, LOGO_RENDER_MAX_QUEUED);
 
 /** Widths a PNG rendition may be requested at. */
 export const LOGO_RENDITION_WIDTHS = [64, 128, 256, 512, 1024] as const;
@@ -165,9 +178,14 @@ async function decodeLogo(data: Buffer, contentType: string, width: number): Pro
       .resize(box);
   }
 
-  // `pages: 1` takes the first frame of an animated GIF/WebP.
-  return sharp(data, { limitInputPixels: LOGO_INPUT_PIXEL_LIMIT, failOn: 'error', pages: 1 })
-    .resize({ ...box, withoutEnlargement: true });
+  try {
+    // `pages: 1` takes the first frame of an animated GIF/WebP.
+    return sharp(data, { limitInputPixels: LOGO_INPUT_PIXEL_LIMIT, failOn: 'error', pages: 1 })
+      .resize({ ...box, withoutEnlargement: true });
+  } catch (err) {
+    // sharp rejects some input (an empty buffer) as soon as it is constructed.
+    throw new LogoRenditionError('invalid', `Unreadable image: ${(err as Error).message}`);
+  }
 }
 
 /** Rasterise a stored logo to a PNG at one of the allowed widths. */
@@ -275,7 +293,10 @@ export function classifyRgbaPixels(
 
 /**
  * Derive which background a stored logo is drawn for. Returns null when the
- * logo cannot be rasterised or has no visible ink; never throws.
+ * logo cannot be rasterised (a LogoRenditionError: unsupported type, bytes
+ * that do not decode, over the pixel limit) or has no visible ink. Anything
+ * else is unexpected and is rethrown, so a caller can retry it rather than
+ * record the logo as unclassifiable.
  */
 export async function classifyLogoBackground(
   data: Buffer,
@@ -283,14 +304,20 @@ export async function classifyLogoBackground(
 ): Promise<DerivedLogoBackground | null> {
   try {
     const pipeline = await decodeLogo(data, contentType, CLASSIFY_WIDTH);
-    const { data: pixels, info } = await pipeline
-      .toColourspace('srgb')
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    if (info.channels !== 4) return null;
-    return classifyRgbaPixels(pixels, info.width, info.height);
-  } catch {
-    return null;
+    let decoded: { data: Buffer; info: { width: number; height: number; channels: number } };
+    try {
+      decoded = await pipeline
+        .toColourspace('srgb')
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+    } catch (err) {
+      throw new LogoRenditionError('invalid', `Decoding failed: ${(err as Error).message}`);
+    }
+    if (decoded.info.channels !== 4) return null;
+    return classifyRgbaPixels(decoded.data, decoded.info.width, decoded.info.height);
+  } catch (err) {
+    if (err instanceof LogoRenditionError) return null;
+    throw err;
   }
 }

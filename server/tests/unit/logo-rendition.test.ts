@@ -430,6 +430,10 @@ describe('classifyLogoBackground: synthetic inputs', () => {
   it('pixel-bomb PNG → null without throwing', async () => {
     expect(await classifyLogoBackground(await pixelBombPng(), 'image/png')).toBeNull();
   });
+
+  it('rethrows an error that is not a rendition failure, so a caller can retry', async () => {
+    await expect(classifyLogoBackground(svg(10, 10, ''), undefined as never)).rejects.toBeInstanceOf(TypeError);
+  });
 });
 
 describe('classifyRgbaPixels', () => {

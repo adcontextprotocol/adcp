@@ -18,11 +18,14 @@ export interface InsertBrandLogoInput {
   original_filename?: string;
   source_flow?: string;
   provenance?: Record<string, unknown>;
-  /**
-   * Result of classifyLogoBackground. Pass it (null included) once
-   * classification has run; omit it to leave the row for the backfill job.
-   */
-  derived_background?: DerivedLogoBackground | null;
+}
+
+/** A logo the background backfill has claimed, with its bytes. */
+export interface ClaimedLogoForBackground {
+  id: string;
+  domain: string;
+  content_type: string;
+  data: Buffer;
 }
 
 export interface BrandLogoRow {
@@ -76,10 +79,8 @@ export class BrandLogoDatabase {
       `INSERT INTO brand_logos (
         domain, content_type, data, sha256, tags, width, height,
         source, review_status, uploaded_by_user_id, uploaded_by_org_id,
-        uploaded_by_email, upload_note, original_filename, source_flow, provenance,
-        derived_background, background_derived_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-        $17, CASE WHEN $18::boolean THEN now() END)
+        uploaded_by_email, upload_note, original_filename, source_flow, provenance
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       ON CONFLICT (domain, sha256) WHERE review_status IN ('pending', 'approved')
       DO NOTHING
       RETURNING *`,
@@ -100,8 +101,6 @@ export class BrandLogoDatabase {
         input.original_filename ?? null,
         input.source_flow ?? null,
         JSON.stringify(input.provenance ?? {}),
-        input.derived_background ?? null,
-        input.derived_background !== undefined,
       ]
     );
     return result.rows[0] ?? null;
@@ -310,42 +309,48 @@ export class BrandLogoDatabase {
   }
 
   /**
-   * Logos the background backfill has not classified yet, oldest first.
-   * Returns ids only: rows can hold up to 5 MB each, so the job loads the
-   * bytes one row at a time.
+   * Claim the oldest logo the background backfill has not classified, and
+   * return it with its bytes (one row at a time: a row holds up to 5 MB).
+   *
+   * Claiming sets background_derived_at before anything is rendered, so a
+   * logo whose render takes the process down is not picked up again, and
+   * SKIP LOCKED keeps runs on several machines off each other's rows.
+   * `excludeIds` are rows this run already released.
    */
-  async listLogosNeedingBackground(limit: number): Promise<Array<{ id: string; domain: string }>> {
-    const result = await query<{ id: string; domain: string }>(
-      `SELECT id, domain FROM brand_logos
-        WHERE background_derived_at IS NULL
-          AND review_status IN ('pending', 'approved')
-        ORDER BY created_at ASC
-        LIMIT $1`,
-      [limit]
-    );
-    return result.rows;
-  }
-
-  async getLogoBytes(id: string): Promise<{ content_type: string; data: Buffer } | null> {
-    const result = await query<{ content_type: string; data: Buffer }>(
-      `SELECT content_type, data FROM brand_logos WHERE id = $1`,
-      [id]
+  async claimLogoForBackground(excludeIds: string[] = []): Promise<ClaimedLogoForBackground | null> {
+    const result = await query<ClaimedLogoForBackground>(
+      `UPDATE brand_logos
+          SET background_derived_at = now()
+        WHERE id = (
+          SELECT id FROM brand_logos
+           WHERE background_derived_at IS NULL
+             AND review_status IN ('pending', 'approved')
+             AND NOT (id = ANY($1::uuid[]))
+           ORDER BY created_at ASC
+           LIMIT 1
+           FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, domain, content_type, data`,
+      [excludeIds]
     );
     return result.rows[0] ?? null;
   }
 
-  /**
-   * Record a classification. Only fills an unclassified row, so concurrent
-   * backfill runs on several machines never overwrite each other.
-   */
-  async setDerivedBackground(id: string, background: DerivedLogoBackground | null): Promise<boolean> {
-    const result = await query(
-      `UPDATE brand_logos
-          SET derived_background = $2, background_derived_at = now()
-        WHERE id = $1 AND background_derived_at IS NULL`,
+  /** Record the classification of a claimed logo (null: unclassifiable). */
+  async recordDerivedBackground(id: string, background: DerivedLogoBackground | null): Promise<void> {
+    await query(
+      `UPDATE brand_logos SET derived_background = $2 WHERE id = $1`,
       [id, background]
     );
-    return (result.rowCount ?? 0) > 0;
+  }
+
+  /** Release a claim so a later run classifies the logo again. */
+  async releaseBackgroundClaim(id: string): Promise<void> {
+    await query(
+      `UPDATE brand_logos SET background_derived_at = NULL
+        WHERE id = $1 AND derived_background IS NULL`,
+      [id]
+    );
   }
 
   /**

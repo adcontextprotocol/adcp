@@ -493,8 +493,9 @@ export function registerAllJobs(): void {
   });
 
   // Classify which background each stored logo is drawn for (light-bg /
-  // dark-bg) for rows that predate insert-time classification. Registry
-  // reads expose it on brand_manifest.logos[].background.
+  // dark-bg). The only classifier: uploads insert unclassified rows and this
+  // picks them up within a minute. Registry reads expose it on
+  // brand_manifest.logos[].background.
   jobScheduler.register({
     name: 'brand-logo-background-backfill',
     description: 'Classify stored brand logos as light-bg or dark-bg',
@@ -505,7 +506,7 @@ export function registerAllJobs(): void {
     runner: (options: { limit?: number }, context) =>
       runBrandLogoBackgroundBackfillJob(options, context.signal),
     options: { limit: 250 },
-    shouldLogResult: (r) => r.scanned > 0,
+    shouldLogResult: (r) => r.scanned > 0 || r.released > 0,
     statusResult: (r) => r,
   });
 

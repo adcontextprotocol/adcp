@@ -9,7 +9,6 @@ import sharp from 'sharp';
 import { BrandLogoDatabase, type BrandLogoSummary, type InsertBrandLogoInput } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getBrandAssetUrl } from './logo-cdn.js';
-import { classifyLogoBackground } from './logo-rendition.js';
 import { backgroundFromTags } from './logo-background.js';
 import { safeFetch } from '../utils/url-security.js';
 import { createLogger } from '../logger.js';
@@ -526,7 +525,6 @@ export async function rehostExternalLogo(
       tags: options?.tags ?? ['primary'],
       width,
       height,
-      derived_background: await classifyLogoBackground(buffer, contentType),
       source: options?.source ?? 'community',
       review_status: 'approved',
       uploaded_by_user_id: options?.uploadedBy?.userId,
