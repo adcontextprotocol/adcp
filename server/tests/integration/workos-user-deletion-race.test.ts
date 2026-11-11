@@ -271,35 +271,80 @@ describe('WorkOS webhook vs sync-users deletion', () => {
     let activeCallbacks = 0;
     let maxActiveCallbacks = 0;
 
-    const results = await within(Promise.all(
-      Array.from({ length: 10 }, async (_, index) => withCredentialCreationEventMutation(
-        `${PREFIX}pool_capacity_${index}`,
+    // Email writers intentionally fail fast on migration 595's global lock.
+    // Seed serially so this test measures credential pool admission rather
+    // than asking competing email writers to bypass that invariant.
+    const userIds = Array.from({ length: 10 }, (_, index) => `${PREFIX}pool_capacity_${index}`);
+    for (const [index, userId] of userIds.entries()) {
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email) VALUES ($1, $2)`,
+        [userId, `pool-${index}@race.test`],
+      );
+    }
+
+    const pending = Promise.allSettled(
+      userIds.map((userId) => withActiveCredentialEventMutation(
+        userId,
         async (client) => {
-          await upsertWorkosUserInCredentialEvent(client, {
-            id: `${PREFIX}pool_capacity_${index}`,
-            email: `pool-${index}@race.test`,
-            firstName: 'Pool',
-            lastName: 'Capacity',
-            emailVerified: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }, 'provider_authoritative');
           activeCallbacks++;
           maxActiveCallbacks = Math.max(maxActiveCallbacks, activeCallbacks);
           try {
-            await client.query(`SELECT pg_sleep(0.025)`);
+            await client.query(`SELECT pg_sleep(0.1)`);
           } finally {
             activeCallbacks--;
           }
         },
       )),
-    ), 3_000);
-
-    expect(results).toHaveLength(10);
-    expect(results.every((result) => result.applied)).toBe(true);
+    );
+    try {
+      const results = await within(pending, 3_000);
+      expect(results).toHaveLength(10);
+      for (const result of results) {
+        if (result.status === 'rejected') throw result.reason;
+        expect(result.value.applied).toBe(true);
+      }
+    } finally {
+      // Even a timeout must drain callbacks before the next test's cleanup.
+      await pending;
+    }
     expect(maxActiveCallbacks).toBeGreaterThan(1);
     // One connection stays reserved so confirmed deletion can always enter.
     expect(maxActiveCallbacks).toBeLessThanOrEqual(7);
+    expect((await pool.query(
+      `SELECT workos_user_id FROM authorization_epochs WHERE workos_user_id = ANY($1)`,
+      [userIds],
+    )).rowCount).toBe(10);
+  });
+
+  it('rolls back without replaying a callback denied by the normalized-email writer lock', async () => {
+    const userId = `${PREFIX}email_writer_busy`;
+    let callbackCalls = 0;
+    const blocker = await pool.connect();
+    try {
+      await blocker.query('BEGIN');
+      expect((await blocker.query(
+        `SELECT pg_try_advisory_xact_lock(6827, 595) AS acquired`,
+      )).rows[0].acquired).toBe(true);
+
+      await expect(withCredentialCreationEventMutation(userId, async (client) => {
+        callbackCalls++;
+        await upsertWorkosUserInCredentialEvent(client, {
+          id: userId,
+          email: 'email-writer-busy@race.test',
+          firstName: 'Busy',
+          lastName: 'Writer',
+          emailVerified: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }, 'provider_authoritative');
+      })).rejects.toMatchObject({ code: '55P03' });
+      expect(callbackCalls).toBe(1);
+      expect((await pool.query(`SELECT 1 FROM users WHERE workos_user_id = $1`, [userId])).rows).toEqual([]);
+      expect((await pool.query(`SELECT 1 FROM authorization_epochs WHERE workos_user_id = $1`, [userId])).rows).toEqual([]);
+    } finally {
+      await blocker.query('ROLLBACK');
+      blocker.release();
+    }
   });
 
   it('never replays a callback that has started after a retryable database error', async () => {
