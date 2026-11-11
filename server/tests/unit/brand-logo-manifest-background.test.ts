@@ -36,6 +36,11 @@ describe('rebuildManifestLogos background', () => {
     expect(logo.background).toBe('transparent-bg');
   });
 
+  it('writes light-bg or dark-bg over a transparent-bg tag', async () => {
+    const [logo] = await rebuild([{ id: ID_A, tags: ['transparent-bg', 'light-bg'], derived_background: 'dark-bg' }]);
+    expect(logo.background).toBe('light-bg');
+  });
+
   it('prefers the tag over derived_background', async () => {
     const [logo] = await rebuild([{ id: ID_A, tags: ['light-bg'], derived_background: 'dark-bg' }]);
     expect(logo.background).toBe('light-bg');

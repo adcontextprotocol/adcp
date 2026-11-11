@@ -32,6 +32,12 @@ describe('backgroundFromTags', () => {
     expect(backgroundFromTags(['primary', 'dark-bg', 'light-bg'])).toBe('dark-bg');
     expect(backgroundFromTags(['transparent-bg'])).toBe('transparent-bg');
   });
+  it('prefers light-bg or dark-bg over transparent-bg, whatever the order', () => {
+    expect(backgroundFromTags(['transparent-bg', 'dark-bg'])).toBe('dark-bg');
+    expect(backgroundFromTags(['transparent-bg', 'light-bg', 'primary'])).toBe('light-bg');
+    expect(backgroundFromTags(['transparent-bg', 'light-bg', 'dark-bg'])).toBe('light-bg');
+    expect(backgroundFromTags(['primary', 'transparent-bg'])).toBe('transparent-bg');
+  });
   it('returns undefined without one, or for non-arrays', () => {
     expect(backgroundFromTags(['primary', 'icon'])).toBeUndefined();
     expect(backgroundFromTags(undefined)).toBeUndefined();
@@ -80,18 +86,51 @@ describe('parseHostedLogoUrl', () => {
 });
 
 describe('annotateLogoBackgrounds precedence', () => {
-  it('a declared background is never overwritten, even an out-of-enum value', async () => {
+  it('a declared background in the enum is never overwritten', async () => {
     const db = dbWith({ [ID_A]: { domain: 'acme.example', derived_background: 'dark-bg', tags: ['light-bg'] } });
     const [out] = await annotateLogoBackgrounds(
       [{ brand_manifest: { logos: [
         { url: hosted(ID_A), background: 'light-bg', tags: ['dark-bg'] },
-        { url: hosted(ID_A), background: 'sepia' },
-        { url: hosted(ID_A), background: '' },
+        { url: hosted(ID_A), background: 'transparent-bg' },
       ] } }],
       db as never,
     );
     const logos = (out.brand_manifest as { logos: Array<{ background: string }> }).logos;
-    expect(logos.map((l) => l.background)).toEqual(['light-bg', 'sepia', '']);
+    expect(logos.map((l) => l.background)).toEqual(['light-bg', 'transparent-bg']);
+  });
+
+  it('an out-of-enum background counts as undeclared: tags, then the derived value, replace it', async () => {
+    const db = dbWith({ [ID_A]: { domain: 'acme.example', derived_background: 'dark-bg', tags: [] } });
+    const [out] = await annotateLogoBackgrounds(
+      [{ brand_manifest: { logos: [
+        { url: 'https://cdn.example/x.png', background: 'sepia', tags: ['light-bg'] },
+        { url: hosted(ID_A), background: 'dark' },
+        { url: hosted(ID_A), background: '' },
+        { url: hosted(ID_A), background: 7 },
+      ] } }],
+      db as never,
+    );
+    const logos = (out.brand_manifest as { logos: Array<{ background: string }> }).logos;
+    expect(logos.map((l) => l.background)).toEqual(['light-bg', 'dark-bg', 'dark-bg', 'dark-bg']);
+  });
+
+  it('an out-of-enum background with nothing to replace it is dropped, not passed on', async () => {
+    const [out] = await annotateLogoBackgrounds(
+      [{ brand_manifest: { logos: [{ url: 'https://cdn.example/x.png', background: 'sepia', tags: ['primary'] }] } }],
+      dbWith({}) as never,
+    );
+    expect((out.brand_manifest as { logos: unknown[] }).logos[0]).toEqual({
+      url: 'https://cdn.example/x.png',
+      tags: ['primary'],
+    });
+  });
+
+  it('prefers a light-bg or dark-bg tag over transparent-bg', async () => {
+    const [out] = await annotateLogoBackgrounds(
+      [{ brand_manifest: { logos: [{ url: 'https://cdn.example/x.png', tags: ['transparent-bg', 'dark-bg'] }] } }],
+      dbWith({}) as never,
+    );
+    expect((out.brand_manifest as { logos: Array<{ background: string }> }).logos[0].background).toBe('dark-bg');
   });
 
   it('a null background counts as undeclared', async () => {

@@ -7,7 +7,10 @@
  * 3. for AAO-hosted logos, the background derived from the rendered pixels
  *    (brand_logos.derived_background).
  *
- * A declared value is never overwritten, even one outside the enum.
+ * A declared value in the enum is never overwritten. One outside it counts
+ * as undeclared: it is replaced from the tags or the derived value, or
+ * dropped, so clients that decode `background` as the enum (Swift Codable)
+ * never see it.
  */
 
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
@@ -19,10 +22,14 @@ const logger = createLogger('logo-background');
 
 const PRODUCTION_HOST = 'agenticadvertising.org';
 
-/** The first background tag, if the tags declare one. */
+/**
+ * The background the tags declare, if any. A specific light-bg or dark-bg
+ * tag (the first, if both) wins over transparent-bg, whatever the order.
+ */
 export function backgroundFromTags(tags: unknown): LogoBackground | undefined {
   if (!Array.isArray(tags)) return undefined;
-  return tags.find(isLogoBackground);
+  return tags.find((tag) => tag === 'light-bg' || tag === 'dark-bg')
+    ?? tags.find(isLogoBackground);
 }
 
 function hostedLogoHosts(): Set<string> {
@@ -86,8 +93,14 @@ function isRecord(value: unknown): value is LogoRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** A `background` in the enum. Anything else counts as undeclared. */
 function declaresBackground(logo: LogoRecord): boolean {
-  return logo.background !== undefined && logo.background !== null;
+  return isLogoBackground(logo.background);
+}
+
+/** A non-null `background` outside the enum, which is not passed on. */
+function hasUndeclaredBackground(logo: LogoRecord): boolean {
+  return logo.background !== undefined && logo.background !== null && !isLogoBackground(logo.background);
 }
 
 /**
@@ -163,7 +176,13 @@ export async function annotateLogoBackgrounds<T extends LogoBackgroundCarrier>(
         background = backgroundFromTags(row.tags) ?? row.derived_background;
       }
     }
-    return background ? { ...logo, background } : logo;
+    if (background) return { ...logo, background };
+    if (hasUndeclaredBackground(logo)) {
+      const rest = { ...logo };
+      delete rest.background;
+      return rest;
+    }
+    return logo;
   };
 
   return responses.map((response) => {
