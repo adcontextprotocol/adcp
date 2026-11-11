@@ -17,6 +17,8 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 AdCP 3.3 lets scheduled, human-gated, and offline media run through the same buy as programmatic. Bookings can say when they will be confirmed, proposal requests can target vendor-measured outcomes, governance plans can budget by period, and delivery reports carry what linear TV, print, and DOOH sellers actually know. The release also tightens the places where two conformant 3.2 implementations could still disagree, and keeps new single-adopter surfaces experimental.
 
+- **TMP cache isolation (3.3):** evaluation namespaces isolate Context Match caches and warm hits still re-authorize. Provider model changes use the existing TTL policy, with bounded staleness and advance TTL reduction ([#7446](https://github.com/adcontextprotocol/adcp/pull/7446), [migration](/docs/reference/migration/trusted-match-context-cache)).
+
 ### Beta checkpoints
 
 | Release | Published | Purpose | SDK posture |
@@ -454,7 +456,7 @@ The generated v3.1.22 changelog included #7396 but omitted #7397 because the 3.1
 
 ### Immediate Context Match cache action
 
-Context Match router operators affected by unsafe response caching MUST bypass or disable that caching until the router implements both request-aware partitioning and a trusted namespace for every result-affecting security and provider-configuration context. This includes authenticated principal or tenant, authorization and entitlement revision, active-package generation, provider endpoint and configuration, deployed model, and targeting or rules generation.
+Context Match router operators affected by unsafe response caching MUST bypass or disable that caching until the router implements both request-aware partitioning and a trusted namespace for every result-affecting security and provider-configuration context. This includes authenticated principal or tenant, authorization and entitlement revision, active-package generation, provider endpoint and configuration, and targeting or rules generation. Internal provider model deployments follow the provider-owned TTL policy in the [caching contract](/docs/trusted-match/specification#caching), rather than requiring routers to observe model changes.
 
 The request-aware `{provider_id, context_hash}` rule is the v3.1.22 correction. A trusted `cache_namespace` conformance contract is proposed in [#7446](https://github.com/adcontextprotocol/adcp/pull/7446) for a later release. It is not part of any published release and is not retroactive 3.1 conformance. Until a router can establish both dimensions safely, bypassing cache lookup, coalescing, and insertion is the safe operational posture.
 

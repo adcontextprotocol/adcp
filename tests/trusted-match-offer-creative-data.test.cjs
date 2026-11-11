@@ -140,7 +140,7 @@ test("Context Match caching partitions request and provider evaluation contexts"
   );
   assert.match(
     specification,
-    /prospective\s+AdCP 3\.2 requirements effective October 25, 2026/
+    /conformance requirements in this section ship in\s+AdCP 3\.3/
   );
   assert.match(
     specification,
@@ -168,7 +168,7 @@ test("Context Match caching partitions request and provider evaluation contexts"
   );
   assert.match(
     specification,
-    /MUST also change whenever an authorization or entitlement revision, active-package data generation, provider endpoint replacement, provider configuration, deployed model, or targeting\/rules generation can affect the response/
+    /MUST also change whenever an authorization or entitlement revision, active-package data generation, provider endpoint replacement, provider configuration, or targeting\/rules generation can affect the response/
   );
   assert.match(
     specification,
@@ -246,7 +246,7 @@ test("Context Match caching partitions request and provider evaluation contexts"
   );
   assert.match(
     migration,
-    /breaking\/security notice published September 13, 2026/i
+    /notice published September 13, 2026/i
   );
   assert.match(
     migration,
@@ -258,11 +258,34 @@ test("Context Match caching partitions request and provider evaluation contexts"
   );
   assert.match(
     migration,
-    /The\s+October 25 effective date applies only to the added AdCP 3\.2\s+`cache_namespace` conformance requirements/
+    /AdCP 3\.3 adds the `cache_namespace` conformance contract/
   );
   assert.match(
     dataProtection,
     /one session's artifact, signals, geo, package selection, or provider evaluation context can determine the response served to another/
   );
   assert.match(dataProtection, /Warm hits still require current authentication/);
+});
+
+test("Context Match model deployments use provider TTL rather than an unobservable router namespace", () => {
+  const specification = read("docs/trusted-match/specification.mdx");
+  const namespaceRule = specification.split("It MUST also change whenever")[1].split("Credential rotation")[0];
+  assert.doesNotMatch(namespaceRule, /deployed model/);
+  assert.match(specification, /model change that can affect output/);
+  assert.match(specification, /provider planning a model change that affects output SHOULD lower its advertised `cache_ttl` ahead of the deployment/);
+  assert.match(specification, /warm entry cached before the change may still be served until its TTL expires/);
+  assert.match(specification, /5 minutes by default, maximum 86400 seconds/);
+
+  const migration = read("docs/reference/migration/trusted-match-context-cache.mdx");
+  for (const scenario of [
+    "two different evaluation namespaces",
+    "Changed request or private data",
+    "Changed authorization or entitlement",
+    "Required trusted namespace cannot be established",
+  ]) assert.ok(migration.includes(scenario), `migration retains conformance case: ${scenario}`);
+
+  const releaseNotes = read("docs/reference/release-notes.mdx");
+  const immediateAction = releaseNotes.split("### Immediate Context Match cache action")[1].split("\n## ")[0];
+  assert.doesNotMatch(immediateAction, /deployed model/);
+  assert.match(immediateAction, /provider-owned TTL policy/);
 });
