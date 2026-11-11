@@ -8,6 +8,7 @@ import {
   classifyRgbaPixels,
   LogoRenditionError,
   parseLogoRenditionQuery,
+  planSvgRender,
   renderLogoPng,
   type LogoRenditionWidth,
 } from '../../src/services/logo-rendition.js';
@@ -202,9 +203,63 @@ describe('renderLogoPng', () => {
     expect(meta.height).toBe(256);
   });
 
-  it('rejects an SVG too large to render under the pixel limit even at minimum density', async () => {
+  it('renders an SVG whose declared size would exceed the pixel limit even at density 1', async () => {
     const data = svg(10_000_000, 10_000_000, '<rect width="10" height="10"/>', '0 0 10 10');
-    await expect(renderLogoPng(data, 'image/svg+xml', 64)).rejects.toBeInstanceOf(LogoRenditionError);
+    const meta = await sharp(await renderLogoPng(data, 'image/svg+xml', 64)).metadata();
+    expect(meta.width).toBe(64);
+    expect(meta.height).toBe(64);
+  });
+
+  describe('an SVG that needs a density below 1', () => {
+    it('is planned as a root resize to the target size, not a density-1 decode', () => {
+      // At density 1 this would decode 4792x4792 (23 MP) to make 64 px.
+      expect(planSvgRender({ width: 345_000, height: 345_000 }, 64, 256)).toEqual({
+        kind: 'resize-root',
+        width: 64,
+        height: 64,
+      });
+      expect(planSvgRender({ width: 345_000, height: 1000 }, 64, 256)).toEqual({
+        kind: 'resize-root',
+        width: 64,
+        height: 1,
+      });
+    });
+
+    it('keeps the density path when density is at least 1', () => {
+      expect(planSvgRender({ width: 300, height: 100 }, 512, 2048)).toEqual({ kind: 'density', density: 72 * (512 / 300) });
+      expect(planSvgRender({ width: 4608, height: 100 }, 64, 256)).toEqual({ kind: 'density', density: 1 });
+    });
+
+    it('renders a width="345000" root with a viewBox at the target size', async () => {
+      const data = svg(345_000, 345_000, '<rect width="10" height="10" fill="#000"/>', '0 0 10 10');
+      const { data: pixels, info } = await sharp(await renderLogoPng(data, 'image/svg+xml', 64))
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      expect([info.width, info.height]).toEqual([64, 64]);
+      expect(pixels[3]).toBe(255); // the drawing scaled with the root
+    });
+
+    it('renders a width="345000" root without a viewBox by deriving one', async () => {
+      const data = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="345000" height="172500">' +
+          '<rect width="345000" height="172500" fill="#000"/></svg>',
+      );
+      const { data: pixels, info } = await sharp(await renderLogoPng(data, 'image/svg+xml', 64))
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      expect([info.width, info.height]).toEqual([64, 32]);
+      expect(pixels[3]).toBe(255);
+    });
+
+    it('refuses one with no viewBox and a size in physical units', async () => {
+      const data = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="345000pt" height="345000pt"><rect width="10" height="10"/></svg>',
+      );
+      await expect(renderLogoPng(data, 'image/svg+xml', 64)).rejects.toMatchObject({
+        name: 'LogoRenditionError',
+        reason: 'invalid',
+      });
+    });
   });
 
   it('throws invalid for garbage bytes labelled as PNG', async () => {

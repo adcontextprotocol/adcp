@@ -8,7 +8,7 @@
  */
 
 import sharp, { type Metadata, type Sharp } from 'sharp';
-import { sanitizeSvg } from './brand-logo-service.js';
+import { sanitizeSvg, sanitizeSvgAtSize } from './brand-logo-service.js';
 
 /** Widths a PNG rendition may be requested at. */
 export const LOGO_RENDITION_WIDTHS = [64, 128, 256, 512, 1024] as const;
@@ -24,6 +24,7 @@ const LOGO_INPUT_PIXEL_LIMIT = 24_000_000;
 
 // sharp rasterises SVG at 72 DPI by default; density scales from there.
 const SVG_BASE_DENSITY = 72;
+/** sharp's minimum; below it planSvgRender resizes the root instead. */
 const MIN_SVG_DENSITY = 1;
 const MAX_SVG_DENSITY = 100_000;
 
@@ -85,6 +86,37 @@ export class LogoRenditionError extends Error {
   }
 }
 
+export type SvgRenderPlan =
+  | { kind: 'density'; density: number }
+  | { kind: 'resize-root'; width: number; height: number };
+
+/**
+ * How to rasterise an SVG of the given intrinsic size (pixels at 72 DPI) so
+ * it fits `width` × `maxHeight`.
+ *
+ * Normally that is a density: 72 DPI scaled to the target. sharp's density
+ * cannot go below 1, so an SVG declaring an intrinsic size more than 72× the
+ * target (a `width="345000"` root) would still decode at 1/72 of its declared
+ * size, millions of pixels for a 64 px PNG. Then the plan instead rewrites
+ * the root element to the target size and renders that at 72 DPI.
+ */
+export function planSvgRender(
+  intrinsic: { width: number; height: number },
+  width: number,
+  maxHeight: number,
+): SvgRenderPlan {
+  const scale = Math.min(width / intrinsic.width, maxHeight / intrinsic.height);
+  const density = SVG_BASE_DENSITY * scale;
+  if (density >= MIN_SVG_DENSITY) {
+    return { kind: 'density', density: Math.min(MAX_SVG_DENSITY, density) };
+  }
+  return {
+    kind: 'resize-root',
+    width: Math.max(1, Math.round(intrinsic.width * scale)),
+    height: Math.max(1, Math.round(intrinsic.height * scale)),
+  };
+}
+
 /**
  * Decode a logo into a pipeline sized to fit `width` × `width * 4`.
  * SVGs are re-sanitised and rendered at the density that hits the target
@@ -100,14 +132,19 @@ async function decodeLogo(data: Buffer, contentType: string, width: number): Pro
 
   if (type === 'image/svg+xml') {
     // Stored SVGs were sanitised on the way in; sanitising again is cheap and
-    // keeps this path safe even for rows written before sanitisation existed.
-    const svg = sanitizeSvg(data);
+    // keeps this path safe for rows written before the current sanitiser.
+    let svg: Buffer;
+    try {
+      svg = sanitizeSvg(data);
+    } catch (err) {
+      throw new LogoRenditionError('invalid', `Unsanitisable SVG: ${(err as Error).message}`);
+    }
     let intrinsic: Metadata;
     try {
       // Reading an SVG's metadata parses it without rasterising, so the pixel
       // cap is lifted here: an SVG may declare a large intrinsic size and
-      // still render small. The render below scales the density down to the
-      // target width and keeps the cap.
+      // still render small. The render below is sized to the target and
+      // keeps the cap.
       intrinsic = await sharp(svg, { limitInputPixels: false, failOn: 'error' }).metadata();
     } catch (err) {
       throw new LogoRenditionError('invalid', `Unreadable SVG: ${(err as Error).message}`);
@@ -115,8 +152,15 @@ async function decodeLogo(data: Buffer, contentType: string, width: number): Pro
     if (!intrinsic.width || !intrinsic.height) {
       throw new LogoRenditionError('invalid', 'SVG has no intrinsic size');
     }
-    const scale = Math.min(width / intrinsic.width, maxHeight / intrinsic.height);
-    const density = Math.min(MAX_SVG_DENSITY, Math.max(MIN_SVG_DENSITY, SVG_BASE_DENSITY * scale));
+    const plan = planSvgRender({ width: intrinsic.width, height: intrinsic.height }, width, maxHeight);
+    if (plan.kind === 'resize-root') {
+      const resized = sanitizeSvgAtSize(data, plan.width, plan.height);
+      if (!resized) {
+        throw new LogoRenditionError('invalid', 'SVG is too large to render at this width');
+      }
+      svg = resized;
+    }
+    const density = plan.kind === 'density' ? plan.density : SVG_BASE_DENSITY;
     return sharp(svg, { density, limitInputPixels: LOGO_INPUT_PIXEL_LIMIT, failOn: 'error' })
       .resize(box);
   }

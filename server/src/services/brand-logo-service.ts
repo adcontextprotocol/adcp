@@ -251,6 +251,30 @@ export function sanitizeSvg(buffer: Buffer): Buffer {
   return Buffer.from(sanitizeSvgToBody(buffer.toString('utf8')).innerHTML, 'utf8');
 }
 
+const PLAIN_SVG_LENGTH = /^\s*(\d+(?:\.\d+)?|\.\d+)\s*(?:px)?\s*$/;
+
+/**
+ * Sanitise an SVG and set its root element's width and height, so it renders
+ * at that size whatever size it declares. A root without a `viewBox` gets one
+ * from its declared width and height, so its drawing scales with it. Returns
+ * null when the root declares no usable size (no `viewBox`, and a width or
+ * height that is missing or not in plain pixels).
+ */
+export function sanitizeSvgAtSize(buffer: Buffer, width: number, height: number): Buffer | null {
+  const body = sanitizeSvgToBody(buffer.toString('utf8'));
+  const root = Array.from(body.children).find((element) => element.localName === 'svg');
+  if (!root) return null;
+  if (!root.getAttribute('viewBox')) {
+    const declaredWidth = PLAIN_SVG_LENGTH.exec(root.getAttribute('width') ?? '');
+    const declaredHeight = PLAIN_SVG_LENGTH.exec(root.getAttribute('height') ?? '');
+    if (!declaredWidth || !declaredHeight) return null;
+    root.setAttribute('viewBox', `0 0 ${declaredWidth[1]} ${declaredHeight[1]}`);
+  }
+  root.setAttribute('width', String(width));
+  root.setAttribute('height', String(height));
+  return Buffer.from(body.innerHTML, 'utf8');
+}
+
 export async function extractDimensions(
   buffer: Buffer,
   contentType: string,
