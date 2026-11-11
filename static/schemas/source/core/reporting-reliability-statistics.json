@@ -57,7 +57,7 @@
       "properties": {
         "basis": { "type": "string", "enum": ["reporting_ledger", "third_party_attestation"] },
         "generated_at": { "type": "string", "format": "date-time" },
-        "attestation_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)" },
+        "attestation_uri": { "type": "string", "format": "uri", "pattern": "^https://" },
         "attestation_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
       },
       "required": ["basis", "generated_at"],

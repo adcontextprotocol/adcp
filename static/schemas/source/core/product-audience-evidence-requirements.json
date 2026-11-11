@@ -78,7 +78,7 @@
               "agent_url": {
                 "type": "string",
                 "format": "uri",
-                "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+                "pattern": "^https://"
               },
               "ext": { "$ref": "/schemas/core/ext.json" }
             },

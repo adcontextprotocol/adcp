@@ -45,13 +45,13 @@
     "evaluated_by": {
       "type": "string",
       "format": "uri",
-      "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+      "pattern": "^https://",
       "description": "Canonical agent URL of the evaluator-of-record that produced this result, even when it delegated proof checking to an accepted verifier."
     },
     "verifier_agent_url": {
       "type": "string",
       "format": "uri",
-      "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+      "pattern": "^https://",
       "description": "Accepted verifier agent actually used, when verification was delegated. Omit for local verification or when no verifier was called."
     },
     "reason_codes": {
