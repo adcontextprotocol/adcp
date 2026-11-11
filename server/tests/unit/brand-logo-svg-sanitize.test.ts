@@ -101,6 +101,69 @@ describe('sanitizeSvg: CSS resource references', () => {
   });
 });
 
+describe('sanitizeSvg: tokens spliced together by a removal', () => {
+  // Each payload hides one more layer than a single neutralising pass
+  // removes; ingest and render each sanitise, so a pass that peels one layer
+  // lets the second layer reach the renderer live.
+  const ref = NESTED;
+  const css = `rect{fill:url("${ref}")}`;
+  const payloads: Array<[string, string]> = [
+    ['fill attribute', wrap(`<rect width="32" height="32" fill="ur@im@import;port;l(${ref})"/>`)],
+    ['<style> rule', wrap(`<style>rect{fill:ur@im@import;port;l("${ref}")}</style><rect width="32" height="32"/>`)],
+    [
+      '@import of a percent-encoded data: stylesheet',
+      wrap(
+        `<style>@im@im@import;port;port "data:text/css,${encodeURIComponent(css)}";</style><rect width="32" height="32"/>`,
+      ),
+    ],
+    ['filter attribute', wrap(`<rect width="32" height="32" filter="ur@im@import;port;l(${ref})"/>`)],
+  ];
+
+  it.each(payloads)('%s: sanitising is idempotent', (_label, markup) => {
+    const once = sanitizeSvg(Buffer.from(markup));
+    expect(sanitizeSvg(once).toString('utf8')).toBe(once.toString('utf8'));
+  });
+
+  it.each(payloads)('%s: no live url() or @import after ingest-then-render sanitising', (_label, markup) => {
+    // Inert leftovers such as `ur@im port;l(data:…)` may remain; what must
+    // not is a url() to anything but a #fragment, or an @import.
+    const twice = sanitizeSvg(sanitizeSvg(Buffer.from(markup))).toString('utf8');
+    for (const target of urlTargets(twice)) expect(target.startsWith('#')).toBe(true);
+    expect(twice).not.toMatch(/@import/i);
+    expect(twice).not.toMatch(/(?:url|src)\(\s*['"]?\s*data:/i);
+  });
+});
+
+describe('neutralizeCssResources: settles in one call', () => {
+  // Deterministic pseudo-random splices of the pieces an attacker would use.
+  const PIECES = ['url(', 'ur', 'l(', 'u', 'rl(', 'src(', '@import', '@im', 'port', ';', ')', '"', "'", '\\75 ', '\\72 ', '\\', 'data:x', '#a', ' ', '{', '}'];
+  let seed = 0x2545f491;
+  const next = () => {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return (seed >>> 0) / 0x100000000;
+  };
+
+  it('returns a fixed point with no live url() or @import, for 5000 spliced inputs', () => {
+    for (let i = 0; i < 5000; i++) {
+      const length = 1 + Math.floor(next() * 12);
+      let input = '';
+      for (let j = 0; j < length; j++) input += PIECES[Math.floor(next() * PIECES.length)];
+      const out = neutralizeCssResources(input);
+      expect(neutralizeCssResources(out), JSON.stringify(input)).toBe(out);
+      // What a CSS parser sees: escapes decoded.
+      const seen = out.replace(/\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|([\s\S]))/gi, (_m, hex, ch) =>
+        hex ? String.fromCodePoint(parseInt(hex, 16) || 0xfffd) : (ch ?? ''),
+      );
+      expect(seen, JSON.stringify(input)).not.toMatch(/@import/i);
+      for (const m of seen.matchAll(/(?:url|src)\(([^)]*)\)?/gi)) {
+        expect(m[1].trim().replace(/^(['"])(.*)\1$/s, '$2').trim(), JSON.stringify(input)).toMatch(/^#[^\s'"()]+$/);
+      }
+    }
+  });
+});
+
 describe('neutralizeCssResources', () => {
   it.each([
     ['url(#a)', 'url(#a)'],
@@ -114,11 +177,15 @@ describe('neutralizeCssResources', () => {
     ['URL(x)', 'none'],
     ['src("x")', 'none'],
     ['url(x', 'none'],
-    ['@import "a.css"; .a{fill:#fff}', ' .a{fill:#fff}'],
-    ['@IMPORT url(a.css);', ''],
+    ['@import "a.css"; .a{fill:#fff}', '  .a{fill:#fff}'],
+    ['@IMPORT url(a.css);', ' '],
     ['u\\72l(x)', 'none'],
     ['\\75 rl(x)', 'none'],
-    ['@im\\70 ort "a.css";', ''],
+    ['@im\\70 ort "a.css";', ' '],
+    ['ur@import;l(x)', 'ur l(x)'],
+    ['@im@import;port "a.css";', '@im port "a.css";'],
+    ['ur@im@import;port;l(x)', 'ur@im port;l(x)'],
+    ['url(url(#a)x)', 'nonex)'],
     ['.a\\:b{fill:#fff}', '.a\\:b{fill:#fff}'],
     ['.a\\:b{fill:u\\72l(x)}', '.a:b{fill:none}'],
     ['url(\\23 a)', 'url(\\23 a)'],

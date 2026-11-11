@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { sanitizeSvg } from '../../src/services/brand-logo-service.js';
 import {
   canRasterizeLogo,
   classifyLogoBackground,
@@ -315,6 +316,28 @@ describe('renderLogoPng', () => {
       const ref = await nestedImageReference();
       const png = await renderLogoPng(svg(16, 16, `<rect width="16" height="16" fill="url(${ref})"/>`), 'image/svg+xml', 64);
       await expectNothingDrawn(png);
+    });
+
+    it.each([
+      ['a fill attribute', (ref: string) => `<rect width="16" height="16" fill="ur@im@import;port;l(${ref})"/>`],
+      ['a <style> rule', (ref: string) => `<style>rect{fill:ur@im@import;port;l("${ref}")}</style><rect width="16" height="16"/>`],
+      [
+        'an @import of a data: stylesheet',
+        (ref: string) =>
+          `<style>@im@im@import;port;port "data:text/css,${encodeURIComponent(`rect{fill:url("${ref}")}`)}";</style>` +
+          '<rect width="16" height="16"/>',
+      ],
+    ])('is not loaded through %s spliced together by a removal, after ingest-then-render sanitising', async (_label, body) => {
+      const stored = sanitizeSvg(svg(16, 16, body(await nestedImageReference())));
+      // The neutralised fill is invalid, so the rect falls back to black;
+      // what must not appear is the nested image's blue.
+      const { data } = await sharp(await renderLogoPng(stored, 'image/svg+xml', 64))
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      let blue = 0;
+      for (let o = 0; o < data.length; o += 4) if (data[o + 2] > 128 && data[o] < 64) blue++;
+      expect(blue).toBe(0);
     });
 
     it('is not loaded from a <style> rule', async () => {

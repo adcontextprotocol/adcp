@@ -187,27 +187,44 @@ function decodeCssEscapes(css: string): string {
  * a stylesheet, including `data:` URLs whose nested SVG was never sanitised
  * and can embed images decoded outside the render's pixel limit. So:
  *
- * - every `url(...)` / `src(...)` whose target is not a `#fragment` becomes
- *   `none`, which every property taking a URL accepts;
- * - every `@import` rule is removed;
+ * - every `@import` rule becomes a single space (never nothing, which would
+ *   join the text either side of it into a new token);
+ * - then every `url(...)` / `src(...)` whose target is not a `#fragment`
+ *   becomes `none`, which every property taking a URL accepts;
  * - both are looked for after decoding CSS escapes, since an escape can
  *   spell `url(` or `@import` without those characters (`u\72l(`). Text with
  *   escapes and nothing to neutralise is returned as it was.
+ *
+ * One pass can still assemble a token out of what it removed around
+ * (`ur@import;l(`), so passes repeat until the text stops changing. Each
+ * changing pass shortens the text, so this ends; the result neutralises to
+ * itself, which keeps sanitising idempotent (ingest, then render, sanitise
+ * the same bytes). If it somehow does not settle, the CSS is dropped.
  *
  * It matches inside strings and comments too: over-matching only drops a
  * paint, never lets a reference through.
  */
 export function neutralizeCssResources(css: string): string {
-  const neutralize = (text: string) =>
-    text
-      .replace(CSS_RESOURCE_FUNCTION, (match, arg: string) => {
-        const target = arg.trim().replace(/^(['"])(.*)\1$/s, '$2').trim();
-        return SAME_DOCUMENT_FRAGMENT.test(target) ? match : 'none';
-      })
-      .replace(CSS_IMPORT_RULE, '');
-  if (!css.includes('\\')) return neutralize(css);
-  const decoded = decodeCssEscapes(css);
-  const neutralized = neutralize(decoded);
+  let current = css;
+  for (let pass = 0; pass < MAX_CSS_NEUTRALIZE_PASSES; pass++) {
+    const next = neutralizeCssOnce(current);
+    if (next === current) return current;
+    current = next;
+  }
+  return '';
+}
+
+const MAX_CSS_NEUTRALIZE_PASSES = 64;
+
+function neutralizeCssOnce(css: string): string {
+  const decoded = css.includes('\\') ? decodeCssEscapes(css) : css;
+  const neutralized = decoded
+    .replace(CSS_IMPORT_RULE, ' ')
+    .replace(CSS_RESOURCE_FUNCTION, (match, arg: string) => {
+      const target = arg.trim().replace(/^(['"])(.*)\1$/s, '$2').trim();
+      return SAME_DOCUMENT_FRAGMENT.test(target) ? match : 'none';
+    });
+  // Nothing to neutralise: keep the text as written, escapes and all.
   return neutralized === decoded ? css : neutralized;
 }
 
