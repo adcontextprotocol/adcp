@@ -128,8 +128,8 @@ describe('renderLogoPng', () => {
     }
   });
 
-  it('renders the production Coca-Cola SVG at the exact width', async () => {
-    const png = await renderLogoPng(fixture('coca-cola-a9bec631-red-ink.svg'), 'image/svg+xml', 256);
+  it('renders a viewBox-only, class-filled SVG fixture at the exact width', async () => {
+    const png = await renderLogoPng(fixture('class-fill-red-ink.svg'), 'image/svg+xml', 256);
     expect((await sharp(png).metadata()).width).toBe(256);
   });
 
@@ -331,17 +331,16 @@ describe('renderLogoPng', () => {
 
 // ── Classification ──────────────────────────────────────────────────
 
-describe('classifyLogoBackground: production regression fixtures', () => {
-  it('Coca-Cola white-ink logo is drawn for dark backgrounds', async () => {
-    expect(await classifyLogoBackground(fixture('coca-cola-636eabf2-white-ink.svg'), 'image/svg+xml')).toBe(
-      'dark-bg',
-    );
+// Synthetic stand-ins for the production regression: a viewBox-only root
+// whose paths are filled through a <style> class rule. Dropping or ignoring
+// <style> renders them in default black, which misreads the white one.
+describe('classifyLogoBackground: class-fill regression fixtures', () => {
+  it('a white-ink class-filled logo is drawn for dark backgrounds', async () => {
+    expect(await classifyLogoBackground(fixture('class-fill-white-ink.svg'), 'image/svg+xml')).toBe('dark-bg');
   });
 
-  it('Coca-Cola red-ink logo is drawn for light backgrounds', async () => {
-    expect(await classifyLogoBackground(fixture('coca-cola-a9bec631-red-ink.svg'), 'image/svg+xml')).toBe(
-      'light-bg',
-    );
+  it('a red-ink class-filled logo is drawn for light backgrounds', async () => {
+    expect(await classifyLogoBackground(fixture('class-fill-red-ink.svg'), 'image/svg+xml')).toBe('light-bg');
   });
 });
 
