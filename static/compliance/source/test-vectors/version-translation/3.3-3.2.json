@@ -1,0 +1,335 @@
+{
+  "description": "Cross-version translation between AdCP 3.3 and 3.2 (DR-0032, DR-0033, DR-0036): settled 3.3 surfaces only. Provisional until 3.3 GA: 3.3 closed-schema dispositions (#8501) land before GA and are added then.",
+  "status": "proposed; provisional until 3.3 GA",
+  "reference_implementation": "@adcp/sdk (adcontextprotocol/adcp-client), validated against 3.3.0-beta.3 and 3.2.8",
+  "version_pair": [
+    "3.3",
+    "3.2"
+  ],
+  "cases": [
+    {
+      "id": "get_products-read-drops-3.3-flags",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "get_products",
+      "from_version": "3.3",
+      "to_version": "3.2",
+      "note": "On a read, 3.3 request flags drop for a 3.2 seller and are reported; the call proceeds.",
+      "input": {
+        "buying_mode": "brief",
+        "brief": "running shoes",
+        "include_collections": true,
+        "include_execution_readiness": true
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "buying_mode": "brief",
+          "brief": "running shoes"
+        },
+        "dropped": [
+          "include_collections",
+          "include_execution_readiness"
+        ],
+        "moved": []
+      }
+    },
+    {
+      "id": "create_media_buy-creative-gate-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.3",
+      "to_version": "3.2",
+      "note": "Gated: a 3.2 seller would ignore the creative-approval start gate and could start delivery early, so the mutation is refused.",
+      "input": {
+        "idempotency_key": "vt33-create-media-buy-0001",
+        "account": {
+          "account_id": "acct_acme"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000,
+            "start_requires_all_creatives_approved": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "packages[0].start_requires_all_creatives_approved"
+        ]
+      }
+    },
+    {
+      "id": "create_media_buy-assignment-trackers-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.3",
+      "to_version": "3.2",
+      "note": "Gated: a 3.2 seller would ignore per-assignment trackers, so measurement would silently be missing. Refused.",
+      "input": {
+        "idempotency_key": "vt33-create-media-buy-0001",
+        "account": {
+          "account_id": "acct_acme"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000,
+            "creative_assignments": [
+              {
+                "creative_id": "cr_1",
+                "trackers": [
+                  {
+                    "event": "impression",
+                    "url": "https://tracker.example/i"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "packages[0].creative_assignments[0].trackers"
+        ]
+      }
+    },
+    {
+      "id": "create_media_buy-collection-lists-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.3",
+      "to_version": "3.2",
+      "note": "Gated: a 3.2 seller would ignore the collection-list intersection and serve outside it. Refused.",
+      "input": {
+        "idempotency_key": "vt33-create-media-buy-0001",
+        "account": {
+          "account_id": "acct_acme"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000,
+            "targeting_overlay": {
+              "collection_lists": [
+                {
+                  "agent_url": "https://lists.example/mcp",
+                  "list_id": "cl_1"
+                },
+                {
+                  "agent_url": "https://lists.example/mcp",
+                  "list_id": "cl_2"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "packages[0].targeting_overlay.collection_lists"
+        ]
+      }
+    },
+    {
+      "id": "request_proposals-product-universe-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "request_proposals",
+      "from_version": "3.3",
+      "to_version": "3.2",
+      "note": "Gated, on a reopened proposal-flow root: a 3.2 seller would ignore product_ids_exclusive and compose beyond the named products. Refused.",
+      "input": {
+        "idempotency_key": "vt33-request-proposals-0001",
+        "account": {
+          "account_id": "acct_acme"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "brief": "Q1 launch across the named products only",
+        "criteria": {
+          "product_ids": [
+            "prod_1",
+            "prod_2"
+          ],
+          "product_ids_exclusive": true
+        }
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "criteria.product_ids_exclusive"
+        ]
+      }
+    },
+    {
+      "id": "list_products-response-hold-policy-dropped",
+      "side": "server",
+      "direction": "response_down",
+      "tool": "list_products",
+      "from_version": "3.3",
+      "to_version": "3.2",
+      "note": "Server: a 3.3 field on the reopened proposal flow (hold_policy on a canonical product) goes only to 3.3 peers; for a 3.2 buyer it is removed and reported.",
+      "input": {
+        "status": "completed",
+        "outcome": "listed",
+        "feed_version": "feed-2027-01",
+        "cache_scope": "public",
+        "products": [
+          {
+            "product_id": "prod_1",
+            "name": "Premium video",
+            "hold_policy": {
+              "available": false
+            }
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "status": "completed",
+          "outcome": "listed",
+          "feed_version": "feed-2027-01",
+          "cache_scope": "public",
+          "products": [
+            {
+              "product_id": "prod_1",
+              "name": "Premium video"
+            }
+          ]
+        },
+        "dropped": [
+          "products[0].hold_policy"
+        ],
+        "moved": []
+      }
+    },
+    {
+      "id": "list_products-response-echo-kept",
+      "side": "client",
+      "direction": "response_up",
+      "tool": "list_products",
+      "from_version": "3.2",
+      "to_version": "3.3",
+      "note": "Client: up-conversion never removes. The adcp_version echo a 3.2.8 seller returns (DR-0036 correction b) is kept.",
+      "input": {
+        "status": "completed",
+        "outcome": "listed",
+        "feed_version": "feed-2027-01",
+        "cache_scope": "public",
+        "products": [
+          {
+            "product_id": "prod_1",
+            "name": "Premium video"
+          }
+        ],
+        "adcp_version": "3.2"
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "status": "completed",
+          "outcome": "listed",
+          "feed_version": "feed-2027-01",
+          "cache_scope": "public",
+          "products": [
+            {
+              "product_id": "prod_1",
+              "name": "Premium video"
+            }
+          ],
+          "adcp_version": "3.2"
+        },
+        "moved": []
+      }
+    },
+    {
+      "id": "list_proposals-not-defined",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "list_proposals",
+      "from_version": "3.3",
+      "to_version": "3.2",
+      "note": "A task 3.2 does not define is refused before sending, unless the seller lists the tool.",
+      "input": {
+        "account": {
+          "account_id": "acct_acme"
+        }
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "task_not_defined"
+      }
+    }
+  ],
+  "negotiation": [
+    {
+      "client_version": "3.3",
+      "seller_supported_versions": [
+        "3.1",
+        "3.2"
+      ],
+      "note": "A 3.3 client speaks 3.2 to a 3.2 seller.",
+      "expect": {
+        "outcome": "negotiated",
+        "version": "3.2"
+      }
+    },
+    {
+      "client_version": "3.3-beta.3",
+      "seller_supported_versions": [
+        "3.2",
+        "3.3"
+      ],
+      "note": "A prerelease client does not match the GA seller of its line; it falls back to 3.2.",
+      "expect": {
+        "outcome": "negotiated",
+        "version": "3.2"
+      }
+    },
+    {
+      "client_version": "3.3",
+      "seller_supported_versions": [
+        "3.2",
+        "3.3-beta.3"
+      ],
+      "note": "A GA client never selects a seller prerelease of its own line; it speaks 3.2.",
+      "expect": {
+        "outcome": "negotiated",
+        "version": "3.2"
+      }
+    }
+  ]
+}
