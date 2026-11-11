@@ -465,3 +465,20 @@ schema_removals_not_checked:
     sites:
       - "core/media-buy-legacy-terms-ref.json#"
       - "media-buy/request-proposals-response.json#/properties/purchase_continuation"
+
+  - change: "Enum values that collide with SDK reserved words, replaced in 3.3"
+    issue: 8791
+    reason: >-
+      3.3 adds a replacement beside each value (pass to passed, global to
+      agent, name to full_name, and color_ref kinds name and value to
+      palette_key and hex), so both are accepted through 3.x. Senders keep the
+      old value for 3.2 counterparties, so a 3.x run cannot grade its use.
+    sites:
+      - "brand.json#/definitions/color_ref/properties/kind/enumMetadata/name"
+      - "brand.json#/definitions/color_ref/properties/kind/enumMetadata/value"
+      - "content-standards/get-media-buy-artifacts-response.json#/oneOf/0/properties/artifacts/items/properties/local_verdict/enumMetadata/pass"
+      - "core/registry-event.json#/$defs/compliancePayload/properties/tracks/additionalProperties/enumMetadata/pass"
+      - "core/signal-definition-enrichment.json#/properties/onboarder/properties/match_keys/items/enumMetadata/name"
+      - "core/signal-definition.json#/properties/onboarder/properties/match_keys/items/enumMetadata/name"
+      - "enums/binary-verdict.json#/enumMetadata/pass"
+      - "error-details/rate-limited.json#/properties/scope/enumMetadata/global"

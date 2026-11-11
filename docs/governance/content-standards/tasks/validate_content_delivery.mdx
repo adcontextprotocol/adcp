@@ -122,6 +122,8 @@ This keeps responsibilities clear: sellers provide content samples via `get_medi
 }
 ```
 
+Each result's `verdict` is `passed` or `fail`. `pass` is the deprecated spelling of `passed`: deprecated in 3.3 and removed in 4.0 ([#8791](https://github.com/adcontextprotocol/adcp/issues/8791)). Receivers accept both through 3.x; a 3.2 receiver rejects `passed`.
+
 ## Use Cases
 
 ### Post-Campaign Audit

@@ -121,7 +121,7 @@ Uses higher limits than standard pagination because artifact result sets can be 
 | `artifacts[].country` | ISO 3166-1 alpha-2 country code where delivery occurred |
 | `artifacts[].channel` | Channel type (display, olv, ctv, podcast, social, etc.) |
 | `artifacts[].brand_context` | Brand/SKU information for policy evaluation (schema TBD) |
-| `artifacts[].local_verdict` | Seller's local model verdict (pass/fail/unevaluated) |
+| `artifacts[].local_verdict` | Seller's local model verdict: `passed`, `fail`, or `unevaluated`. `pass` is the deprecated spelling of `passed` (deprecated in 3.3, removed in 4.0, [#8791](https://github.com/adcontextprotocol/adcp/issues/8791)); treat the two as the same verdict. |
 | `collection_info` | Artifact collection statistics — what the seller collected per the buy agreement |
 | `pagination` | Cursor for fetching more results |
 
@@ -156,9 +156,11 @@ validation = verification_agent.validate_content_delivery(
 )
 
 # Check for drift between local and verified verdicts
+# "pass" is the deprecated spelling of "passed"; compare them as one verdict.
+normalize = lambda verdict: "passed" if verdict == "pass" else verdict
 for i, result in enumerate(validation["results"]):
-    local = artifacts_response["artifacts"][i]["local_verdict"]
-    verified = result["verdict"]
+    local = normalize(artifacts_response["artifacts"][i]["local_verdict"])
+    verified = normalize(result["verdict"])
     if local != verified:
         print(f"Drift detected: {result['record_id']} - local={local}, verified={verified}")
 ```
@@ -181,7 +183,7 @@ validation = verification_agent.validate_content_delivery(
 )
 
 # Check false positive rate
-false_positives = sum(1 for r in validation["results"] if r["verdict"] == "pass")
+false_positives = sum(1 for r in validation["results"] if r["verdict"] in ("passed", "pass"))
 print(f"False positive rate: {false_positives / len(failures['artifacts']):.1%}")
 ```
 
@@ -194,7 +196,7 @@ Governance agents receiving validation results where every `local_verdict` is `"
 | `local_verdict` | `failures_only` returns? | Drift comparison possible? |
 |-----------------|--------------------------|---------------------------|
 | `fail` | Yes | Yes |
-| `pass` | No | N/A (not in result set) |
+| `passed` (or the deprecated `pass`) | No | N/A (not in result set) |
 | `unevaluated` | No | No — omit `failures_only` to retrieve all collected artifacts |
 
 ## Non-Web Artifact Examples
