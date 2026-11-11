@@ -397,7 +397,7 @@ Governance thresholds (`reallocation_threshold`, `human_review_required` trigger
 
 Governance agents MUST aggregate committed spend across all of the following when evaluating any threshold:
 
-- All plans attributable to the same `(buyer_agent, seller_agent, account_id)` tuple — fragmentation across plans on the same account does not reset the aggregate. Delegated sub-agents (see [Delegations](#delegations)) share the delegating buyer's aggregate: the `buyer_agent` element of the key is the delegating principal, not the sub-agent's `agent_url`. A delegation does NOT mint a fresh per-agent aggregation window, because otherwise the delegation surface itself reopens the fragmentation hole (\$999,900 split across 100 sub-agents, each getting their own \$9,999 budget).
+- All plans attributable to the same `(owner_principal, seller_agent)` tuple — fragmentation across plans owned by the same principal does not reset the aggregate. `owner_principal` is a defined term, not a wire field: the authenticated buyer principal that synchronized the plan (see [Delegations](#delegations)). Delegated sub-agents share the delegating buyer's aggregate: the `owner_principal` element of the key is the delegating principal, not the sub-agent's `agent_url`. A delegation does NOT mint a fresh per-agent aggregation window, because otherwise the delegation surface itself reopens the fragmentation hole (\$999,900 split across 100 sub-agents, each getting their own \$9,999 budget).
 - Every [spend-commit task](#spend-commit-tasks) — fragmentation across task surfaces does not reset the aggregate. The spend-commit task inventory is the single authoritative list; new spend-commit tasks added there join the aggregate automatically, without a separate edit in this section.
 - The trailing window declared via the `governance.aggregation_window_days` capability (see [get_adcp_capabilities](#governance-aggregation-capability) below). The window slides with wall-clock time, not plan boundaries.
 
@@ -418,7 +418,7 @@ then evaluates `aggregate` against each applicable threshold. The current incomi
 
 When an individual commit would be below a threshold in isolation but pushes the trailing-window aggregate above the threshold, the governance agent MUST apply the threshold's consequence (human review escalation, denial, or conditions) to that commit. Governance agents MAY expose an `aggregate_committed` field on `get_plan_audit_logs` responses so auditors can reconstruct the fragmentation-defense decision without re-deriving it from the full outcome stream. The field's shape (units, currency, window-boundary reporting) is governance-agent-specific in 3.x and will be standardized in a later revision; implementers exposing it SHOULD document their shape alongside their `get_plan_audit_logs` response.
 
-Governance agents MAY evaluate narrower aggregation scopes additionally (per-brand, per-campaign) but MUST NOT evaluate any scope *broader* than the declared window without operator sign-off. "Broader" covers **both** dimensions: a longer trailing window (time) and a wider key tuple (e.g., collapsing across `account_id` so two accounts share an aggregate). A silently-widened scope in either dimension is as surprising to the operator as a silently-narrowed one.
+Governance agents MAY evaluate narrower aggregation scopes additionally (per-brand, per-campaign) but MUST NOT evaluate any scope *broader* than the declared window without operator sign-off. "Broader" covers **both** dimensions: a longer trailing window (time) and a wider key tuple (e.g., collapsing across `owner_principal` so two buyer principals share an aggregate). A silently-widened scope in either dimension is as surprising to the operator as a silently-narrowed one.
 
 #### Composition with `reallocation_threshold`
 
@@ -426,7 +426,7 @@ A reallocation is itself a spend-commit: `update_media_buy` carries an increment
 
 #### Conformance example
 
-Agent declares `aggregation_window_days: 30`. Plan sets a `human_review_required` trigger at \$10,000 committed spend (keyed on `(buyer_agent, seller_agent, account_id)`).
+Agent declares `aggregation_window_days: 30`. Plan sets a `human_review_required` trigger at \$10,000 committed spend (keyed on `(owner_principal, seller_agent)`).
 
 | # | Prior 30-day aggregate | Incoming commit | Post-aggregate | Expected outcome |
 |---|-----------------------|-----------------|----------------|-------------------|
@@ -564,7 +564,7 @@ This prevents a compromised or mistaken orchestrator from restoring headroom by 
 
 An execution check approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
 
-Budget checks are point-in-time: `check_governance` validates against the current committed total but does not reserve budget. If multiple agents execute concurrently against the same plan, two checks could both pass and the combined outcomes could exceed the authorized budget. The governance agent detects overspend at outcome reporting time and returns a `budget_authority` finding. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
+Budget checks are point-in-time: `check_governance` validates against the current committed total but does not reserve budget. (Where this section says governance *reserves* an amount, it means the amount the ledger commits when an outcome is reported, not a hold placed by a check.) If multiple agents execute concurrently against the same plan, two checks could both pass and the combined outcomes could exceed the authorized budget. The governance agent detects overspend at outcome reporting time and returns a `budget_authority` finding. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
 
 ### Drift detection
 
@@ -575,8 +575,8 @@ The audit log includes `drift_metrics` that surface aggregate governance trends 
   "summary": {
     "checks_performed": 847,
     "drift_metrics": {
-      "human_review_rate": 0.03,
-      "human_review_rate_trend": "declining",
+      "escalation_rate": 0.03,
+      "escalation_rate_trend": "declining",
       "auto_approval_rate": 0.91,
       "human_override_rate": 0.02,
       "mean_confidence": 0.88
@@ -585,35 +585,37 @@ The audit log includes `drift_metrics` that surface aggregate governance trends 
 }
 ```
 
-These metrics detect oversight drift -- the gradual migration of control away from humans. A declining human review rate may indicate the governance agent is well-calibrated, or it may indicate that oversight is eroding. Surfacing the trend lets the organization make that judgment.
+These metrics detect oversight drift -- the gradual migration of control away from humans. A declining escalation rate may indicate the governance agent is well-calibrated, or it may indicate that oversight is eroding. Surfacing the trend lets the organization make that judgment.
 
 | Metric | What it measures |
 |--------|-----------------|
-| `human_review_rate` | Fraction of checks that required internal human review |
-| `human_review_rate_trend` | Direction over the plan's lifetime (`increasing`, `stable`, `declining`) |
+| `escalation_rate` | Fraction of checks that were escalated for human review |
+| `escalation_rate_trend` | Direction over the plan's lifetime (`increasing`, `stable`, `declining`) |
 | `auto_approval_rate` | Fraction of checks approved without human intervention |
-| `human_override_rate` | Fraction of human reviews where the human overrode the governance agent |
+| `human_override_rate` | Fraction of escalations where the human overrode the governance agent's recommendation |
 | `mean_confidence` | Average confidence score across findings (when confidence is reported) |
+
+The escalations themselves are listed in `summary.escalations[]` with their resolutions, and `summary.statuses.human_reviewed` counts the checks that went through human review.
 
 Organizations can set thresholds on drift metrics. When a metric crosses its threshold, the governance agent SHOULD include a finding (severity `warning`) on the next governance check:
 
 ```json
 {
   "drift_metrics": {
-    "human_review_rate": 0.01,
-    "human_review_rate_trend": "declining",
+    "escalation_rate": 0.01,
+    "escalation_rate_trend": "declining",
     "auto_approval_rate": 0.97,
     "thresholds": {
-      "human_review_rate_min": 0.02,
+      "escalation_rate_min": 0.02,
       "auto_approval_rate_max": 0.95
     }
   }
 }
 ```
 
-In this example, both thresholds are breached -- the human review rate (0.01) is below the minimum (0.02) and the auto-approval rate (0.97) exceeds the maximum (0.95). This could indicate that the governance agent is approving too broadly, or that policies are well-calibrated for a low-risk campaign. The threshold breach surfaces the question; the organization decides the answer.
+In this example, both thresholds are breached -- the escalation rate (0.01) is below the minimum (0.02) and the auto-approval rate (0.97) exceeds the maximum (0.95). This could indicate that the governance agent is approving too broadly, or that policies are well-calibrated for a low-risk campaign. The threshold breach surfaces the question; the organization decides the answer.
 
-Organizations set only the thresholds relevant to their concern. A `human_review_rate_min` catches oversight erosion; a `human_review_rate_max` catches policy miscalibration. A `human_override_rate_max` catches a governance agent whose recommendations are consistently wrong. All threshold fields are optional.
+Organizations set only the thresholds relevant to their concern. An `escalation_rate_min` catches oversight erosion; an `escalation_rate_max` catches policy miscalibration. A `human_override_rate_max` catches a governance agent whose recommendations are consistently wrong. All threshold fields are optional.
 
 ### Plan amendments
 
@@ -1132,7 +1134,7 @@ The `next_check` field signals that the governance agent expects delivery report
   "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
   "findings": [
     {
-      "category_id": "strategic_alignment",
+      "category_id": "geo_compliance",
       "severity": "critical",
       "explanation": "Geo targeting includes CA but plan only authorizes US.",
       "details": {
