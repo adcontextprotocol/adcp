@@ -159,7 +159,7 @@ For a resource subject, `subject.content_digest` optionally pins the content or 
 
 Issuer and claim identifiers are open vocabularies. An evaluator listing them expresses only its own policy; it is not an AgenticAdvertising.org endorsement or a global trust registry.
 
-The presenter MAY nominate `verify_agent.agent_url`, but it MUST match `accepted_verifiers[]` after [URL canonicalization](/docs/reference/url-canonicalization). The evaluator MAY use that verifier, another accepted verifier, or local verification. It MUST NOT call an off-list presenter-supplied endpoint.
+The presenter MAY nominate `verify_agent.agent_url`, but it MUST match `accepted_verifiers[]` after [URL canonicalization](/docs/reference/url-canonicalization). The evaluator MAY use that verifier, another accepted verifier, or local verification. It MUST NOT call an off-list presenter-supplied endpoint, and it calls a verifier at the `agent_url` of its own `accepted_verifiers[]` entry, never at the presented string.
 
 ### Normative evaluation procedure
 
