@@ -199,30 +199,34 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
 
   describe("rejects", () => {
     const placementRow = () => fixture("delivery.json").media_buy_deliveries[0].by_package[0].by_placement[0];
+    // The keywords a payload fails on, so that a vector cannot pass for the wrong reason.
+    const failures = (validate, data) => (validate(data) ? [] : validate.errors.map((error) => error.keyword));
+    const assertFailsOn = (keywords, expected) =>
+      assert.ok(keywords.includes(expected), `expected ${expected}, got ${keywords.join(", ") || "a valid payload"}`);
     const reject = (mutate) => {
       const delivery = fixture("delivery.json");
       mutate(delivery.media_buy_deliveries[0].by_package[0].by_placement[0].dooh_metrics);
-      return validateDelivery(delivery);
+      return failures(validateDelivery, delivery);
     };
 
     it("an unknown tier", () => {
-      assert.equal(reject((dooh) => { dooh.impression_basis_breakdown[0].impression_basis = "panel_measured"; }), false);
+      assertFailsOn(reject((dooh) => { dooh.impression_basis_breakdown[0].impression_basis = "panel_measured"; }), "enum");
     });
 
     it("a negative multiplier", () => {
-      assert.equal(reject((dooh) => { dooh.audience_multiplier = -1; }), false);
+      assertFailsOn(reject((dooh) => { dooh.audience_multiplier = -1; }), "minimum");
     });
 
     it("a breakdown entry without its tier", () => {
-      assert.equal(reject((dooh) => { delete dooh.impression_basis_breakdown[1].impression_basis; }), false);
+      assertFailsOn(reject((dooh) => { delete dooh.impression_basis_breakdown[1].impression_basis; }), "required");
     });
 
     it("a breakdown with fewer than two entries", () => {
-      assert.equal(reject((dooh) => { dooh.impression_basis_breakdown = [dooh.impression_basis_breakdown[0]]; }), false);
-      assert.equal(reject((dooh) => { dooh.impression_basis_breakdown = []; }), false);
+      assertFailsOn(reject((dooh) => { dooh.impression_basis_breakdown = [dooh.impression_basis_breakdown[0]]; }), "minItems");
+      assertFailsOn(reject((dooh) => { dooh.impression_basis_breakdown = []; }), "minItems");
       const point = fixture("forecast.json");
       point.points[0].impression_basis_breakdown.pop();
-      assert.equal(validateForecast(point), false);
+      assertFailsOn(failures(validateForecast, point), "minItems");
     });
 
     it("a breakdown repeating a tier", () => {
@@ -233,26 +237,26 @@ describe("DOOH impression basis fixtures: a product mixing sensor-measured and s
     });
 
     it("a row carrying both a tier and a breakdown", () => {
-      assert.equal(reject((dooh) => { dooh.impression_basis = "sensor_measured"; }), false);
+      assertFailsOn(reject((dooh) => { dooh.impression_basis = "sensor_measured"; }), "not");
       const forecast = fixture("forecast.json");
       forecast.points[0].impression_basis = "seller_modeled";
-      assert.equal(validateForecast(forecast), false);
+      assertFailsOn(failures(validateForecast, forecast), "not");
     });
 
     it("a basis_metric without its metric_id", () => {
-      assert.equal(reject((dooh) => { delete dooh.basis_metric.metric_id; }), false);
+      assertFailsOn(reject((dooh) => { delete dooh.basis_metric.metric_id; }), "required");
     });
 
     it("a breakdown entry without its counts", () => {
       const entry = clone(placementRow().dooh_metrics.impression_basis_breakdown[0]);
       delete entry.plays;
-      assert.equal(validateEntry(entry), false);
+      assertFailsOn(failures(validateEntry, entry), "required");
     });
 
     it("an unknown planned tier on a placement", () => {
       const product = fixture("discovery-product.json");
       product.placements[0].dooh_placement_attributes.impression_basis = "panel_modeled";
-      assert.equal(validateProduct(product), false);
+      assertFailsOn(failures(validateProduct, product), "enum");
     });
   });
 });
